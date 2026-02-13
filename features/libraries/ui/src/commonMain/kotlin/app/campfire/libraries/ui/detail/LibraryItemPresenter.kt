@@ -2,6 +2,7 @@ package app.campfire.libraries.ui.detail
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +44,8 @@ import app.campfire.libraries.ui.detail.composables.slots.SeriesSlot
 import app.campfire.libraries.ui.detail.composables.slots.SpacerSlot
 import app.campfire.libraries.ui.detail.composables.slots.SummarySlot
 import app.campfire.libraries.ui.detail.composables.slots.TitleAndAuthorSlot
+import app.campfire.playlists.api.dialog.AddToPlaylistDialog
+import app.campfire.playlists.api.screen.PlaylistDetailScreen
 import app.campfire.series.api.SeriesRepository
 import app.campfire.sessions.api.SessionQueue
 import app.campfire.sessions.api.SessionsRepository
@@ -62,7 +65,6 @@ import com.slack.circuit.runtime.Navigator
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -90,6 +92,7 @@ class LibraryItemPresenter(
   private val analytics: Analytics,
   private val themeManager: ThemeManager,
   private val themeSettings: ThemeSettings,
+  private val addToPlaylistDialog: AddToPlaylistDialog,
   private val dispatcherProvider: DispatcherProvider,
 ) : NonPausablePresenter<LibraryItemUiState> {
 
@@ -101,10 +104,16 @@ class LibraryItemPresenter(
 
     val currentSession by remember {
       sessionsRepository.observeCurrentSession()
-        .filterNotNull()
-        .filter { it.libraryItem.id == screen.libraryItemId }
-        .map { SessionUiState.Current(it) }
-    }.collectAsState(SessionUiState.None)
+    }.collectAsState(null)
+
+    val itemSession by remember {
+      derivedStateOf {
+        currentSession
+          ?.takeIf { it.libraryItem.id == screen.libraryItemId }
+          ?.let { SessionUiState.Current(it) }
+          ?: SessionUiState.None
+      }
+    }
 
     val libraryItemContentState by remember {
       repository.observeLibraryItem(screen.libraryItemId)
@@ -195,7 +204,10 @@ class LibraryItemPresenter(
         seriesContentState = seriesContentState,
         showTimeInBook = showTimeInBook,
         showConfirmDownloadDialog = showConfirmDownloadDialog,
-        session = currentSession.sessionOrNull(),
+        hasSession = currentSession != null,
+        session = itemSession.sessionOrNull(),
+        isQueued = isQueued,
+        addToPlaylistDialog = addToPlaylistDialog,
       )
     }
 
@@ -206,7 +218,7 @@ class LibraryItemPresenter(
       swatch = swatch,
       contentState = slots,
       isQueued = isQueued,
-      isCurrentlyPlaying = currentSession.sessionOrNull() != null,
+      isCurrentlyPlaying = itemSession.sessionOrNull() != null,
       showConfirmDownloadDialog = showConfirmDownloadDialog,
     ) { event ->
       when (event) {
@@ -264,7 +276,7 @@ class LibraryItemPresenter(
           analytics.send(ActionEvent("discard_progress", Click))
           playbackController.stopSession(event.item.id)
           scope.launch {
-            sessionsRepository.deleteSession(event.item.id)
+            sessionsRepository.markDeleted(event.item.id)
             mediaProgressRepository.deleteProgress(event.item.id)
           }
         }
@@ -273,7 +285,7 @@ class LibraryItemPresenter(
           analytics.send(ActionEvent("mark_finished", Click))
           playbackController.stopSession(event.item.id)
           scope.launch {
-            sessionsRepository.deleteSession(event.item.id)
+            sessionsRepository.markDeleted(event.item.id)
             mediaProgressRepository.markFinished(event.item.id)
           }
         }
@@ -287,7 +299,7 @@ class LibraryItemPresenter(
 
         is LibraryItemUiEvent.ChapterClick -> {
           analytics.send(ActionEvent("chapter", Click))
-          val session = currentSession.sessionOrNull()
+          val session = itemSession.sessionOrNull()
           val currentPlayer = audioPlayerHolder.currentPlayer.value
           if (event.item.id == session?.libraryItem?.id && currentPlayer != null) {
             // Just seek to the chapter id
@@ -301,7 +313,7 @@ class LibraryItemPresenter(
 
         is LibraryItemUiEvent.AudioTrackClick -> {
           analytics.send(ActionEvent("track", Click))
-          val session = currentSession.sessionOrNull()
+          val session = itemSession.sessionOrNull()
           val currentPlayer = audioPlayerHolder.currentPlayer.value
           if (event.item.id == session?.libraryItem?.id && currentPlayer != null) {
             // Just seek to the track index
@@ -340,6 +352,11 @@ class LibraryItemPresenter(
           analytics.send(ActionEvent("time_in_book", Click))
           settings.showTimeInBook = event.enabled
         }
+
+        is LibraryItemUiEvent.OpenPlaylist -> {
+          analytics.send(ActionEvent("open_playlist", Click))
+          navigator.goTo(PlaylistDetailScreen(event.playlistId, null, null, event.isCreated))
+        }
       }
     }
   }
@@ -355,7 +372,10 @@ private fun buildSlots(
   seriesContentState: LoadState<out List<LibraryItem>>,
   showTimeInBook: Boolean,
   showConfirmDownloadDialog: Boolean,
+  hasSession: Boolean,
+  isQueued: Boolean,
   session: Session?,
+  addToPlaylistDialog: AddToPlaylistDialog,
 ): List<ContentSlot> {
   return buildList {
     this += CoverImageSlot(
@@ -383,7 +403,10 @@ private fun buildSlots(
       offlineDownload = offlineDownloadState,
       mediaProgress = mediaProgressState.dataOrNull,
       isCurrentSession = session != null,
+      hasSession = hasSession,
+      isQueued = isQueued,
       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
+      addToPlaylistDialog = addToPlaylistDialog,
     )
 
     libraryItem.media.metadata.description?.let { desc ->

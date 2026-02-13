@@ -60,7 +60,6 @@ import app.campfire.common.compose.widgets.ErrorListState
 import app.campfire.common.compose.widgets.ItemCollectionSharedTransitionKey
 import app.campfire.common.compose.widgets.LibraryItemCard
 import app.campfire.common.compose.widgets.LoadingListState
-import app.campfire.common.compose.widgets.MaxBookDisplay
 import app.campfire.common.screens.CollectionDetailScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
@@ -195,7 +194,7 @@ fun CollectionDetail(
           ),
         ),
         animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
-        zIndexInOverlay = -(MaxBookDisplay + 1).toFloat(),
+        zIndexInOverlay = -1f,
       )
       .nestedScroll(scrollBehavior.nestedScrollConnection),
     contentWindowInsets = CampfireWindowInsets,
@@ -300,7 +299,7 @@ private fun LoadedState(
       LibraryItemCard(
         item = item,
         sharedTransitionKey = item.id + collectionName,
-        sharedTransitionZIndex = -(index + 1f),
+        sharedTransitionZIndex = (items.size - index) + 1f,
         offlineStatus = offlineStatus(item.id),
         isSelectable = isEditing,
         selected = selectedItems.contains(item),

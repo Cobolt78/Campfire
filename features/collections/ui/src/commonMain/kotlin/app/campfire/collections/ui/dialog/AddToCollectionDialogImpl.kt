@@ -52,6 +52,10 @@ import app.campfire.collections.api.ui.AddToCollectionDialog
 import app.campfire.common.compose.LocalWindowSizeClass
 import app.campfire.common.compose.analytics.Impression
 import app.campfire.common.compose.layout.isSupportingPaneEnabled
+import app.campfire.common.compose.widgets.AlertDialogContent
+import app.campfire.common.compose.widgets.AlertDialogFlowRow
+import app.campfire.common.compose.widgets.ButtonsCrossAxisSpacing
+import app.campfire.common.compose.widgets.ButtonsMainAxisSpacing
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.Collection
@@ -320,6 +324,7 @@ class AddToCollectionDialogImpl(
   ) {
     Box(
       modifier = modifier
+        .fillMaxWidth()
         .height(128.dp),
       contentAlignment = Alignment.Center,
     ) {

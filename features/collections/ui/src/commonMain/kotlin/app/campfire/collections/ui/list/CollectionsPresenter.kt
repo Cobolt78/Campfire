@@ -13,7 +13,6 @@ import app.campfire.common.screens.CollectionsScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.Collection
-import app.campfire.crashreporting.CrashReporter
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
@@ -36,10 +35,7 @@ class CollectionsPresenter(
     val collectionContentState by remember {
       repository.observeAllCollections()
         .map { LoadState.Loaded(it) as LoadState<List<Collection>> }
-        .catch { e ->
-          CrashReporter.record(CollectionsObservationError(e))
-          emit(LoadState.Error as LoadState<List<Collection>>)
-        }
+        .catch<LoadState<out List<Collection>>> { emit(LoadState.Error) }
     }.collectAsState(LoadState.Loading)
 
     return CollectionsUiState(
