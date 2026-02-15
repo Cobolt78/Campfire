@@ -16,8 +16,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TimeInput
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -37,6 +39,7 @@ import app.campfire.audioplayer.ui.composables.RunningTimerCard
 import app.campfire.audioplayer.ui.composables.SessionSheetLayout
 import app.campfire.common.compose.analytics.Impression
 import app.campfire.common.compose.extensions.readoutAtMost
+import app.campfire.common.compose.theme.CampfireTheme
 import app.campfire.core.isDebug
 import campfire.infra.audioplayer.public_ui.generated.resources.Res
 import campfire.infra.audioplayer.public_ui.generated.resources.action_set_timer
@@ -45,11 +48,13 @@ import campfire.infra.audioplayer.public_ui.generated.resources.timer_custom
 import campfire.infra.audioplayer.public_ui.generated.resources.timer_end_of_chapter
 import com.slack.circuit.overlay.OverlayHost
 import com.slack.circuitx.overlays.BottomSheetOverlay
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 sealed interface TimerResult {
   data object None : TimerResult
@@ -196,3 +201,24 @@ private fun TimerBottomSheet(
 }
 
 private val DefaultTimers = listOf(5, 10, 15, 30, 45, 60, 90)
+
+@Preview
+@Composable
+fun TimerBottomSheetPreview() {
+  CampfireTheme {
+    ModalBottomSheet(
+      sheetState = rememberModalBottomSheetState(true),
+      onDismissRequest = {},
+    ) {
+      TimerBottomSheet(
+        runningTimer = RunningTimer(
+          timer = PlaybackTimer.Epoch(15_000L),
+          startedAt = Clock.System.now().toEpochMilliseconds() - 7500L,
+          isShakeToRestartEnabled = true,
+        ),
+        onTimerSelected = {},
+        onTimerCleared = {},
+      )
+    }
+  }
+}
