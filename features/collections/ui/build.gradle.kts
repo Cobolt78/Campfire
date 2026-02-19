@@ -12,21 +12,9 @@ kotlin {
         implementation(projects.ui.appbar)
         implementation(projects.ui.navigation.api)
 
-        implementation(compose.components.resources)
+        implementation(libs.compose.components.resources)
 
         implementation(libs.circuitx.overlays)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
-      }
-    }
-
-    androidMain {
-      dependencies {
-        implementation(compose.preview)
       }
     }
   }

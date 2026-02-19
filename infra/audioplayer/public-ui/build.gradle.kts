@@ -12,19 +12,12 @@ kotlin {
 
         implementation(libs.circuitx.overlays)
 
-        implementation(compose.components.resources)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
+        implementation(libs.compose.components.resources)
       }
     }
 
     androidMain {
       dependencies {
-        implementation(compose.preview)
         implementation(libs.play.services.cast.framework)
       }
     }

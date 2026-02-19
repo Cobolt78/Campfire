@@ -12,7 +12,7 @@ kotlin {
         api(projects.ui.appbar)
         api(projects.ui.navigation.api)
 
-        implementation(compose.components.resources)
+        implementation(libs.compose.components.resources)
       }
     }
 
@@ -23,18 +23,6 @@ kotlin {
         implementation(projects.infra.audioplayer.test)
         implementation(libs.bundles.test.common)
         implementation(libs.bundles.test.ui)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
-      }
-    }
-
-    androidMain {
-      dependencies {
-        implementation(compose.preview)
       }
     }
   }

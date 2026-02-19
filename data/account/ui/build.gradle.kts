@@ -11,21 +11,9 @@ kotlin {
         implementation(projects.features.libraries.api)
         implementation(projects.ui.theming.api)
 
-        implementation(compose.components.resources)
+        implementation(libs.compose.components.resources)
 
         implementation(libs.circuitx.overlays)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
-      }
-    }
-
-    androidMain {
-      dependencies {
-        implementation(compose.preview)
       }
     }
   }

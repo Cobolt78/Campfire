@@ -11,19 +11,7 @@ kotlin {
         implementation(projects.features.libraries.api)
         implementation(projects.features.stats.api)
 
-        implementation(compose.components.resources)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
-      }
-    }
-
-    androidMain {
-      dependencies {
-        implementation(compose.preview)
+        implementation(libs.compose.components.resources)
       }
     }
   }

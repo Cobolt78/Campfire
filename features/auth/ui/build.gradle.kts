@@ -19,21 +19,9 @@ kotlin {
         implementation(projects.features.auth.api)
         implementation(projects.data.account.api)
 
-        implementation(compose.components.resources)
+        implementation(libs.compose.components.resources)
 
         implementation(libs.circuitx.overlays)
-      }
-    }
-
-    jvmMain {
-      dependencies {
-        implementation(compose.preview)
-      }
-    }
-
-    androidMain {
-      dependencies {
-        implementation(compose.preview)
       }
     }
   }
