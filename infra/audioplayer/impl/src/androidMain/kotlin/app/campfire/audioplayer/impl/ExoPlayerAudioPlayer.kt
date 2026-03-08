@@ -396,7 +396,20 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun seekBackward() {
-    player.seekBack()
+    if (player.currentPosition < player.seekBackIncrement && player.currentMediaItemIndex > 0) {
+      val previousIndex = player.currentMediaItemIndex - 1
+      val previousDurationMs = player.getMediaItemAt(previousIndex)
+        .mediaMetadata
+        .durationMs
+      if (previousDurationMs != null) {
+        val seekPositionMs = (previousDurationMs - player.seekBackIncrement).coerceAtLeast(0L)
+        player.seekTo(previousIndex, seekPositionMs)
+      } else {
+        player.seekBack()
+      }
+    } else {
+      player.seekBack()
+    }
   }
 
   override fun setPlaybackSpeed(speed: Float) {
