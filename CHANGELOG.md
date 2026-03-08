@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App crashing on system reboot due to offline download resumption
 - Mark Finished / Discard Progress would pause playback of current item
 - Playback issues when chapter information is mis-aligned with the audio tracks
+- Bluetooth metadata not showing the title of the book
 
 ### Other Notes & Contributions
 
