@@ -58,6 +58,10 @@ class LibraryItemPresenterEventsTest : BaseLibraryItemPresenterTest() {
     val libraryItem = emptyLibraryItem()
     libraryItemRepository.libraryItemFlow.emit(libraryItem)
 
+    sessionsRepository.currentSessionFlow.value = session(
+      libraryItem = libraryItem,
+    )
+
     eventTest.setup(this@LibraryItemPresenterEventsTest)
 
     presenter.test {
