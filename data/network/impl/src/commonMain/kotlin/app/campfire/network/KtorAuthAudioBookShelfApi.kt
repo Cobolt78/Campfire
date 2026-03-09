@@ -4,16 +4,13 @@ import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.SingleIn
 import app.campfire.network.di.ReturnTokens
-import app.campfire.network.di.ServerUrl
 import app.campfire.network.envelopes.AuthorizationResponse
 import app.campfire.network.envelopes.LoginRequest
 import app.campfire.network.envelopes.LoginResponse
-import app.campfire.network.models.NetworkModel
 import app.campfire.network.models.ServerStatus
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import io.ktor.client.HttpClient
 import io.ktor.client.call.NoTransformationFoundException
-import io.ktor.client.call.body
 import io.ktor.client.plugins.cookies.AcceptAllCookiesStorage
 import io.ktor.client.plugins.cookies.HttpCookies
 import io.ktor.client.request.HttpRequestBuilder
@@ -23,16 +20,11 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.URLParserException
 import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSecure
-import io.ktor.http.isSuccess
-import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import me.tatarka.inject.annotations.Inject
 
@@ -145,38 +137,6 @@ class KtorAuthAudioBookShelfApi(
       parameter("code", code)
       parameter("code_verifier", codeVerifier)
       maybeHeaders(extraHeaders)
-    }
-  }
-
-  private suspend inline fun <reified T> trySendRequest(
-    noinline responseMapper: suspend (HttpResponse) -> T = { it.body<T>() },
-    crossinline request: suspend () -> HttpResponse,
-  ): Result<T> = withContext(dispatcherProvider.io) {
-    try {
-      val response = request()
-      if (response.status.isSuccess()) {
-        val originServerUrl = response.call.request.headers[HttpHeaders.ServerUrl]
-        val body = responseMapper(response)
-        if (body is NetworkModel && originServerUrl != null) {
-          body.applyOrigin(RequestOrigin.Url(originServerUrl))
-        }
-
-        Result.success(body)
-      } else {
-        Result.failure(ApiException(response.status.value, response.bodyAsText()))
-      }
-    } catch (e: IOException) {
-      e.printStackTrace()
-      Result.failure(e)
-    } catch (e: NoTransformationFoundException) {
-      e.printStackTrace()
-      Result.failure(e)
-    } catch (e: IllegalArgumentException) {
-      e.printStackTrace()
-      Result.failure(e)
-    } catch (e: URLParserException) {
-      e.printStackTrace()
-      Result.failure(e)
     }
   }
 }
