@@ -40,16 +40,21 @@ import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.icons.LoadingCampfireIcon
 import app.campfire.common.compose.theme.CampfireTheme
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
+import app.campfire.core.app.ApplicationInfo
 import app.campfire.core.di.AppScope
 import app.campfire.whatsnew.api.WhatsNewRepository
 import app.campfire.whatsnew.api.WhatsNewWidgetProvider
+import campfire.infra.whats_new.ui.generated.resources.Res
+import campfire.infra.whats_new.ui.generated.resources.whatsnew_widget_title
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Inject
+import org.jetbrains.compose.resources.stringResource
 
 @Inject
 @ContributesBinding(AppScope::class)
 class ComposeWhatsNewWidgetProvider(
+  private val applicationInfo: ApplicationInfo,
   private val repository: WhatsNewRepository,
 ) : WhatsNewWidgetProvider {
 
@@ -73,6 +78,7 @@ class ComposeWhatsNewWidgetProvider(
       modifier = modifier,
     ) {
       WhatsNewWidget(
+        version = applicationInfo.versionName,
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         onDismiss = {
@@ -88,6 +94,7 @@ class ComposeWhatsNewWidgetProvider(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun WhatsNewWidget(
+  version: String,
   onClick: () -> Unit,
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
@@ -130,13 +137,13 @@ private fun WhatsNewWidget(
         modifier = Modifier.weight(1f),
       ) {
         Text(
-          text = "See what's new!",
+          text = stringResource(Res.string.whatsnew_widget_title),
           style = MaterialTheme.typography.titleMedium,
           fontFamily = PaytoneOneFontFamily,
         )
 
         Text(
-          text = "v0.10.0-beta",
+          text = version,
           style = MaterialTheme.typography.labelMediumEmphasized,
         )
       }
@@ -164,6 +171,7 @@ private fun WhatsNewWidgetPreview() {
     ) {
       PermanentDrawerSheet {
         WhatsNewWidget(
+          version = "v0.11.0-beta",
           onClick = {},
           onDismiss = {},
           modifier = Modifier

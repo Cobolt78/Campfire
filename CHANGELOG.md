@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Other Notes & Contributions
+
+## [0.11.0-beta]
+
+### Added
+
 - What's New / Changelog screen and widget
 - Playback Queue
 - Playlists
@@ -22,10 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rewind action will jump to previous chapter with the rewind duration from the end instead of just to the start of the item
 - Default playback speed options changed to 1x, 1.1x, 1.25x, 1.5x, 2x. Slider range remains 0.5x to 2x.
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 
 - Bottom navigation bar now transitions smoothly between shared screen transitions
@@ -34,8 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mark Finished / Discard Progress would pause playback of current item
 - Playback issues when chapter information is mis-aligned with the audio tracks
 - Bluetooth metadata not showing the title of the book
-
-### Other Notes & Contributions
 
 ## [0.10.0-beta] - 2026-02-01
 
@@ -273,6 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[0.11.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.10.0-beta...v0.11.0-beta
 [0.10.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.9.0-beta...v0.10.0-beta
 [0.9.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.8.0-beta...v0.9.0-beta
 [0.8.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.7.2-beta...v0.8.0-beta
