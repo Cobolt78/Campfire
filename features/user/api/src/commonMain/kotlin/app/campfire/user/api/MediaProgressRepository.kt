@@ -6,9 +6,15 @@ import kotlinx.coroutines.flow.Flow
 
 interface MediaProgressRepository {
 
-  fun observeProgress(libraryItemId: LibraryItemId): Flow<MediaProgress?>
+  fun observeProgress(
+    libraryItemId: LibraryItemId,
+    refresh: Boolean = false,
+  ): Flow<MediaProgress?>
 
-  suspend fun getProgress(libraryItemId: LibraryItemId): MediaProgress?
+  suspend fun getProgress(
+    libraryItemId: LibraryItemId,
+    fresh: Boolean = false,
+  ): MediaProgress?
 
   fun observeAllProgress(): Flow<List<MediaProgress>>
 

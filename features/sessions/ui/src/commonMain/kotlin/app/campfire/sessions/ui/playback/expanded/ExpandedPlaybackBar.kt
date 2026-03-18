@@ -1,7 +1,6 @@
-package app.campfire.sessions.ui.expanded
+package app.campfire.sessions.ui.playback.expanded
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -18,7 +17,6 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,9 +26,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -64,41 +59,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.campfire.audioplayer.AudioPlayer
-import app.campfire.audioplayer.model.Metadata
-import app.campfire.audioplayer.model.PlaybackTimer
-import app.campfire.audioplayer.model.RunningTimer
 import app.campfire.audioplayer.ui.cast.CastButton
 import app.campfire.common.compose.LocalWindowSizeClass
-import app.campfire.common.compose.di.rememberComponent
 import app.campfire.common.compose.layout.isSupportingPaneEnabled
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
 import app.campfire.common.compose.widgets.CoverImageSize
-import app.campfire.common.compose.widgets.MetadataHeader
-import app.campfire.core.di.UserScope
 import app.campfire.core.extensions.fluentIf
-import app.campfire.core.model.AudioTrack
-import app.campfire.core.model.Bookmark
-import app.campfire.core.model.Chapter
-import app.campfire.core.model.LibraryItem
-import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.Session
 import app.campfire.libraries.api.LibraryItemValidation
 import app.campfire.libraries.api.screen.LibraryItemScreen
-import app.campfire.sessions.ui.FlingThreshold
-import app.campfire.sessions.ui.ShadowElevation
-import app.campfire.sessions.ui.SharedBounds
-import app.campfire.sessions.ui.TonalElevation
-import app.campfire.sessions.ui.TranslationThreshold
 import app.campfire.sessions.ui.composables.PlaybackSpeedAction
 import app.campfire.sessions.ui.composables.RunningTimerAction
-import app.campfire.sessions.ui.expanded.composables.ActionRow
-import app.campfire.sessions.ui.expanded.composables.ClearQueueButton
-import app.campfire.sessions.ui.expanded.composables.ExpandedItemImage
-import app.campfire.sessions.ui.expanded.composables.PlaybackActions
-import app.campfire.sessions.ui.expanded.composables.PlaybackSeekBar
-import app.campfire.sessions.ui.expanded.composables.QueueButton
-import app.campfire.sessions.ui.expanded.composables.QueueItem
+import app.campfire.sessions.ui.playback.DefaultNonThemedContentColor
+import app.campfire.sessions.ui.playback.DefaultNonThemedSheetColor
+import app.campfire.sessions.ui.playback.PlaybackUiState
+import app.campfire.sessions.ui.playback.PlayerUiEvent
+import app.campfire.sessions.ui.playback.PlayerUiState
+import app.campfire.sessions.ui.playback.QueueUiEvent
+import app.campfire.sessions.ui.playback.QueueUiState
+import app.campfire.sessions.ui.playback.SharedBounds
+import app.campfire.sessions.ui.playback.SyncUiEvent
+import app.campfire.sessions.ui.playback.SyncUiState
+import app.campfire.sessions.ui.playback.collapsed.ShadowElevation
+import app.campfire.sessions.ui.playback.collapsed.TonalElevation
+import app.campfire.sessions.ui.playback.expanded.composables.ActionRow
+import app.campfire.sessions.ui.playback.expanded.composables.AvailableSyncButton
+import app.campfire.sessions.ui.playback.expanded.composables.ClearQueueButton
+import app.campfire.sessions.ui.playback.expanded.composables.ExpandedItemImage
+import app.campfire.sessions.ui.playback.expanded.composables.PlaybackActions
+import app.campfire.sessions.ui.playback.expanded.composables.PlaybackSeekBar
+import app.campfire.sessions.ui.playback.expanded.composables.QueueButton
+import app.campfire.sessions.ui.playback.expanded.composables.QueueContent
+import app.campfire.sessions.ui.playback.expanded.composables.TargetSyncContent
 import app.campfire.sessions.ui.sheets.bookmarks.BookmarkResult
 import app.campfire.sessions.ui.sheets.bookmarks.showBookmarksBottomSheet
 import app.campfire.sessions.ui.sheets.chapters.ChapterResult
@@ -110,57 +102,33 @@ import app.campfire.sessions.ui.sheets.tracks.AudioTrackResult
 import app.campfire.sessions.ui.sheets.tracks.showAudioTrackBottomSheet
 import campfire.features.sessions.ui.generated.resources.Res
 import campfire.features.sessions.ui.generated.resources.misaligned_chapters_error_message
-import campfire.features.sessions.ui.generated.resources.queue_header_queue
-import campfire.features.sessions.ui.generated.resources.queue_header_up_next
-import com.r0adkll.kimchi.annotations.ContributesTo
 import com.slack.circuit.overlay.ContentWithOverlays
 import com.slack.circuit.overlay.OverlayHost
 import com.slack.circuit.overlay.rememberOverlayHost
 import com.slack.circuit.runtime.Navigator
-import kotlin.time.Duration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private val ExpandedVerticalOffsetFactor = 56.dp
 private val ExpandedHorizontalOffsetFactor = 4.dp
 private val ExpandedCornerRadiusFactor = 24.dp
 internal val LargeCoverImageSize = 188.dp
 
+internal const val FlingThreshold = 4000f
+internal const val TranslationThreshold = 0.75f
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-internal fun ExpandedPlaybackBar(
-  containerColor: Color,
-  contentColor: Color,
+internal fun <T> T.ExpandedPlaybackBar(
   navigator: Navigator,
-
-  state: AudioPlayer.State,
-  playbackSpeed: Float,
-  currentTime: Duration,
-  currentDuration: Duration,
-  currentMetadata: Metadata,
-  runningTimer: RunningTimer?,
-
-  session: Session,
-  onPlayPauseClick: () -> Unit,
-  onRewindClick: () -> Unit,
-  onForwardClick: () -> Unit,
-  onSkipNextClick: () -> Unit,
-  onSkipPreviousClick: () -> Unit,
-  onSeek: (Float) -> Unit,
-  onTimerSelected: (PlaybackTimer) -> Unit,
-  onTimerCleared: () -> Unit,
-  onChapterSelected: (Chapter) -> Unit,
-  onAudioTrackSelected: (AudioTrack) -> Unit,
-  onBookmarkSelected: (Bookmark) -> Unit,
-
+  session: Session?,
+  playbackState: PlaybackUiState,
   onClose: () -> Unit,
-  sharedTransitionScope: SharedTransitionScope,
-  animatedVisibilityScope: AnimatedVisibilityScope,
   modifier: Modifier = Modifier,
-) {
+  containerColor: Color = DefaultNonThemedSheetColor,
+  contentColor: Color = DefaultNonThemedContentColor,
+) where T : SharedTransitionScope, T : AnimatedVisibilityScope {
   val overlayHost = rememberOverlayHost()
   ContentWithOverlays(
     overlayHost = overlayHost,
@@ -171,68 +139,36 @@ internal fun ExpandedPlaybackBar(
       contentColor = contentColor,
       navigator = navigator,
       overlayHost = overlayHost,
-      state = state,
-      playbackSpeed = playbackSpeed,
-      currentTime = currentTime,
-      currentDuration = currentDuration,
-      currentMetadata = currentMetadata,
-      runningTimer = runningTimer,
       session = session,
-      onPlayPauseClick = onPlayPauseClick,
-      onRewindClick = onRewindClick,
-      onForwardClick = onForwardClick,
-      onSkipNextClick = onSkipNextClick,
-      onSkipPreviousClick = onSkipPreviousClick,
-      onSeek = onSeek,
-      onTimerCleared = onTimerCleared,
-      onTimerSelected = onTimerSelected,
-      onChapterSelected = onChapterSelected,
-      onAudioTrackSelected = onAudioTrackSelected,
-      onBookmarkSelected = onBookmarkSelected,
+      itemValidation = playbackState.validation,
+      playerState = playbackState.playerState,
+      queueState = playbackState.queueState,
+      syncState = playbackState.syncUiState,
       onClose = onClose,
-      sharedTransitionScope = sharedTransitionScope,
-      animatedVisibilityScope = animatedVisibilityScope,
+      sharedTransitionScope = this,
+      animatedVisibilityScope = this,
     )
   }
-}
-
-@ContributesTo(UserScope::class)
-interface ExpandedPlaybackBarComponent {
-  val expandedPlaybackPresenterFactory: ExpandedPlaybackPresenterFactory
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ExpandedPlaybackBar(
-  containerColor: Color,
-  contentColor: Color,
   navigator: Navigator,
   overlayHost: OverlayHost,
-  state: AudioPlayer.State,
-  playbackSpeed: Float,
-  currentTime: Duration,
-  currentDuration: Duration,
-  currentMetadata: Metadata,
-  runningTimer: RunningTimer?,
 
-  session: Session,
-  onPlayPauseClick: () -> Unit,
-  onRewindClick: () -> Unit,
-  onForwardClick: () -> Unit,
-  onSkipNextClick: () -> Unit,
-  onSkipPreviousClick: () -> Unit,
-  onSeek: (Float) -> Unit,
-  onTimerSelected: (PlaybackTimer) -> Unit,
-  onTimerCleared: () -> Unit,
-  onChapterSelected: (Chapter) -> Unit,
-  onAudioTrackSelected: (AudioTrack) -> Unit,
-  onBookmarkSelected: (Bookmark) -> Unit,
+  session: Session?,
+  itemValidation: LibraryItemValidation,
+  playerState: PlayerUiState,
+  queueState: QueueUiState,
+  syncState: SyncUiState,
 
   onClose: () -> Unit,
   sharedTransitionScope: SharedTransitionScope,
   animatedVisibilityScope: AnimatedVisibilityScope,
   modifier: Modifier = Modifier,
-  component: ExpandedPlaybackBarComponent = rememberComponent(),
+  containerColor: Color = DefaultNonThemedSheetColor,
+  contentColor: Color = DefaultNonThemedContentColor,
 ) = with(sharedTransitionScope) {
   val windowSizeClass = LocalWindowSizeClass.current
 
@@ -262,12 +198,6 @@ internal fun ExpandedPlaybackBar(
   LaunchedEffect(isDisposing) {
     hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
   }
-
-  // Presentation / ViewState
-  val presenter = remember(session.libraryItem) {
-    component.expandedPlaybackPresenterFactory(session.libraryItem)
-  }
-  val viewState = presenter.present()
 
   Surface(
     color = containerColor,
@@ -303,7 +233,7 @@ internal fun ExpandedPlaybackBar(
   ) {
     Column {
       var showQueue by remember { mutableStateOf(false) }
-      val hasQueue = viewState.queue.isNotEmpty()
+      val hasQueue = queueState.queue.isNotEmpty()
 
       TopAppBar(
         title = {
@@ -338,7 +268,7 @@ internal fun ExpandedPlaybackBar(
               ) {
                 ClearQueueButton(
                   onConfirmClick = {
-                    viewState.eventSink(ExpandedPlaybackUiEvent.ClearQueue)
+                    queueState.eventSink(QueueUiEvent.ClearQueue)
                   },
                 )
               }
@@ -365,19 +295,19 @@ internal fun ExpandedPlaybackBar(
       ) { queue ->
         if (queue) {
           QueueContent(
-            queue = viewState.queue,
+            queue = queueState.queue,
             onItemClick = { item ->
-              viewState.eventSink(ExpandedPlaybackUiEvent.QueueItemClick(item))
+              queueState.eventSink(QueueUiEvent.QueueItemClick(item))
               showQueue = false
             },
             onRemoveItem = { item ->
-              viewState.eventSink(ExpandedPlaybackUiEvent.RemoveQueueItem(item))
+              queueState.eventSink(QueueUiEvent.RemoveQueueItem(item))
             },
             onReorderItem = { from, to ->
-              viewState.reorderSink(from, to)
+              queueState.eventSink(QueueUiEvent.ReorderItem(from, to))
             },
             onReorderStopped = {
-              viewState.eventSink(ExpandedPlaybackUiEvent.ReorderStopped)
+              queueState.eventSink(QueueUiEvent.ReorderStopped)
             },
             modifier = Modifier.fillMaxSize(),
           )
@@ -385,25 +315,10 @@ internal fun ExpandedPlaybackBar(
           ExpandedPlaybackContent(
             navigator = navigator,
             overlayHost = overlayHost,
-            state = state,
-            playbackSpeed = playbackSpeed,
-            currentTime = currentTime,
-            currentDuration = currentDuration,
-            currentMetadata = currentMetadata,
-            runningTimer = runningTimer,
             session = session,
-            itemValidation = viewState.validation,
-            onPlayPauseClick = onPlayPauseClick,
-            onRewindClick = onRewindClick,
-            onForwardClick = onForwardClick,
-            onSkipNextClick = onSkipNextClick,
-            onSkipPreviousClick = onSkipPreviousClick,
-            onSeek = onSeek,
-            onTimerSelected = onTimerSelected,
-            onTimerCleared = onTimerCleared,
-            onChapterSelected = onChapterSelected,
-            onAudioTrackSelected = onAudioTrackSelected,
-            onBookmarkSelected = onBookmarkSelected,
+            playerState = playerState,
+            syncState = syncState,
+            itemValidation = itemValidation,
             onClose = onClose,
             windowSizeClass = windowSizeClass,
             animatedVisibilityScope = animatedVisibilityScope,
@@ -418,97 +333,15 @@ internal fun ExpandedPlaybackBar(
 }
 
 @Composable
-private fun QueueContent(
-  queue: List<LibraryItem>,
-  onItemClick: (LibraryItem) -> Unit,
-  onRemoveItem: (LibraryItem) -> Unit,
-  onReorderItem: suspend (from: LibraryItemId, to: LibraryItemId) -> Unit,
-  onReorderStopped: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  val haptics = LocalHapticFeedback.current
-  val lazyListState = rememberLazyListState()
-  val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
-    onReorderItem(from.key as LibraryItemId, to.key as LibraryItemId)
-    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
-  }
-  LazyColumn(
-    modifier = modifier,
-    state = lazyListState,
-    verticalArrangement = Arrangement.spacedBy(8.dp),
-    contentPadding = PaddingValues(
-      horizontal = 16.dp,
-    ),
-  ) {
-    queue.groupBy { queue.indexOf(it) == 0 }.forEach { (isFirst, items) ->
-      if (isFirst) {
-        item {
-          MetadataHeader(
-            title = stringResource(Res.string.queue_header_up_next),
-          )
-        }
-      } else {
-        item {
-          MetadataHeader(
-            title = stringResource(Res.string.queue_header_queue),
-          )
-        }
-      }
-
-      items(
-        items = items,
-        key = { it.id },
-      ) { item ->
-        ReorderableItem(reorderableLazyListState, key = item.id) {
-          val interactionSource = remember { MutableInteractionSource() }
-          QueueItem(
-            item = item,
-            onClick = { onItemClick(item) },
-            onRemove = { onRemoveItem(item) },
-            interactionSource = interactionSource,
-            modifier = Modifier
-              .animateItem()
-              .longPressDraggableHandle(
-                onDragStarted = {
-                  haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                },
-                onDragStopped = {
-                  haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                  onReorderStopped()
-                },
-                interactionSource = interactionSource,
-              ),
-          )
-        }
-      }
-    }
-  }
-}
-
-@Composable
 private fun SharedTransitionScope.ExpandedPlaybackContent(
   navigator: Navigator,
   overlayHost: OverlayHost,
-  state: AudioPlayer.State,
-  playbackSpeed: Float,
-  currentTime: Duration,
-  currentDuration: Duration,
-  currentMetadata: Metadata,
-  runningTimer: RunningTimer?,
 
-  session: Session,
+  session: Session?,
+  playerState: PlayerUiState,
+  syncState: SyncUiState,
   itemValidation: LibraryItemValidation,
-  onPlayPauseClick: () -> Unit,
-  onRewindClick: () -> Unit,
-  onForwardClick: () -> Unit,
-  onSkipNextClick: () -> Unit,
-  onSkipPreviousClick: () -> Unit,
-  onSeek: (Float) -> Unit,
-  onTimerSelected: (PlaybackTimer) -> Unit,
-  onTimerCleared: () -> Unit,
-  onChapterSelected: (Chapter) -> Unit,
-  onAudioTrackSelected: (AudioTrack) -> Unit,
-  onBookmarkSelected: (Bookmark) -> Unit,
+
   onClose: () -> Unit,
 
   windowSizeClass: WindowSizeClass,
@@ -531,8 +364,8 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
         horizontalAlignment = Alignment.CenterHorizontally,
       ) {
         ExpandedItemImage(
-          currentMetadata = currentMetadata,
-          runningTimer = runningTimer,
+          currentMetadata = playerState.metadata,
+          runningTimer = playerState.timer,
           session = session,
           animatedVisibilityScope = animatedVisibilityScope,
           size = if (windowSizeClass.isSupportingPaneEnabled) {
@@ -541,6 +374,7 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
             CoverImageSize
           },
           modifier = Modifier.clickable {
+            if (session == null) return@clickable
             scope.launch {
               onClose()
               delay(350L)
@@ -552,7 +386,7 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
         Spacer(Modifier.height(16.dp))
 
         Text(
-          text = currentMetadata.title ?: session.title,
+          text = playerState.metadata.title ?: session?.title ?: Session.TITLE_PLACEHOLDER,
           textAlign = TextAlign.Center,
           style = MaterialTheme.typography.headlineMedium,
           fontWeight = FontWeight.SemiBold,
@@ -565,7 +399,7 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
         )
 
         Text(
-          text = session.libraryItem.media.metadata.title ?: "",
+          text = session?.libraryItem?.media?.metadata?.title ?: "",
           textAlign = TextAlign.Center,
           style = MaterialTheme.typography.titleMedium,
           maxLines = 2,
@@ -591,30 +425,64 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
         }
       }
 
+      syncState.availableSync?.let { sync ->
+        AvailableSyncButton(
+          currentTime = sync.currentTime,
+          targetTime = sync.targetTime,
+          syncTimeInMillis = sync.syncTimeInMillis,
+          targetContent = {
+            sync.targetChapterTitle?.let { title ->
+              TargetSyncContent(title)
+            }
+          },
+          onClick = {
+            syncState.eventSink(SyncUiEvent.Sync)
+          },
+          modifier = Modifier
+            .align(Alignment.CenterHorizontally)
+            .padding(
+              horizontal = 16.dp,
+              vertical = 8.dp,
+            ),
+        )
+      }
+
       val interactionSource = remember { MutableInteractionSource() }
       val isPressed by interactionSource.collectIsPressedAsState()
       val isDragged by interactionSource.collectIsDraggedAsState()
       val isInteracting = isPressed || isDragged
 
       PlaybackSeekBar(
-        state = state,
-        currentTime = currentTime,
-        currentDuration = currentDuration,
-        playbackSpeed = playbackSpeed,
-        onSeek = onSeek,
+        state = playerState.state,
+        currentTime = playerState.time,
+        currentDuration = playerState.duration,
+        playbackSpeed = playerState.speed,
+        onSeek = { percent ->
+          playerState.eventSink(PlayerUiEvent.Seek.Percent(percent))
+        },
         interactionSource = interactionSource,
       )
 
       Spacer(Modifier.height(24.dp))
 
       PlaybackActions(
-        state = state,
+        state = playerState.state,
         isInteracting = isInteracting,
-        onSkipPreviousClick = onSkipPreviousClick,
-        onRewindClick = onRewindClick,
-        onPlayPauseClick = onPlayPauseClick,
-        onForwardClick = onForwardClick,
-        onSkipNextClick = onSkipNextClick,
+        onSkipPreviousClick = {
+          playerState.eventSink(PlayerUiEvent.PreviousClick)
+        },
+        onRewindClick = {
+          playerState.eventSink(PlayerUiEvent.RewindClick)
+        },
+        onPlayPauseClick = {
+          playerState.eventSink(PlayerUiEvent.PlayPauseClick)
+        },
+        onForwardClick = {
+          playerState.eventSink(PlayerUiEvent.FastForwardClick)
+        },
+        onSkipNextClick = {
+          playerState.eventSink(PlayerUiEvent.NextClick)
+        },
       )
     }
 
@@ -623,33 +491,42 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
     ActionRow(
       onBookmarksClick = {
         scope.launch {
-          when (val result = overlayHost.showBookmarksBottomSheet(session.libraryItem.id)) {
-            is BookmarkResult.Selected -> onBookmarkSelected(result.bookmark)
+          when (val result = overlayHost.showBookmarksBottomSheet(session!!.libraryItem.id)) {
+            is BookmarkResult.Selected -> {
+              playerState.eventSink(PlayerUiEvent.BookmarkSelected(result.bookmark))
+            }
+
             BookmarkResult.None -> Unit
           }
         }
       },
       speedContent = {
         PlaybackSpeedAction(
-          playbackSpeed = playbackSpeed,
+          playbackSpeed = playerState.speed,
           onClick = {
             scope.launch {
-              overlayHost.showPlaybackSpeedBottomSheet(playbackSpeed)
+              overlayHost.showPlaybackSpeedBottomSheet(playerState.speed)
             }
           },
         )
       },
       timerContent = {
         RunningTimerAction(
-          runningTimer = runningTimer,
-          currentTime = currentTime,
-          currentDuration = currentDuration,
-          playbackSpeed = playbackSpeed,
+          runningTimer = playerState.timer,
+          currentTime = playerState.time,
+          currentDuration = playerState.duration,
+          playbackSpeed = playerState.speed,
           onClick = {
             scope.launch {
-              when (val result = overlayHost.showSleepTimerBottomSheet(runningTimer)) {
-                is TimerResult.Selected -> onTimerSelected(result.timer)
-                TimerResult.Cleared -> onTimerCleared()
+              when (val result = overlayHost.showSleepTimerBottomSheet(playerState.timer)) {
+                is TimerResult.Selected -> {
+                  playerState.eventSink(PlayerUiEvent.TimerSelected(result.timer))
+                }
+
+                TimerResult.Cleared -> {
+                  playerState.eventSink(PlayerUiEvent.ClearTimer)
+                }
+
                 else -> Unit
               }
             }
@@ -657,15 +534,15 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
         )
       },
       onChapterListClick = {
-        if (session.libraryItem.media.chapters.isNotEmpty()) {
+        if (session!!.libraryItem.media.chapters.isNotEmpty()) {
           scope.launch {
             val result = overlayHost.showChapterBottomSheet(
               chapters = session.libraryItem.media.chapters,
               currentChapter = session.chapter,
-              playbackSpeed = playbackSpeed,
+              playbackSpeed = playerState.speed,
             )
             if (result is ChapterResult.Selected) {
-              onChapterSelected(result.chapter)
+              playerState.eventSink(PlayerUiEvent.ChapterSelected(result.chapter))
             }
           }
         } else if (session.libraryItem.media.tracks.isNotEmpty()) {
@@ -673,10 +550,10 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
             val result = overlayHost.showAudioTrackBottomSheet(
               audioTracks = session.libraryItem.media.tracks,
               currentAudioTrack = session.audioTrack,
-              playbackSpeed = playbackSpeed,
+              playbackSpeed = playerState.speed,
             )
             if (result is AudioTrackResult.Selected) {
-              onAudioTrackSelected(result.audioTrack)
+              playerState.eventSink(PlayerUiEvent.AudioTrackSelected(result.audioTrack))
             }
           }
         }

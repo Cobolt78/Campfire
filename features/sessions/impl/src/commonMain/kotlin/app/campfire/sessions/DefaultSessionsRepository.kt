@@ -3,7 +3,6 @@ package app.campfire.sessions
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.UserScope
-import app.campfire.core.extensions.seconds
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.PlayMethod
 import app.campfire.core.model.Session
@@ -14,8 +13,6 @@ import app.campfire.sessions.db.SessionDataSource
 import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.Flow
 import me.tatarka.inject.annotations.Inject
 
@@ -43,7 +40,6 @@ class DefaultSessionsRepository(
   }
 
   override suspend fun createSession(libraryItemId: LibraryItemId): Session {
-    val startedAt = fatherTime.now()
     val libraryItem = libraryItemRepository.getLibraryItem(libraryItemId)
     val progress = mediaProgressRepository.getProgress(libraryItemId)
     val offlineDownload = offlineDownloadManager.getForItem(libraryItem)
@@ -55,16 +51,7 @@ class DefaultSessionsRepository(
       } else {
         PlayMethod.DirectPlay
       },
-      mediaPlayer = "campfire",
-      duration = libraryItem.media.durationInMillis.milliseconds,
-      currentTime = if (progress?.isFinished == true) {
-        // Reset to beginning for finished audiobooks so playback can restart
-        0.seconds
-      } else {
-        progress?.currentTime?.seconds ?: 0.seconds
-      },
-      startedAt = startedAt,
-      forceNew = progress?.isFinished == true,
+      progress = progress,
     )
   }
 
@@ -80,6 +67,12 @@ class DefaultSessionsRepository(
     dataSource.updateCurrentTime(
       libraryItemId = libraryItemId,
       currentTime = currentTime,
+    )
+  }
+
+  override suspend fun updateLastPlayed(libraryItemId: LibraryItemId) {
+    dataSource.updateLastPlayed(
+      libraryItemId = libraryItemId,
     )
   }
 

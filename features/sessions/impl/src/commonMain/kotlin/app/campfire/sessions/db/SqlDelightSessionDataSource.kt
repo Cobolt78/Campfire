@@ -5,8 +5,10 @@ import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.UserScope
 import app.campfire.core.extensions.epochMilliseconds
-import app.campfire.core.logging.bark
+import app.campfire.core.extensions.seconds
+import app.campfire.core.logging.Corked
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.PlayMethod
 import app.campfire.core.model.Session
 import app.campfire.core.model.UserId
@@ -17,6 +19,7 @@ import app.campfire.core.time.FatherTime
 import app.campfire.data.Session as DbSession
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.settings.api.DevSettings
+import app.campfire.settings.api.PlaybackSettings
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
@@ -32,7 +35,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.LocalDateTime
 import me.tatarka.inject.annotations.Inject
 
 @SingleIn(UserScope::class)
@@ -44,8 +46,12 @@ class SqlDelightSessionDataSource(
   private val fatherTime: FatherTime,
   private val libraryItemRepository: LibraryItemRepository,
   private val devSettings: DevSettings,
+  private val playbackSettings: PlaybackSettings,
   private val dispatcherProvider: DispatcherProvider,
 ) : SessionDataSource {
+  companion object : Corked("SqlDelightSessionDataSource") {
+    private const val DEFAULT_MEDIA_PLAYER = "campfire"
+  }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   override fun observeCurrentSession(): Flow<Session?> {
@@ -94,12 +100,9 @@ class SqlDelightSessionDataSource(
   override suspend fun createOrStartSession(
     libraryItemId: LibraryItemId,
     playMethod: PlayMethod,
-    mediaPlayer: String,
-    duration: Duration,
-    currentTime: Duration,
-    startedAt: LocalDateTime,
-    forceNew: Boolean,
+    progress: MediaProgress?,
   ): Session {
+    val now = fatherTime.now()
     val currentUserId = userSession.requiredUserId
 
     val existingSession = read {
@@ -108,13 +111,17 @@ class SqlDelightSessionDataSource(
         ?.takeIf { !it.isDeleted }
     }
 
+    // If the current progress is finished, skip check the existing session
+    // and force the creation of a new one using the progress as the source of time.
+    val forceNew = progress?.isFinished == true
+
     // If an existing session has been updated withing allowed time interval,
     // just re-use the session
-    if (existingSession != null && !forceNew) {
+    if (existingSession != null && !existingSession.isDeleted && !forceNew) {
       val now = fatherTime.now()
       val elapsed = now.epochMilliseconds - existingSession.updatedAt.epochMilliseconds
       if (elapsed <= devSettings.sessionAge.inWholeMilliseconds && now.date == existingSession.updatedAt.date) {
-        bark {
+        ibark {
           "Existing session is still young enough[${elapsed.milliseconds} < ${devSettings.sessionAge}], " +
             "returning it."
         }
@@ -126,20 +133,50 @@ class SqlDelightSessionDataSource(
         }
         return hydrateSession(existingSession)
       } else {
-        bark {
+        ibark {
           "Existing session is too old, creating new. Age [${elapsed.milliseconds}], " +
             "Session Age [${devSettings.sessionAge}]"
         }
       }
     }
 
+    // Check the incoming media progress against an existing session
+    // to see if we have new progress to sync to.
+    val hasSync = existingSession != null && progress != null &&
+      (existingSession.lastPlayedAt?.epochMilliseconds ?: 0L) < progress.lastUpdate &&
+      existingSession.currentTime.inWholeSeconds != progress.currentTime.seconds.inWholeSeconds
+    val autoSync = hasSync &&
+      playbackSettings.syncEnabled &&
+      playbackSettings.autoSyncEnabled
+
     // If we DID have an old session, we'll want to re-use its time stamps instead of the passed, media progress,
     // timestamps.
-    val newStartTime = existingSession?.currentTime ?: currentTime
-    val newCurrentTime = existingSession?.currentTime ?: currentTime
+    val newTime = if (autoSync) {
+      progress.actualTime
+    } else {
+      existingSession?.currentTime
+        ?: progress?.actualTime
+        ?: Duration.ZERO
+    }
+
+    val lastPlayedAt = if (autoSync) {
+      // If we are syncing against an updated progress, go ahead
+      // and set the "last played" timestamp to the current time
+      now
+    } else {
+      existingSession?.lastPlayedAt
+        ?: existingSession?.updatedAt
+    }
 
     // If there is no existing, or its too old. Create a new session.
-    bark { "Creating new session for library item" }
+    ibark {
+      """
+        |Creating new session for library item
+        |  => autoSync = $autoSync,
+        |  => lastPlayed = $lastPlayedAt,
+        |  => newTime = $newTime,
+      """.trimMargin()
+    }
     return write {
       val dbSession = DbSession(
         id = Uuid.random(),
@@ -150,12 +187,15 @@ class SqlDelightSessionDataSource(
         isActive = true,
         isDeleted = false,
         playMethod = playMethod,
-        mediaPlayer = mediaPlayer,
+        mediaPlayer = DEFAULT_MEDIA_PLAYER,
         timeListening = 0.seconds,
-        startTime = newStartTime,
-        currentTime = newCurrentTime,
-        startedAt = fatherTime.now(),
-        updatedAt = fatherTime.now(),
+        startTime = newTime,
+        currentTime = newTime,
+        // This is important to track when the user last played/updated the local
+        // playback session for this item.
+        lastPlayedAt = lastPlayedAt,
+        startedAt = now,
+        updatedAt = now,
       )
 
       // Insert, replacing any existing session and disable any other active sessions
@@ -170,6 +210,7 @@ class SqlDelightSessionDataSource(
   }
 
   override suspend fun updateCurrentTime(libraryItemId: LibraryItemId, currentTime: Duration) {
+    ibark { "updateCurrentTime($currentTime)" }
     val currentUserId = userSession.userId ?: return
     write {
       // Update the playback session information with the new time
@@ -182,13 +223,26 @@ class SqlDelightSessionDataSource(
     }
   }
 
+  override suspend fun updateLastPlayed(libraryItemId: LibraryItemId) {
+    ibark { "updateLastPlayed()" }
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.updateLastPlayed(
+        lastPlayedAt = fatherTime.now(),
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
   override suspend fun addTimeListening(libraryItemId: LibraryItemId, amount: Duration) {
+    ibark { "addTimeListening($amount)" }
     val currentUserId = userSession.userId ?: return
     write {
       db.sessionQueries.addTimeListening(
         libraryItemId = libraryItemId,
         userId = currentUserId,
-        timeListening = amount,
+        additionalTime = amount,
         updatedAt = fatherTime.now(),
       )
     }
@@ -240,6 +294,7 @@ class SqlDelightSessionDataSource(
       timeListening = session.timeListening,
       startTime = session.startTime,
       currentTime = session.currentTime,
+      lastPlayedAt = session.lastPlayedAt,
       startedAt = session.startedAt,
       updatedAt = session.updatedAt,
     )

@@ -35,6 +35,7 @@ import me.tatarka.inject.annotations.Inject
 import org.mobilenativefoundation.store.store5.ExperimentalStoreApi
 import org.mobilenativefoundation.store.store5.Store
 import org.mobilenativefoundation.store.store5.StoreReadRequest
+import org.mobilenativefoundation.store.store5.impl.extensions.fresh
 import org.mobilenativefoundation.store.store5.impl.extensions.get
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalStoreApi::class)
@@ -53,8 +54,11 @@ class StoreMediaProgressRepository(
 
   private val store: Store<Operation, Output> by lazy { storeFactory.create() }
 
-  override fun observeProgress(libraryItemId: LibraryItemId): Flow<MediaProgress?> {
-    val request = StoreReadRequest.cached(Operation.Query.One(userSession.requiredUserId, libraryItemId), false)
+  override fun observeProgress(
+    libraryItemId: LibraryItemId,
+    refresh: Boolean,
+  ): Flow<MediaProgress?> {
+    val request = StoreReadRequest.cached(Operation.Query.One(userSession.requiredUserId, libraryItemId), refresh)
     return store.stream(request)
       .debugLogging("MediaProgressStore::observeProgress")
       .map { it.dataOrNull() }
@@ -62,10 +66,21 @@ class StoreMediaProgressRepository(
       .map { it.requireSingle() }
   }
 
-  override suspend fun getProgress(libraryItemId: LibraryItemId): MediaProgress? {
+  override suspend fun getProgress(
+    libraryItemId: LibraryItemId,
+    fresh: Boolean,
+  ): MediaProgress? {
     val userId = userSession.userId ?: return null
     val operation = Operation.Query.One(userId, libraryItemId)
-    return store.get(operation).requireSingle()
+    return try {
+      if (fresh) {
+        store.fresh(operation).requireSingle()
+      } else {
+        store.get(operation).requireSingle()
+      }
+    } catch (_: Exception) {
+      null
+    }
   }
 
   override fun observeAllProgress(): Flow<List<MediaProgress>> {
