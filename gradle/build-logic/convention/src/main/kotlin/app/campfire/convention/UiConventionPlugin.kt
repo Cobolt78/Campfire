@@ -3,6 +3,7 @@
 
 package app.campfire.convention
 
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
@@ -11,7 +12,6 @@ import org.gradle.kotlin.dsl.get
 import org.jetbrains.compose.ComposePlugin
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
 
 class UiConventionPlugin : Plugin<Project> {
   @OptIn(ExperimentalKotlinGradlePluginApi::class)
@@ -29,9 +29,9 @@ class UiConventionPlugin : Plugin<Project> {
         freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
       }
 
-      // Setup android instrumented tests for commonTest UI tests
-      androidTarget {
-        instrumentedTestVariant.sourceSetTree.set(KotlinSourceSetTree.test)
+      // Enable android device tests for commonTest UI tests
+      extensions.configure<KotlinMultiplatformAndroidLibraryExtension>("android") {
+        withDeviceTest {}
       }
 
       val compose = ComposePlugin.Dependencies(project)
@@ -75,11 +75,11 @@ class UiConventionPlugin : Plugin<Project> {
     libs.findLibrary("kimchi-compiler").ifPresent { addKspDependencyForAllTargets(it) }
     libs.findLibrary("kimchi-circuit-compiler").ifPresent { addKspDependencyForAllTargets(it) }
 
-    // Setup Android instrumentation test dependencies
+    // Setup Android instrumentation test and tooling dependencies
     dependencies {
-      libs.findLibrary("androidx-compose-ui-test-junit4").ifPresent { add("androidTestImplementation", it) }
-      libs.findLibrary("androidx-compose-ui-test-manifest").ifPresent { add("debugImplementation", it) }
-      libs.findLibrary("compose-ui-tooling").ifPresent { add("debugImplementation", it) }
+      libs.findLibrary("androidx-compose-ui-test-junit4").ifPresent { add("androidDeviceTestImplementation", it) }
+      libs.findLibrary("androidx-compose-ui-test-manifest").ifPresent { add("androidRuntimeClasspath", it) }
+      libs.findLibrary("compose-ui-tooling").ifPresent { add("androidRuntimeClasspath", it) }
     }
   }
 }

@@ -4,6 +4,7 @@
 package app.campfire.convention
 
 import app.campfire.convention.util.capitalized
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
@@ -41,8 +42,14 @@ class KotlinMultiplatformConventionPlugin : Plugin<Project> {
 
       jvm()
 
-      if (pluginManager.hasPlugin("com.android.library")) {
-        androidTarget()
+      if (pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")) {
+        extensions.configure<KotlinMultiplatformAndroidLibraryExtension>("android") {
+          namespace = "app.campfire.${target.path.substring(1).replace(':', '.').replace("-", "_")}"
+          compileSdk = Versions.compileSdk
+          minSdk = Versions.minSdk
+          // Required for Compose Multiplatform resources on Android (CMP-9547)
+          androidResources { enable = true }
+        }
       }
 
       iosArm64()
