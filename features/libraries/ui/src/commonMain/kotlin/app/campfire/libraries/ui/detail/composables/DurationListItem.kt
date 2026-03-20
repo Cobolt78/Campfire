@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,9 +31,7 @@ import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.core.extensions.fluentIf
 import kotlin.time.Duration
 
-private val ListItemHeight = 48.dp
-private val IndicatorSize = 8.dp
-private val IndicatorPadding = 0.dp
+internal val ListItemHeight = 48.dp
 private val ProgressCornerRadius = 24.dp
 private val ProgressHeight = 8.dp
 
@@ -48,11 +47,21 @@ internal fun DurationListItem(
   selectedColor: Color = MaterialTheme.colorScheme.secondaryContainer,
 ) {
   val isActiveChapter = progress > 0f && progress < 1f
+  val isListened = progress >= 1f
+
+  val contentColor = if (isActiveChapter || isListened) {
+    MaterialTheme.colorScheme.contentColorFor(selectedColor)
+  } else {
+    MaterialTheme.colorScheme.onSurface
+  }
 
   Row(
     modifier = modifier
       .thenIf(isActiveChapter) {
         background(selectedColor)
+      }
+      .thenIf(isListened) {
+        background(selectedColor.copy(DefocusedChapterAlpha))
       }
       .defaultMinSize(minHeight = ListItemHeight)
       .fillMaxWidth()
@@ -76,13 +85,6 @@ internal fun DurationListItem(
             size = Size(width + ProgressCornerRadius.toPx(), ProgressHeight.toPx()),
             cornerRadius = cornerRadius,
           )
-
-//          drawRoundRect(
-//            color = selectedColor,
-//            topLeft = Offset(-IndicatorSize.toPx(), IndicatorPadding.toPx()),
-//            size = Size(IndicatorSize.toPx() * 2f, size.height - (IndicatorPadding * 2).toPx()),
-//            cornerRadius = CornerRadius(IndicatorSize.toPx()),
-//          )
         }
       }
       .padding(
@@ -107,8 +109,12 @@ internal fun DurationListItem(
       text = title,
       style = MaterialTheme.typography.labelLarge,
       fontWeight = if (isActiveChapter || !isValid) FontWeight.Bold else null,
-      fontStyle = if (!isValid) FontStyle.Italic else null,
-      color = if (!isValid) MaterialTheme.colorScheme.error else Color.Unspecified,
+      fontStyle = if (!isValid || isListened) FontStyle.Italic else null,
+      color = when {
+        !isValid -> MaterialTheme.colorScheme.error
+        isListened -> contentColor.copy(alpha = DefocusedChapterTextAlpha)
+        else -> contentColor
+      },
       modifier = Modifier.weight(1f),
     )
     Spacer(Modifier.width(16.dp))
@@ -117,6 +123,15 @@ internal fun DurationListItem(
       style = MaterialTheme.typography.labelLarge,
       fontFamily = FontFamily.Monospace,
       fontWeight = if (isActiveChapter) FontWeight.Bold else null,
+      fontStyle = if (!isValid || isListened) FontStyle.Italic else null,
+      color = if (isListened) {
+        contentColor.copy(alpha = DefocusedChapterTextAlpha)
+      } else {
+        contentColor
+      },
     )
   }
 }
+
+internal const val DefocusedChapterAlpha = 0.8f
+internal const val DefocusedChapterTextAlpha = 0.38f
