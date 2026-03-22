@@ -95,6 +95,8 @@ import app.campfire.sessions.ui.sheets.bookmarks.BookmarkResult
 import app.campfire.sessions.ui.sheets.bookmarks.showBookmarksBottomSheet
 import app.campfire.sessions.ui.sheets.chapters.ChapterResult
 import app.campfire.sessions.ui.sheets.chapters.showChapterBottomSheet
+import app.campfire.sessions.ui.sheets.history.PlaybackHistoryResult
+import app.campfire.sessions.ui.sheets.history.showPlaybackHistoryBottomSheet
 import app.campfire.sessions.ui.sheets.sleeptimer.TimerResult
 import app.campfire.sessions.ui.sheets.sleeptimer.showSleepTimerBottomSheet
 import app.campfire.sessions.ui.sheets.speed.showPlaybackSpeedBottomSheet
@@ -144,6 +146,7 @@ internal fun <T> T.ExpandedPlaybackBar(
       playerState = playbackState.playerState,
       queueState = playbackState.queueState,
       syncState = playbackState.syncUiState,
+      playbackHistoryEnabled = playbackState.playbackHistoryEnabled,
       onClose = onClose,
       sharedTransitionScope = this,
       animatedVisibilityScope = this,
@@ -162,6 +165,7 @@ internal fun ExpandedPlaybackBar(
   playerState: PlayerUiState,
   queueState: QueueUiState,
   syncState: SyncUiState,
+  playbackHistoryEnabled: Boolean,
 
   onClose: () -> Unit,
   sharedTransitionScope: SharedTransitionScope,
@@ -319,6 +323,7 @@ internal fun ExpandedPlaybackBar(
             playerState = playerState,
             syncState = syncState,
             itemValidation = itemValidation,
+            playbackHistoryEnabled = playbackHistoryEnabled,
             onClose = onClose,
             windowSizeClass = windowSizeClass,
             animatedVisibilityScope = animatedVisibilityScope,
@@ -341,6 +346,7 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
   playerState: PlayerUiState,
   syncState: SyncUiState,
   itemValidation: LibraryItemValidation,
+  playbackHistoryEnabled: Boolean,
 
   onClose: () -> Unit,
 
@@ -558,6 +564,16 @@ private fun SharedTransitionScope.ExpandedPlaybackContent(
           }
         }
       },
+      onHistoryClick = {
+        scope.launch {
+          val result = overlayHost.showPlaybackHistoryBottomSheet(session!!.libraryItem.id)
+          if (result is PlaybackHistoryResult.Selected) {
+            val position = result.action.toPosition ?: result.action.fromPosition
+            playerState.eventSink(PlayerUiEvent.Seek.Position(position))
+          }
+        }
+      },
+      showHistory = playbackHistoryEnabled,
     )
   }
 }

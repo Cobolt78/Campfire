@@ -14,6 +14,7 @@ import app.campfire.audioplayer.AudioPlayer
 import app.campfire.audioplayer.AudioPlayerHolder
 import app.campfire.audioplayer.PlaybackController
 import app.campfire.audioplayer.model.Metadata
+import app.campfire.core.coroutines.flatMapIfNotNull
 import app.campfire.core.extensions.asDateTime
 import app.campfire.core.extensions.epochMilliseconds
 import app.campfire.core.extensions.readableFormat
@@ -77,6 +78,7 @@ class PlaybackPresenter(
     val syncState = observeSyncState(currentSession, expanded)
     val themeState = observeThemeState(currentSession)
     val itemValidation = observeItemValidation(currentSession)
+    val playbackHistoryEnabled by remember { playbackSettings.observePlaybackHistoryEnabled() }.collectAsState()
 
     return PlaybackUiState(
       session = currentSession.value,
@@ -85,6 +87,7 @@ class PlaybackPresenter(
       themeState = themeState,
       syncUiState = syncState,
       validation = itemValidation,
+      playbackHistoryEnabled = playbackHistoryEnabled,
     ) { event ->
       when (event) {
         PlaybackUiEvent.ClearSession -> {
@@ -389,8 +392,7 @@ class PlaybackPresenter(
           null
         }
       }
-        .filterNotNull()
-        .flatMapLatest { libraryItemId ->
+        .flatMapIfNotNull { libraryItemId ->
           themeManager.observeThemeFor(libraryItemId)
         }
     }.collectAsState(null)

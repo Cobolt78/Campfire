@@ -52,3 +52,18 @@
 # For some reason the Room consumer rules are not getting absorbed and
 # we see this R8 crash since AGP9. Apply the rule manually here to prevent crashing.
 -keep class * extends androidx.room.RoomDatabase { <init>(); }
+
+# libproto uses reflection to deserialize a Proto, which Proguard can't accurately detect.
+# Keep all the class members of any generated messages to ensure we can deserialize properly inside
+# these classes.
+-keepclassmembers class * extends androidx.glance.appwidget.protobuf.GeneratedMessageLite {
+  <fields>;
+}
+-keep public class * extends androidx.glance.appwidget.action.ActionCallback { void <init>(); }
+
+# Workmanager
+
+# Keep InputMerger if not removed during shrinking
+-keepnames class * extends androidx.work.InputMerger
+# Keep constructor on InputMerger if class is kept
+-keepclassmembers class * extends androidx.work.InputMerger { void <init>(); }
