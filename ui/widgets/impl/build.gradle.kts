@@ -21,6 +21,7 @@ kotlin {
         implementation(projects.core)
         implementation(projects.common.compose)
         implementation(projects.features.sessions.api)
+        implementation(projects.features.settings.api)
         implementation(projects.infra.audioplayer.api)
 
         implementation(libs.compose.runtime)
@@ -31,6 +32,8 @@ kotlin {
     androidMain {
       dependencies {
         implementation(projects.features.home.api)
+        implementation(projects.ui.theming.api)
+        implementation(projects.data.account.api)
 
         implementation(libs.androidx.core.ktx)
         implementation(libs.androidx.glance.appwidget)

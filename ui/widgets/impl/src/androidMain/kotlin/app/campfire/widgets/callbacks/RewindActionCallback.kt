@@ -4,8 +4,6 @@ import android.content.Context
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import app.campfire.widgets.di.AudioPlayerActionCallback
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class RewindActionCallback : AudioPlayerActionCallback() {
 
@@ -14,8 +12,7 @@ class RewindActionCallback : AudioPlayerActionCallback() {
     glanceId: GlanceId,
     parameters: ActionParameters,
   ) {
-    withContext(Dispatchers.Main) {
-      audioPlayer?.seekBackward()
-    }
+    if (audioPlayer == null) return
+    commandSender.seekBackward()
   }
 }

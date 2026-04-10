@@ -17,17 +17,15 @@ import androidx.glance.layout.Column
 import androidx.glance.layout.ColumnScope
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
-import app.campfire.widgets.R
 import app.campfire.widgets.theme.LocalContentColorProvider
 import app.campfire.widgets.theme.withAlpha
 
 @Composable
 internal fun WidgetScaffold(
   sizeClass: WidgetSizeClass,
-  artworkUrl: String?,
   onClick: Action,
   modifier: GlanceModifier = GlanceModifier,
-  defaultBackground: ImageProvider = ImageProvider(R.drawable.default_background),
+  defaultBackground: ImageProvider? = null,
   playbackContent: @Composable () -> Unit,
   content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -39,13 +37,7 @@ internal fun WidgetScaffold(
       .background(GlanceTheme.colors.background),
     contentAlignment = Alignment.BottomStart,
   ) {
-    if (artworkUrl != null) {
-      GlanceImage(
-        url = artworkUrl,
-        modifier = GlanceModifier
-          .fillMaxSize(),
-      )
-    } else {
+    if (defaultBackground != null) {
       Image(
         provider = defaultBackground,
         contentScale = ContentScale.Crop,
@@ -61,12 +53,15 @@ internal fun WidgetScaffold(
     CompositionLocalProvider(
       LocalContentColorProvider provides localContentColor,
     ) {
-      when (sizeClass.heightSizeClass) {
+      when (sizeClass.height) {
         WidgetHeightClass.Single -> playbackContent()
 
+        WidgetHeightClass.ExtraTall,
+        WidgetHeightClass.Tall,
         WidgetHeightClass.Expanded,
         WidgetHeightClass.Compact,
-        -> if (sizeClass.widthSizeClass == WidgetWidthClass.Expanded) {
+        WidgetHeightClass.LargeCompact,
+        -> if (sizeClass.width == WidgetWidthClass.Expanded) {
           TwoRowWidget(
             playbackContent = playbackContent,
             content = content,

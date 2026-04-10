@@ -20,9 +20,9 @@ import assertk.all
 import assertk.assertThat
 import assertk.assertions.hasSize
 import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNull
-import assertk.assertions.isTrue
 import assertk.assertions.prop
 import com.slack.circuit.test.test
 import kotlin.test.Test
@@ -36,7 +36,7 @@ class LibraryItemPresenterTest : BaseLibraryItemPresenterTest() {
       assertThat(awaitItem()).all {
         prop(LibraryItemUiState::libraryItem).isNull()
         prop(LibraryItemUiState::contentState).isInstanceOf<LoadState.Loading>()
-        prop(LibraryItemUiState::showConfirmDownloadDialog).isTrue()
+        prop(LibraryItemUiState::showConfirmDownloadDialog).isFalse()
       }
       cancelAndIgnoreRemainingEvents()
     }
@@ -175,6 +175,7 @@ class LibraryItemPresenterTest : BaseLibraryItemPresenterTest() {
   @Test
   fun present_showTimeInBook_UpdatesChapterHeaderSlot() = runTest {
     val libraryItem = emptyLibraryItem(numOfChapters = 1)
+    settings.showTimeInBook = false
     libraryItemRepository.libraryItemFlow.emit(libraryItem)
 
     presenter.test {
