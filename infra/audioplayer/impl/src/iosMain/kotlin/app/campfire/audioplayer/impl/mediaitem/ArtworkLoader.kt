@@ -4,6 +4,7 @@ import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.AppScope
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
+import app.campfire.network.di.UserClient
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -27,7 +28,7 @@ interface ArtworkLoader {
 @ContributesBinding(AppScope::class)
 @Inject
 class NetworkArtworkLoader(
-  private val httpClient: HttpClient,
+  @UserClient private val httpClient: HttpClient,
   private val dispatcherProvider: DispatcherProvider,
 ) : ArtworkLoader {
 

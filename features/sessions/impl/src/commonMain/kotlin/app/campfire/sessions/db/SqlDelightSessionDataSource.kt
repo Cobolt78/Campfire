@@ -1,7 +1,7 @@
 package app.campfire.sessions.db
 
 import app.campfire.CampfireDatabase
-import app.campfire.audioplayer.history.PlaybackHistoryRepository
+import app.campfire.audioplayer.history.PlaybackHistoryRecorder
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.UserScope
@@ -49,7 +49,7 @@ class SqlDelightSessionDataSource(
   private val libraryItemRepository: LibraryItemRepository,
   private val devSettings: DevSettings,
   private val playbackSettings: PlaybackSettings,
-  private val playbackHistoryRepository: PlaybackHistoryRepository,
+  private val playbackHistoryRecorder: PlaybackHistoryRecorder,
   private val dispatcherProvider: DispatcherProvider,
 ) : SessionDataSource {
   companion object : Corked("SqlDelightSessionDataSource") {
@@ -156,7 +156,7 @@ class SqlDelightSessionDataSource(
     // timestamps.
     val newTime = if (autoSync) {
       // Record the sync action in the history
-      playbackHistoryRepository.record(
+      playbackHistoryRecorder.record(
         libraryItemId = libraryItemId,
         type = PlaybackActionType.Sync,
         fromPosition = existingSession.currentTime,
@@ -221,8 +221,8 @@ class SqlDelightSessionDataSource(
   }
 
   override suspend fun updateCurrentTime(libraryItemId: LibraryItemId, currentTime: Duration) {
-    ibark { "updateCurrentTime($currentTime)" }
     val currentUserId = userSession.userId ?: return
+    ibark { "PLAYBACK::updateCurrentTime($currentTime)" }
     write {
       // Update the playback session information with the new time
       db.sessionQueries.updatePlayback(
@@ -235,7 +235,6 @@ class SqlDelightSessionDataSource(
   }
 
   override suspend fun updateLastPlayed(libraryItemId: LibraryItemId) {
-    ibark { "updateLastPlayed()" }
     val currentUserId = userSession.userId ?: return
     write {
       db.sessionQueries.updateLastPlayed(
@@ -247,7 +246,6 @@ class SqlDelightSessionDataSource(
   }
 
   override suspend fun addTimeListening(libraryItemId: LibraryItemId, amount: Duration) {
-    ibark { "addTimeListening($amount)" }
     val currentUserId = userSession.userId ?: return
     write {
       db.sessionQueries.addTimeListening(
