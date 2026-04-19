@@ -12,6 +12,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaConstants
 import app.campfire.audioplayer.impl.asPlatformMediaItem
 import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
+import app.campfire.audioplayer.offline.OfflineDownload
+import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.author.api.AuthorRepository
 import app.campfire.collections.api.CollectionsRepository
 import app.campfire.core.di.SingleIn
@@ -24,6 +26,8 @@ import app.campfire.core.model.Collection
 import app.campfire.core.model.CollectionId
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.Playlist
+import app.campfire.core.model.PlaylistId
 import app.campfire.core.model.Series
 import app.campfire.core.model.SeriesId
 import app.campfire.core.model.loggableId
@@ -31,13 +35,17 @@ import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
 import app.campfire.infra.audioplayer.impl.R
 import app.campfire.libraries.api.LibraryItemRepository
+import app.campfire.playlists.api.PlaylistsRepository
 import app.campfire.search.api.SearchRepository
 import app.campfire.search.api.SearchResult
 import app.campfire.series.api.SeriesRepository
+import app.campfire.settings.api.AndroidAutoCategory
+import app.campfire.settings.api.AndroidAutoSettings
 import kotlin.collections.firstOrNull
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import me.tatarka.inject.annotations.Inject
 
@@ -48,9 +56,12 @@ class MediaTree(
   private val homeRepository: HomeRepository,
   private val libraryItemRepository: LibraryItemRepository,
   private val seriesRepository: SeriesRepository,
+  private val playlistsRepository: PlaylistsRepository,
   private val collectionsRepository: CollectionsRepository,
   private val authorRepository: AuthorRepository,
   private val searchRepository: SearchRepository,
+  private val offlineDownloadManager: OfflineDownloadManager,
+  private val androidAutoSettings: AndroidAutoSettings,
 ) {
 
   val root
@@ -71,20 +82,25 @@ class MediaTree(
     pageSize: Int,
   ): List<MediaItem> {
     return when (parentId) {
-      ROOT_ID -> TopLevelMediaItem.All.map {
-        it.asBrowsableMediaItem(
-          context = application,
-          isGridLayout = it.isGridLayout,
-        )
-      }
+      ROOT_ID -> androidAutoSettings.observeCategoryConfigs().value
+        .filter { it.visible }
+        .mapNotNull { config ->
+          config.category.toTopLevelMediaItem()?.asBrowsableMediaItem(
+            context = application,
+            isGridLayout = config.isGridLayout,
+          )
+        }
 
       HOME_ID -> loadHome()
       SERIES_ID -> loadSeries()
-      COLLECTIONS_ID -> loadCollections()
       AUTHORS_ID -> loadAuthors()
+      PLAYLISTS_ID -> loadPlaylists()
+      COLLECTIONS_ID -> loadCollections()
+      DOWNLOADS_ID -> loadDownloads()
 
       else -> when {
         parentId.startsWith(SERIES_PREFIX) -> getSeriesItems(parentId.removePrefix(SERIES_PREFIX))
+        parentId.startsWith(PLAYLISTS_PREFIX) -> getPlaylistItems(parentId.removePrefix(PLAYLISTS_PREFIX))
         parentId.startsWith(COLLECTIONS_PREFIX) -> getCollectionItems(parentId.removePrefix(COLLECTIONS_PREFIX))
         parentId.startsWith(AUTHORS_PREFIX) -> getAuthorItems(parentId.removePrefix(AUTHORS_PREFIX))
 
@@ -152,6 +168,43 @@ class MediaTree(
     }
   }
 
+  private suspend fun loadAuthors(): List<MediaItem> {
+    val authors = authorRepository.observeAuthors().firstOrNull { it.isNotEmpty() } ?: return emptyList()
+
+    return authors.map { author ->
+      author.asBrowsableMediaItem()
+    }
+  }
+
+  private suspend fun getAuthorItems(authorId: String): List<MediaItem> {
+    val items = authorRepository.observeAuthor(authorId)
+      .firstOrNull()
+      ?.libraryItems
+      ?: return emptyList()
+
+    return items.map { item ->
+      item.asBrowsableMediaItem()
+    }
+  }
+
+  private suspend fun loadPlaylists(): List<MediaItem> {
+    val playlists = playlistsRepository.observeAllPlaylists().firstOrNull { it.isNotEmpty() } ?: return emptyList()
+
+    return playlists.map { playlist ->
+      playlist.asBrowsableMediaItem()
+    }
+  }
+
+  private suspend fun getPlaylistItems(playlistId: PlaylistId): List<MediaItem> {
+    val items = playlistsRepository.observePlaylistItems(playlistId)
+      .firstOrNull()
+      ?: return emptyList()
+
+    return items.map { item ->
+      item.asBrowsableMediaItem()
+    }
+  }
+
   private suspend fun loadCollections(): List<MediaItem> {
     val collections = collectionsRepository.observeAllCollections().firstOrNull() ?: return emptyList()
 
@@ -170,22 +223,20 @@ class MediaTree(
     }
   }
 
-  private suspend fun loadAuthors(): List<MediaItem> {
-    val authors = authorRepository.observeAuthors().firstOrNull { it.isNotEmpty() } ?: return emptyList()
-
-    return authors.map { author ->
-      author.asBrowsableMediaItem()
-    }
-  }
-
-  private suspend fun getAuthorItems(authorId: String): List<MediaItem> {
-    val items = authorRepository.observeAuthor(authorId)
-      .firstOrNull()
-      ?.libraryItems
+  private suspend fun loadDownloads(): List<MediaItem> {
+    val downloadItems = offlineDownloadManager.observeAll()
+      .map { downloads ->
+        downloads.associateWith { download ->
+          libraryItemRepository.getLibraryItem(download.libraryItemId)
+        }
+      }
+      .firstOrNull { it.isNotEmpty() }
       ?: return emptyList()
 
-    return items.map { item ->
-      item.asBrowsableMediaItem()
+    return downloadItems.map { (download, libraryItem) ->
+      libraryItem.asBrowsableMediaItem(
+        download = download,
+      )
     }
   }
 
@@ -227,6 +278,7 @@ class MediaTree(
   @OptIn(UnstableApi::class)
   private fun LibraryItem.asBrowsableMediaItem(
     titleHint: String? = null,
+    download: OfflineDownload? = null,
   ) = MediaItem.Builder()
     .setMediaId(id)
     .setMediaMetadata(
@@ -239,13 +291,36 @@ class MediaTree(
         .setGenre(media.metadata.genres.firstOrNull())
         .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
         .setTotalTrackCount(media.numChapters)
-        .fluentIf(titleHint != null) {
-          setExtras(
-            Bundle().apply {
+        .setExtras(
+          Bundle().apply {
+            if (titleHint != null) {
               putString(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, titleHint)
-            },
-          )
-        }
+            }
+
+            if (download != null) {
+              putLong(
+                MediaConstants.EXTRAS_KEY_DOWNLOAD_STATUS,
+                when (download.state) {
+                  OfflineDownload.State.Stopped,
+                  OfflineDownload.State.Failed,
+                  OfflineDownload.State.None,
+                  -> MediaConstants.EXTRAS_VALUE_STATUS_NOT_DOWNLOADED
+
+                  OfflineDownload.State.Queued,
+                  OfflineDownload.State.Downloading,
+                  -> MediaConstants.EXTRAS_VALUE_STATUS_DOWNLOADING
+
+                  OfflineDownload.State.Completed -> MediaConstants.EXTRAS_VALUE_STATUS_DOWNLOADED
+                },
+              )
+
+              putFloat(
+                MediaConstants.EXTRAS_KEY_DOWNLOAD_PROGRESS,
+                download.progress.percent.coerceIn(0f..1f),
+              )
+            }
+          },
+        )
         .setIsBrowsable(false)
         .setIsPlayable(true)
         .build(),
@@ -294,6 +369,20 @@ class MediaTree(
     )
     .build()
 
+  private fun Playlist.asBrowsableMediaItem() = MediaItem.Builder()
+    .setMediaId("$PLAYLISTS_PREFIX$id")
+    .setMediaMetadata(
+      MediaMetadata.Builder()
+        .setTitle(name)
+        .setDescription(description)
+        .setArtworkUri(items.firstOrNull()?.libraryItem?.media?.coverImageUrl?.toUri())
+        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+        .setIsBrowsable(true)
+        .setIsPlayable(false)
+        .build(),
+    )
+    .build()
+
   @OptIn(UnstableApi::class)
   private fun Author.asBrowsableMediaItem(
     titleHint: String? = null,
@@ -319,6 +408,15 @@ class MediaTree(
     .build()
 }
 
+private fun AndroidAutoCategory.toTopLevelMediaItem(): TopLevelMediaItem? = when (this) {
+  AndroidAutoCategory.Home -> TopLevelMediaItem.Home
+  AndroidAutoCategory.Series -> TopLevelMediaItem.Series
+  AndroidAutoCategory.Authors -> TopLevelMediaItem.Authors
+  AndroidAutoCategory.Playlists -> TopLevelMediaItem.Playlists
+  AndroidAutoCategory.Collections -> TopLevelMediaItem.Collections
+  AndroidAutoCategory.Downloads -> TopLevelMediaItem.Downloads
+}
+
 enum class TopLevelMediaItem(
   val mediaId: String,
   @get:StringRes val title: Int,
@@ -326,8 +424,10 @@ enum class TopLevelMediaItem(
 ) {
   Home(HOME_ID, R.string.folder_home_title, true),
   Series(SERIES_ID, R.string.folder_series_title),
-  Collections(COLLECTIONS_ID, R.string.folder_collections_title),
   Authors(AUTHORS_ID, R.string.folder_authors_title),
+  Playlists(PLAYLISTS_ID, R.string.folder_playlists_title),
+  Collections(COLLECTIONS_ID, R.string.folder_collections_title),
+  Downloads(DOWNLOADS_ID, R.string.folder_downloads_title),
   ;
 
   @OptIn(UnstableApi::class)
@@ -366,7 +466,10 @@ private const val ROOT_ID = "root-campfire"
 private const val HOME_ID = "home-campfire"
 private const val SERIES_ID = "series-campfire"
 private const val SERIES_PREFIX = "series_"
-private const val COLLECTIONS_ID = "collections-campfire"
-private const val COLLECTIONS_PREFIX = "collections_"
 private const val AUTHORS_ID = "authors-campfire"
 private const val AUTHORS_PREFIX = "authors_"
+private const val PLAYLISTS_ID = "playlists-campfire"
+private const val PLAYLISTS_PREFIX = "playlists_"
+private const val COLLECTIONS_ID = "collections-campfire"
+private const val COLLECTIONS_PREFIX = "collections_"
+private const val DOWNLOADS_ID = "downloads-campfire"

@@ -33,6 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -90,7 +93,7 @@ internal fun DownloadsPane(
 
     state.downloadsSettings.downloads.ifNotEmpty {
       var showConfirmation by remember { mutableStateOf<LibraryItemId?>(null) }
-      forEach { (item, download) ->
+      forEach { (download, item) ->
         ConfirmationLayout(
           showConfirmation = showConfirmation == item.id,
           confirm = {
@@ -285,6 +288,8 @@ private fun ItemDownloadImage(
       download.state != None &&
       download.state != Completed
     ) {
+      val downloadingColor = MaterialTheme.colorScheme.primaryContainer
+        .copy(alpha = 0.75f)
       Box(
         modifier = Modifier
           .size(size)
@@ -295,7 +300,22 @@ private fun ItemDownloadImage(
               -> MaterialTheme.colorScheme.errorContainer.copy(0.90f)
               else -> MaterialTheme.colorScheme.scrim.copy(0.6f)
             },
-          ),
+          )
+          .drawWithContent {
+            if (download.state == Downloading) {
+              val padding = 16.dp.toPx()
+              drawArc(
+                color = downloadingColor,
+                startAngle = -90f,
+                sweepAngle = 360f * download.progress.percent,
+                topLeft = Offset(-padding, -padding),
+                size = Size(this.size.width + (padding * 2), this.size.height + (padding * 2)),
+                useCenter = true,
+              )
+            }
+
+            drawContent()
+          },
         contentAlignment = Alignment.Center,
       ) {
         Icon(
