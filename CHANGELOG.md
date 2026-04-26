@@ -9,12 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Other Notes & Contributions
+
+## [0.12.0-beta]
+
+### Added
+
 - Playback History
 - Multi-device progress synchronization
 - Setting to disable marquee scrolling on library item cards
 - Android Auto settings pane: toggle, reorder, and choose list/grid layout per top-level category
 - 37 new theme icons (camping/nature/travel) selectable when building a custom theme
-- Cover art now renders in the Media playback notification, on the lockscreen, and in Android Auto browsable items via a new `ContentProvider` that bridges the authenticated Audiobookshelf endpoints to system processes
 
 ### Changed
 
@@ -23,11 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme color extraction from cover art now waits for a brief impression before dispatching, avoiding wasted work when scrolling past items
 - Time remaining on collapsed bar + item detail now reflect the current playback speed of a session
 - Improved home feed scrolling with mixed scrolling orientations
-- Theme builder icon picker is now a grid popup instead of a tall scrolling list
-
-### Deprecated
-
-### Removed
 
 ### Fixed
 
@@ -35,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed media progress not syncing during playback
 - Fixed playback sessions dying due to token expiration
 - Device information reported as 'Unknown' for sessions on the server
+- Cover art not always rendering in Android Auto
 
 ### Other Notes & Contributions
 
@@ -300,6 +309,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[0.12.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.11.0-beta...v0.12.0-beta
 [0.11.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.10.0-beta...v0.11.0-beta
 [0.10.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.9.0-beta...v0.10.0-beta
 [0.9.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.8.0-beta...v0.9.0-beta

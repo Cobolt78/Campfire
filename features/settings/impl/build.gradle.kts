@@ -11,7 +11,6 @@ kotlin {
     commonMain {
       dependencies {
         implementation(projects.core)
-        implementation(libs.kotlin.reflect)
         api(projects.features.settings.api)
         api(libs.multiplatformsettings.core)
         api(libs.multiplatformsettings.coroutines)
