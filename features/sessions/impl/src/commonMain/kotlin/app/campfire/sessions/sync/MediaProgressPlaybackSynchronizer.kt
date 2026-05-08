@@ -7,7 +7,6 @@ import app.campfire.core.di.ComponentHolder
 import app.campfire.core.di.UserScope
 import app.campfire.core.extensions.asSeconds
 import app.campfire.core.extensions.epochMilliseconds
-import app.campfire.core.logging.Corked
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.sessions.api.SessionsRepository
@@ -27,7 +26,6 @@ interface MediaProgressSynchronizerUserComponent {
 @ContributesMultibinding(AppScope::class)
 @Inject
 class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
-  companion object : Corked("MediaProgressSynchronizer")
 
   private val component: MediaProgressSynchronizerUserComponent
     get() = ComponentHolder.component()
@@ -50,8 +48,10 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
     state: AudioPlayer.State,
     previousState: AudioPlayer.State,
   ) {
-    if (state == AudioPlayer.State.Paused && previousState == AudioPlayer.State.Playing) {
-      ibark { "onStateChange($state)" }
+    if (
+      state == AudioPlayer.State.Paused &&
+      previousState == AudioPlayer.State.Playing
+    ) {
       syncProgress(libraryItemId, force = true)
     }
 
@@ -59,7 +59,10 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
     // to mark the [libraryItemId] has having been played and allow it to sync media progress
     if (
       state == AudioPlayer.State.Playing &&
-      previousState == AudioPlayer.State.Paused
+      (
+        previousState == AudioPlayer.State.Paused ||
+          previousState == AudioPlayer.State.Buffering
+        )
     ) {
       userPlayCache[libraryItemId] = true
     }
@@ -78,10 +81,14 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
       id = MediaProgress.UNKNOWN_ID,
       userId = session.userId,
       libraryItemId = session.libraryItem.id,
-      episodeId = null,
-      mediaItemId = session.libraryItem.media.id,
+      episodeId = session.episodeId,
+      // For podcast episodes the server keys progress by episodeId; mirror that locally
+      // so round-tripped rows align. Books continue to use the media id.
+      mediaItemId = session.episodeId ?: session.libraryItem.media.id,
       mediaItemType = session.libraryItem.mediaType,
-      duration = session.libraryItem.media.durationInSeconds,
+      // session.duration is episode-aware (falls back to the parent item's duration only
+      // when episodeId is null), so podcast episodes report the correct per-episode total.
+      duration = session.duration.asSeconds(),
       progress = session.progress,
       currentTime = session.currentTime.asSeconds(),
       isFinished = session.isFinished,
@@ -98,7 +105,6 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
       source = MediaProgress.Source.Local,
     )
 
-    ibark { "PLAYBACK::updateMediaProgress(${session.currentTime})" }
     component.mediaProgressRepository.updateProgress(updatedProgress, force)
   }
 }

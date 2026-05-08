@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class)
-class TitleAndAuthorSlotTest {
+class TitleSlotTest {
 
   @Test
   fun contentTest() = runComposeUiTest {
@@ -29,7 +29,7 @@ class TitleAndAuthorSlotTest {
         }
       }
     }
-    val slot = TitleAndAuthorSlot(libraryItem, "")
+    val slot = TitleSlot(libraryItem, "")
 
     setContent {
       PreviewSharedElementTransitionLayout {
@@ -40,7 +40,5 @@ class TitleAndAuthorSlotTest {
     onNodeWithText("test_title").assertExists()
     onNodeWithText("test_subtitle").assertExists()
     onNodeWithText(5.minutes.readoutFormat()).assertExists()
-    onNodeWithText("test_author_name").assertExists()
-    onNodeWithText("test_narrator_name").assertExists()
   }
 }

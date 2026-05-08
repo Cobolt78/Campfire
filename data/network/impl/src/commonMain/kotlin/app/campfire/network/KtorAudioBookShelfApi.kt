@@ -34,7 +34,6 @@ import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.models.LibraryStats
 import app.campfire.network.models.ListeningStats
 import app.campfire.network.models.MediaProgress
-import app.campfire.network.models.MinifiedBookMetadata
 import app.campfire.network.models.PlaybackSession
 import app.campfire.network.models.PlaylistExpanded
 import app.campfire.network.models.PlaylistItem
@@ -88,7 +87,7 @@ class KtorAudioBookShelfApi(
     sortDescending: Boolean,
     page: Int,
     limit: Int,
-  ): Result<PagedResponse<LibraryItemMinified<MinifiedBookMetadata>>> {
+  ): Result<PagedResponse<LibraryItemMinified>> {
     return trySendRequest<MinifiedLibraryItemsResponse> {
       hydratedClientRequest(
         {
@@ -396,15 +395,32 @@ class KtorAudioBookShelfApi(
     }
   }
 
-  override suspend fun getMediaProgress(libraryItemId: String): Result<MediaProgress> {
+  override suspend fun getMediaProgress(
+    libraryItemId: String,
+    episodeId: String?,
+  ): Result<MediaProgress> {
+    val path = if (episodeId != null) {
+      "/api/me/progress/$libraryItemId/$episodeId"
+    } else {
+      "/api/me/progress/$libraryItemId"
+    }
     return trySendRequest {
-      hydratedClientRequest("/api/me/progress/$libraryItemId")
+      hydratedClientRequest(path)
     }
   }
 
-  override suspend fun updateMediaProgress(libraryItemId: String, update: MediaProgressUpdatePayload): Result<Unit> {
+  override suspend fun updateMediaProgress(
+    libraryItemId: String,
+    update: MediaProgressUpdatePayload,
+    episodeId: String?,
+  ): Result<Unit> {
+    val path = if (episodeId != null) {
+      "/api/me/progress/$libraryItemId/$episodeId"
+    } else {
+      "/api/me/progress/$libraryItemId"
+    }
     return trySendRequest({}) {
-      hydratedClientRequest("/api/me/progress/$libraryItemId") {
+      hydratedClientRequest(path) {
         method = HttpMethod.Patch
         setBody(update)
       }

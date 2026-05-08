@@ -4,11 +4,7 @@ import app.campfire.CampfireDatabase
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.UserScope
-import app.campfire.core.logging.Corked
-import app.campfire.core.logging.LogPriority
-import app.campfire.core.logging.bark
 import app.campfire.core.model.MediaProgress
-import app.campfire.core.model.loggableId
 import app.campfire.core.time.FatherTime
 import app.campfire.data.mapping.asDbModel
 import app.campfire.data.mapping.asNetworkUpdate
@@ -35,54 +31,57 @@ class DefaultMediaProgressSynchronizer(
 
   private val dispatcher = dispatcherProvider.io.limitedParallelism(1, "MediaProgressSync")
 
-  private var lastSyncTimes = mutableMapOf<String, Long>()
+  // Keyed per (libraryItemId, episodeId?) so per-episode syncs don't share a throttle
+  // timestamp with sibling episodes or with the parent book row.
+  private var lastSyncTimes = mutableMapOf<SyncKey, Long>()
 
   override suspend fun sync(mediaProgress: MediaProgress, force: Boolean) = withContext(dispatcher) {
-    val lastSync = lastSyncTimes[mediaProgress.libraryItemId] ?: 0
+    val key = SyncKey(mediaProgress.libraryItemId, mediaProgress.episodeId)
+    val lastSync = lastSyncTimes[key] ?: 0
     val elapsed = fatherTime.nowInEpochMillis() - lastSync
 
     if (force || mediaProgress.id == MediaProgress.UNKNOWN_ID || elapsed > MIN_SYNC_TIME) {
-      val duration = syncInternal(mediaProgress)
-      bark(LogPriority.INFO) {
-        "Syncing MediaProgress(${mediaProgress.libraryItemId.loggableId}) took $duration"
-      }
+      syncInternal(mediaProgress)
     }
   }
 
   private suspend fun syncInternal(mediaProgress: MediaProgress) = measureTime {
-    dbark { "--> Updating MediaProgress(${mediaProgress.libraryItemId.loggableId})" }
+    val key = SyncKey(mediaProgress.libraryItemId, mediaProgress.episodeId)
     val result = api.updateMediaProgress(
       libraryItemId = mediaProgress.libraryItemId,
+      episodeId = mediaProgress.episodeId,
       update = mediaProgress.asNetworkUpdate(),
     )
 
     if (result.isSuccess) {
       if (mediaProgress.id == MediaProgress.UNKNOWN_ID) {
         // If we just synced a new media progress item to the server we need to re-pull it so that we have an updated id
-        val updatedMediaProgress = api.getMediaProgress(mediaProgress.libraryItemId).getOrNull()
+        val updatedMediaProgress = api.getMediaProgress(
+          libraryItemId = mediaProgress.libraryItemId,
+          episodeId = mediaProgress.episodeId,
+        ).getOrNull()
         if (updatedMediaProgress != null) {
-          // Now persist this to the database
+          // NOTE: this insert bypasses MediaProgressSourceOfTruthFactory.insertIfFresher
+          // because we need the just-issued server id. If the server's lastUpdate here
+          // is older than the local row a concurrent tick already wrote, this path can
+          // clobber the fresher local row.
           withContext(dispatcherProvider.databaseWrite) {
             db.mediaProgressQueries.insert(
               updatedMediaProgress.asDbModel(),
             )
           }
-
-          dbark {
-            "New MediaProgress Id ${updatedMediaProgress.libraryItemId.loggableId} " +
-              "--> ${updatedMediaProgress.id}"
-          }
-          lastSyncTimes[mediaProgress.libraryItemId] = fatherTime.nowInEpochMillis()
-        } else {
-          lastSyncTimes[mediaProgress.libraryItemId] = fatherTime.nowInEpochMillis()
         }
+        lastSyncTimes[key] = fatherTime.nowInEpochMillis()
       } else {
-        lastSyncTimes[mediaProgress.libraryItemId] = fatherTime.nowInEpochMillis()
+        lastSyncTimes[key] = fatherTime.nowInEpochMillis()
       }
     }
   }
 
-  companion object : Corked("MediaProgressSynchronizer")
+  private data class SyncKey(
+    val libraryItemId: String,
+    val episodeId: String? = null,
+  )
 }
 
 private const val MIN_SYNC_TIME = 15_000L // 15 seconds

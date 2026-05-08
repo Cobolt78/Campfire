@@ -39,7 +39,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import me.tatarka.inject.annotations.Inject
@@ -94,7 +93,11 @@ class PlaybackPresenter(
         PlaybackUiEvent.ClearSession -> {
           currentSession.value?.let { s ->
             scope.launch {
-              playbackController.stopSession(s.libraryItem.id, clearQueue = true)
+              playbackController.stopSession(
+                itemId = s.libraryItem.id,
+                clearQueue = true,
+                episodeId = s.episodeId,
+              )
             }
           }
         }
@@ -102,7 +105,10 @@ class PlaybackPresenter(
         PlaybackUiEvent.StartSession -> {
           currentSession.value?.let { s ->
             scope.launch {
-              playbackController.startSession(s.libraryItem.id)
+              playbackController.startSession(
+                itemId = s.libraryItem.id,
+                episodeId = s.episodeId,
+              )
             }
           }
         }
@@ -139,7 +145,11 @@ class PlaybackPresenter(
               // Since this is a network operation we want to timebox refreshing the current progress
               // So we don't create an awkward delay when initialing the playback session for the UI
               withTimeoutOrNull(1.seconds) {
-                mediaProgressRepository.getProgress(currentSession.libraryItem.id, fresh = true)
+                mediaProgressRepository.getProgress(
+                  libraryItemId = currentSession.libraryItem.id,
+                  episodeId = currentSession.episodeId,
+                  fresh = true,
+                )
               }
             }
             dbark {
@@ -154,6 +164,7 @@ class PlaybackPresenter(
           playbackController.startSession(
             itemId = currentSession.libraryItem.id,
             playImmediately = false,
+            episodeId = currentSession.episodeId,
           )
         } else {
           dbark { "<!-- Player already initialized [$playerSessionId, $playerState]" }
@@ -245,7 +256,10 @@ class PlaybackPresenter(
           val sessionValue = session.value
           if (state == AudioPlayer.State.Disabled && sessionValue != null) {
             scope.launch {
-              playbackController.startSession(sessionValue.libraryItem.id)
+              playbackController.startSession(
+                itemId = sessionValue.libraryItem.id,
+                episodeId = sessionValue.episodeId,
+              )
             }
           } else {
             player?.playPause()
@@ -326,17 +340,18 @@ class PlaybackPresenter(
     val mediaProgress by remember(expanded) {
       snapshotFlow {
         if (syncEnabled) {
-          session.value?.libraryItem?.id
+          session.value?.let { it.libraryItem.id to it.episodeId }
         } else {
           null
         }
       }
         .filterNotNull()
-        .flatMapLatest { libraryItemId ->
-          mediaProgressRepository.observeProgress(libraryItemId, refresh = true)
-            .onEach {
-              dbark { "<-- Media Progress Updated: ${it?.lastUpdate}" }
-            }
+        .flatMapLatest { (libraryItemId, episodeId) ->
+          mediaProgressRepository.observeProgress(
+            libraryItemId = libraryItemId,
+            episodeId = episodeId,
+            refresh = true,
+          )
         }
     }.collectAsState(null)
 

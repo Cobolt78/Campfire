@@ -1,6 +1,7 @@
 package app.campfire.audioplayer
 
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.PodcastEpisodeId
 
 /**
  * This interface is the means by which the app can a certain the [AudioPlayer] for any ongoing playback, or not
@@ -15,13 +16,16 @@ interface PlaybackController {
     itemId: LibraryItemId,
     playImmediately: Boolean = true,
     chapterId: Int? = null,
+    episodeId: PodcastEpisodeId? = null,
   )
 
   /**
-   * Stop a current session
+   * Stop a current session. Pass [episodeId] to scope the stop to a podcast episode session
+   * — books and other episodes are unaffected.
    */
   fun stopSession(
     itemId: LibraryItemId,
     clearQueue: Boolean = false,
+    episodeId: PodcastEpisodeId? = null,
   )
 }

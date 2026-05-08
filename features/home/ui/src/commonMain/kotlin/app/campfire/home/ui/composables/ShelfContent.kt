@@ -139,6 +139,10 @@ private fun LoadedShelfContent(
           is LibraryItem -> entity.id
           is Author -> entity.id
           is Series -> entity.id
+          // Key by libraryItemId + episodeId so the same podcast surfacing different
+          // recent episodes across shelves stays distinct.
+          is ShelfEntity.EpisodeShelfEntry ->
+            entity.libraryItem.id + "_" + entity.recentEpisode.id
         }
       },
     ) { entity ->
@@ -180,6 +184,22 @@ private fun LoadedShelfContent(
           modifier = Modifier
             .width(SeriesCardWidth)
             .animateItem(),
+        )
+
+        is ShelfEntity.EpisodeShelfEntry -> LibraryItemCard(
+          item = entity.libraryItem,
+          episode = entity.recentEpisode,
+          sharedTransitionKey = entity.libraryItem.id + shelf.id,
+          offlineStatus = offlineStatus(entity.libraryItem.id),
+          progress = progressStatus(entity.libraryItem.id)
+            ?: entity.libraryItem.userMediaProgress,
+          onClick = { onItemClick(entity) },
+          modifier = Modifier
+            .width(LibraryCardWidth)
+            .animateItem()
+            .semantics {
+              contentDescription = "HomeEpisodeShelfEntry"
+            },
         )
       }
     }

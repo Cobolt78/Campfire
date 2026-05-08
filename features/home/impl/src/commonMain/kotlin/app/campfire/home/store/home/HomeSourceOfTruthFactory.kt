@@ -14,7 +14,6 @@ import app.campfire.home.mapping.asDbModel
 import app.campfire.home.mapping.asDomainModel
 import app.campfire.network.models.Author
 import app.campfire.network.models.LibraryItemMinified
-import app.campfire.network.models.MinifiedBookMetadata
 import app.campfire.network.models.SeriesPersonalized
 import app.campfire.network.models.Shelf as NetworkShelf
 import app.cash.sqldelight.SuspendingTransactionWithoutReturn
@@ -64,17 +63,12 @@ class HomeSourceOfTruthFactory(
           db.shelfQueries.select(key.libraryId, key.userId).awaitAsList()
         }
 
-        val currentJoins = withContext(dispatcherProvider.databaseRead) {
-          db.shelfQueries.selectAllJoins().awaitAsList()
-        }.groupBy { it.shelfId }
-
         val trashed = currentShelves.filter { shelves.none { shelf -> it.id == shelf.uniqueId() } }
 
         withContext(dispatcherProvider.databaseWrite) {
           db.transaction {
             // Persist all the entities within a shelf
             shelves.forEachIndexed { index, shelf ->
-              val isExisting = currentShelves.any { it.id == shelf.uniqueId() }
               val isNew = currentShelves.none { it.id == shelf.uniqueId() }
 
               // Either way we should always persist and update the entities in the shelves
@@ -82,17 +76,13 @@ class HomeSourceOfTruthFactory(
 
               // Persist shelf metadata
               if (isNew) {
-                // If the shelf is new, just insert it and its joins
                 val dbShelf = shelf.asDbModel(
                   index = index,
                   libraryId = key.libraryId,
                   userId = key.userId,
                 )
                 db.shelfQueries.insert(dbShelf)
-                writeEntityJoins(key, shelf)
-              } else if (isExisting) {
-                // If the shelf already exists, update the current shelf metadata
-                // and its joins
+              } else {
                 db.shelfQueries.update(
                   id = shelf.uniqueId(),
                   label = shelf.label,
@@ -107,12 +97,13 @@ class HomeSourceOfTruthFactory(
                   },
                   homeOrder = index,
                 )
-
-                val currentShelfJoins = currentJoins[shelf.uniqueId()]
-                  ?.map { it.entityId }
-                  ?: emptyList()
-                updateEntityJoins(key, shelf, currentShelfJoins)
               }
+
+              // Wipe-and-replace the join rows. The network response is the source
+              // of truth and EpisodeShelf entries can repeat the same entityId with
+              // different episodeIds — diffing on entityId alone (the prior approach)
+              // collapsed those siblings.
+              writeEntityJoins(key, shelf)
             }
 
             // Remove all shelves, and their joins, for shelfs that don't exist
@@ -137,10 +128,29 @@ class HomeSourceOfTruthFactory(
     shelf: NetworkShelf,
   ): Unit = when (shelf) {
     is NetworkShelf.BookShelf -> writeLibraryItems(shelf.entities)
-    is NetworkShelf.EpisodeShelf -> writeLibraryItems(shelf.entities)
-    is NetworkShelf.PodcastShelf -> writeLibraryItems(shelf.entities)
+    is NetworkShelf.PodcastShelf -> writePodcastLibraryItems(shelf.entities)
+    is NetworkShelf.EpisodeShelf -> writePodcastLibraryItems(shelf.entities)
     is NetworkShelf.AuthorShelf -> writeAuthors(shelf.entities)
     is NetworkShelf.SeriesShelf -> writeSeries(userId, libraryId, shelf.entities)
+  }
+
+  /**
+   * One row per shelf entry in shelf order. For EpisodeShelf entries, [episodeId]
+   * carries the specific recent episode the shelf is highlighting so reads can
+   * join podcastEpisode back. For other shelf types it's the empty string (the
+   * shelfJoin column's default), which keeps the composite PK collapsed to
+   * (shelfId, entityId) for those types.
+   */
+  private data class JoinRow(val entityId: String, val episodeId: String)
+
+  private fun NetworkShelf.joinRows(): List<JoinRow> = when (this) {
+    is NetworkShelf.BookShelf -> entities.map { JoinRow(it.id, "") }
+    is NetworkShelf.AuthorShelf -> entities.map { JoinRow(it.id, "") }
+    is NetworkShelf.PodcastShelf -> entities.map { JoinRow(it.id, "") }
+    is NetworkShelf.SeriesShelf -> entities.map { JoinRow(it.id, "") }
+    is NetworkShelf.EpisodeShelf -> entities.mapNotNull { entry ->
+      entry.recentEpisode?.id?.let { JoinRow(entry.id, it) }
+    }
   }
 
   @Suppress("UnusedReceiverParameter")
@@ -148,66 +158,23 @@ class HomeSourceOfTruthFactory(
     key: HomeStore.Key,
     shelf: NetworkShelf,
   ) {
-    val entityIds = when (shelf) {
-      is NetworkShelf.BookShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.AuthorShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.EpisodeShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.PodcastShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.SeriesShelf -> shelf.entities.map { it.id }
-    }
-
-    entityIds.forEachIndexed { index, entityId ->
+    val shelfId = shelf.uniqueId(key.userId, key.libraryId)
+    db.shelfQueries.deleteJoinsForShelf(shelfId)
+    shelf.joinRows().forEachIndexed { index, row ->
       db.shelfQueries.insertJoins(
         ShelfJoin(
-          shelfId = shelf.uniqueId(key.userId, key.libraryId),
-          entityId = entityId,
+          shelfId = shelfId,
+          entityId = row.entityId,
           shelfOrder = index,
+          episodeId = row.episodeId,
         ),
       )
     }
   }
 
   @Suppress("UnusedReceiverParameter")
-  private suspend fun SuspendingTransactionWithoutReturn.updateEntityJoins(
-    key: HomeStore.Key,
-    shelf: NetworkShelf,
-    existingJoins: List<String>,
-  ) {
-    val entityIds = when (shelf) {
-      is NetworkShelf.BookShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.AuthorShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.EpisodeShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.PodcastShelf -> shelf.entities.map { it.id }
-      is NetworkShelf.SeriesShelf -> shelf.entities.map { it.id }
-    }
-
-    val trashed = existingJoins.filter { !entityIds.contains(it) }
-    entityIds.forEachIndexed { index, entityId ->
-      val isNew = !existingJoins.contains(entityId)
-
-      if (isNew) {
-        db.shelfQueries.insertJoins(
-          ShelfJoin(
-            shelfId = shelf.uniqueId(key.userId, key.libraryId),
-            entityId = entityId,
-            shelfOrder = index,
-          ),
-        )
-      } else {
-        db.shelfQueries.updateJoin(
-          shelfId = shelf.uniqueId(key.userId, key.libraryId),
-          entityId = entityId,
-          shelfOrder = index,
-        )
-      }
-    }
-
-    db.shelfQueries.deleteJoins(shelf.uniqueId(key.userId, key.libraryId), trashed)
-  }
-
-  @Suppress("UnusedReceiverParameter")
   private suspend fun SuspendingTransactionWithoutReturn.writeLibraryItems(
-    libraryItems: List<LibraryItemMinified<MinifiedBookMetadata>>,
+    libraryItems: List<LibraryItemMinified.Book>,
   ) {
     libraryItems.forEach { item ->
       val libraryItem = item.asDbModel()
@@ -215,6 +182,33 @@ class HomeSourceOfTruthFactory(
 
       db.libraryItemsQueries.insertOrIgnore(libraryItem)
       db.mediaQueries.insertOrIgnore(media)
+    }
+  }
+
+  /**
+   * Persist a list of podcast shelf entries: libraryItem row + podcastMedia row for each.
+   * Entries that carry a [LibraryItemMinified.Podcast.recentEpisode] (the case for
+   * `episodes-recently-added`-style shelves) also write the episode to [podcastEpisode]
+   * so the read path can join it back via `shelfJoin.episodeId`.
+   */
+  @Suppress("UnusedReceiverParameter")
+  private suspend fun SuspendingTransactionWithoutReturn.writePodcastLibraryItems(
+    libraryItems: List<LibraryItemMinified.Podcast>,
+  ) {
+    libraryItems.forEach { item ->
+      val libraryItem = item.asDbModel()
+      val podcastMedia = item.media.asDbModel(item.id, imageHydrator)
+
+      db.libraryItemsQueries.insertOrIgnore(libraryItem)
+      db.podcastMediaQueries.insertOrIgnore(podcastMedia)
+
+      item.recentEpisode?.let { episode ->
+        val row = episode.asDbModel(
+          libraryItemId = item.id,
+          podcastMediaId = podcastMedia.mediaId,
+        )
+        db.podcastEpisodeQueries.insertOrIgnore(row)
+      }
     }
   }
 

@@ -26,6 +26,7 @@ import app.campfire.data.SelectForSeries
 import app.campfire.data.mapping.model.LibraryItemProgress
 import app.campfire.data.mapping.model.LibraryItemWithMedia
 import app.campfire.network.RequestOrigin
+import app.campfire.network.models.BookMetadata
 import app.campfire.network.models.ExpandedBookMetadata
 import app.campfire.network.models.LibraryItemBase
 import app.campfire.network.models.LibraryItemExpanded
@@ -104,8 +105,8 @@ fun <T : Media> T.asDbModel(
   libraryItemId: String,
   fallbackSeriesSequence: Int? = null,
 ): DatabaseMedia {
-  val metadata = when (this) {
-    is NetworkMediaMinified<*> -> metadata
+  val metadata: BookMetadata = when (this) {
+    is NetworkMediaMinified -> metadata
     is MediaExpanded -> metadata
     else -> error("Unknown media metadata")
   }
@@ -145,7 +146,7 @@ fun <T : Media> T.asDbModel(
         it.audioFiles
           .sumOf { it.duration.toDouble() }
           .seconds
-      } ?: (this as? NetworkMediaMinified<*>)?.let {
+      } ?: (this as? NetworkMediaMinified)?.let {
         it.duration?.seconds
       } ?: Duration.ZERO
       computedDuration.inWholeMilliseconds
@@ -245,6 +246,40 @@ private val String.lastFirst: String
 
 fun LibraryItemExpanded.asDomainModel(
   urlHydrator: UrlHydrator,
+): LibraryItem = when (this) {
+  is LibraryItemExpanded.Book -> asDomainModelBook(urlHydrator)
+  is LibraryItemExpanded.Podcast -> asDomainModelPodcast(urlHydrator)
+}
+
+private fun LibraryItemExpanded.Podcast.asDomainModelPodcast(
+  urlHydrator: UrlHydrator,
+): LibraryItem {
+  return LibraryItem(
+    id = id,
+    ino = ino,
+    libraryId = libraryId,
+    oldLibraryId = oldLibraryItemId,
+    folderId = folderId,
+    path = path,
+    relPath = relPath,
+    isFile = isFile,
+    mtimeMs = mtimeMs,
+    ctimeMs = ctimeMs,
+    birthtimeMs = birthtimeMs,
+    isMissing = isMissing,
+    isInvalid = isInvalid,
+    mediaType = DomainMediaType.Podcast,
+    numFiles = numFiles ?: -1,
+    sizeInBytes = size ?: -1,
+    addedAtMillis = addedAt,
+    updatedAtMillis = updatedAt,
+    media = media.asDomainModel(libraryItemId = id, urlHydrator = urlHydrator),
+    userMediaProgress = userMediaProgress?.asDomainModel(),
+  )
+}
+
+private fun LibraryItemExpanded.Book.asDomainModelBook(
+  urlHydrator: UrlHydrator,
 ): LibraryItem {
   return LibraryItem(
     id = id,
@@ -270,7 +305,7 @@ fun LibraryItemExpanded.asDomainModel(
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
     media = with(this.media) {
-      DomainMedia(
+      DomainMedia.Book(
         id = id,
         metadata = metadata.asDomainModel(),
         coverImageUrl = urlHydrator.hydrateLibraryItem(id),
@@ -323,9 +358,9 @@ suspend fun SelectForSeries.asDomainModel(
     sizeInBytes = sizeInBytes,
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
-    media = DomainMedia(
+    media = DomainMedia.Book(
       id = mediaId,
-      metadata = DomainMedia.Metadata(
+      metadata = DomainMedia.Metadata.Book(
         title = metadata_title,
         titleIgnorePrefix = metadata_titleIgnorePrefix,
         subtitle = metadata_subtitle,
@@ -392,9 +427,9 @@ suspend fun SelectForCollection.asDomainModel(
     sizeInBytes = sizeInBytes,
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
-    media = DomainMedia(
+    media = DomainMedia.Book(
       id = mediaId,
-      metadata = DomainMedia.Metadata(
+      metadata = DomainMedia.Metadata.Book(
         title = metadata_title,
         titleIgnorePrefix = metadata_titleIgnorePrefix,
         subtitle = metadata_subtitle,
@@ -461,9 +496,9 @@ suspend fun SelectForAuthorName.asDomainModel(
     sizeInBytes = sizeInBytes,
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
-    media = DomainMedia(
+    media = DomainMedia.Book(
       id = mediaId,
-      metadata = DomainMedia.Metadata(
+      metadata = DomainMedia.Metadata.Book(
         title = metadata_title,
         titleIgnorePrefix = metadata_titleIgnorePrefix,
         subtitle = metadata_subtitle,
@@ -530,9 +565,9 @@ suspend fun SelectForPlaylist.asDomainModel(
     sizeInBytes = sizeInBytes,
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
-    media = DomainMedia(
+    media = DomainMedia.Book(
       id = mediaId,
-      metadata = DomainMedia.Metadata(
+      metadata = DomainMedia.Metadata.Book(
         title = metadata_title,
         titleIgnorePrefix = metadata_titleIgnorePrefix,
         subtitle = metadata_subtitle,
@@ -603,9 +638,9 @@ suspend fun LibraryItemWithMedia.asDomainModel(
     sizeInBytes = sizeInBytes,
     addedAtMillis = addedAt,
     updatedAtMillis = updatedAt,
-    media = DomainMedia(
+    media = DomainMedia.Book(
       id = mediaId,
-      metadata = DomainMedia.Metadata(
+      metadata = DomainMedia.Metadata.Book(
         title = metadata_title,
         titleIgnorePrefix = metadata_titleIgnorePrefix,
         subtitle = metadata_subtitle,

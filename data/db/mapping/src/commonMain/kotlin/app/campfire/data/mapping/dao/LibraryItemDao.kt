@@ -7,20 +7,28 @@ import app.campfire.core.di.UserScope
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
 import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.Media
+import app.campfire.core.model.MediaType
 import app.campfire.core.model.loggableId
 import app.campfire.core.session.UserSession
 import app.campfire.core.session.serverUrl
+import app.campfire.data.LibraryItem as DbLibraryItem
 import app.campfire.data.MediaAudioFiles
 import app.campfire.data.MediaAudioTracks
 import app.campfire.data.MediaChapters
 import app.campfire.data.MetadataAuthor
 import app.campfire.data.mapping.asDbModel
 import app.campfire.data.mapping.asDomainModel
+import app.campfire.data.mapping.asEpisodeDbModel
 import app.campfire.data.mapping.model.LibraryItemWithMedia
+import app.campfire.data.mapping.model.PodcastLibraryItemWithMedia
+import app.campfire.data.mapping.model.mapToLibraryItemWithProgress
+import app.campfire.data.mapping.model.mapToPodcastLibraryItemWithProgress
 import app.campfire.network.models.LibraryItemExpanded
 import app.cash.sqldelight.SuspendingTransacter
 import app.cash.sqldelight.SuspendingTransactionWithoutReturn
 import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import kotlinx.coroutines.withContext
 import me.tatarka.inject.annotations.Inject
@@ -38,6 +46,20 @@ interface LibraryItemDao {
    * @return a fully hydrated [LibraryItem] domain model
    */
   suspend fun hydrateItem(item: LibraryItemWithMedia): LibraryItem
+
+  /**
+   * Hydrate a podcast library item — composes [Media.Podcast] from the joined wrapper plus
+   * the episodes pulled separately from the [podcastEpisode] table.
+   */
+  suspend fun hydratePodcastItem(item: PodcastLibraryItemWithMedia): LibraryItem
+
+  /**
+   * Hydrate a paged library item from its bare [libraryItem] row. Dispatches on
+   * [DbLibraryItem.mediaType] to read the matching media variant (book or podcast)
+   * with progress, then runs the corresponding hydrate path. Used by the paging
+   * source so a single page query can mix book and podcast items.
+   */
+  suspend fun hydratePagedItem(item: DbLibraryItem): LibraryItem
 
   /**
    * Insert an expanded library item and all of its relations in a transaction
@@ -103,6 +125,44 @@ class SqlDelightLibraryItemDao(
     )
   }
 
+  override suspend fun hydratePodcastItem(
+    item: PodcastLibraryItemWithMedia,
+  ): LibraryItem = withContext(dispatcherProvider.databaseRead) {
+    val episodes = db.podcastEpisodeQueries
+      .selectForLibraryItemId(item.id)
+      .awaitAsList()
+    val audioTracksByEpisodeId = db.podcastEpisodeAudioTrackQueries
+      .selectForLibraryItemId(item.id)
+      .awaitAsList()
+      .associateBy(
+        keySelector = { it.episodeId },
+        valueTransform = { it.asDomainModel(urlHydrator) },
+      )
+
+    item.asDomainModel(urlHydrator, episodes, audioTracksByEpisodeId)
+  }
+
+  override suspend fun hydratePagedItem(
+    item: DbLibraryItem,
+  ): LibraryItem = when (item.mediaType) {
+    MediaType.Book -> {
+      val full = withContext(dispatcherProvider.databaseRead) {
+        db.libraryItemsQueries
+          .selectForIdFull(item.id, ::mapToLibraryItemWithProgress)
+          .awaitAsOne()
+      }
+      hydrateItem(full)
+    }
+    MediaType.Podcast -> {
+      val full = withContext(dispatcherProvider.databaseRead) {
+        db.libraryItemsQueries
+          .selectForPodcastIdFull(item.id, ::mapToPodcastLibraryItemWithProgress)
+          .awaitAsOne()
+      }
+      hydratePodcastItem(full)
+    }
+  }
+
   private data class LibraryItemRelationalData(
     val audioFiles: List<MediaAudioFiles>,
     val audioTracks: List<MediaAudioTracks>,
@@ -112,6 +172,88 @@ class SqlDelightLibraryItemDao(
 
   override suspend fun insert(
     item: LibraryItemExpanded,
+    asTransaction: Boolean,
+    ignoreOnInsert: Boolean,
+  ) = when (item) {
+    is LibraryItemExpanded.Book -> insertBook(item, asTransaction, ignoreOnInsert)
+    is LibraryItemExpanded.Podcast -> insertPodcast(item, asTransaction, ignoreOnInsert)
+  }
+
+  private suspend fun insertPodcast(
+    item: LibraryItemExpanded.Podcast,
+    asTransaction: Boolean,
+    ignoreOnInsert: Boolean,
+  ) = withContext(dispatcherProvider.databaseWrite) {
+    db.transactionIf(asTransaction) {
+      val libraryItem = item.asDbModel()
+
+      // 1) Root library item row
+      if (ignoreOnInsert) {
+        db.libraryItemsQueries.insertOrIgnore(libraryItem)
+      } else {
+        db.libraryItemsQueries.insert(libraryItem)
+      }
+
+      // 2) Podcast media row (mirrors the book write — different table)
+      val podcastMedia = item.media.asDbModel(libraryItem.id, urlHydrator)
+      if (ignoreOnInsert) {
+        db.podcastMediaQueries.insertOrIgnore(podcastMedia)
+      } else {
+        db.podcastMediaQueries.insert(podcastMedia)
+      }
+
+      // 3) Episode rows + the per-episode audio track that backs playback. The track is
+      // only present on the expanded JSON shape; on the basic shape we leave the track
+      // table empty for that episode and let a later expanded fetch fill it in.
+      item.media.episodes?.forEach { episode ->
+        val row = episode.asDbModel(
+          libraryItemId = libraryItem.id,
+          podcastMediaId = podcastMedia.mediaId,
+        )
+        if (ignoreOnInsert) {
+          db.podcastEpisodeQueries.insertOrIgnore(row)
+        } else {
+          db.podcastEpisodeQueries.insert(row)
+        }
+        episode.audioTrack?.let { track ->
+          db.podcastEpisodeAudioTrackQueries.insert(
+            track.asEpisodeDbModel(episodeId = episode.id),
+          )
+        }
+      }
+
+      // 4) Per-episode (or item-level) user progress. The server returns a single
+      // MediaProgress here keyed by `episodeId` for podcasts — usually the most recently
+      // played episode — so the freshness check must compare against the row at the
+      // *same* (libraryItemId, episodeId) key the insert is about to replace, not the
+      // book/item-level row at episodeId = ''.
+      item.userMediaProgress?.let { progress ->
+        val existing = db.mediaProgressQueries.selectForEpisode(
+          userId = progress.userId,
+          libraryItemId = libraryItem.id,
+          episodeId = progress.episodeId.orEmpty(),
+        ).executeAsOneOrNull()
+        if (existing == null || existing.lastUpdate <= progress.lastUpdate) {
+          db.mediaProgressQueries.insert(progress.asDbModel())
+        }
+      }
+
+      afterCommit {
+        bark("LibraryItemDao", LogPriority.VERBOSE) {
+          "LibraryItemExpandedPodcast[${item.id.loggableId}] inserted"
+        }
+      }
+
+      afterRollback {
+        bark("LibraryItemDao", LogPriority.VERBOSE) {
+          "LibraryItemExpandedPodcast[${item.id.loggableId}] insert failed, rolling back"
+        }
+      }
+    }
+  }
+
+  private suspend fun insertBook(
+    item: LibraryItemExpanded.Book,
     asTransaction: Boolean,
     ignoreOnInsert: Boolean,
   ) = withContext(dispatcherProvider.databaseWrite) {
@@ -136,10 +278,12 @@ class SqlDelightLibraryItemDao(
       // 3) Insert relations
 
       item.userMediaProgress?.let { progress ->
-        // Only insert the media progress if the one we have locally isn't newer
-        val existing = db.mediaProgressQueries.selectForLibraryItem(
+        // Match the insert's PK so the freshness check compares against the row that's
+        // about to be replaced, not the empty-episodeId book row.
+        val existing = db.mediaProgressQueries.selectForEpisode(
           userId = progress.userId,
           libraryItemId = libraryItem.id,
+          episodeId = progress.episodeId.orEmpty(),
         ).executeAsOneOrNull()
         if (existing == null || existing.lastUpdate <= progress.lastUpdate) {
           db.mediaProgressQueries.insert(progress.asDbModel())
@@ -203,10 +347,12 @@ class SqlDelightLibraryItemDao(
 
       // 3) Insert relations
       item.userMediaProgress?.let { progress ->
-        // Only insert the media progress if the one we have locally isn't newer
-        val existing = db.mediaProgressQueries.selectForLibraryItem(
+        // Match the insert's PK so the freshness check compares against the row that's
+        // about to be replaced (per-episode for podcasts, item-level for books).
+        val existing = db.mediaProgressQueries.selectForEpisode(
           userId = progress.userId,
           libraryItemId = libraryItem.id,
+          episodeId = progress.episodeId.orEmpty(),
         ).executeAsOneOrNull()
         if (existing == null || existing.lastUpdate <= progress.lastUpdate) {
           db.mediaProgressQueries.insert(progress.asDbModel())

@@ -5,6 +5,7 @@ import androidx.paging.LoadType
 import androidx.paging.PagingState
 import androidx.paging.RemoteMediator
 import app.campfire.CampfireDatabase
+import app.campfire.account.api.UrlHydrator
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.logging.Cork
 import app.campfire.core.model.LibraryItem
@@ -15,6 +16,7 @@ import app.campfire.data.LibraryItemPageJoin
 import app.campfire.data.mapping.asDbModel
 import app.campfire.network.AudioBookShelfApi
 import app.campfire.network.models.LibraryItemFilter
+import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.nextPage
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
@@ -35,6 +37,7 @@ class LibraryItemRemoteMediator(
   private val db: CampfireDatabase,
   private val dispatcherProvider: DispatcherProvider,
   private val fatherTime: FatherTime,
+  private val urlHydrator: UrlHydrator,
 ) : RemoteMediator<Int, LibraryItem>(), Cork {
 
   override val tag: String = "LibraryItemRemoteMediator"
@@ -109,13 +112,21 @@ class LibraryItemRemoteMediator(
               )
             }
 
-            // Insert items
             pagedResponse.data.forEach { item ->
-              val libraryItem = item.asDbModel(user.serverUrl)
-              val media = item.media.asDbModel(item.id)
-
-              db.libraryItemsQueries.insertOrIgnore(libraryItem)
-              db.mediaQueries.insertOrIgnore(media)
+              when (item) {
+                is LibraryItemMinified.Book -> {
+                  val libraryItem = item.asDbModel(user.serverUrl)
+                  val media = item.media.asDbModel(item.id)
+                  db.libraryItemsQueries.insertOrIgnore(libraryItem)
+                  db.mediaQueries.insertOrIgnore(media)
+                }
+                is LibraryItemMinified.Podcast -> {
+                  val libraryItem = item.asDbModel(user.serverUrl)
+                  val podcastMedia = item.media.asDbModel(item.id, urlHydrator)
+                  db.libraryItemsQueries.insertOrIgnore(libraryItem)
+                  db.podcastMediaQueries.insertOrIgnore(podcastMedia)
+                }
+              }
             }
 
             // Insert the Page + Joins

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
+import app.campfire.common.compose.extensions.toRichTextHtml
 import app.campfire.common.compose.widgets.ShowMoreLessButton
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
@@ -49,11 +50,7 @@ internal fun ItemDescription(
     var isExpanded by remember { mutableStateOf(false) }
 
     RichText(
-      state = rememberRichTextState(
-        description.trim()
-          .replace(LineBreakStartRegex, "")
-          .replace("\n", "<br>"),
-      ),
+      state = rememberRichTextState(description.toRichTextHtml()),
       style = MaterialTheme.typography.bodyLarge,
       maxLines = if (isExpanded) Int.MAX_VALUE else maxLines,
       overflow = TextOverflow.Ellipsis,
@@ -122,7 +119,7 @@ internal fun ItemDescription(
 }
 
 @Composable
-private fun rememberRichTextState(
+internal fun rememberRichTextState(
   html: String,
 ): RichTextState {
   val state = rememberRichTextState()
@@ -133,5 +130,3 @@ private fun rememberRichTextState(
 
   return state
 }
-
-private val LineBreakStartRegex = "^(\\\\n)+".toRegex()
