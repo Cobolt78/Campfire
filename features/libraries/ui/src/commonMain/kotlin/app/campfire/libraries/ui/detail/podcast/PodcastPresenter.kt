@@ -2,16 +2,21 @@ package app.campfire.libraries.ui.detail.podcast
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.Click
 import app.campfire.audioplayer.PlaybackController
+import app.campfire.audioplayer.history.PlaybackHistoryRepository
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.Media
+import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.Session
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.libraries.ui.detail.AbstractLibraryItemPresenter
 import app.campfire.libraries.ui.detail.ContentUiState
@@ -27,19 +32,28 @@ import app.campfire.libraries.ui.detail.composables.slots.SplitAttributionSlot
 import app.campfire.libraries.ui.detail.composables.slots.SummarySlot
 import app.campfire.libraries.ui.detail.composables.slots.TitleSlot
 import app.campfire.libraries.ui.detail.podcast.episode.showPodcastEpisodeBottomSheet
+import app.campfire.playlists.api.dialog.AddToPlaylistDialog
+import app.campfire.sessions.api.SessionsRepository
+import app.campfire.user.api.MediaProgressKey
+import app.campfire.user.api.MediaProgressRepository
 import campfire.features.libraries.ui.generated.resources.Res
 import campfire.features.libraries.ui.generated.resources.genres_title
 import campfire.features.libraries.ui.generated.resources.tags_title
 import com.slack.circuit.overlay.LocalOverlayHost
 import com.slack.circuit.retained.rememberRetained
 import com.slack.circuit.runtime.Navigator
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Inject
 
 @Inject
 class PodcastPresenter(
   private val analytics: Analytics,
+  private val sessionsRepository: SessionsRepository,
+  private val mediaProgressRepository: MediaProgressRepository,
+  private val playbackHistoryRepository: PlaybackHistoryRepository,
   private val playbackController: PlaybackController,
+  private val addToPlaylistDialog: AddToPlaylistDialog,
 ) : AbstractLibraryItemPresenter {
 
   @Composable
@@ -51,8 +65,22 @@ class PodcastPresenter(
     val scope = rememberCoroutineScope()
     val overlayHost = LocalOverlayHost.current
 
+    val currentSession by remember {
+      sessionsRepository.observeCurrentSession()
+    }.collectAsState(null)
+
+    val mediaProgress by remember {
+      mediaProgressRepository.observeAllProgress()
+        .map {
+          it.associateBy { progress -> MediaProgressKey(progress) }
+        }
+    }.collectAsState(emptyMap())
+
     val slots = buildSlots(
       libraryItem = libraryItem,
+      currentSession = currentSession,
+      mediaProgress = mediaProgress,
+      addToPlaylistDialog = addToPlaylistDialog,
       sharedTransitionKey = screen.sharedTransitionKey,
     )
 
@@ -85,6 +113,36 @@ class PodcastPresenter(
             )
           }
 
+          is LibraryItemUiEvent.MarkEpisodeFinished -> {
+            analytics.send(ActionEvent("mark_episode_finished", Click))
+            val episode = event.episode
+
+            // Only stop playback if this episode is the one currently playing.
+            if (
+              currentSession?.libraryItem?.id == episode.libraryItemId &&
+              currentSession?.episodeId == episode.id
+            ) {
+              playbackController.stopSession(
+                itemId = episode.libraryItemId,
+                episodeId = episode.id,
+              )
+            }
+
+            scope.launch {
+              sessionsRepository.markDeleted(episode.libraryItemId, episode.id)
+              mediaProgressRepository.markFinished(episode.libraryItemId, episode.id)
+              playbackHistoryRepository.clear(episode.libraryItemId, episode.id)
+            }
+          }
+
+          is LibraryItemUiEvent.MarkEpisodeNotFinished -> {
+            analytics.send(ActionEvent("mark_episode_not_finished", Click))
+            val episode = event.episode
+            scope.launch {
+              mediaProgressRepository.markNotFinished(episode.libraryItemId, episode.id)
+            }
+          }
+
           else -> Unit
         }
       },
@@ -95,6 +153,9 @@ class PodcastPresenter(
 @Composable
 private fun buildSlots(
   libraryItem: LibraryItem,
+  currentSession: Session?,
+  mediaProgress: Map<MediaProgressKey, MediaProgress>,
+  addToPlaylistDialog: AddToPlaylistDialog,
   sharedTransitionKey: String,
 ): List<ContentSlot> = buildList {
   this += CoverImageSlot(
@@ -146,7 +207,16 @@ private fun buildSlots(
     this += EpisodeHeaderSlot()
 
     this += podcastMedia.episodes.map { episode ->
-      EpisodeSlot(podcastMedia, episode)
+      val progress = mediaProgress[MediaProgressKey(episode.libraryItemId, episode.id)]
+      EpisodeSlot(
+        libraryItem = libraryItem,
+        media = podcastMedia,
+        episode = episode,
+        progress = progress,
+        isCurrentSession = currentSession?.libraryItem?.id == episode.libraryItemId &&
+          currentSession.episodeId == episode.id,
+        addToPlaylistDialog = addToPlaylistDialog,
+      )
     }
   }
 }

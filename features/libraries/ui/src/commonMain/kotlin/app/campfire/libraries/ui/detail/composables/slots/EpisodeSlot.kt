@@ -5,19 +5,38 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.campfire.common.compose.icons.filled.MarkFinished
+import app.campfire.common.compose.icons.rounded.MarkFinished
+import app.campfire.common.compose.widgets.EpisodeListItem
+import app.campfire.common.compose.widgets.EpisodeListItemDefaults
+import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.Media
+import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.PodcastEpisode
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
-import app.campfire.libraries.ui.detail.composables.EpisodeListItem
+import app.campfire.playlists.api.dialog.AddToPlaylistDialog
+import app.campfire.playlists.api.dialog.PlaylistDialogResult
 
 class EpisodeSlot(
+  private val libraryItem: LibraryItem,
   private val media: Media.Podcast,
   private val episode: PodcastEpisode,
+  private val progress: MediaProgress?,
+  private val isCurrentSession: Boolean,
+  private val addToPlaylistDialog: AddToPlaylistDialog,
 ) : ContentSlot {
 
   override val id: String = "episode_${episode.id}"
@@ -33,26 +52,89 @@ class EpisodeSlot(
     modifier: Modifier,
     eventSink: (LibraryItemUiEvent) -> Unit,
   ) {
-    val topCornerSize = if (isFirst) CornerSize(20.dp) else CornerSize(4.dp)
-    val bottomCornerSize = if (isLast) CornerSize(20.dp) else CornerSize(4.dp)
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    if (showAddToPlaylistDialog) {
+      addToPlaylistDialog.Content(
+        libraryItemId = libraryItem.id,
+        itemTitle = libraryItem.media.metadata.title.orEmpty(),
+        episode = episode,
+        onDismiss = { _: PlaylistDialogResult ->
+          showAddToPlaylistDialog = false
+        },
+        modifier = Modifier,
+      )
+    }
+
+    val isFinished = progress?.isFinished == true
+
     Column(
       modifier = modifier
         .background(ChapterContainerColor),
     ) {
       EpisodeListItem(
         episode = episode,
+        mediaProgress = progress,
+        isCurrentSession = isCurrentSession,
         onClick = {
           eventSink(LibraryItemUiEvent.OpenEpisode(episode))
         },
         onPlayClick = {
           eventSink(LibraryItemUiEvent.PlayEpisodeClick(episode))
         },
-        shape = RoundedCornerShape(
-          topStart = topCornerSize,
-          topEnd = topCornerSize,
-          bottomStart = bottomCornerSize,
-          bottomEnd = bottomCornerSize,
-        ),
+        shape = if (isFirst && !isLast) {
+          EpisodeListItemDefaults.topItemShape()
+        } else if (!isFirst && !isLast) {
+          EpisodeListItemDefaults.middleItemShape()
+        } else if (!isFirst && isLast) {
+          EpisodeListItemDefaults.bottomItemShape()
+        } else {
+          EpisodeListItemDefaults.singleItemShape()
+        },
+        actions = {
+          IconButton(
+            onClick = { showAddToPlaylistDialog = true },
+            modifier = Modifier
+              .size(
+                IconButtonDefaults.extraSmallContainerSize(
+                  IconButtonDefaults.IconButtonWidthOption.Uniform,
+                ),
+              ),
+            shape = IconButtonDefaults.extraSmallSquareShape,
+          ) {
+            Icon(
+              Icons.AutoMirrored.Rounded.PlaylistAdd,
+              contentDescription = null,
+              modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+            )
+          }
+
+          IconButton(
+            onClick = {
+              if (isFinished) {
+                eventSink(LibraryItemUiEvent.MarkEpisodeNotFinished(episode))
+              } else {
+                eventSink(LibraryItemUiEvent.MarkEpisodeFinished(episode))
+              }
+            },
+            modifier = Modifier
+              .size(
+                IconButtonDefaults.extraSmallContainerSize(
+                  IconButtonDefaults.IconButtonWidthOption.Uniform,
+                ),
+              ),
+            shape = IconButtonDefaults.extraSmallSquareShape,
+          ) {
+            Icon(
+              if (isFinished) {
+                Icons.Filled.MarkFinished
+              } else {
+                Icons.Rounded.MarkFinished
+              },
+              contentDescription = null,
+              modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+            )
+          }
+        },
         modifier = Modifier
           .padding(
             horizontal = 16.dp,
