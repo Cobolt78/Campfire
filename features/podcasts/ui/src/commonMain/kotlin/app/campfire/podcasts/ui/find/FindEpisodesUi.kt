@@ -21,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -32,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.core.di.UserScope
 import app.campfire.podcasts.api.screen.FindEpisodesScreen
 import app.campfire.podcasts.ui.find.composables.CenteredMessage
@@ -68,7 +68,7 @@ fun FindEpisodesUi(
 
   Scaffold(
     modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-    contentWindowInsets = CampfireWindowInsets
+    contentWindowInsets = ScaffoldDefaults.contentWindowInsets
       .exclude(WindowInsets.systemBars)
       .exclude(WindowInsets.navigationBars),
     topBar = {

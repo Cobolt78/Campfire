@@ -20,10 +20,12 @@ import app.cash.burst.Burst
 import app.cash.burst.burstValues
 import assertk.all
 import assertk.assertThat
+import assertk.assertions.hasSize
 import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotNull
+import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import assertk.assertions.prop
 import assertk.assertions.single
@@ -52,6 +54,8 @@ class LibraryItemPresenterEventsTest : BaseLibraryItemPresenterTest() {
       NarratorClick,
       AuthorClick,
       PlayClick,
+      DeleteItemClickSoft,
+      DeleteItemClickHard,
       OnBack,
     ),
   ) = runTest {
@@ -71,6 +75,35 @@ class LibraryItemPresenterEventsTest : BaseLibraryItemPresenterTest() {
       item.eventSink(eventTest.event)
 
       eventTest.assert(this@LibraryItemPresenterEventsTest)
+
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun deleteItemClick_onFailure_setsErrorMessage_andClearErrorResetsIt() = runTest {
+    val libraryItem = emptyLibraryItem()
+    libraryItemRepository.libraryItemFlow.emit(libraryItem)
+    libraryItemRepository.deleteResult = Result.failure(IllegalStateException("boom"))
+
+    presenter.test {
+      skipItems(1)
+      val item = awaitItem()
+
+      item.eventSink(LibraryItemUiEvent.DeleteItemClick(hardDelete = false))
+
+      // Drain until the launched coroutine completes and writes errorMessage
+      var withError = awaitItem()
+      while (withError.errorMessage == null) {
+        withError = awaitItem()
+      }
+      assertThat(withError.errorMessage).isEqualTo("boom")
+
+      withError.eventSink(LibraryItemUiEvent.ClearError)
+      val cleared = awaitItem()
+      assertThat(cleared.errorMessage).isNull()
+
+      assertThat(libraryItemRepository.deleteInvocations).hasSize(1)
 
       cancelAndIgnoreRemainingEvents()
     }
@@ -402,5 +435,32 @@ private val TimeInBookChange = EventTest(
       .isEqualTo("time_in_book_clicked")
 
     assertThat(settings.showTimeInBook).isTrue()
+  },
+)
+
+private val DeleteItemClickSoft = EventTest(
+  event = LibraryItemUiEvent.DeleteItemClick(hardDelete = false),
+  assert = {
+    assertThat(libraryItemRepository.deleteInvocations)
+      .single()
+      .isEqualTo(TestLibraryItemId to false)
+
+    assertThat(offlineDownloadManager.invocations)
+      .firstInstanceOf<FakeOfflineDownloadManager.Invocation.Delete>()
+      .transform { it.item.id }
+      .isEqualTo(TestLibraryItemId)
+
+    navigator.awaitPop()
+  },
+)
+
+private val DeleteItemClickHard = EventTest(
+  event = LibraryItemUiEvent.DeleteItemClick(hardDelete = true),
+  assert = {
+    assertThat(libraryItemRepository.deleteInvocations)
+      .single()
+      .isEqualTo(TestLibraryItemId to true)
+
+    navigator.awaitPop()
   },
 )
