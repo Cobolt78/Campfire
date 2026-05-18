@@ -13,6 +13,7 @@ import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
 
 data class LibraryUiState(
+  val canAddPodcasts: Boolean,
   val lazyPagingItems: LazyPagingItems<LibraryItem>,
   val itemDisplayState: ItemDisplayState,
   val totalItemCount: Int,
@@ -33,4 +34,5 @@ sealed interface LibraryUiEvent : CircuitUiEvent {
   data class SortModeSelected(val mode: ContentSortMode) : LibraryUiEvent
   data class ItemFilterSelected(val filter: ContentFilter?) : LibraryUiEvent
   data class ItemClick(val libraryItem: LibraryItem) : LibraryUiEvent
+  data object AddPodcastClick : LibraryUiEvent
 }

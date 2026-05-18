@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.coroutines.map

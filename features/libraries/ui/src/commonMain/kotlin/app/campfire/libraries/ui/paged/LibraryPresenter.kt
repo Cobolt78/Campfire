@@ -2,6 +2,7 @@ package app.campfire.libraries.ui.paged
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -10,15 +11,19 @@ import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
+import app.campfire.analytics.events.Click
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.common.compose.util.rememberRetainedCoroutineScope
 import app.campfire.core.di.UserScope
+import app.campfire.core.model.MediaType
+import app.campfire.core.model.User
 import app.campfire.core.settings.ItemDisplayState
 import app.campfire.libraries.api.LibraryRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.libraries.api.screen.LibraryScreen
+import app.campfire.podcasts.api.screen.AddPodcastScreen
 import app.campfire.settings.api.CampfireSettings
 import app.campfire.user.api.UserRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
@@ -52,6 +57,10 @@ class LibraryPresenter(
     // composition of this pager / ui. We should remember it until this screen
     // leaves the back stack
     val scope = rememberRetainedCoroutineScope()
+
+    val currentLibrary by remember {
+      repository.observeCurrentLibrary()
+    }.collectAsState(null)
 
     var itemFilter by rememberRetainedSaveable {
       mutableStateOf(screen.filter)
@@ -96,7 +105,19 @@ class LibraryPresenter(
         }
     }.collectAsState(emptyMap())
 
+    val canAddPodcasts by remember {
+      derivedStateOf {
+        val libraryMediaType = currentLibrary?.mediaType
+        libraryMediaType == MediaType.Podcast &&
+          (
+            currentUser.type == User.Type.Admin ||
+              currentUser.type == User.Type.Root
+            )
+      }
+    }
+
     return LibraryUiState(
+      canAddPodcasts = canAddPodcasts,
       lazyPagingItems = lazyPagingItems,
       totalItemCount = totalItemCount,
       sort = LibrarySort(sortMode, sortDirection),
@@ -131,6 +152,12 @@ class LibraryPresenter(
         is LibraryUiEvent.ItemClick -> {
           analytics.send(ContentSelected(ContentType.LibraryItem))
           navigator.goTo(LibraryItemScreen(event.libraryItem.id))
+        }
+
+        LibraryUiEvent.AddPodcastClick -> {
+          val libraryId = currentLibrary?.id ?: return@LibraryUiState
+          analytics.send(ActionEvent("add_podcast", Click))
+          navigator.goTo(AddPodcastScreen(libraryId))
         }
       }
     }
