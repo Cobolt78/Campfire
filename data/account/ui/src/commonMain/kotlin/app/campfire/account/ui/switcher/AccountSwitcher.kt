@@ -1,6 +1,7 @@
 package app.campfire.account.ui.switcher
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
@@ -42,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.di.rememberComponent
@@ -50,10 +53,13 @@ import app.campfire.common.compose.icons.asComposeIcon
 import app.campfire.common.compose.icons.rounded.AccountSwitch
 import app.campfire.common.compose.icons.theme.rememberWallVectorPainter
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
+import app.campfire.common.compose.widgets.ConnectionIndicator
+import app.campfire.common.compose.widgets.ConnectionState
 import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.Library
+import app.campfire.socket.SocketState
 import app.campfire.ui.theming.api.AppTheme
 import campfire.data.account.ui.generated.resources.Res
 import campfire.data.account.ui.generated.resources.action_switch_account
@@ -112,9 +118,13 @@ private fun AccountSwitcher(
   ) {
     AccountSwitcher(
       appTheme = state.theme,
+      socketState = state.socketState,
       serverName = { Text(serverName) },
       userName = { userName?.let { Text(it) } },
       onClick = onClick,
+      onRetryConnection = {
+        state.eventSink(AccountSwitcherUiEvent.RetryConnection)
+      },
     ) {
       if (state.libraryState != null) {
         LibraryPicker(
@@ -148,9 +158,11 @@ private fun AccountCard(
 @Composable
 private fun AccountSwitcher(
   appTheme: AppTheme,
+  socketState: SocketState,
   serverName: @Composable () -> Unit,
   userName: @Composable () -> Unit,
   onClick: () -> Unit,
+  onRetryConnection: () -> Unit,
   modifier: Modifier = Modifier,
   content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -159,34 +171,63 @@ private fun AccountSwitcher(
       .fillMaxWidth()
       .clickable(onClick = onClick),
   ) {
+    val bottomPadding by animateDpAsState(
+      targetValue = if (socketState is SocketState.Failed) 8.dp else 24.dp,
+    )
     Row(
       modifier = Modifier
         .fillMaxWidth()
         .padding(
           start = 24.dp,
           top = 24.dp,
-          bottom = 24.dp,
+          bottom = bottomPadding,
           // This accounts for the built-in IconButton padding
           end = 16.dp,
         ),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      when (appTheme) {
-        AppTheme.Dynamic -> {
-          Image(
-            rememberWallVectorPainter(),
-            contentDescription = null,
-            modifier = Modifier
-              .size(TentIconSize),
-          )
+      Box(
+        modifier = Modifier.size(TentIconSize),
+      ) {
+        when (appTheme) {
+          AppTheme.Dynamic -> {
+            Image(
+              rememberWallVectorPainter(),
+              contentDescription = null,
+              modifier = Modifier
+                .size(TentIconSize),
+            )
+          }
+
+          is AppTheme.Fixed -> {
+            Image(
+              appTheme.icon.icon(),
+              contentDescription = null,
+              modifier = Modifier
+                .size(TentIconSize),
+            )
+          }
         }
 
-        is AppTheme.Fixed -> {
-          Image(
-            appTheme.icon.icon(),
-            contentDescription = null,
+        if (socketState !is SocketState.Disabled) {
+          ConnectionIndicator(
+            state = when (socketState) {
+              is SocketState.Authenticated -> ConnectionState.Connected
+              SocketState.Authenticating -> ConnectionState.Connecting
+              SocketState.Connecting -> ConnectionState.Connecting
+              SocketState.Disconnected -> ConnectionState.Disconnected
+              is SocketState.Failed -> ConnectionState.Disconnected
+              SocketState.Disabled -> error("guarded above")
+            },
+            size = 12.dp,
+            borderWidth = 3.dp,
+            borderColor = MaterialTheme.colorScheme.primaryContainer,
             modifier = Modifier
-              .size(TentIconSize),
+              .align(Alignment.TopEnd)
+              .padding(
+                top = 6.dp,
+                end = 6.dp,
+              ),
           )
         }
       }
@@ -220,6 +261,37 @@ private fun AccountSwitcher(
             CampfireIcons.Rounded.AccountSwitch,
             contentDescription = switchAccountLabel,
           )
+        }
+      }
+    }
+
+    AnimatedVisibility(
+      visible = socketState is SocketState.Failed,
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(56.dp)
+          .padding(
+            start = 16.dp,
+            end = 12.dp,
+          ),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+          text = "Disconnected: ${(socketState as? SocketState.Failed)?.reason}",
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.error,
+          fontStyle = FontStyle.Italic,
+          modifier = Modifier.weight(1f),
+        )
+
+        Spacer(Modifier.width(8.dp))
+
+        IconButton(
+          onClick = onRetryConnection,
+        ) {
+          Icon(Icons.Rounded.Refresh, contentDescription = null)
         }
       }
     }

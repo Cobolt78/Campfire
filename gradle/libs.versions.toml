@@ -28,6 +28,7 @@ halogen = "0.2.0"
 jb-compose-navigationevent = "1.1.0"
 junit = "4.13.2"
 kimchi = "0.7.0"
+kmp-socketio = "1.4.4"
 kotlin = "2.3.21"
 kotlin-inject = "0.9.0"
 kotlinpoet = "2.2.0"
@@ -95,6 +96,7 @@ about-libraries-compose-m3 = { module = "com.mikepenz:aboutlibraries-compose-m3"
 androidx-activity-activity = { module = "androidx.activity:activity", version.ref = "androidxactivity" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxactivity" }
 androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime", version.ref = "androidxlifecycle" }
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidxlifecycle" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-archCoreTesting = "androidx.arch.core:core-testing:2.2.0"
 androidx-browser = "androidx.browser:browser:1.10.0"
@@ -223,6 +225,7 @@ connectivity-core = { module = "dev.jordond.connectivity:connectivity-core", ver
 connectivity-android = { module = "dev.jordond.connectivity:connectivity-android", version.ref = "connectivity" }
 connectivity-apple = { module = "dev.jordond.connectivity:connectivity-apple", version.ref = "connectivity" }
 connectivity-http = { module = "dev.jordond.connectivity:connectivity-http", version.ref = "connectivity" }
+kmp-socketio = { module = "com.piasy:kmp-socketio", version.ref = "kmp-socketio" }
 oidc-crypto = { module = "io.github.kalinjul.kotlin.multiplatform:oidc-crypto", version = "0.16.5" }
 
 tools-desugarjdklibs = "com.android.tools:desugar_jdk_libs:2.1.5"

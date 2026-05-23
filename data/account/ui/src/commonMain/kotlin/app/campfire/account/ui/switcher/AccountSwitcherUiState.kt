@@ -3,6 +3,7 @@ package app.campfire.account.ui.switcher
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.model.Library
 import app.campfire.core.model.Server
+import app.campfire.socket.SocketState
 import app.campfire.ui.theming.api.AppTheme
 import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
@@ -12,6 +13,7 @@ data class AccountSwitcherUiState(
   val currentAccount: LoadState<out Server>,
   val allAccounts: LoadState<out List<Server>>,
   val libraryState: LibraryState?,
+  val socketState: SocketState,
   val eventSink: (AccountSwitcherUiEvent) -> Unit,
 ) : CircuitUiState
 
@@ -23,4 +25,5 @@ data class LibraryState(
 sealed interface AccountSwitcherUiEvent : CircuitUiEvent {
   data class SwitchAccount(val server: Server) : AccountSwitcherUiEvent
   data class SelectLibrary(val library: Library) : AccountSwitcherUiEvent
+  data object RetryConnection : AccountSwitcherUiEvent
 }

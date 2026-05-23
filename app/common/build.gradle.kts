@@ -33,6 +33,7 @@ kotlin {
         api(projects.infra.whatsNew.impl)
         api(projects.infra.whatsNew.ui)
         api(projects.infra.tracing)
+        api(projects.infra.socket.impl)
 
         // Feature Modules
         api(projects.features.home.impl)
@@ -106,6 +107,12 @@ kotlin {
         implementation(libs.kimchi.annotations)
         implementation(libs.kimchi.circuit.annotations)
         implementation(libs.compose.navigationevent)
+      }
+    }
+
+    androidMain {
+      dependencies {
+        implementation(libs.androidx.lifecycle.process)
       }
     }
   }
