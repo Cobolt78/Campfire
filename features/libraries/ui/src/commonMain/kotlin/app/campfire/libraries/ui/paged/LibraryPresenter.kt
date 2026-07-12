@@ -56,7 +56,7 @@ class LibraryPresenter(
     // Using a pager requires us to remember the coroutine scope passed the
     // composition of this pager / ui. We should remember it until this screen
     // leaves the back stack
-    val scope = rememberRetainedCoroutineScope()
+    val scope = rememberRetainedCoroutineScope("library_presenter_scope")
 
     val currentLibrary by remember {
       repository.observeCurrentLibrary()
@@ -74,11 +74,15 @@ class LibraryPresenter(
       settings.observeLibrarySortDirection()
     }.collectAsState()
 
-    val currentUser by remember {
-      userRepository.observeStatefulCurrentUser()
-    }.collectAsState()
+    val currentUser by userRepository.userFlow.collectAsState()
 
-    val lazyPagingItems = rememberRetained(currentUser, sortMode, sortDirection, itemFilter) {
+    val lazyPagingItems = rememberRetained(
+      currentUser.id,
+      currentUser.selectedLibraryId,
+      sortMode,
+      sortDirection,
+      itemFilter,
+    ) {
       repository.createLibraryItemPager(
         user = currentUser,
         filter = itemFilter,

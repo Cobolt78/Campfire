@@ -58,7 +58,7 @@ import app.campfire.libraries.ui.detail.composables.rememberRichTextState
 import app.campfire.playlists.api.dialog.PlaylistDialogResult
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.TokenClickHandler
-import com.mohamedrejeb.richeditor.ui.material.RichText
+import com.mohamedrejeb.richeditor.ui.material3.RichText
 import com.r0adkll.kimchi.annotations.ContributesTo
 import com.slack.circuit.overlay.OverlayHost
 import com.slack.circuitx.overlays.BottomSheetOverlay
@@ -189,7 +189,7 @@ private fun PodcastEpisodeBottomSheet(
     }
 
     // Progress bar
-    state.progress?.let { progress ->
+    state.progress?.takeIf { it.isValid }?.let { progress ->
       Spacer(Modifier.height(24.dp))
       MediaProgressBar(
         isPlaying = state.isPlaying,

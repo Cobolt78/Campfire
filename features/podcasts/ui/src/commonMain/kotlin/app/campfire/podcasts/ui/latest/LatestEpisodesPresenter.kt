@@ -44,16 +44,20 @@ class LatestEpisodesPresenter(
 
   @Composable
   override fun present(): LatestEpisodesUiState {
-    val scope = rememberRetainedCoroutineScope()
+    val scope = rememberRetainedCoroutineScope("last_episodes_presenter")
 
     val currentSession by remember {
       sessionsRepository.observeCurrentSession()
     }.collectAsState(null)
 
-    val currentUser by userRepository.observeStatefulCurrentUser().collectAsState()
+    val currentUser by userRepository.userFlow.collectAsState()
 
-    val pagingItems = rememberRetained(currentUser.id, currentUser.selectedLibraryId) {
-      podcastsRepository.createLatestEpisodesPager(currentUser).flow.cachedIn(scope)
+    val pagingItems = rememberRetained(
+      currentUser.id,
+      currentUser.selectedLibraryId,
+    ) {
+      podcastsRepository.createLatestEpisodesPager(currentUser)
+        .flow.cachedIn(scope)
     }.collectAsLazyPagingItems()
 
     val mediaProgress by remember {
@@ -76,6 +80,7 @@ class LatestEpisodesPresenter(
               episodeId = event.episodeId,
             )
           }
+
           is LatestEpisodesUiEvent.OpenPodcast -> {
             navigator.goTo(
               LibraryItemScreen(
@@ -84,6 +89,7 @@ class LatestEpisodesPresenter(
               ),
             )
           }
+
           is LatestEpisodesUiEvent.MarkFinished -> {
             val episode = event.episode.episode
 
@@ -104,6 +110,7 @@ class LatestEpisodesPresenter(
               playbackHistoryRepository.clear(episode.libraryItemId, episode.id)
             }
           }
+
           is LatestEpisodesUiEvent.MarkNotFinished -> {
             val episode = event.episode.episode
             scope.launch {

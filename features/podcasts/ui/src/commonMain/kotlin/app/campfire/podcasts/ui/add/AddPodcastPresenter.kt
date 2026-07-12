@@ -6,7 +6,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import app.campfire.analytics.Analytics
@@ -58,7 +57,7 @@ class AddPodcastPresenter(
     var retryToken by rememberRetained { mutableStateOf(0) }
     var searchRegion by rememberRetained { mutableStateOf<String?>(null) }
 
-    val currentUser by remember { userRepository.observeStatefulCurrentUser() }.collectAsState()
+    val currentUser by userRepository.userFlow.collectAsState()
     val canAddPodcasts = currentUser.type == User.Type.Admin || currentUser.type == User.Type.Root
 
     LaunchedEffect(screen.libraryId) {
