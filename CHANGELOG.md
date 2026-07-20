@@ -9,12 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Podcasts
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Other Notes & Contributions
+
+## [0.13.0-beta]
+
+### Added
+
+- **Podcasts**
   - Add new podcasts
   - Find and add new episodes
   - Server download queue
   - Latest episodes screen
-- Socket Connection
+- **Socket Connection**
   - Now supports the socket.io connection to the server
   - Near-immediate syncing of item, series, playlists, collection, author changes from the server or other devices
   - Improved progress syncing
@@ -25,15 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Change the theme mode or open the theme picker directly from the Drawer
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 
 - Phone Landscape now has a friendlier UI/UX
-
-### Other Notes & Contributions
 
 ## [0.12.0-beta]
 
@@ -325,6 +333,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[0.13.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.12.0-beta...v0.13.0-beta
 [0.12.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.11.0-beta...v0.12.0-beta
 [0.11.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.10.0-beta...v0.11.0-beta
 [0.10.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.9.0-beta...v0.10.0-beta
