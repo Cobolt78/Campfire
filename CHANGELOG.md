@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Phone Landscape now has a friendlier UI/UX
+
 ### Other Notes & Contributions
 
 ## [0.12.0-beta]
