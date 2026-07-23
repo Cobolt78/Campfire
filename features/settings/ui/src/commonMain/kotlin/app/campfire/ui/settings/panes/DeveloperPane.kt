@@ -93,6 +93,55 @@ internal fun DeveloperPane(
       )
     }
 
+    if (state.applicationInfo.debugBuild) {
+      Header(
+        title = { Text("App Updates") },
+      )
+
+      SwitchSetting(
+        value = state.developerSettings.fakeAppUpdateSignedIn,
+        onValueChange = {
+          state.eventSink(DeveloperSettingEvent.FakeAppUpdateSignedIn(it))
+        },
+        headlineContent = { Text("Signed in for updates") },
+        supportingContent = {
+          Text("Fake the tester sign-in state. Turn off to test the sign-in widget in the drawer.")
+        },
+      )
+
+      SwitchSetting(
+        value = state.developerSettings.fakeAppUpdateAvailable,
+        onValueChange = {
+          state.eventSink(DeveloperSettingEvent.FakeAppUpdateAvailable(it))
+        },
+        headlineContent = { Text("Update available") },
+        supportingContent = {
+          Text("Fake an available app update to test the drawer widget and update details sheet.")
+        },
+      )
+
+      SwitchSetting(
+        value = state.developerSettings.fakeAppUpdateFailDownload,
+        onValueChange = {
+          state.eventSink(DeveloperSettingEvent.FakeAppUpdateFailDownload(it))
+        },
+        headlineContent = { Text("Fail update downloads") },
+        supportingContent = {
+          Text("Simulated update downloads will fail partway through to test the retry UX.")
+        },
+      )
+
+      ActionSetting(
+        headlineContent = { Text("Reset dismissed widgets") },
+        supportingContent = {
+          Text("Clears dismissals of the update widgets so they show in the drawer again.")
+        },
+        onClick = {
+          state.eventSink(DeveloperSettingEvent.ResetAppUpdateDismissals)
+        },
+      )
+    }
+
     Header(
       title = { Text("Analytics") },
     )
