@@ -2,6 +2,7 @@ package app.campfire.auth.ui.welcome
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -13,13 +14,18 @@ import app.campfire.auth.ui.composables.MaxContentWidth
 import app.campfire.auth.ui.composables.SinglePaneLayout
 import app.campfire.auth.ui.composables.TwoPaneLayout
 import app.campfire.auth.ui.login.LoginUiContent
+import app.campfire.auth.ui.login.LoginUiEvent
+import app.campfire.auth.ui.login.composables.ServerUrlAssistBar
+import app.campfire.auth.ui.login.composables.rememberServerUrlFieldState
 import app.campfire.auth.ui.shared.AuthSharedTransitionKey
 import app.campfire.auth.ui.shared.AuthSharedTransitionKey.ElementType.Card
 import app.campfire.auth.ui.welcome.composables.AddCampsiteCard
 import app.campfire.common.compose.LocalWindowSizeClass
 import app.campfire.common.compose.theme.CampfireTheme
+import app.campfire.common.compose.theme.LocalUseDarkColors
 import app.campfire.common.screens.WelcomeScreen
 import app.campfire.core.di.UserScope
+import app.campfire.ui.theming.api.colorScheme
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.sharedelements.SharedElementTransitionScope
 import com.slack.circuit.sharedelements.SharedElementTransitionScope.AnimatedScope.Navigation
@@ -34,13 +40,23 @@ fun Welcome(
   val windowSizeClass = LocalWindowSizeClass.current
 
   CampfireTheme(
-    tent = state.loginUiState.tent,
+    colorScheme = { colorScheme(state.loginUiState.theme) },
+    useDarkColors = LocalUseDarkColors.current,
   ) {
-    if (windowSizeClass.widthSizeClass >= WindowWidthSizeClass.Large) {
+    if (windowSizeClass.widthSizeClass >= WindowWidthSizeClass.Medium) {
       TwoPaneLayout(modifier) {
+        val urlFieldState = rememberServerUrlFieldState(state.loginUiState.serverUrl)
         LoginUiContent(
           state = state.loginUiState,
+          urlFieldState = urlFieldState,
           modifier = Modifier.align(Alignment.CenterStart),
+        )
+        ServerUrlAssistBar(
+          urlState = urlFieldState,
+          onUrlChange = { state.loginUiState.eventSink(LoginUiEvent.ServerUrl(it)) },
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .imePadding(),
         )
       }
     } else {

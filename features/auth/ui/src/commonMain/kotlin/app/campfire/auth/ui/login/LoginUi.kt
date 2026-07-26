@@ -47,7 +47,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.campfire.auth.ui.composables.MaxContentWidth
 import app.campfire.auth.ui.login.composables.ServerCard
+import app.campfire.auth.ui.login.composables.ServerUrlAssistBar
+import app.campfire.auth.ui.login.composables.ServerUrlFieldState
 import app.campfire.auth.ui.login.composables.TitleBanner
+import app.campfire.auth.ui.login.composables.rememberServerUrlFieldState
 import app.campfire.auth.ui.login.settings.NetworkSettingsResult
 import app.campfire.auth.ui.login.settings.showNetworkSettingsBottomSheet
 import app.campfire.common.compose.LocalWindowSizeClass
@@ -56,11 +59,13 @@ import app.campfire.common.compose.icons.rounded.IdBadge
 import app.campfire.common.compose.layout.ContentLayout
 import app.campfire.common.compose.layout.LocalContentLayout
 import app.campfire.common.compose.theme.CampfireTheme
+import app.campfire.common.compose.theme.LocalUseDarkColors
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.common.screens.LoginScreen
 import app.campfire.core.di.UserScope
-import app.campfire.core.model.Tent
+import app.campfire.ui.theming.api.AppTheme
+import app.campfire.ui.theming.api.colorScheme
 import campfire.features.auth.ui.generated.resources.Res
 import campfire.features.auth.ui.generated.resources.action_add_campsite
 import campfire.features.auth.ui.generated.resources.action_back
@@ -94,52 +99,67 @@ private fun LoginContent(
   screen: LoginScreen,
   state: LoginUiState,
   modifier: Modifier = Modifier,
+) = CampfireTheme(
+  colorScheme = { colorScheme(state.theme) },
+  useDarkColors = LocalUseDarkColors.current,
 ) {
   Surface(
     modifier = modifier
       .systemBarsPadding()
       .fillMaxSize(),
   ) {
-    Box {
-      if (screen !is LoginScreen.New) {
-        CampfireTopAppBar(
-          title = {
-            Text(
-              when (screen) {
-                is LoginScreen.Additional -> stringResource(Res.string.login_add_account_title)
-                is LoginScreen.ReAuthentication -> stringResource(Res.string.login_reauth_account_title)
-              },
-            )
-          },
-          navigationIcon = {
-            if (screen is LoginScreen.Additional) {
-              val backLabel = stringResource(Res.string.action_back)
-              IconButtonTooltip(text = backLabel) {
-                IconButton(
-                  onClick = { state.eventSink(LoginUiEvent.NavigateBack) },
-                ) {
-                  Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = backLabel)
+    val urlFieldState = rememberServerUrlFieldState(state.serverUrl)
+    Box(Modifier.fillMaxSize()) {
+      Box(Modifier.fillMaxSize()) {
+        if (screen !is LoginScreen.New) {
+          CampfireTopAppBar(
+            title = {
+              Text(
+                when (screen) {
+                  is LoginScreen.Additional -> stringResource(Res.string.login_add_account_title)
+                  is LoginScreen.ReAuthentication -> stringResource(Res.string.login_reauth_account_title)
+                },
+              )
+            },
+            navigationIcon = {
+              if (screen is LoginScreen.Additional) {
+                val backLabel = stringResource(Res.string.action_back)
+                IconButtonTooltip(text = backLabel) {
+                  IconButton(
+                    onClick = { state.eventSink(LoginUiEvent.NavigateBack) },
+                  ) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = backLabel)
+                  }
                 }
               }
-            }
-          },
-        )
-      } else {
-        TitleBanner(
+            },
+          )
+        } else {
+          TitleBanner(
+            modifier = Modifier
+              .padding(
+                horizontal = 24.dp,
+                vertical = 48.dp,
+              ),
+          )
+        }
+
+        LoginUiContent(
+          state = state,
+          urlFieldState = urlFieldState,
+          autoFocus = screen is LoginScreen.Additional,
           modifier = Modifier
-            .padding(
-              horizontal = 24.dp,
-              vertical = 48.dp,
-            ),
+            .align(Alignment.Center)
+            .fillMaxWidth(),
         )
       }
 
-      LoginUiContent(
-        state = state,
-        autoFocus = screen is LoginScreen.Additional,
+      ServerUrlAssistBar(
+        urlState = urlFieldState,
+        onUrlChange = { state.eventSink(LoginUiEvent.ServerUrl(it)) },
         modifier = Modifier
-          .align(Alignment.Center)
-          .fillMaxWidth(),
+          .align(Alignment.BottomCenter)
+          .imePadding(),
       )
     }
   }
@@ -149,6 +169,7 @@ private fun LoginContent(
 @Composable
 internal fun LoginUiContent(
   state: LoginUiState,
+  urlFieldState: ServerUrlFieldState,
   modifier: Modifier = Modifier,
   autoFocus: Boolean = false,
 ) {
@@ -164,12 +185,13 @@ internal fun LoginUiContent(
   ) {
     ServerCard(
       autoFocus = autoFocus,
-      tent = state.tent,
-      onTentChange = { eventSink(LoginUiEvent.ChangeTent(it)) },
+      theme = state.theme,
+      onThemeChange = { eventSink(LoginUiEvent.ChangeTheme(it)) },
       serverName = state.serverName,
       onServerNameChange = { eventSink(LoginUiEvent.ServerName(it)) },
       serverUrl = state.serverUrl,
       onServerUrlChange = { eventSink(LoginUiEvent.ServerUrl(it)) },
+      urlState = urlFieldState,
       networkSettings = state.networkSettings,
       onEditNetworkSettingsClick = {
         scope.launch {
@@ -341,7 +363,7 @@ private fun LoginUiPreview(
 @Composable
 fun LoginUI_Blank() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "",
     serverUrl = "",
     userName = "",
@@ -359,7 +381,7 @@ fun LoginUI_Blank() = LoginUiPreview(
 fun LoginUI_Additional_Blank() = LoginUiPreview(
   screen = LoginScreen.Additional,
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "",
     serverUrl = "",
     userName = "",
@@ -375,9 +397,9 @@ fun LoginUI_Additional_Blank() = LoginUiPreview(
 @Preview
 @Composable
 fun LoginUI_ReAuthentication_Blank() = LoginUiPreview(
-  screen = LoginScreen.ReAuthentication("user_id", "r0adkll", Tent.Default, "", "https://abs.example.com"),
+  screen = LoginScreen.ReAuthentication("user_id", "r0adkll", "", "https://abs.example.com"),
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Abs",
     serverUrl = "https://abs.example.com",
     userName = "r0adkll",
@@ -399,7 +421,7 @@ fun LoginUI_ReAuthentication_Blank() = LoginUiPreview(
 @Composable
 fun LoginUI_Both_Methods() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "",
@@ -424,7 +446,7 @@ fun LoginUI_Both_Methods() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyOIDC() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "",
@@ -449,7 +471,7 @@ fun LoginUI_OnlyOIDC() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyOIDC_Failure() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "",
@@ -466,7 +488,7 @@ fun LoginUI_OnlyOIDC_Failure() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyOIDC_Authenticating() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "",
@@ -491,7 +513,7 @@ fun LoginUI_OnlyOIDC_Authenticating() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyPassword() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "Admin",
@@ -513,7 +535,7 @@ fun LoginUI_OnlyPassword() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyPassword_Failure() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "Admin",
@@ -535,7 +557,7 @@ fun LoginUI_OnlyPassword_Failure() = LoginUiPreview(
 @Composable
 fun LoginUI_OnlyPassword_Authenticating() = LoginUiPreview(
   state = LoginUiState(
-    tent = Tent.Default,
+    theme = AppTheme.Fixed.Tent,
     serverName = "Campfire",
     serverUrl = "https://campfire.homelab.net",
     userName = "Admin",

@@ -12,15 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - List/grid display toggle for the Series, Collections, and Playlists screens
 - Optional overall book progress indicator with time remaining in the player, toggleable in Playback settings
 - Setting to disable the wavy playback seek bar animation
+- Quick-insert bar above the keyboard when typing the server address at login, with one-tap snippets for https://, http://, local network prefixes, and the default Audiobookshelf port
+- Server addresses no longer require typing http(s):// — the login screen detects the right scheme automatically and fills it in
 
 ### Changed
 
 - Collection, series, and playlist cards now show an item-count badge in the corner of the cover
 - Server addresses are now redacted from diagnostic logs and crash reports to better protect your privacy
+- The tent picker on the login screen now offers the app's default themes, previews your choice live, and applies it as your app theme after signing in
 
 ### Deprecated
 
 ### Removed
+
+- The per-server tent color: the tent picker in Account settings is gone and campsite icons now share one look — theming is handled entirely by the theme picker
 
 ### Fixed
 
@@ -28,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash when the server sends a real-time library update containing unusual line-break characters (seen with some podcast descriptions)
 - Crash on launch when more than one account on the device had listening progress for the same book
 - Server addresses that resolve to a local IP through custom DNS being rejected on Android 16+ (the local network permission is now requested for them)
+- Campfire logo flame flickering during the Welcome to Login screen transition
 
 ### Other Notes & Contributions
 

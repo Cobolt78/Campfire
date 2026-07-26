@@ -59,13 +59,16 @@ import androidx.compose.ui.focus.FocusRequester.Companion.FocusRequesterFactory.
 import androidx.compose.ui.focus.FocusRequester.Companion.FocusRequesterFactory.component4
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -75,7 +78,6 @@ import app.campfire.auth.ui.shared.AuthSharedTransitionKey
 import app.campfire.auth.ui.shared.AuthSharedTransitionKey.ElementType
 import app.campfire.auth.ui.shared.AuthSharedTransitionKey.ElementType.Card
 import app.campfire.common.compose.icons.CampfireIcons
-import app.campfire.common.compose.icons.icon
 import app.campfire.common.compose.icons.rounded.AssignmentGlobe
 import app.campfire.common.compose.icons.rounded.Connected
 import app.campfire.common.compose.icons.rounded.Disconnected
@@ -83,7 +85,8 @@ import app.campfire.common.compose.icons.rounded.Settings
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
 import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.core.model.NetworkSettings
-import app.campfire.core.model.Tent
+import app.campfire.ui.theming.api.AppTheme
+import app.campfire.ui.theming.api.DefaultAppThemes
 import campfire.features.auth.ui.generated.resources.Res
 import campfire.features.auth.ui.generated.resources.action_clear_server_url
 import campfire.features.auth.ui.generated.resources.action_hide_password
@@ -110,12 +113,13 @@ import org.jetbrains.compose.resources.stringResource
 )
 @Composable
 internal fun ServerCard(
-  tent: Tent,
-  onTentChange: (Tent) -> Unit,
+  theme: AppTheme.Fixed,
+  onThemeChange: (AppTheme.Fixed) -> Unit,
   serverName: String,
   onServerNameChange: (String) -> Unit,
   serverUrl: String,
   onServerUrlChange: (String) -> Unit,
+  urlState: ServerUrlFieldState,
   networkSettings: NetworkSettings?,
   onEditNetworkSettingsClick: () -> Unit,
   username: String,
@@ -165,8 +169,8 @@ internal fun ServerCard(
 
     ServerNameAndIcon(
       enabled = !isAuthenticating,
-      tent = tent,
-      onTentChange = onTentChange,
+      theme = theme,
+      onThemeChange = onThemeChange,
       name = serverName,
       onNameChange = onServerNameChange,
       focusRequester = serverNameFocus,
@@ -178,10 +182,17 @@ internal fun ServerCard(
 
     Spacer(Modifier.size(16.dp))
 
+    if (urlState.value.text != serverUrl) {
+      urlState.value = TextFieldValue(serverUrl, TextRange(serverUrl.length))
+    }
+
     OutlinedTextField(
       enabled = !isAuthenticating,
-      value = serverUrl,
-      onValueChange = onServerUrlChange,
+      value = urlState.value,
+      onValueChange = {
+        urlState.value = it
+        if (it.text != serverUrl) onServerUrlChange(it.text)
+      },
       label = { Text(stringResource(Res.string.label_server_url)) },
       leadingIcon = {
         Icon(
@@ -228,7 +239,7 @@ internal fun ServerCard(
       },
       keyboardOptions = KeyboardOptions(
         keyboardType = KeyboardType.Uri,
-        autoCorrectEnabled = true,
+        autoCorrectEnabled = false,
         imeAction = ImeAction.Next,
       ),
       isError = connectionState is ConnectionState.Error,
@@ -239,6 +250,7 @@ internal fun ServerCard(
           horizontal = 16.dp,
         )
         .focusRequester(serverUrlFocus)
+        .onFocusChanged { urlState.isFocused = it.isFocused }
         .focusProperties {
           previous = serverNameFocus
           next = usernameFocus
@@ -389,8 +401,8 @@ internal fun ServerCard(
 @Composable
 private fun ServerNameAndIcon(
   enabled: Boolean,
-  tent: Tent,
-  onTentChange: (Tent) -> Unit,
+  theme: AppTheme.Fixed,
+  onThemeChange: (AppTheme.Fixed) -> Unit,
   name: String,
   onNameChange: (String) -> Unit,
   focusRequester: FocusRequester,
@@ -409,7 +421,7 @@ private fun ServerNameAndIcon(
         },
     ) {
       Image(
-        tent.icon,
+        theme.icon.icon(),
         contentDescription = null,
         modifier = Modifier
           .sharedElement(
@@ -441,14 +453,14 @@ private fun ServerNameAndIcon(
           vertical = 8.dp,
         ),
       ) {
-        Tent.entries.forEach { tentOption ->
+        DefaultAppThemes.forEach { themeOption ->
           Image(
-            tentOption.icon,
+            themeOption.icon.icon(),
             contentDescription = null,
             modifier = Modifier
               .clip(RoundedCornerShape(8.dp))
               .clickable {
-                onTentChange(tentOption)
+                onThemeChange(themeOption)
                 showTentPickerMenu = false
               },
           )

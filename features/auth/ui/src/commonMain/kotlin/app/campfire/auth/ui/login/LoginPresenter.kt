@@ -13,7 +13,7 @@ import app.campfire.auth.api.model.AUTH_METHOD_OPENID
 import app.campfire.auth.ui.BuildConfig
 import app.campfire.auth.ui.login.LoginUiEvent.AddCampsite
 import app.campfire.auth.ui.login.LoginUiEvent.ChangeNetworkSettings
-import app.campfire.auth.ui.login.LoginUiEvent.ChangeTent
+import app.campfire.auth.ui.login.LoginUiEvent.ChangeTheme
 import app.campfire.auth.ui.login.LoginUiEvent.NavigateBack
 import app.campfire.auth.ui.login.LoginUiEvent.Password
 import app.campfire.auth.ui.login.LoginUiEvent.ServerName
@@ -23,10 +23,11 @@ import app.campfire.common.screens.LoginScreen
 import app.campfire.core.di.UserScope
 import app.campfire.core.extensions.capitalized
 import app.campfire.core.model.NetworkSettings
-import app.campfire.core.model.Tent
 import app.campfire.core.model.UserId
 import app.campfire.core.permission.LocalNetworkPermissionController
 import app.campfire.network.oidc.AuthorizationFlow
+import app.campfire.ui.theming.api.AppTheme
+import app.campfire.ui.theming.api.AppThemeRepository
 import coil3.toUri
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.runtime.Navigator
@@ -45,12 +46,8 @@ class LoginPresenter(
   private val authRepository: AuthRepository,
   private val oauthAuthorizationFlow: AuthorizationFlow,
   private val localNetworkPermission: LocalNetworkPermissionController,
+  private val appThemeRepository: AppThemeRepository,
 ) : Presenter<LoginUiState> {
-
-  private val initialTent: Tent = when (screen) {
-    is LoginScreen.ReAuthentication -> screen.tent
-    else -> Tent.Default
-  }
 
   private val initialServerName: String = when (screen) {
     is LoginScreen.ReAuthentication -> screen.serverName
@@ -85,7 +82,7 @@ class LoginPresenter(
   override fun present(): LoginUiState {
     val coroutineScope = rememberCoroutineScope()
 
-    var tent by remember { mutableStateOf(initialTent) }
+    var theme by remember { mutableStateOf<AppTheme.Fixed>(AppTheme.Fixed.Tent) }
     var serverName by remember { mutableStateOf(initialServerName) }
     var serverUrl by remember { mutableStateOf(initialServerUrl) }
     var networkSettings by remember { mutableStateOf<NetworkSettings?>(null) }
@@ -110,7 +107,11 @@ class LoginPresenter(
       }
     }
 
-    val connectionState = connectionState(serverUrl, networkSettings)
+    val connectionState = connectionState(
+      serverUrl = serverUrl,
+      networkSettings = networkSettings,
+      onUrlResolved = { serverUrl = it },
+    )
 
     LaunchedEffect(serverUrl, connectionState) {
       serverUrl.toUri().authority?.split('.')?.firstOrNull()?.let {
@@ -121,7 +122,7 @@ class LoginPresenter(
     }
 
     return LoginUiState(
-      tent = tent,
+      theme = theme,
       serverName = serverName,
       serverUrl = serverUrl,
       userName = username,
@@ -134,7 +135,7 @@ class LoginPresenter(
       when (event) {
         NavigateBack -> navigator.pop()
 
-        is ChangeTent -> tent = event.tent
+        is ChangeTheme -> theme = event.theme
         is ChangeNetworkSettings -> networkSettings = event.settings
         is UserName -> username = event.userName
         is Password -> password = event.password
@@ -159,10 +160,11 @@ class LoginPresenter(
               serverName = serverName,
               username = username,
               password = password,
-              tent = tent,
               userId = existingUserId,
               networkSettings = networkSettings,
-            ).onFailure {
+            ).onSuccess {
+              applySelectedTheme(theme)
+            }.onFailure {
               isAuthenticating = false
               authError = when (it.cause) {
                 is IOException -> AuthError.NetworkError
@@ -184,10 +186,11 @@ class LoginPresenter(
                   codeVerifier = authorization.codeVerifier,
                   code = authorization.code,
                   state = authorization.state,
-                  tent = tent,
                   userId = existingUserId,
                   networkSettings = networkSettings,
-                ).onFailure { e ->
+                ).onSuccess {
+                  applySelectedTheme(theme)
+                }.onFailure { e ->
                   isAuthenticating = false
                   authError = when (e.cause) {
                     is IOException -> AuthError.NetworkError
@@ -205,12 +208,30 @@ class LoginPresenter(
     }
   }
 
+  /**
+   * A fresh login treats the picked default theme as the user's starting app theme.
+   * Re-authentication must not clobber whatever theme (possibly custom/AI) they already use.
+   */
+  private fun applySelectedTheme(theme: AppTheme.Fixed) {
+    if (screen !is LoginScreen.ReAuthentication) {
+      appThemeRepository.setCurrentTheme(theme)
+    }
+  }
+
+  /**
+   * Probes [serverUrl] for a reachable Audiobookshelf server. Scheme-less input (e.g.
+   * `192.168.1.50:13378` or `abs.example.com`) is probed with both schemes via
+   * [serverUrlProbeCandidates]; when one connects, [onUrlResolved] is invoked with the
+   * full URL so the field reflects the scheme that actually worked.
+   */
   @Composable
   private fun connectionState(
     serverUrl: String,
     networkSettings: NetworkSettings?,
+    onUrlResolved: (String) -> Unit,
   ): ConnectionState? {
     var connectionState by remember { mutableStateOf<ConnectionState?>(null) }
+    var autoResolvedUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(serverUrl, networkSettings) {
       if (serverUrl.isBlank()) {
@@ -218,23 +239,37 @@ class LoginPresenter(
         return@LaunchedEffect
       }
 
+      // The field was just rewritten with the scheme that connected; the current Success
+      // state already belongs to this exact URL, so don't probe (and flash Loading) again.
+      if (serverUrl == autoResolvedUrl && connectionState is ConnectionState.Success) {
+        return@LaunchedEffect
+      }
+      autoResolvedUrl = null
+
       connectionState = ConnectionState.Loading
 
       // Give the user some time to type the URL
       delay(PING_DELAY)
 
-      val uri = serverUrl.toUri()
-      if (uri.scheme == null || uri.authority == null) {
+      val candidates = serverUrlProbeCandidates(serverUrl)
+        .filter { candidate ->
+          val uri = candidate.toUri()
+          uri.scheme != null && uri.authority != null
+        }
+      if (candidates.isEmpty()) {
         connectionState = ConnectionState.Error(IllegalArgumentException("Invalid URL"))
         return@LaunchedEffect
       }
 
       // A LAN server (e.g. 192.168.x.x) needs the local-network permission on Android 16+, or the
       // status probe below silently times out. Prompt lazily now that a private address is present.
-      localNetworkPermission.requestIfNeeded(serverUrl)
+      localNetworkPermission.requestIfNeeded(candidates.first())
 
-      authRepository.status(serverUrl, networkSettings)
-        .onSuccess { status ->
+      var lastError: Throwable? = null
+      for (candidate in candidates) {
+        val result = authRepository.status(candidate, networkSettings)
+        val status = result.getOrNull()
+        if (status != null) {
           connectionState = ConnectionState.Success(
             AuthMethodState(
               passwordAuthEnabled = status.authMethods.contains(AUTH_METHOD_LOCAL),
@@ -248,10 +283,18 @@ class LoginPresenter(
               },
             ),
           )
+          if (candidate != serverUrl) {
+            autoResolvedUrl = candidate
+            onUrlResolved(candidate)
+          }
+          return@LaunchedEffect
         }
-        .onFailure { e ->
-          connectionState = ConnectionState.Error(e)
-        }
+        lastError = result.exceptionOrNull()
+      }
+
+      connectionState = ConnectionState.Error(
+        lastError ?: IllegalArgumentException("Unable to connect"),
+      )
     }
 
     return connectionState

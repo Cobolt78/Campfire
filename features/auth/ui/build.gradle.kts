@@ -18,10 +18,17 @@ kotlin {
         api(projects.data.network.oidc)
         implementation(projects.features.auth.api)
         implementation(projects.data.account.api)
+        implementation(projects.ui.theming.api)
 
         implementation(libs.compose.components.resources)
 
         implementation(libs.circuitx.overlays)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(libs.bundles.test.common)
       }
     }
   }
