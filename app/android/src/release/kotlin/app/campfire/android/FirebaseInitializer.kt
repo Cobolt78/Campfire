@@ -15,6 +15,7 @@ import app.campfire.core.logging.LogPriority.WARN
 import app.campfire.core.logging.bark
 import app.campfire.crashreporting.CrashReporter
 import app.campfire.crashreporting.impl.FirebaseCrashReporter
+import app.campfire.crashreporting.impl.redactedCopyOrSelf
 import app.campfire.settings.api.CampfireSettings
 import com.google.firebase.FirebaseApp
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -55,6 +56,28 @@ class FirebaseInitializer(
     observeFirebaseSetting()
   }
 
+  private var redactingHandlerInstalled = false
+
+  private fun installRedactingExceptionHandler() {
+    // The crash reporting setting can toggle repeatedly — only wrap the handler once
+    if (redactingHandlerInstalled) return
+    redactingHandlerInstalled = true
+
+    // Uncaught throwables never pass through CrashReporter.record, so their messages
+    // (Ktor embeds the full request URL in its exception messages) would upload raw.
+    // Wrapping Crashlytics' own handler lets us hand it a sanitized mirror instead.
+    val crashlyticsHandler = Thread.getDefaultUncaughtExceptionHandler() ?: return
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+      val sanitized = try {
+        throwable.redactedCopyOrSelf()
+      } catch (t: Throwable) {
+        // Never lose the crash report over a redaction failure
+        throwable
+      }
+      crashlyticsHandler.uncaughtException(thread, sanitized)
+    }
+  }
+
   private fun observeFirebaseSetting() {
     firebaseScope.launch {
       settings.observeCrashReportingEnabled().collect { enabled ->
@@ -63,6 +86,15 @@ class FirebaseInitializer(
           crashlytics.isCrashlyticsCollectionEnabled = true
         } else if (!enabled && crashlytics.isCrashlyticsCollectionEnabled) {
           crashlytics.isCrashlyticsCollectionEnabled = false
+        }
+
+        if (enabled) {
+          // Only wrap Crashlytics' handler once the user has actually opted into crash
+          // reporting; if they never do, we never touch the exception handler chain.
+          // Left in place on disable — Crashlytics stops reporting either way, and
+          // uninstalling a chained handler safely isn't possible if anything else
+          // wrapped it after us.
+          installRedactingExceptionHandler()
         }
       }
     }
