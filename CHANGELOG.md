@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Other Notes & Contributions
+
+## [1.0.0-rc1]
+
+### Added
+
 - List/grid display toggle for the Series, Collections, and Playlists screens
 - Optional overall book progress indicator with time remaining in the player, toggleable in Playback settings
 - Setting to disable the wavy playback seek bar animation
@@ -367,6 +381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.0.0-rc1]: https://github.com/r0adkll/Campfire/compare/v0.13.1-beta...v1.0.0-rc1
 [0.13.1-beta]: https://github.com/r0adkll/Campfire/compare/v0.12.0-beta...v0.13.1-beta
 [0.13.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.12.0-beta...v0.13.0-beta
 [0.12.0-beta]: https://github.com/r0adkll/Campfire/compare/v0.11.0-beta...v0.12.0-beta
