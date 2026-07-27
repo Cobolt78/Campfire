@@ -17,6 +17,7 @@ import androidx.media3.session.MediaSession.ConnectionResult.AcceptedResultBuild
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import app.campfire.audioplayer.impl.browse.BrowseMediaId
 import app.campfire.audioplayer.impl.browse.SuspendingMediaLibrarySessionCallback
 import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.core.logging.LogPriority
@@ -196,7 +197,8 @@ internal class MediaSessionCallback(
     params: LibraryParams?,
   ): LibraryResult<ImmutableList<MediaItem>> {
     val children = userComponent.mediaTree.getChildren(parentId, page, pageSize)
-    if (children.isNotEmpty()) {
+    // An empty page past the first is a valid end-of-pagination signal, not an error.
+    if (children.isNotEmpty() || page > 0) {
       return LibraryResult.ofItemList(children, params)
     }
     return LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
@@ -232,7 +234,7 @@ internal class MediaSessionCallback(
     pageSize: Int,
     params: LibraryParams?,
   ): LibraryResult<ImmutableList<MediaItem>> {
-    return userComponent.mediaTree.search(query).let {
+    return userComponent.mediaTree.getSearchResults(query, page, pageSize).let {
       LibraryResult.ofItemList(it, params)
     }
   }
@@ -254,7 +256,13 @@ internal class MediaSessionCallback(
   ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
     if (mediaItems.size == 1) {
       return serviceScope.future {
-        userComponent.playbackSessionManager.startSession(mediaItems.first().mediaId)
+        // Podcast episode entries from the media tree encode their episode id into the
+        // mediaId, so decode it to start the session against the right episode.
+        val browseId = BrowseMediaId.decode(mediaItems.first().mediaId)
+        userComponent.playbackSessionManager.startSession(
+          libraryItemId = browseId.libraryItemId,
+          episodeId = browseId.episodeId,
+        )
 
         // Return an error from this response as we've take responsibility for starting playback and
         // resolving / setting the media item(s).
