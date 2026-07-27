@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Crash on app launch when opening the app while logged out or when your account needs to be re-authenticated
+
 ### Other Notes & Contributions
 
 ## [1.0.0-rc1]
