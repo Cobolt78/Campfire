@@ -14,6 +14,7 @@ import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.MediaType as DomainMediaType
 import app.campfire.core.model.MetaTags
 import app.campfire.core.model.SeriesSequence
+import app.campfire.core.model.sortedByName
 import app.campfire.core.util.createIfAnyNotNull
 import app.campfire.core.util.createIfNotNull
 import app.campfire.data.LibraryItem as DatabaseLibraryItem
@@ -119,8 +120,13 @@ fun <T : Media> T.asDbModel(
   val metadataAuthorNameLF = metadata.authorNameLF
     ?: (metadata as? ExpandedBookMetadata)?.authors?.firstOrNull()?.name?.lastFirst
 
+  // The server builds the expanded series array from an unordered join, so sort it
+  // before picking the primary series or storing the list to keep both deterministic.
+  val expandedSeries = (metadata as? ExpandedBookMetadata)?.series
+    ?.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))
+
   val metadataSeries = (metadata as? MinifiedBookMetadata)?.series
-    ?: (metadata as? ExpandedBookMetadata)?.series?.firstOrNull()
+    ?: expandedSeries?.firstOrNull()
 
   val metadataSeriesSequence = metadataSeries?.sequence?.toIntOrNull() ?: run {
     // This is super-duper hacky, but the API does not have a great way to
@@ -129,6 +135,23 @@ fun <T : Media> T.asDbModel(
     metadata.seriesName?.let { seriesName ->
       SERIES_SEQUENCE_REGEX.find(seriesName)?.groupValues?.getOrNull(1)?.toIntOrNull()
     } ?: fallbackSeriesSequence
+  }
+
+  // The full set of series this book belongs to; the primary metadata_series_* columns
+  // only capture the first one.
+  val metadataSeriesList = (
+    expandedSeries
+      ?: listOfNotNull((metadata as? MinifiedBookMetadata)?.series)
+    ).map { series ->
+    SeriesSequence(
+      id = series.id,
+      name = series.name,
+      sequence = if (series.id == metadataSeries?.id) {
+        metadataSeriesSequence ?: Int.MAX_VALUE
+      } else {
+        series.sequence?.toIntOrNull() ?: Int.MAX_VALUE
+      },
+    )
   }
 
   return DatabaseMedia(
@@ -183,6 +206,7 @@ fun <T : Media> T.asDbModel(
     metadata_series_id = metadataSeries?.id,
     metadata_series_name = metadataSeries?.name,
     metadata_series_sequence = metadataSeriesSequence,
+    metadata_series = metadataSeriesList,
   )
 }
 
@@ -230,8 +254,24 @@ fun DomainMedia.asDbModel(
     metadata_series_id = metadataSeries?.id,
     metadata_series_name = metadataSeries?.name,
     metadata_series_sequence = metadataSeries?.sequence,
+    metadata_series = metadata.series,
   )
 }
+
+/**
+ * Rebuild the full series list from the database representation. The primary
+ * metadata_series_* columns win for their series (they receive sequence backfill from
+ * [app.campfire.data.MediaQueries.updateSeriesSequence]), with the remaining series
+ * from the encoded metadata_series column. The result is sorted by name so the order
+ * is stable regardless of the order the server returned the series in.
+ */
+private fun mergedSeries(
+  primary: SeriesSequence?,
+  series: List<SeriesSequence>?,
+): List<SeriesSequence> = buildList {
+  primary?.let(::add)
+  series?.forEach { if (it.id != primary?.id) add(it) }
+}.sortedByName()
 
 private val String.lastFirst: String
   get() {
@@ -379,17 +419,20 @@ suspend fun SelectForSeries.asDomainModel(
         language = metadata_language,
         isExplicit = metadata_explicit,
         isAbridged = metadata_abridged,
-        seriesSequence = createIfNotNull(
-          metadata_series_id,
-          metadata_series_name,
-          metadata_series_sequence,
-        ) {
-          SeriesSequence(
-            id = metadata_series_id!!,
-            name = metadata_series_name!!,
-            sequence = metadata_series_sequence!!,
-          )
-        },
+        series = mergedSeries(
+          primary = createIfNotNull(
+            metadata_series_id,
+            metadata_series_name,
+            metadata_series_sequence,
+          ) {
+            SeriesSequence(
+              id = metadata_series_id!!,
+              name = metadata_series_name!!,
+              sequence = metadata_series_sequence!!,
+            )
+          },
+          series = metadata_series,
+        ),
       ),
       coverImageUrl = urlHydrator.hydrateLibraryItem(id),
       coverPath = coverPath,
@@ -448,17 +491,20 @@ suspend fun SelectForCollection.asDomainModel(
         language = metadata_language,
         isExplicit = metadata_explicit,
         isAbridged = metadata_abridged,
-        seriesSequence = createIfNotNull(
-          metadata_series_id,
-          metadata_series_name,
-          metadata_series_sequence,
-        ) {
-          SeriesSequence(
-            id = metadata_series_id!!,
-            name = metadata_series_name!!,
-            sequence = metadata_series_sequence!!,
-          )
-        },
+        series = mergedSeries(
+          primary = createIfNotNull(
+            metadata_series_id,
+            metadata_series_name,
+            metadata_series_sequence,
+          ) {
+            SeriesSequence(
+              id = metadata_series_id!!,
+              name = metadata_series_name!!,
+              sequence = metadata_series_sequence!!,
+            )
+          },
+          series = metadata_series,
+        ),
       ),
       coverImageUrl = urlHydrator.hydrateLibraryItem(id),
       coverPath = coverPath,
@@ -517,17 +563,20 @@ suspend fun SelectForAuthorName.asDomainModel(
         language = metadata_language,
         isExplicit = metadata_explicit,
         isAbridged = metadata_abridged,
-        seriesSequence = createIfNotNull(
-          metadata_series_id,
-          metadata_series_name,
-          metadata_series_sequence,
-        ) {
-          SeriesSequence(
-            id = metadata_series_id!!,
-            name = metadata_series_name!!,
-            sequence = metadata_series_sequence!!,
-          )
-        },
+        series = mergedSeries(
+          primary = createIfNotNull(
+            metadata_series_id,
+            metadata_series_name,
+            metadata_series_sequence,
+          ) {
+            SeriesSequence(
+              id = metadata_series_id!!,
+              name = metadata_series_name!!,
+              sequence = metadata_series_sequence!!,
+            )
+          },
+          series = metadata_series,
+        ),
       ),
       coverImageUrl = urlHydrator.hydrateLibraryItem(id),
       coverPath = coverPath,
@@ -590,17 +639,20 @@ suspend fun LibraryItemWithMedia.asDomainModel(
         language = metadata_language,
         isExplicit = metadata_explicit,
         isAbridged = metadata_abridged,
-        seriesSequence = createIfNotNull(
-          metadata_series_id,
-          metadata_series_name,
-          metadata_series_sequence,
-        ) {
-          SeriesSequence(
-            id = metadata_series_id!!,
-            name = metadata_series_name!!,
-            sequence = metadata_series_sequence!!,
-          )
-        },
+        series = mergedSeries(
+          primary = createIfNotNull(
+            metadata_series_id,
+            metadata_series_name,
+            metadata_series_sequence,
+          ) {
+            SeriesSequence(
+              id = metadata_series_id!!,
+              name = metadata_series_name!!,
+              sequence = metadata_series_sequence!!,
+            )
+          },
+          series = metadata_series,
+        ),
         authors = metadataAuthors.map {
           DomainMedia.AuthorMetadata(
             id = it.id,
