@@ -1,6 +1,6 @@
 **Terms & Conditions**
 
-These terms and conditions apply to the Campfire app (hereby referred to as "Application") for mobile devices that was created by Drew Heavner (hereby referred to as "Service Provider") as an Open Source service.
+These terms and conditions apply to the Campfire app (hereby referred to as "Application") for mobile devices that was created by The Scavenger's Software LLC (hereby referred to as "Service Provider") as an Open Source service.
 
 Upon downloading or utilizing the Application, you are automatically agreeing to the following terms. It is strongly advised that you thoroughly read and understand these terms prior to using the Application.
 
@@ -32,7 +32,7 @@ These terms and conditions are effective as of 2025-11-06
 
 **Contact Us**
 
-If you have any questions or suggestions about the Terms and Conditions, please do not hesitate to contact the Service Provider at veedubusc@gmail.com.
+If you have any questions or suggestions about the Terms and Conditions, please do not hesitate to contact the Service Provider at drew@thescavengers.software.
 
 * * *
 
