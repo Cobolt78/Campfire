@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Other Notes & Contributions
+
+
+## [1.0.1]
+
+### Fixed
+
 - Crash when the server is unreachable or an item was deleted while opening Settings or resuming playback
 - Crash when resuming downloads on app launch on some Android 12+ devices
 - Crash when opening Android Auto settings on devices without Android Auto installed
@@ -29,7 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other Notes & Contributions
 
 - Fixed the Google Play release bundle build failing on a lint check
-
 
 ## [1.0.0]
 
@@ -429,6 +435,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.0.1]: https://github.com/r0adkll/Campfire/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/r0adkll/Campfire/compare/v1.0.0-rc3...v1.0.0
 [1.0.0-rc3]: https://github.com/r0adkll/Campfire/compare/v1.0.0-rc2...v1.0.0-rc3
 [1.0.0-rc2]: https://github.com/r0adkll/Campfire/compare/v1.0.0-rc1...v1.0.0-rc2
