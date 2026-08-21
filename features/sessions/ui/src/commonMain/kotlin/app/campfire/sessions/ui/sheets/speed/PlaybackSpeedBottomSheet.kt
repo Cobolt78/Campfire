@@ -3,6 +3,7 @@
 
 package app.campfire.sessions.ui.sheets.speed
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,11 +12,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,7 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -39,17 +46,24 @@ import app.campfire.audioplayer.AudioPlayerHolder
 import app.campfire.common.compose.analytics.Impression
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.ComponentHolder
-import app.campfire.core.extensions.toString
+import app.campfire.core.extensions.readable
+import app.campfire.core.extensions.readableHundredths
+import app.campfire.core.extensions.roundToHundredths
 import app.campfire.sessions.ui.sheets.SessionSheetLayout
 import app.campfire.settings.api.PlaybackSettings
 import campfire.features.sessions.ui.generated.resources.Res
 import campfire.features.sessions.ui.generated.resources.speed_bottomsheet_title
+import campfire.features.sessions.ui.generated.resources.speed_custom_action_apply
+import campfire.features.sessions.ui.generated.resources.speed_custom_action_cancel
+import campfire.features.sessions.ui.generated.resources.speed_custom_dialog_error
+import campfire.features.sessions.ui.generated.resources.speed_custom_dialog_label
+import campfire.features.sessions.ui.generated.resources.speed_custom_dialog_title
+import campfire.features.sessions.ui.generated.resources.speed_custom_open
 import com.r0adkll.kimchi.annotations.ContributesTo
 import com.slack.circuit.overlay.OverlayHost
 import com.slack.circuitx.overlays.BottomSheetOverlay
 import ir.mahozad.multiplatform.wavyslider.WaveDirection
 import ir.mahozad.multiplatform.wavyslider.material3.WavySlider
-import kotlin.math.roundToInt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -156,14 +170,20 @@ private fun PlaybackSpeedBottomSheet(
       val waveVelocity = lerp(WaveVelocityRange.start, WaveVelocityRange.endInclusive, sliderProgressNormalized)
       val waveThickness = lerp(WaveThicknessRange.start, WaveThicknessRange.endInclusive, sliderProgressNormalized)
 
+      val setSpeed: (Float) -> Unit = { raw ->
+        val speed = raw.roundToHundredths().coerceIn(DefaultSpeedRange)
+        // Rounding to hundredths means nearby drag frames resolve to the same value; only push real changes
+        if (speed != sliderValue) {
+          sliderValue = speed
+          Analytics.send(PlaybackActionEvent(Speed, Changed, extras = mapOf("speed" to speed)))
+          component.audioPlayerHolder.currentPlayer.value?.setPlaybackSpeed(speed)
+        }
+      }
+
       WavySlider(
         value = sliderValue,
         valueRange = DefaultSpeedRange,
-        onValueChange = {
-          sliderValue = it
-          Analytics.send(PlaybackActionEvent(Speed, Changed, extras = mapOf("speed" to it)))
-          component.audioPlayerHolder.currentPlayer.value?.setPlaybackSpeed(it)
-        },
+        onValueChange = setSpeed,
         waveLength = waveLength,
         waveHeight = waveHeight,
         waveVelocity = waveVelocity to WaveDirection.TAIL,
@@ -172,48 +192,101 @@ private fun PlaybackSpeedBottomSheet(
         modifier = Modifier.weight(1f),
       )
 
+      var showCustomSpeedDialog by remember { mutableStateOf(false) }
+      val customSpeedLabel = stringResource(Res.string.speed_custom_open)
+
       Text(
         text = "${sliderValue.readableHundredths}x",
-        textAlign = TextAlign.Right,
+        textAlign = TextAlign.Center,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.ExtraBold,
         modifier = Modifier
-          .padding(horizontal = 22.dp)
-          .width(36.dp),
+          .padding(start = 12.dp)
+          .clip(RoundedCornerShape(12.dp))
+          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true }
+          .padding(horizontal = 8.dp, vertical = 12.dp)
+          .width(44.dp),
       )
+
+      if (showCustomSpeedDialog) {
+        CustomSpeedDialog(
+          initialSpeed = sliderValue,
+          onDismiss = { showCustomSpeedDialog = false },
+          onConfirm = { speed ->
+            showCustomSpeedDialog = false
+            setSpeed(speed)
+          },
+        )
+      }
     }
 
     Spacer(Modifier.height(24.dp))
   }
 }
 
-internal val Float.readable: String
-  get() {
-    val asInt = roundToInt()
-    val isWhole = this == asInt.toFloat()
-    val hasHalf = (this * 10) % 1 == 0.5f
-    return if (isWhole) {
-      "$asInt"
-    } else if (hasHalf) {
-      toString(2)
-    } else {
-      toString(1)
-    }
-  }
+@Composable
+private fun CustomSpeedDialog(
+  initialSpeed: Float,
+  onDismiss: () -> Unit,
+  onConfirm: (Float) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  var input by remember { mutableStateOf(initialSpeed.readableHundredths) }
+  val parsed = parsePlaybackSpeed(input)
+  val isError = input.isNotBlank() && parsed == null
+  val rangeError = stringResource(
+    Res.string.speed_custom_dialog_error,
+    DefaultSpeedRange.start.readable,
+    DefaultSpeedRange.endInclusive.readable,
+  )
 
-internal val Float.readableHundredths: String
-  get() {
-    val asInt = roundToInt()
-    val isWhole = this == asInt.toFloat()
-    val hasFraction = (this * 10) % 1 != 0.0f
-    return if (isWhole) {
-      "$asInt"
-    } else if (hasFraction) {
-      toString(2)
-    } else {
-      toString(1)
-    }
-  }
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    modifier = modifier,
+    title = { Text(stringResource(Res.string.speed_custom_dialog_title)) },
+    text = {
+      OutlinedTextField(
+        value = input,
+        onValueChange = { input = it },
+        singleLine = true,
+        isError = isError,
+        label = { Text(stringResource(Res.string.speed_custom_dialog_label)) },
+        suffix = { Text("x") },
+        supportingText = { Text(rangeError) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+      )
+    },
+    confirmButton = {
+      TextButton(
+        enabled = parsed != null,
+        onClick = { parsed?.let(onConfirm) },
+      ) {
+        Text(stringResource(Res.string.speed_custom_action_apply))
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text(stringResource(Res.string.speed_custom_action_cancel))
+      }
+    },
+  )
+}
+
+/**
+ * Parse a user-entered playback speed such as "1.2", "1,2" or "1.2x", rounded to hundredths.
+ * Returns null if the text isn't a number or falls outside [DefaultSpeedRange].
+ */
+internal fun parsePlaybackSpeed(text: String): Float? {
+  val value = text.trim()
+    .removeSuffix("x")
+    .removeSuffix("X")
+    .trim()
+    .replace(',', '.')
+    .toFloatOrNull()
+    ?.roundToHundredths()
+    ?: return null
+  return value.takeIf { it in DefaultSpeedRange }
+}
 
 private val WavelengthRange = 40.dp.rangeTo(135.dp)
 private val WaveHeightRange = 0.dp.rangeTo(40.dp)
