@@ -287,7 +287,8 @@ def publish(version, dry_run, assume_yes):
     files = ["CHANGELOG.md", str(fastlane_path(version).relative_to(REPO_ROOT))]
     if git("status", "--porcelain", "--", *files):
         run(["git", "add", *files])
-        run(["git", "commit", "--quiet", "-m", f"Prepare release {version}"])
+        # [skip ci]: the release itself builds from the tag; no alpha needed for this commit.
+        run(["git", "commit", "--quiet", "-m", f"Prepare release {version} [skip ci]"])
         print(f"Committed: Prepare release {version}")
     run(["git", "push", "--quiet", "origin", "main"], capture=False)
 

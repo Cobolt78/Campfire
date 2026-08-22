@@ -273,6 +273,7 @@ jobs:
       # `campfire.version` is always the version being prepared for release (scripts/release
       # reads it), so once a release ships move it to the next version: 1.0.2 -> 1.0.3,
       # 1.1.0-rc2 -> 1.1.0-rc3. Skipped if someone already moved it past the released tag.
+      # [skip ci] keeps the bump commit from producing a throwaway alpha build.
       - name: Compute next version
         id: next
         env:
@@ -303,5 +304,5 @@ jobs:
           sed -i "s/^campfire\.version=.*/campfire.version=$NEXT/" gradle.properties
           git config user.name "campfire-bot"
           git config user.email "campfire-bot@users.noreply.github.com"
-          git commit -am "Bump campfire.version to $NEXT"
+          git commit -am "Bump campfire.version to $NEXT [skip ci]"
           git push origin main

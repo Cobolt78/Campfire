@@ -70,9 +70,15 @@ jobs:
           ORG_GRADLE_PROJECT_CAMPFIRE_VERSIONCODE: ${{ github.run_number }}
           CI: true
 
+      # Alphas are 1:1 with squash-merged PRs, so the notes are the commit subject plus a
+      # link back to the PR (the subject carries the "(#123)" suffix GitHub adds on squash).
       - name: Create Release Notes
         run: |
-          ./campfire changelog --version Unreleased > app/android/release-notes.txt
+          subject="$(git log -1 --format='%s')"
+          echo "$subject" > app/android/release-notes.txt
+          if [[ "$subject" =~ \(#([0-9]+)\)$ ]]; then
+            echo "${{ github.server_url }}/${{ github.repository }}/pull/${BASH_REMATCH[1]}" >> app/android/release-notes.txt
+          fi
           echo " "
           cat app/android/release-notes.txt
 

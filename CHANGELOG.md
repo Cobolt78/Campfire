@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other Notes & Contributions
 
 - Added `scripts/release` to cut releases in one step; the Release workflow now bumps `campfire.version` automatically after a release
+- Alpha build release notes now describe the PR that produced the build instead of the cumulative Unreleased changelog
 
 ## [1.0.1]
 
