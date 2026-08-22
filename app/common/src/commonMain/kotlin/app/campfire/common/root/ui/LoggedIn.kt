@@ -55,6 +55,7 @@ import app.campfire.common.compose.widgets.LocalItemCardMarquee
 import app.campfire.common.di.UserComponent
 import app.campfire.common.navigator.HomeNavigator
 import app.campfire.common.navigator.OpenUrlNavigator
+import app.campfire.common.root.automation.AutomationScreens
 import app.campfire.common.screens.BaseScreen
 import app.campfire.common.screens.DetailScreen
 import app.campfire.common.screens.EmptyScreen
@@ -117,6 +118,17 @@ internal fun LoggedInWindow(
     navigator = baseNavigator,
     eventListeners = userComponent.navigationEventListeners,
   )
+
+  // Debug-only automation deep links that need user-scoped dependencies
+  LaunchedEffect(deepLink, userComponent) {
+    val automation = userComponent.automationDeepLinks
+    when (deepLink) {
+      is DeepLink.Setup -> deepLink.libraryName?.let { automation.selectLibrary(it) }
+      is DeepLink.Play -> automation.play(deepLink.libraryItemId)
+      is DeepLink.StopPlayback -> automation.stopPlayback()
+      else -> Unit
+    }
+  }
 
   // Observe Current Session
   val currentSession by remember(userComponent) {
@@ -226,7 +238,7 @@ private fun LoggedInUi(
         is DeepLink.ItemDetail -> {
           detailBackStack.push(LibraryItemScreen(deepLink.libraryItemId))
         }
-        DeepLink.None -> Unit
+        else -> Unit
       }
     } else {
       val detailScreens = detailBackStack.popUntil { it.screen is EmptyScreen }
@@ -238,7 +250,7 @@ private fun LoggedInUi(
         is DeepLink.ItemDetail -> {
           backstack.push(LibraryItemScreen(deepLink.libraryItemId))
         }
-        DeepLink.None -> Unit
+        else -> Unit
       }
     }
   }
@@ -265,6 +277,28 @@ private fun LoggedInUi(
   }
 
   var playbackBarExpanded by rememberRetainedSaveable { mutableStateOf(false) }
+
+  // Debug-only automation deep links: navigate to a named screen / open the full player
+  LaunchedEffect(deepLink) {
+    when (deepLink) {
+      is DeepLink.Navigate -> {
+        playbackBarExpanded = false
+        val screen = AutomationScreens.resolve(deepLink)
+        when {
+          screen == null -> bark { "Automation: unknown screen '${deepLink.screen}'" }
+          deepLink.screen in AutomationScreens.rootScreenNames -> {
+            // Also close whatever the supporting pane is showing so the root is truly reset
+            detailBackStack.popUntil { it.screen is EmptyScreen }
+            homeNavigator.resetRoot(screen)
+          }
+          else -> homeNavigator.goTo(screen)
+        }
+      }
+      is DeepLink.ExpandPlayer -> playbackBarExpanded = true
+      is DeepLink.StopPlayback -> playbackBarExpanded = false
+      else -> Unit
+    }
+  }
 
   // A single, deterministic back handler for all "chrome" back consumers. The order of the
   // `when` below *is* the priority — read top to bottom. Registered at PRIORITY_OVERLAY (via

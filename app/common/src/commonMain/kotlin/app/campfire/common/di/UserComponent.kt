@@ -4,6 +4,7 @@
 package app.campfire.common.di
 
 import app.campfire.auth.api.screen.AnalyticConsentScreen
+import app.campfire.common.root.automation.UserAutomationDeepLinks
 import app.campfire.common.screens.BaseScreen
 import app.campfire.common.screens.HomeScreen
 import app.campfire.common.screens.LoginScreen
@@ -48,6 +49,9 @@ interface UserComponent {
   val coroutineScopeHolder: CoroutineScopeHolder
 
   val sessionsRepository: SessionsRepository
+
+  /** Debug-only automation deep links that need user-scoped dependencies */
+  val automationDeepLinks: UserAutomationDeepLinks
 
   @Provides @RootScreen
   fun provideRootScreen(

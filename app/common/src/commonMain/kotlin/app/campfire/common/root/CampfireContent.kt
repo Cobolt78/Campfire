@@ -12,12 +12,14 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import app.campfire.account.api.UserSessionManager
 import app.campfire.common.compose.LocalWindowSizeClass
+import app.campfire.common.root.automation.AutomationDeepLinks
 import app.campfire.common.root.ui.LoggedInWindow
 import app.campfire.common.root.ui.LoggedOutWindow
 import app.campfire.core.navigation.DeepLink
@@ -50,6 +52,7 @@ fun CampfireContentWithInsets(
   userSessionManager: UserSessionManager,
   themeManager: ThemeManager,
   themeRepository: AppThemeRepository,
+  automationDeepLinks: AutomationDeepLinks,
   @Assisted modifier: Modifier = Modifier,
 ) {
   val appUriHandler = remember(onOpenUrl) {
@@ -66,7 +69,17 @@ fun CampfireContentWithInsets(
     LocalUriHandler provides appUriHandler,
   ) {
     UserComponentContent(userSessionManager) { userComponent ->
-      when (userComponent.currentUserSession) {
+      val session = userComponent.currentUserSession
+      if (deepLink is DeepLink.Setup && session != UserSession.Loading) {
+        LaunchedEffect(deepLink) {
+          automationDeepLinks.applySetup(
+            setup = deepLink,
+            isLoggedIn = session is UserSession.LoggedIn,
+          )
+        }
+      }
+
+      when (session) {
         is UserSession.NeedsAuthentication,
         UserSession.LoggedOut,
         -> LoggedOutWindow(
@@ -110,6 +123,7 @@ fun CampfireContent(
   userSessionManager: UserSessionManager,
   themeManager: ThemeManager,
   themeRepository: AppThemeRepository,
+  automationDeepLinks: AutomationDeepLinks,
   @Assisted modifier: Modifier = Modifier,
 ) {
   CampfireContentWithInsets(
@@ -118,6 +132,7 @@ fun CampfireContent(
     userSessionManager = userSessionManager,
     themeManager = themeManager,
     themeRepository = themeRepository,
+    automationDeepLinks = automationDeepLinks,
     onOpenUrl = onOpenUrl,
     windowInsets = WindowInsets.systemBars
       .exclude(WindowInsets.statusBars)
