@@ -9,15 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Other Notes & Contributions
+
+## [1.0.2]
+
+### Added
+
 - Tap the speed value in the playback speed sheet to type an exact playback speed
 
 ### Changed
 
 - Cover art is now requested at the size it is displayed, so full-screen player and detail artwork is sharp instead of upscaled
-
-### Deprecated
-
-### Removed
 
 ### Fixed
 
@@ -444,6 +454,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.0.2]: https://github.com/r0adkll/Campfire/compare/1.0.1...1.0.2
 [1.0.1]: https://github.com/r0adkll/Campfire/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/r0adkll/Campfire/compare/v1.0.0-rc3...v1.0.0
 [1.0.0-rc3]: https://github.com/r0adkll/Campfire/compare/v1.0.0-rc2...v1.0.0-rc3
