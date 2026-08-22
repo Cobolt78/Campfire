@@ -22,7 +22,6 @@ def parse_args(argv):
     p.add_argument("--shots", help="Comma-separated shot names; default = every enabled shot for the class")
     p.add_argument("--locale", help="Locale to capture in (default: [app].locale)")
     p.add_argument("--out", type=Path, help="Write PNGs here instead of Store Metadata")
-    p.add_argument("--crop-9-16", action="store_true", help="Top-anchored crop to Play's 9:16 (off by default; see README 'Design decisions')")
     p.add_argument("--cold", action="store_true", help="Cold-boot the emulator instead of loading a snapshot")
     p.add_argument("--headless", action="store_true", help="Boot the emulator without a window")
     p.add_argument("--skip-build", action="store_true", help="Install the already-built APK")
@@ -36,9 +35,7 @@ def parse_args(argv):
 
 def run_steps(app: App, fixture: Fixture, shot: Shot, settle_ms: int) -> None:
     for step in shot.steps:
-        if step.get("welcome"):
-            app.reset_to_welcome()
-        elif "navigate" in step:
+        if "navigate" in step:
             arg = step.get("arg")
             if "title" in step:
                 arg = fixture.find_book(step["title"])["id"]
@@ -49,6 +46,8 @@ def run_steps(app: App, fixture: Fixture, shot: Shot, settle_ms: int) -> None:
             app.expand_player()
         elif step.get("stop_playback"):
             app.stop_playback()
+        elif "wait_for" in step:
+            app.wait_for(step["wait_for"], int(step.get("timeout", 20000)))
         elif "tap" in step:
             app.tap(step["tap"])
         elif "type" in step:
@@ -135,11 +134,6 @@ def main(argv=None) -> int:
                 app.setup(library=default_library, theme_mode=spec.app.get("theme_mode"), theme=spec.app.get("theme"))
                 time.sleep(2)
             # Reset to a neutral state so shots don't leak into each other
-            if app.needs_setup:
-                send_setup()
-                time.sleep(6)
-                app.wait_for_home(resend_setup=send_setup)
-                app.needs_setup = False
             app.stop_playback()
             app.navigate("home")
             time.sleep(1)
@@ -150,7 +144,7 @@ def main(argv=None) -> int:
                 (args.out / f"{name}.png").write_bytes(png.read_bytes())
             log(f"Wrote {len(captured)} PNGs to {args.out}")
         else:
-            write_shots(spec, cls, locale, captured, replace_all=names is None, crop_9_16=args.crop_9_16)
+            write_shots(spec, cls, locale, captured, replace_all=names is None)
     finally:
         if adb is not None and not args.keep_emulator:
             emulator.stop(adb)

@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mini player cover art no longer stays blank while a book is playing
+
 ### Other Notes & Contributions
+
+- Releases now publish to Google Play automatically: release candidates to open testing, final versions as a staged production rollout
 
 - `scripts/release` is now a guided interactive flow that keeps Gradle output in a log file and helps resolve blockers such as an over-limit store changelog
 

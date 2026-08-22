@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .config import REPO_ROOT, Spec
 from .emulator import Adb
-from .proc import ShotError, log, run
+from .proc import wait_until, ShotError, log, run
 
 MAIN = "app.campfire.android.MainActivity"
 
@@ -20,7 +20,6 @@ class App:
         self.package = spec.app["package"]
         self.activity = spec.app.get("activity", MAIN)
         self.variant = spec.app["variant"]
-        self.needs_setup = False
 
     # -- install -------------------------------------------------------------------------
     def build_and_install(self, *, skip_build: bool = False) -> None:
@@ -28,7 +27,7 @@ class App:
         if not skip_build:
             log(f"Building {self.variant} APK")
             # Never bake the developer's login prefill (~/.gradle/gradle.properties) into this APK:
-            # the signed-out Welcome shot would show the server address and username.
+            # the signed-out screen seen during setup must not leak the server address or username.
             run([str(REPO_ROOT / "gradlew"), f":app:android:assemble{self.variant[0].upper()}{self.variant[1:]}",
                  "-Pcampfire_no_test_credentials=true", "-q"], cwd=str(REPO_ROOT))
         pattern = str(REPO_ROOT / "app" / "android" / "build" / "outputs" / "apk" / flavor / "debug" / "*.apk")
@@ -48,15 +47,6 @@ class App:
 
     def launch(self) -> None:
         self._start()
-
-    def reset_to_welcome(self) -> None:
-        """Clear app data and launch cold: the signed-out Welcome screen. Setup must be re-sent after."""
-        self.stop()
-        self.adb.shell("pm", "clear", self.package)
-        for perm in ("android.permission.POST_NOTIFICATIONS", "android.permission.ACCESS_LOCAL_NETWORK"):
-            self.adb.shell("pm", "grant", self.package, perm, check=False)
-        self._start()
-        self.needs_setup = True
 
     def setup(self, *, library: str, theme_mode: str | None, theme: str | None) -> None:
         cfg = self.spec.server
@@ -109,8 +99,21 @@ class App:
             extras += ["--es", "campfire_screen_arg", arg]
         self._start(*extras)
 
-    def play(self, item_id: str) -> None:
+    def play(self, item_id: str, timeout_ms: int = 30_000) -> None:
+        """Start playback and block until the platform media session reports PLAYING. The mini player
+        is not in the uiautomator tree, so the session state is the only reliable signal."""
         self._start("--es", "campfire_action", "play", "--es", "library_item_id", item_id)
+        wait_until(self.is_playing, timeout=timeout_ms / 1000, interval=0.5, what="playback to start")
+
+    def is_playing(self) -> bool:
+        dump = self.adb.shell("dumpsys", "media_session", check=False)
+        in_app = False
+        for line in dump.splitlines():
+            if "package=" in line:
+                in_app = f"package={self.package}" in line
+            if in_app and "state=PLAYING" in line:
+                return True
+        return False
 
     def expand_player(self) -> None:
         self._start("--es", "campfire_action", "expand_player")
@@ -127,17 +130,28 @@ class App:
         xml = self.adb.raw("exec-out", "cat", "/sdcard/campfire-ui.xml").decode(errors="replace")
         return ET.fromstring(xml).iter("node")
 
-    def tap(self, pattern: str) -> None:
+    def _find_node(self, pattern: str):
         rx = re.compile(pattern, re.IGNORECASE)
+        for node in self._ui_nodes():
+            labels = (node.get("text", ""), node.get("content-desc", ""))
+            if any(label and rx.search(label) for label in labels):
+                return node
+        return None
+
+    def tap(self, pattern: str) -> None:
         for _ in range(3):
-            for node in self._ui_nodes():
-                labels = (node.get("text", ""), node.get("content-desc", ""))
-                if any(label and rx.search(label) for label in labels):
-                    x1, y1, x2, y2 = map(int, re.findall(r"-?\d+", node.get("bounds", "")))
-                    self.adb.shell("input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
-                    return
+            node = self._find_node(pattern)
+            if node is not None:
+                x1, y1, x2, y2 = map(int, re.findall(r"-?\d+", node.get("bounds", "")))
+                self.adb.shell("input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                return
             time.sleep(1)
         raise ShotError(f"tap: no on-screen node matching /{pattern}/")
+
+    def wait_for(self, pattern: str, timeout_ms: int = 20_000) -> None:
+        """Block until a node whose text / content-description matches `pattern` is on screen."""
+        wait_until(lambda: self._find_node(pattern) is not None, timeout=timeout_ms / 1000,
+                   interval=0.5, what=f"an on-screen node matching /{pattern}/")
 
     def type_text(self, text: str) -> None:
         self.adb.shell("input", "text", text.replace(" ", "%s"))

@@ -1,11 +1,12 @@
 """Create, boot, and prepare the per-Device-Class emulators."""
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
-from .config import DeviceClass, WORK_DIR
+from .config import DeviceClass, WORK_DIR, pinned_now
 from .proc import ShotError, log, out, run, wait_until, which
 
 SDK = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or "~/Library/Android/sdk").expanduser()
@@ -38,11 +39,16 @@ class Adb:
 
 
 def ensure_avd(cls: DeviceClass) -> None:
-    """Write the AVD files directly (no avdmanager needed) if the AVD doesn't exist."""
+    """Write the AVD files directly (no avdmanager needed) if the AVD doesn't exist or its pinned
+    definition (resolution, density, orientation, system image) changed in shots.toml."""
     avd_dir = AVD_HOME / f"{cls.avd_name}.avd"
     ini = AVD_HOME / f"{cls.avd_name}.ini"
     if avd_dir.exists() and ini.exists():
-        return
+        if _avd_matches(avd_dir / "config.ini", cls):
+            return
+        log(f"AVD {cls.avd_name} no longer matches shots.toml; recreating")
+        shutil.rmtree(avd_dir)
+        ini.unlink()
 
     parts = cls.system_image.split(";")  # system-images;android-36;google_apis;arm64-v8a
     if len(parts) != 4:
@@ -104,6 +110,21 @@ def ensure_avd(cls: DeviceClass) -> None:
         f"path.rel=avd/{cls.avd_name}.avd\n"
         f"target={platform}\n"
     )
+
+
+def _avd_matches(config_ini: Path, cls: DeviceClass) -> bool:
+    if not config_ini.exists():
+        return False
+    current = dict(line.split("=", 1) for line in config_ini.read_text().splitlines() if "=" in line)
+    _, platform, tag, abi = cls.system_image.split(";")
+    expected = {
+        "hw.lcd.width": str(cls.width),
+        "hw.lcd.height": str(cls.height),
+        "hw.lcd.density": str(cls.density),
+        "hw.initialOrientation": cls.orientation,
+        "image.sysdir.1": f"system-images/{platform}/{tag}/{abi}/",
+    }
+    return all(current.get(k) == v for k, v in expected.items())
 
 
 def _running_serials() -> list[str]:
@@ -237,6 +258,9 @@ def prepare(adb: Adb) -> None:
     adb("emu", "gsm", "voice", "home", check=False)
     adb("emu", "gsm", "data", "home", check=False)
     adb("emu", "gsm", "signal-profile", "4", check=False)
+    # Hide the mobile signal/RAT icons: the "5G" label comes and goes between runs. Cosmetic only —
+    # disabling mobile data instead breaks the emulator's route to the host.
+    adb.shell("settings", "put", "secure", "icon_blacklist", "mobile", check=False)
     set_clock(adb)
     # Hide the "USB debugging connected" notification icon
     adb.shell("setprop", "persist.adb.notify", "0", check=False)
@@ -246,9 +270,9 @@ def prepare(adb: Adb) -> None:
     adb.shell("cmd", "statusbar", "send-disable-flag", "notification-icons", check=False)
 
 
-def set_clock(adb: Adb, hhmm: str = "1200") -> None:
-    """Pin the device clock (needs root). Called before every capture so it never drifts."""
-    adb.shell("date", f"0821{hhmm}2026.00", check=False)
+def set_clock(adb: Adb) -> None:
+    """Pin the device clock to `pinned_now()` (needs root). Called before every capture so it never drifts."""
+    adb.shell("date", pinned_now().strftime("%m%d%H%M%Y.%S"), check=False)
     adb.shell("am", "broadcast", "-a", "android.intent.action.TIME_SET", check=False)
 
 
