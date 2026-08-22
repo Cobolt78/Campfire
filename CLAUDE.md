@@ -26,6 +26,11 @@ Campfire is an unofficial Kotlin Multiplatform native client for [Audiobookshelf
 
 # Store screenshots (phone | seven | ten) → fastlane/metadata/android (see tools/screenshots/README.md)
 tools/screenshots/run.py --class phone
+
+# Cut a release of `campfire.version` (gradle.properties): rolls CHANGELOG.md, writes the
+# fastlane changelog, pushes main and creates the GitHub release. `prepare` / `publish`
+# run the two halves separately; `--dry-run` previews.
+scripts/release
 ```
 
 ## Technology Stack

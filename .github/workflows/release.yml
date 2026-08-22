@@ -257,3 +257,51 @@ jobs:
           asset_path: app/android/build/outputs/apk/foss/release/android-foss-release.apk
           asset_name: campfire-foss-release.apk
           asset_content_type: application/vnd.android.package-archive
+
+  bump-version:
+    name: Bump campfire.version
+    needs: [ android-beta, android-play, android-foss ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          # Admin PAT so the commit can land on the protected main branch (see baseline-prof.yml).
+          token: ${{ secrets.CAMPFIRE_BOT_PAT }}
+
+      # `campfire.version` is always the version being prepared for release (scripts/release
+      # reads it), so once a release ships move it to the next version: 1.0.2 -> 1.0.3,
+      # 1.1.0-rc2 -> 1.1.0-rc3. Skipped if someone already moved it past the released tag.
+      - name: Compute next version
+        id: next
+        env:
+          RELEASED: ${{ github.event.release.tag_name }}
+        run: |
+          released="${RELEASED#v}"
+          current="$(sed -n 's/^campfire\.version=//p' gradle.properties)"
+          if [ "$current" != "$released" ]; then
+            echo "campfire.version is already $current (released $released); nothing to bump"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$released" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc([0-9]+)$ ]]; then
+            next="${BASH_REMATCH[1]}-rc$((BASH_REMATCH[2] + 1))"
+          elif [[ "$released" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            next="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+          else
+            echo "::error::unrecognised release tag '$released'"
+            exit 1
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.next.outputs.skip != 'true'
+        env:
+          NEXT: ${{ steps.next.outputs.next }}
+        run: |
+          sed -i "s/^campfire\.version=.*/campfire.version=$NEXT/" gradle.properties
+          git config user.name "campfire-bot"
+          git config user.email "campfire-bot@users.noreply.github.com"
+          git commit -am "Bump campfire.version to $NEXT"
+          git push origin main
