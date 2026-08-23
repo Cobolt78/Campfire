@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Other Notes & Contributions
+
+## [1.0.4]
+
+### Fixed
+
 - What's New screen could occasionally ship without its changelog content
 
 ### Other Notes & Contributions
@@ -470,6 +476,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.0.4]: https://github.com/r0adkll/Campfire/compare/1.0.3...1.0.4
 [1.0.3]: https://github.com/r0adkll/Campfire/compare/1.0.2...1.0.3
 [1.0.2]: https://github.com/r0adkll/Campfire/compare/1.0.1...1.0.2
 [1.0.1]: https://github.com/r0adkll/Campfire/compare/v1.0.0...v1.0.1
