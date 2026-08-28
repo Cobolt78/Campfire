@@ -21,6 +21,7 @@ import app.campfire.core.model.Session
 import app.campfire.core.model.UserId
 import app.campfire.core.session.UserSession
 import app.campfire.core.session.requiredUserId
+import app.campfire.core.session.serverUrl
 import app.campfire.core.session.userId
 import app.campfire.core.time.FatherTime
 import app.campfire.data.Session as DbSession
@@ -231,6 +232,7 @@ class SqlDelightSessionDataSource(
         episodeId = episodeId.orEmpty(),
         serverSessionId = null,
         reportedTimeListening = Duration.ZERO,
+        hlsStreamPath = null,
       )
 
       // Insert, replacing any existing session and disable any other active sessions
@@ -329,11 +331,13 @@ class SqlDelightSessionDataSource(
     libraryItemId: LibraryItemId,
     serverSessionId: String,
     episodeId: PodcastEpisodeId?,
+    hlsStreamPath: String?,
   ) {
     val currentUserId = userSession.userId ?: return
     write {
       db.sessionQueries.attachServerSession(
         serverSessionId = serverSessionId,
+        hlsStreamPath = hlsStreamPath,
         libraryItemId = libraryItemId,
         userId = currentUserId,
         episodeId = episodeId.orEmpty(),
@@ -365,6 +369,20 @@ class SqlDelightSessionDataSource(
     }
   }
 
+  override suspend fun updatePlayMethod(
+    libraryItemId: LibraryItemId,
+    playMethod: PlayMethod,
+  ) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.updatePlayMethod(
+        playMethod = playMethod,
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
   private suspend fun hydrateSession(session: DbSession): Session {
     val libraryItem = libraryItemRepository.getLibraryItem(session.libraryItemId)
     return Session(
@@ -384,6 +402,16 @@ class SqlDelightSessionDataSource(
       episodeId = session.episodeId.takeIf { it.isNotEmpty() },
       serverSessionId = session.serverSessionId,
       reportedTimeListening = session.reportedTimeListening,
+      // The playlist location is whatever the transcode /play response said it is; a
+      // stored path is also the proof that a stream was actually opened (a constructed
+      // URL can point at a session that never transcoded)
+      hlsStreamUrl = session.hlsStreamPath?.let { path ->
+        if (path.startsWith("http")) {
+          path
+        } else {
+          userSession.serverUrl?.let { base -> "$base$path" }
+        }
+      },
     )
   }
 

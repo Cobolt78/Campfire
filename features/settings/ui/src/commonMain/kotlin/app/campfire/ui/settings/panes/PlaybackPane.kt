@@ -8,14 +8,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.campfire.core.Platform
+import app.campfire.core.currentPlatform
 import app.campfire.settings.api.MinPauseThresholdRange
 import app.campfire.settings.api.ResumeRewindRange
+import app.campfire.settings.api.SyncIntervalRange
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent
 import app.campfire.ui.settings.SettingsUiState
 import app.campfire.ui.settings.composables.DurationRangeSliderSetting
 import app.campfire.ui.settings.composables.DurationSliderSetting
 import app.campfire.ui.settings.composables.Header
 import app.campfire.ui.settings.composables.ResumeRewindPreviewRow
+import app.campfire.ui.settings.composables.StreamingMethodSetting
 import app.campfire.ui.settings.composables.SwitchSetting
 import app.campfire.ui.settings.composables.TimeJumpSetting
 import app.campfire.ui.settings.composables.TimeJumps
@@ -55,8 +59,10 @@ import campfire.features.settings.ui.generated.resources.setting_playback_track_
 import campfire.features.settings.ui.generated.resources.setting_playback_track_reset_title
 import campfire.features.settings.ui.generated.resources.setting_playback_wavy_scrubber_subtitle
 import campfire.features.settings.ui.generated.resources.setting_playback_wavy_scrubber_title
-import campfire.features.settings.ui.generated.resources.setting_server_sessions_subtitle
-import campfire.features.settings.ui.generated.resources.setting_server_sessions_title
+import campfire.features.settings.ui.generated.resources.setting_sync_interval_metered_subtitle
+import campfire.features.settings.ui.generated.resources.setting_sync_interval_metered_title
+import campfire.features.settings.ui.generated.resources.setting_sync_interval_unmetered_subtitle
+import campfire.features.settings.ui.generated.resources.setting_sync_interval_unmetered_title
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import org.jetbrains.compose.resources.stringResource
@@ -227,18 +233,48 @@ internal fun PlaybackPane(
       )
     }
 
-    Header(
-      title = { Text(stringResource(Res.string.header_streaming)) },
-    )
+    AnimatedVisibility(
+      visible = state.playbackSettings.syncEnabled,
+    ) {
+      Column {
+        DurationSliderSetting(
+          title = stringResource(Res.string.setting_sync_interval_unmetered_title),
+          subtitle = stringResource(Res.string.setting_sync_interval_unmetered_subtitle),
+          value = state.playbackSettings.syncIntervalUnmetered,
+          valueRange = SyncIntervalRange,
+          stepSeconds = 5,
+          onValueChange = {
+            state.eventSink(PlaybackSettingEvent.SyncIntervalUnmetered(it))
+          },
+        )
 
-    SwitchSetting(
-      value = state.playbackSettings.serverSessionsEnabled,
-      onValueChange = {
-        state.eventSink(PlaybackSettingEvent.ServerSessionsEnabled(it))
-      },
-      headlineContent = { Text(stringResource(Res.string.setting_server_sessions_title)) },
-      supportingContent = { Text(stringResource(Res.string.setting_server_sessions_subtitle)) },
-    )
+        DurationSliderSetting(
+          title = stringResource(Res.string.setting_sync_interval_metered_title),
+          subtitle = stringResource(Res.string.setting_sync_interval_metered_subtitle),
+          value = state.playbackSettings.syncIntervalMetered,
+          valueRange = SyncIntervalRange,
+          stepSeconds = 5,
+          onValueChange = {
+            state.eventSink(PlaybackSettingEvent.SyncIntervalMetered(it))
+          },
+        )
+      }
+    }
+
+    // HLS delivery is Android-only for now, so the chooser only appears where it can
+    // take effect
+    if (currentPlatform == Platform.ANDROID) {
+      Header(
+        title = { Text(stringResource(Res.string.header_streaming)) },
+      )
+
+      StreamingMethodSetting(
+        method = state.playbackSettings.streamingMethod,
+        onMethodChange = {
+          state.eventSink(PlaybackSettingEvent.StreamingMethodChanged(it))
+        },
+      )
+    }
 
     Header(
       title = { Text(stringResource(Res.string.header_playback_history)) },

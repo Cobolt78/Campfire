@@ -21,10 +21,10 @@ import app.campfire.network.AudioBookShelfApi
 import app.campfire.network.models.DeviceInfo
 import app.campfire.sessions.db.SessionDataSource
 import app.campfire.settings.api.CampfireSettings
-import app.campfire.settings.api.PlaybackSettings
 import com.r0adkll.kimchi.annotations.ContributesBinding
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -50,6 +50,21 @@ interface ServerSessionAttacher {
 
   /** Fire-and-forget: attaches a server session to [session] when eligible. */
   fun attachAsync(session: Session)
+
+  /**
+   * Opens a transcode (HLS) server session for [session], returning its id and playlist
+   * path, or null on any failure or timeout. Unlike [attachAsync] this is a
+   * *bounded-blocking* call — an HLS queue cannot exist without the playlist URL — but the
+   * /play response itself is ~15ms (the playlist is pre-generated; ffmpeg spawns
+   * asynchronously), so the bound is a safety net, not an expected wait.
+   */
+  suspend fun openTranscodeSession(session: Session): TranscodeStream?
+
+  /** A freshly opened transcode session and the playlist path its /play response reported. */
+  data class TranscodeStream(
+    val sessionId: String,
+    val streamPath: String,
+  )
 }
 
 @OptIn(ExperimentalAtomicApi::class)
@@ -60,7 +75,6 @@ class DefaultServerSessionAttacher(
   private val api: AudioBookShelfApi,
   private val sessionDataSource: SessionDataSource,
   private val campfireSettings: CampfireSettings,
-  private val playbackSettings: PlaybackSettings,
   private val applicationInfo: ApplicationInfo,
   private val dispatcherProvider: DispatcherProvider,
   @ForScope(AppScope::class) private val applicationScope: CoroutineScope,
@@ -80,7 +94,6 @@ class DefaultServerSessionAttacher(
   override fun attachAsync(session: Session) {
     // Downloads play entirely locally and never open server sessions
     if (session.playMethod == PlayMethod.Local) return
-    if (!playbackSettings.serverSessionsEnabled) return
     if (session.serverSessionId != null) return
 
     val itemId = session.libraryItem.id
@@ -111,8 +124,57 @@ class DefaultServerSessionAttacher(
     }
   }
 
+  override suspend fun openTranscodeSession(session: Session): ServerSessionAttacher.TranscodeStream? {
+    val itemId = session.libraryItem.id
+    if (!markPending(itemId)) return null
+    try {
+      val playSession = withTimeoutOrNull(TRANSCODE_OPEN_TIMEOUT) {
+        api.startPlaybackSession(
+          libraryItemId = itemId,
+          episodeId = session.episodeId,
+          deviceInfo = deviceInfo(session),
+          mediaPlayer = platformMediaPlayer(),
+          supportedMimeTypes = platformSupportedMimeTypes(),
+          forceTranscode = true,
+        ).getOrElse { error ->
+          wbark(throwable = error) { "Transcode session open failed; falling back to direct play" }
+          null
+        }
+      } ?: return null
+
+      // The response's contentUrl is the stream's authoritative address — without it there
+      // is nothing to hand the player, so treat its absence as an open failure
+      val streamPath = playSession.audioTracks.firstOrNull()?.contentUrl
+      if (streamPath == null) {
+        wbark { "Transcode session ${playSession.id} reported no playlist URL; falling back to direct play" }
+        return null
+      }
+
+      ibark { "Opened transcode session ${playSession.id} for $itemId at $streamPath" }
+      return ServerSessionAttacher.TranscodeStream(
+        sessionId = playSession.id,
+        streamPath = streamPath,
+      )
+    } finally {
+      clearPending(itemId)
+    }
+  }
+
   private suspend fun attach(session: Session) {
-    val playSession = withTimeoutOrNull(ATTACH_TIMEOUT_MS) {
+    // The caller's snapshot can be stale: the HLS router may have attached a transcode
+    // session after this launch was scheduled (e.g. a double start from the UI). Firing
+    // /play here anyway wouldn't just be wasteful — the server dedupes sessions per
+    // device, so it would CLOSE that transcode session and 404 its playlist mid-prepare.
+    val currentRow = sessionDataSource.getSession(session.libraryItem.id)
+    if (currentRow?.serverSessionId != null) {
+      dbark {
+        "Row for ${session.libraryItem.id} already carries server session " +
+          "${currentRow.serverSessionId}; skipping direct-play attach"
+      }
+      return
+    }
+
+    val playSession = withTimeoutOrNull(ATTACH_TIMEOUT) {
       api.startPlaybackSession(
         libraryItemId = session.libraryItem.id,
         episodeId = session.episodeId,
@@ -202,6 +264,9 @@ class DefaultServerSessionAttacher(
   }
 
   companion object {
-    private const val ATTACH_TIMEOUT_MS = 10_000L
+    private val ATTACH_TIMEOUT = 10_000L.milliseconds
+
+    // Blocking-adjacent: this bound is what playback start waits on for HLS items
+    private val TRANSCODE_OPEN_TIMEOUT = 4_000L.milliseconds
   }
 }

@@ -68,8 +68,10 @@ import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.PlaybackHis
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.PlaybackWavyScrubber
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.RemoteNextPrevSkipsChapters
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.ResumeRewindRange
-import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.ServerSessionsEnabled
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.StreamingMethodChanged
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncEnabled
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncIntervalMetered
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncIntervalUnmetered
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.TrackResetThreshold
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepRewindAmount
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepRewindEnabled
@@ -155,7 +157,9 @@ class SettingsPresenter(
     }.collectAsState()
     val syncEnabled by remember { playbackSettings.observeSyncEnabled() }.collectAsState()
     val autoSyncEnabled by remember { playbackSettings.observeAutoSyncEnabled() }.collectAsState()
-    val serverSessionsEnabled by remember { playbackSettings.observeServerSessionsEnabled() }.collectAsState()
+    val streamingMethod by remember { playbackSettings.observeStreamingMethod() }.collectAsState()
+    val syncIntervalUnmetered by remember { playbackSettings.observeSyncIntervalUnmetered() }.collectAsState()
+    val syncIntervalMetered by remember { playbackSettings.observeSyncIntervalMetered() }.collectAsState()
     val playbackHistoryEnabled by remember { playbackSettings.observePlaybackHistoryEnabled() }.collectAsState()
     val autoRewindOnResumeEnabled by remember { playbackSettings.observeAutoRewindOnResumeEnabled() }.collectAsState()
     val resumeRewindConfig by remember { playbackSettings.observeResumeRewindConfig() }.collectAsState()
@@ -234,6 +238,7 @@ class SettingsPresenter(
     // Developer Settings
     val developerModeEnabled by remember { devSettings.observeDeveloperMode() }.collectAsState()
     val sessionAge by remember { devSettings.observeSessionAge() }.collectAsState()
+    val hlsLargeItemThreshold by remember { devSettings.observeHlsLargeItemThreshold() }.collectAsState()
     val showWidgetPinningPrompt by remember { settings.observeHasShownWidgetPinning() }.collectAsState()
     val mediaButtonPackages by remember { devSettings.observeMediaButtonPackages() }.collectAsState()
     val fakeAppUpdateSignedIn by remember { devSettings.observeFakeAppUpdateSignedIn() }.collectAsState()
@@ -263,7 +268,9 @@ class SettingsPresenter(
         mp3IndexSeeking = mp3IndexSeeking,
         remoteNextPrevSkipsChapters = remoteNextPrevSkipsChapters,
         syncEnabled = syncEnabled,
-        serverSessionsEnabled = serverSessionsEnabled,
+        streamingMethod = streamingMethod,
+        syncIntervalUnmetered = syncIntervalUnmetered,
+        syncIntervalMetered = syncIntervalMetered,
         autoSyncEnabled = syncEnabled && autoSyncEnabled,
         playbackHistoryEnabled = playbackHistoryEnabled,
         autoRewindOnResumeEnabled = autoRewindOnResumeEnabled,
@@ -301,6 +308,7 @@ class SettingsPresenter(
       developerSettings = DeveloperSettingsInfo(
         developerModeEnabled = developerModeEnabled || applicationInfo.debugBuild,
         sessionAge = sessionAge,
+        hlsLargeItemThreshold = hlsLargeItemThreshold,
         showWidgetPinningPrompt = showWidgetPinningPrompt,
         analyticsDebugState = analytics.debugState,
         mediaButtonPackages = mediaButtonPackages,
@@ -362,7 +370,9 @@ class SettingsPresenter(
             playbackSettings.remoteNextPrevSkipsChapters = event.remoteNextPrevSkipsChapters
           is SyncEnabled -> playbackSettings.syncEnabled = event.enabled
           is AutoSyncEnabled -> playbackSettings.autoSyncEnabled = event.enabled
-          is ServerSessionsEnabled -> playbackSettings.serverSessionsEnabled = event.enabled
+          is StreamingMethodChanged -> playbackSettings.streamingMethod = event.method
+          is SyncIntervalUnmetered -> playbackSettings.syncIntervalUnmetered = event.interval
+          is SyncIntervalMetered -> playbackSettings.syncIntervalMetered = event.interval
           is PlaybackHistoryEnabled -> {
             playbackSettings.playbackHistoryEnabled = event.enabled
             if (!event.enabled) {
@@ -427,6 +437,8 @@ class SettingsPresenter(
 
         is SettingsUiEvent.DeveloperSettingEvent -> when (event) {
           is SettingsUiEvent.DeveloperSettingEvent.SessionAge -> devSettings.sessionAge = event.sessionAge
+          is SettingsUiEvent.DeveloperSettingEvent.HlsLargeItemThreshold ->
+            devSettings.hlsLargeItemThreshold = event.threshold
           is SettingsUiEvent.DeveloperSettingEvent.ShowWidgetPinningChange ->
             settings.hasShownWidgetPinning = event.enabled
           is SettingsUiEvent.DeveloperSettingEvent.EnableDeveloperMode -> devSettings.developerModeEnabled = true

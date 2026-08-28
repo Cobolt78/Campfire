@@ -6,6 +6,7 @@ package app.campfire.settings.test
 import app.campfire.settings.api.PendingResumeRewind
 import app.campfire.settings.api.PlaybackSettings
 import app.campfire.settings.api.ResumeRewindConfig
+import app.campfire.settings.api.StreamingMethod
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,11 +74,23 @@ class FakePlaybackSettings : PlaybackSettings {
     set(value) { _playbackHistoryEnabled.value = value }
   override fun observePlaybackHistoryEnabled(): StateFlow<Boolean> = _playbackHistoryEnabled.asStateFlow()
 
-  private val _serverSessionsEnabled = MutableStateFlow(true)
-  override var serverSessionsEnabled: Boolean
-    get() = _serverSessionsEnabled.value
-    set(value) { _serverSessionsEnabled.value = value }
-  override fun observeServerSessionsEnabled(): StateFlow<Boolean> = _serverSessionsEnabled.asStateFlow()
+  private val _syncIntervalUnmetered = MutableStateFlow(15.seconds)
+  override var syncIntervalUnmetered: Duration
+    get() = _syncIntervalUnmetered.value
+    set(value) { _syncIntervalUnmetered.value = value }
+  override fun observeSyncIntervalUnmetered(): StateFlow<Duration> = _syncIntervalUnmetered.asStateFlow()
+
+  private val _syncIntervalMetered = MutableStateFlow(60.seconds)
+  override var syncIntervalMetered: Duration
+    get() = _syncIntervalMetered.value
+    set(value) { _syncIntervalMetered.value = value }
+  override fun observeSyncIntervalMetered(): StateFlow<Duration> = _syncIntervalMetered.asStateFlow()
+
+  private val _streamingMethod = MutableStateFlow(StreamingMethod.DIRECT_PLAY_ONLY)
+  override var streamingMethod: StreamingMethod
+    get() = _streamingMethod.value
+    set(value) { _streamingMethod.value = value }
+  override fun observeStreamingMethod(): StateFlow<StreamingMethod> = _streamingMethod.asStateFlow()
 
   private val _autoRewindOnResumeEnabled = MutableStateFlow(false)
   override var autoRewindOnResumeEnabled: Boolean

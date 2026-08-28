@@ -58,6 +58,7 @@ import app.campfire.playlists.api.screen.PlaylistDetailScreen
 import app.campfire.series.api.SeriesRepository
 import app.campfire.sessions.api.SessionQueue
 import app.campfire.sessions.api.SessionsRepository
+import app.campfire.sessions.api.StreamingRoutePredictor
 import app.campfire.sessions.api.observeContains
 import app.campfire.settings.api.CampfireSettings
 import app.campfire.ui.theming.api.ThemeManager
@@ -89,6 +90,7 @@ class BookPresenter(
   private val seriesRepository: SeriesRepository,
   private val sessionsRepository: SessionsRepository,
   private val sessionQueue: SessionQueue,
+  private val streamingRoutePredictor: StreamingRoutePredictor,
   private val mediaProgressRepository: MediaProgressRepository,
   private val playbackHistoryRepository: PlaybackHistoryRepository,
   private val playbackController: PlaybackController,
@@ -193,6 +195,13 @@ class BookPresenter(
 
     var collapseListenedChapters by remember { mutableStateOf(true) }
 
+    val canStreamHls = remember(libraryItem) {
+      streamingRoutePredictor.canStreamHls(libraryItem)
+    }
+    val willStreamHls by remember(libraryItem) {
+      streamingRoutePredictor.observeWouldStreamHls(libraryItem)
+    }.collectAsState(false)
+
     val slots = buildSlots(
       libraryItem = libraryItem,
       libraryItemValidation = itemValidation,
@@ -209,6 +218,8 @@ class BookPresenter(
       isQueued = isQueued,
       addToPlaylistDialog = addToPlaylistDialog,
       collapseListenedChapters = collapseListenedChapters,
+      canStreamHls = canStreamHls,
+      willStreamHls = willStreamHls && offlineDownloadState?.isCompleted != true,
     )
 
     return ContentUiState(
@@ -230,8 +241,8 @@ class BookPresenter(
 
         is LibraryItemUiEvent.PlayClick -> {
           if (libraryItem.isEbookOnly) return@ContentUiState
-          analytics.send(ActionEvent("play_item", Click))
-          playbackController.startSession(libraryItem.id)
+          analytics.send(ActionEvent("play_item", Click, extras = event.method?.let { mapOf("method" to it) }))
+          playbackController.startSession(libraryItem.id, methodOverride = event.method)
         }
 
         is LibraryItemUiEvent.AuthorClick -> {
@@ -375,6 +386,8 @@ private fun buildSlots(
   session: Session?,
   addToPlaylistDialog: AddToPlaylistDialog,
   collapseListenedChapters: Boolean,
+  canStreamHls: Boolean,
+  willStreamHls: Boolean,
 ): List<ContentSlot> {
   return buildList {
     this += CoverImageSlot(
@@ -386,6 +399,7 @@ private fun buildSlots(
     this += TitleSlot(
       libraryItem = libraryItem,
       sharedTransitionKey = sharedTransitionKey,
+      showHlsBadge = willStreamHls,
     )
 
     val authors = libraryItem.media.metadata.authors
@@ -442,6 +456,8 @@ private fun buildSlots(
       isQueued = isQueued,
       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
       addToPlaylistDialog = addToPlaylistDialog,
+      canStreamHls = canStreamHls,
+      willStreamHls = willStreamHls,
     )
 
     libraryItem.media.metadata.description?.let { desc ->

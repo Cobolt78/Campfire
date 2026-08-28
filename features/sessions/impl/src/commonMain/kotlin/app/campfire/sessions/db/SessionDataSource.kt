@@ -63,11 +63,15 @@ interface SessionDataSource {
     episodeId: PodcastEpisodeId? = null,
   )
 
-  /** Attaches a server playback session to the row, resetting its reported watermark. */
+  /**
+   * Attaches a server playback session to the row, resetting its reported watermark.
+   * [hlsStreamPath] carries the transcode response's playlist path; null for direct play.
+   */
   suspend fun attachServerSession(
     libraryItemId: LibraryItemId,
     serverSessionId: String,
     episodeId: PodcastEpisodeId? = null,
+    hlsStreamPath: String? = null,
   )
 
   /**
@@ -79,5 +83,10 @@ interface SessionDataSource {
   suspend fun updateReportedTimeListening(
     libraryItemId: LibraryItemId,
     reported: Duration,
+  )
+
+  suspend fun updatePlayMethod(
+    libraryItemId: LibraryItemId,
+    playMethod: PlayMethod,
   )
 }
