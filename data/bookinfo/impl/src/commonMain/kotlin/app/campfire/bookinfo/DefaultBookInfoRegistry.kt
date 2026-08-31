@@ -6,6 +6,7 @@ package app.campfire.bookinfo
 import app.campfire.bookinfo.api.BookInfoProvider
 import app.campfire.bookinfo.api.BookInfoProviderSettings
 import app.campfire.bookinfo.api.BookInfoRegistry
+import app.campfire.bookinfo.api.CommunityContent
 import app.campfire.bookinfo.api.CommunityInfoState
 import app.campfire.bookinfo.api.CommunitySource
 import app.campfire.bookinfo.api.ProviderId
@@ -15,7 +16,6 @@ import app.campfire.bookinfo.api.bestMatch
 import app.campfire.bookinfo.store.BookInfoStore
 import app.campfire.bookinfo.store.CachedBookInfo
 import app.campfire.bookinfo.store.isStale
-import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
@@ -60,25 +60,39 @@ class DefaultBookInfoRegistry(
   override fun observeCommunityInfo(
     item: LibraryItem,
     preferredProvider: ProviderId?,
-  ): Flow<LoadState<out CommunityInfoState?>> {
-    val userId = userSession.userId ?: return flowOf(LoadState.Loaded(null))
-    val match = item.bestMatch() ?: return flowOf(LoadState.Loaded(null))
+  ): Flow<CommunityInfoState?> {
+    val userId = userSession.userId ?: return flowOf(null)
+    val match = item.bestMatch() ?: return flowOf(null)
 
     return observeProviders()
-      .map { statuses -> statuses.filter { it.canServeBookInfo && it.provider.canServe(match) } }
-      .distinctUntilChanged { old, new ->
-        old.map { it.provider.id to it.linkState } == new.map { it.provider.id to it.linkState }
+      .map { statuses ->
+        val usable = statuses.filter { it.canServeBookInfo && it.provider.canServe(match) }
+        // An enabled-but-unlinked review-capable provider is worth advertising
+        // when whoever ends up serving has no review text of its own.
+        val reviewsVia = statuses.firstOrNull {
+          it.enabled &&
+            it.provider.capabilities.hasReviewText &&
+            it.linkState is ProviderLinkState.NotLinked
+        }?.provider?.displayName
+        usable to reviewsVia
       }
-      .flatMapLatest { usable ->
+      .distinctUntilChanged { (oldUsable, oldVia), (newUsable, newVia) ->
+        oldUsable.map { it.provider.id to it.linkState } ==
+          newUsable.map { it.provider.id to it.linkState } &&
+          oldVia == newVia
+      }
+      .flatMapLatest { (usable, reviewsVia) ->
         val status = usable.firstOrNull { it.provider.id == preferredProvider }
           ?: usable.firstOrNull()
         if (status == null) {
-          flowOf(LoadState.Loaded(null))
+          flowOf(null)
         } else {
           streamFromStore(
             status = status,
             key = BookInfoStore.Key(userId, status.provider.id, item.id, match),
             sources = usable.map { CommunitySource(it.provider.id, it.provider.displayName) },
+            reviewsLinkProviderName = reviewsVia
+              .takeUnless { status.provider.capabilities.hasReviewText },
           )
         }
       }
@@ -92,13 +106,21 @@ class DefaultBookInfoRegistry(
     status: ProviderStatus,
     key: BookInfoStore.Key,
     sources: List<CommunitySource>,
-  ): Flow<LoadState<out CommunityInfoState?>> = flow {
+    reviewsLinkProviderName: String?,
+  ): Flow<CommunityInfoState?> = flow {
+    val base = CommunityInfoState(
+      providerId = status.provider.id,
+      providerName = status.provider.displayName,
+      availableSources = sources,
+      needsRelink = status.linkState is ProviderLinkState.Invalid,
+      reviewsLinkProviderName = reviewsLinkProviderName,
+    )
     val cached = store.cached(key)
     val invalidLink = status.linkState is ProviderLinkState.Invalid
 
     // A rejected token means fetches would just 401; serve whatever is cached.
     if (invalidLink && cached == null) {
-      emit(LoadState.Loaded(null))
+      emit(base.copy(content = CommunityContent.Unavailable))
       return@flow
     }
 
@@ -114,31 +136,24 @@ class DefaultBookInfoRegistry(
     var emittedData = false
     store.stream(key, refresh = refresh).collect { response ->
       when (response) {
-        is StoreReadResponse.Loading -> if (!emittedData) emit(LoadState.Loading)
+        is StoreReadResponse.Loading -> if (!emittedData) emit(base)
         is StoreReadResponse.Data -> {
           emittedData = true
-          emit(LoadState.Loaded(response.value.toState(status, sources)))
+          emit(base.copy(content = response.value.toContent()))
         }
-        is StoreReadResponse.Error -> if (!emittedData) emit(LoadState.Loaded(null))
+        is StoreReadResponse.Error -> if (!emittedData) {
+          emit(base.copy(content = CommunityContent.Unavailable))
+        }
         else -> Unit
       }
     }
   }
 
-  private fun CachedBookInfo.toState(
-    status: ProviderStatus,
-    sources: List<CommunitySource>,
-  ): CommunityInfoState? {
-    val info = info ?: return null
-    return CommunityInfoState(
-      providerId = status.provider.id,
-      providerName = status.provider.displayName,
-      providerUrl = info.providerUrl,
-      info = info,
-      reviews = reviews,
-      needsRelink = status.linkState is ProviderLinkState.Invalid,
-      availableSources = sources,
-    )
+  private fun CachedBookInfo.toContent(): CommunityContent {
+    return info
+      ?.takeIf { it.rating != null }
+      ?.let { CommunityContent.Available(it, reviews) }
+      ?: CommunityContent.Unavailable
   }
 
   private val ProviderStatus.canServeBookInfo: Boolean
