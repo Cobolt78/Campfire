@@ -95,6 +95,10 @@
   <string name="header_shake_to_reset">Reset</string>
   <string name="setting_playback_sleep_shake_to_reset_title">Shake-to-reset</string>
   <string name="setting_playback_sleep_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
+  <string name="setting_playback_sleep_reset_on_pause_title">Reset timer on pause</string>
+  <string name="setting_playback_sleep_reset_on_pause_subtitle">Reset the active sleep timer back to its original duration when playback is paused</string>
+  <string name="setting_playback_sleep_fade_out_duration_title">Fade out before stopping</string>
+  <string name="setting_playback_sleep_fade_out_duration_subtitle">Gradually lower the volume over the final seconds before the timer ends</string>
   <string name="setting_playback_shake_sensitivity_title">Shake sensitivity</string>
   <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
   <string name="shake_sensitivity_very_low">Very low</string>

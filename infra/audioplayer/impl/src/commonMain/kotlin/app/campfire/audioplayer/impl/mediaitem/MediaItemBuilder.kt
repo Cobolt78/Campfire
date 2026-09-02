@@ -3,6 +3,7 @@
 
 package app.campfire.audioplayer.impl.mediaitem
 
+import app.campfire.core.extensions.formatHoursAndMinutes
 import app.campfire.core.extensions.seconds
 import app.campfire.core.logging.Corked
 import app.campfire.core.model.AudioTrack
@@ -15,6 +16,7 @@ import app.campfire.crashreporting.CrashReporter
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 object MediaItemBuilder : Corked("MediaItemBuilders") {
@@ -204,11 +206,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     chapter: Chapter,
     media: Media,
     libraryItemId: String,
+    playbackSpeed: Float = 1.0f,
   ): MediaItem.Metadata {
+    val author = media.metadata.authorName
+    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
+    val rawRemainingMs = (media.durationInMillis - chapter.start.seconds.inWholeMilliseconds).coerceAtLeast(0L)
+    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
+    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
+    val artistLine = if (author.isNullOrBlank()) {
+      if (remainingFormatted.isNotBlank()) "$remainingFormatted left" else null
+    } else if (remainingFormatted.isNotBlank()) {
+      "$remainingFormatted left • $author"
+    } else {
+      author
+    }
+
     return MediaItem.Metadata(
       id = chapter.id,
       title = chapter.title,
-      artist = media.metadata.authorName,
+      artist = artistLine,
       description = media.metadata.description ?: "",
       subtitle = media.metadata.subtitle,
       albumTitle = media.metadata.title,
@@ -222,11 +238,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     track: AudioTrack,
     media: Media,
     libraryItemId: String,
+    playbackSpeed: Float = 1.0f,
   ): MediaItem.Metadata {
+    val author = media.metadata.authorName
+    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
+    val rawRemainingMs = (media.durationInMillis - track.startOffset.seconds.inWholeMilliseconds).coerceAtLeast(0L)
+    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
+    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
+    val artistLine = if (author.isNullOrBlank()) {
+      if (remainingFormatted.isNotBlank()) "$remainingFormatted left" else null
+    } else if (remainingFormatted.isNotBlank()) {
+      "$remainingFormatted left • $author"
+    } else {
+      author
+    }
+
     return MediaItem.Metadata(
       id = track.index,
       title = track.taggedTitle,
-      artist = media.metadata.authorName,
+      artist = artistLine,
       description = media.metadata.description ?: "",
       subtitle = media.metadata.subtitle,
       albumTitle = media.metadata.title,

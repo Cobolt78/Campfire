@@ -114,6 +114,9 @@ class SearchSourceOfTruthFactory(
       afterCommit { onWriteSuccess(query, result) }
       afterRollback { onWriteFailed(query, result) }
 
+      // Clear previous search records for this query key so stale/deleted items don't linger
+      db.searchQueries.delete(query.databaseKey)
+
       // 1) Insert search key
       db.searchQueries.insert(
         Search(
@@ -151,6 +154,13 @@ class SearchSourceOfTruthFactory(
         }
       }
 
+      // Insert Authors
+      authors.forEach { author ->
+        db.authorsQueries.insert(
+          author.asDbModel(urlHydrator),
+        )
+      }
+
       // Insert narrators
       db.searchQueries.insertNarrators(
         Search_narrators(
@@ -158,15 +168,6 @@ class SearchSourceOfTruthFactory(
           narrators = narrators.map { it.asDomainModel() },
         ),
       )
-
-      // Insert Authors
-      transactionWithResult {
-        db.authorsQueries.transaction {
-          authors.forEach { author ->
-            db.authorsQueries.insert(author.asDbModel(urlHydrator))
-          }
-        }
-      }
 
       // Insert Tags
       db.searchQueries.insertTags(
@@ -191,6 +192,8 @@ class SearchSourceOfTruthFactory(
           db.seriesQueries.insertOrIgnore(
             seriesSearchResult.series.asDbModel(query.userId, query.libraryId),
           )
+
+          db.seriesBookJoinQueries.deleteForSeries(seriesSearchResult.series.id)
 
           seriesSearchResult.books.forEach { libraryItem ->
             libraryItemDao.insert(

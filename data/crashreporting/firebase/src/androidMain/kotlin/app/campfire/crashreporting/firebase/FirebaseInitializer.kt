@@ -45,8 +45,16 @@ class FirebaseInitializer(
   override val priority: Int = AppInitializer.FIREBASE_INIT_PRIORITY
 
   override suspend fun onInitialize() {
-    // ONLY initialize firebase on release builds
-    FirebaseApp.initializeApp(application)
+    // ONLY initialize firebase on release builds if configuration exists
+    val firebaseApp = try {
+      FirebaseApp.initializeApp(application)
+    } catch (t: Throwable) {
+      null
+    }
+    if (firebaseApp == null) {
+      bark("Firebase", WARN) { "FirebaseApp not initialized (no google-services.json). Skipping Crashlytics." }
+      return
+    }
 
     // Setup logging
     Heartwood.grow(FirebaseBark)

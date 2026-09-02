@@ -265,29 +265,7 @@ private fun BoxScope.ProgressDecorator(
   large: Boolean = true,
 ) {
   progress?.let { mediaProgress ->
-    if (mediaProgress.isFinished) {
-      AnimatedVisibility(
-        visible = isTransitioning,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-          .align(Alignment.TopStart),
-      ) {
-        MediaFinishedIndicator(
-          size = if (large) 24.dp else 18.dp,
-          modifier = Modifier
-            .thenIf(
-              condition = large,
-              whenTrue = {
-                Modifier.padding(8.dp)
-              },
-              whenFalse = {
-                Modifier.padding(4.dp)
-              },
-            ),
-        )
-      }
-    } else {
+    if (mediaProgress.isFinished || mediaProgress.actualProgress > 0f) {
       AnimatedVisibility(
         visible = isTransitioning,
         enter = fadeIn(),
@@ -297,7 +275,7 @@ private fun BoxScope.ProgressDecorator(
       ) {
         MediaProgressBar(
           mediaProgress = mediaProgress,
-          trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
+          trackHeight = if (large) 6.dp else 4.dp,
           modifier = Modifier
             .fillMaxWidth(),
         )
@@ -562,35 +540,39 @@ private fun LibraryItemCardEditingScrim(
   }
 }
 
+private val AudiobookshelfOrange = Color(0xFFE58B22)
+private val AudiobookshelfGreen = Color(0xFF4CAF50)
+private val AudiobookshelfTrack = Color(0x99000000)
+
 @Composable
 fun MediaProgressBar(
   mediaProgress: MediaProgress,
   modifier: Modifier = Modifier,
-  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
-  progressColor: Color = MaterialTheme.colorScheme.primary,
-  trackHeight: Dp = LargeProgressBarHeight,
+  trackColor: Color = AudiobookshelfTrack,
+  progressColor: Color = if (mediaProgress.isFinished) AudiobookshelfGreen else AudiobookshelfOrange,
+  trackHeight: Dp = 6.dp,
 ) {
   Canvas(
     modifier = modifier
+      .fillMaxWidth()
       .height(trackHeight),
   ) {
-    // Draw Track
-    drawRect(
-      color = trackColor,
-      size = size,
-      alpha = ProgressBarAlpha,
-    )
-
-    val cornerRadiusPx = trackHeight.toPx() / 2f
-    val progressSize = size.copy(
-      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
-    )
-    drawRoundRect(
-      color = progressColor,
-      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
-      size = progressSize,
-      cornerRadius = CornerRadius(cornerRadiusPx),
-    )
+    if (mediaProgress.isFinished) {
+      drawRect(
+        color = progressColor,
+        size = size,
+      )
+    } else {
+      drawRect(
+        color = trackColor,
+        size = size,
+      )
+      val progressWidth = size.width * mediaProgress.actualProgress.coerceIn(0f, 1f)
+      drawRect(
+        color = progressColor,
+        size = size.copy(width = progressWidth),
+      )
+    }
   }
 }
 

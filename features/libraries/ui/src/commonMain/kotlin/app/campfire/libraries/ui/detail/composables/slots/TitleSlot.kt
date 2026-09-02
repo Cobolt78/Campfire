@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.extensions.readoutFormat
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
 import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
+import app.campfire.core.extensions.asReadableBytes
 import app.campfire.core.model.LibraryItem
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
 import campfire.features.libraries.ui.generated.resources.Res
@@ -104,7 +105,20 @@ class TitleSlot(
           style = MaterialTheme.typography.titleSmall,
           fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.width(26.dp))
+        if (libraryItem.media.sizeInBytes > 0L) {
+          Spacer(Modifier.width(12.dp))
+          Text(
+            text = "•",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+          )
+          Spacer(Modifier.width(12.dp))
+          Text(
+            text = libraryItem.media.sizeInBytes.asReadableBytes(),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+          )
+        }
       }
 
       Spacer(Modifier.height(24.dp))

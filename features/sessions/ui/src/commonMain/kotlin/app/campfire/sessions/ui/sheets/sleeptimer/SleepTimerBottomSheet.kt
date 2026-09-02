@@ -617,6 +617,14 @@ fun TimerBottomSheetV2Preview() {
               return mutableShakeToReset
             }
 
+            override var resetTimerOnPauseEnabled: Boolean
+              get() = false
+              set(value) {}
+
+            override fun observeResetTimerOnPauseEnabled(): StateFlow<Boolean> {
+              return MutableStateFlow(false)
+            }
+
             override var shakeSensitivity: SleepSettings.ShakeSensitivity
               get() = TODO("Not yet implemented")
               set(value) {}

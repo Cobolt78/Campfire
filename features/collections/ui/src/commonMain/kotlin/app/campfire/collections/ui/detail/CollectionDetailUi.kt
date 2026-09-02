@@ -222,6 +222,7 @@ fun CollectionDetail(
         selectedItems = selectedItems,
         items = state.collectionContentState.data,
         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
+        progressStatus = { state.progressStates[it] },
         onLibraryItemClick = { item ->
           if (isItemEditing) {
             if (selectedItems.contains(item)) {
@@ -265,6 +266,7 @@ private fun LoadedState(
   selectedItems: List<LibraryItem>,
   items: List<LibraryItem>,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress?,
   onLibraryItemClick: (LibraryItem) -> Unit,
   onLibraryItemLongClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
@@ -309,6 +311,7 @@ private fun LoadedState(
         sharedTransitionKey = item.id + collectionName,
         sharedTransitionZIndex = (items.size - index) + 1f,
         offlineStatus = offlineStatus(item.id),
+        progress = progressStatus(item.id) ?: item.userMediaProgress,
         isSelectable = isEditing,
         selected = selectedItems.contains(item),
         modifier = Modifier

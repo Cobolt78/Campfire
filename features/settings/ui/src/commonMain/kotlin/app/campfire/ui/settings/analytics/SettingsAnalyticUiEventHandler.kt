@@ -39,6 +39,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnabled
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
 import me.tatarka.inject.annotations.Inject
@@ -74,6 +75,8 @@ class SettingsAnalyticUiEventHandler(
 
     is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
       is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
+      is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> send("confirm_actions", Updated, event.enabled.toString())
+      is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> send("warn_on_cellular_download", Updated, event.enabled.toString())
       is DeleteDownload -> send("delete_download", Click)
       is DownloadClicked -> send("download", Click)
     }
@@ -110,6 +113,9 @@ class SettingsAnalyticUiEventHandler(
 
     is SettingsUiEvent.SleepSettingEvent -> when (event) {
       is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
+      is ResetTimerOnPause -> send("reset_timer_on_pause", Updated, event.enabled)
+      is SettingsUiEvent.SleepSettingEvent.FadeOutDuration ->
+        send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
       is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
       is AutoSleepTimerEnabled -> send("auto_sleep", Updated, event.enabled)
       is AutoSleepTimerStart -> send("auto_sleep_start", Updated, event.time.toString())

@@ -134,26 +134,17 @@ fun LibraryItemListItem(
           )
         }
 
-        if (mediaProgress?.isFinished == true) {
-          MediaFinishedIndicator(
-            size = 18.dp,
-            modifier = Modifier
-              .align(Alignment.TopStart)
-              .padding(8.dp),
-          )
-        }
-
-        mediaProgress
-          ?.takeUnless { it.isFinished }
-          ?.let { progress ->
+        mediaProgress?.let { progress ->
+          if (progress.isFinished || progress.actualProgress > 0f) {
             MediaProgressBar(
               mediaProgress = progress,
-              trackHeight = SmallProgressBarHeight,
+              trackHeight = 4.dp,
               modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
             )
           }
+        }
       }
 
       Spacer(Modifier.size(16.dp))

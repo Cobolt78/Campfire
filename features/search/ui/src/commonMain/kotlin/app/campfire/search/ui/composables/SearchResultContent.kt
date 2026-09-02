@@ -67,6 +67,7 @@ internal fun SearchResultContent(
   query: String,
   results: SearchResult,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress? = { null },
   onBookClick: (LibraryItem) -> Unit,
   onAuthorClick: (Author) -> Unit,
   onSeriesClick: (Series) -> Unit,
@@ -113,6 +114,7 @@ internal fun SearchResultContent(
         SuccessContent(
           result = results,
           offlineStatus = offlineStatus,
+          progressStatus = progressStatus,
           onBookClick = onBookClick,
           onNarratorClick = onNarratorClick,
           onAuthorClick = onAuthorClick,
@@ -131,6 +133,7 @@ internal fun SearchResultContent(
 private fun SuccessContent(
   result: SearchResult.Success,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress?,
   onBookClick: (LibraryItem) -> Unit,
   onAuthorClick: (Author) -> Unit,
   onSeriesClick: (Series) -> Unit,
@@ -159,6 +162,7 @@ private fun SuccessContent(
         LibraryItemCard(
           item = book,
           offlineStatus = offlineStatus(book.id),
+          progress = progressStatus(book.id) ?: book.userMediaProgress,
           onClick = { onBookClick(book) },
           modifier = Modifier.animateItem(),
           colors = CardDefaults.elevatedCardColors(

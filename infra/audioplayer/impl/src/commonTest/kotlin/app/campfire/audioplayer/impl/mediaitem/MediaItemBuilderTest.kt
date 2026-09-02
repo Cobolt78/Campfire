@@ -174,7 +174,7 @@ class MediaItemBuilderTest {
     val m = result.first().metadata!!
     assertThat(m.id).isEqualTo(0)
     assertThat(m.title).isEqualTo("My Track")
-    assertThat(m.artist).isEqualTo("Author A")
+    assertThat(m.artist).isEqualTo("1m left • Author A")
     assertThat(m.description).isEqualTo("Desc")
     assertThat(m.albumTitle).isEqualTo("Book X")
     assertThat(m.durationMs).isEqualTo(60.seconds.inWholeMilliseconds)
@@ -224,7 +224,7 @@ class MediaItemBuilderTest {
     val m = result.first().metadata!!
     assertThat(m.id).isEqualTo(5)
     assertThat(m.title).isEqualTo("Opening")
-    assertThat(m.artist).isEqualTo("Jane")
+    assertThat(m.artist).isEqualTo("2m left • Jane")
     assertThat(m.description).isEqualTo("Desc")
     assertThat(m.subtitle).isEqualTo("Sub")
     assertThat(m.albumTitle).isEqualTo("Title")
@@ -557,7 +557,7 @@ class MediaItemBuilderTest {
 
     assertThat(result.id).isEqualTo(3)
     assertThat(result.title).isEqualTo("The Beginning")
-    assertThat(result.artist).isEqualTo("Author")
+    assertThat(result.artist).isEqualTo("0m left • Author")
     assertThat(result.description).isEqualTo("Desc")
     assertThat(result.subtitle).isEqualTo("Sub")
     assertThat(result.albumTitle).isEqualTo("Title")
@@ -574,6 +574,23 @@ class MediaItemBuilderTest {
     val result = MediaItemBuilder.createMediaMetadata(ch, med, libraryItemId = "item-1")
 
     assertThat(result.description).isEqualTo("")
+  }
+
+  @Test
+  fun `createMediaMetadata adjusts remaining time for playbackSpeed`() {
+    val ch = chapter(id = 0, start = 0f, end = 60f)
+    val med = media(
+      tracks = listOf(track(duration = 7200f)), // 2 hours
+      metadata = metadata(authorName = "Author"),
+    )
+
+    // At 1.0x -> 2h left
+    val result1x = MediaItemBuilder.createMediaMetadata(ch, med, libraryItemId = "item-1", playbackSpeed = 1.0f)
+    assertThat(result1x.artist).isEqualTo("2h left • Author")
+
+    // At 2.0x -> 1h left
+    val result2x = MediaItemBuilder.createMediaMetadata(ch, med, libraryItemId = "item-1", playbackSpeed = 2.0f)
+    assertThat(result2x.artist).isEqualTo("1h left • Author")
   }
 
   // endregion
@@ -597,7 +614,7 @@ class MediaItemBuilderTest {
 
     assertThat(result.id).isEqualTo(2)
     assertThat(result.title).isEqualTo("Track Title")
-    assertThat(result.artist).isEqualTo("Writer")
+    assertThat(result.artist).isEqualTo("0m left • Writer")
     assertThat(result.description).isEqualTo("Info")
     assertThat(result.subtitle).isEqualTo("Vol 1")
     assertThat(result.albumTitle).isEqualTo("Saga")

@@ -7,12 +7,14 @@ import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
 import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
 
 data class SeriesDetailUiState(
   val seriesContentState: LoadState<out List<LibraryItem>>,
   val offlineStates: Map<LibraryItemId, OfflineDownload>,
+  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
   val eventSink: (SeriesDetailUiEvent) -> Unit,
 ) : CircuitUiState
 

@@ -37,6 +37,7 @@ import app.campfire.audioplayer.impl.util.playbackStateAsDebugLog
 import app.campfire.audioplayer.model.Metadata
 import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.audioplayer.model.RunningTimer
+import app.campfire.core.extensions.formatHoursAndMinutes
 import app.campfire.core.extensions.seconds
 import app.campfire.core.logging.Cork
 import app.campfire.core.logging.Corked
@@ -98,7 +99,23 @@ class ExoPlayerAudioPlayer(
     }
   }
 
+  override var preparedSession: Session? = null
+  private var finishedListener: OnFinishedListener? = null
+
+  override val state = MutableStateFlow(AudioPlayer.State.Disabled)
+
+  private val _error = MutableStateFlow<Throwable?>(null)
+  override val error: StateFlow<Throwable?> = _error
+  override val overallTime = MutableStateFlow(0.seconds)
+  override val currentTime = MutableStateFlow(0.seconds)
+  override val currentDuration = MutableStateFlow(0.seconds)
+  override val currentMetadata = MutableStateFlow(Metadata())
+  override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
+
   private val sleepTimerManager = sleepTimerManagerFactory.create(this)
+
+  override val runningTimer: StateFlow<RunningTimer?>
+    get() = sleepTimerManager.runningTimer
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -181,22 +198,6 @@ class ExoPlayerAudioPlayer(
   private var progressJob: Job? = null
   private var fadeJob: Job? = null
   private var previousVolumeLevel: Float = 0f
-
-  override var preparedSession: Session? = null
-  private var finishedListener: OnFinishedListener? = null
-
-  override val state = MutableStateFlow(AudioPlayer.State.Disabled)
-
-  private val _error = MutableStateFlow<Throwable?>(null)
-  override val error: StateFlow<Throwable?> = _error
-  override val overallTime = MutableStateFlow(0.seconds)
-  override val currentTime = MutableStateFlow(0.seconds)
-  override val currentDuration = MutableStateFlow(0.seconds)
-  override val currentMetadata = MutableStateFlow(Metadata())
-  override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
-
-  override val runningTimer: StateFlow<RunningTimer?>
-    get() = sleepTimerManager.runningTimer
 
   override suspend fun prepare(
     session: Session,
@@ -339,6 +340,8 @@ class ExoPlayerAudioPlayer(
         sleepTimerManager.onSessionStart()
       }
 
+      updatePlaylistMetadata()
+
       // Set when to play, and prepare
       playWhenReady = playImmediately
       prepare()
@@ -352,11 +355,22 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun pause() {
+    cancelFade()
     player.pause()
   }
 
+  override fun cancelFade() {
+    fadeJob?.cancel()
+    fadeJob = null
+    val targetVolume = if (previousVolumeLevel > 0.05f) previousVolumeLevel else 1f
+    player.volume = targetVolume
+    previousVolumeLevel = targetVolume
+  }
+
   override fun fadeToPause(duration: Duration, tickRate: Long): Job {
-    previousVolumeLevel = player.volume
+    if (fadeJob == null || !fadeJob!!.isActive) {
+      previousVolumeLevel = player.volume.takeIf { it > 0.05f } ?: 1f
+    }
     fadeJob?.cancel()
 
     return VolumeFadeController.fade(
@@ -371,16 +385,16 @@ class ExoPlayerAudioPlayer(
 
   override fun playPause() {
     if (player.isPlaying) {
+      cancelFade()
       player.pause()
     } else {
+      cancelFade()
       // Potentially trigger the auto sleep timer
       sleepTimerManager.onSessionStart()
 
       // Reset volume if stored
-      if (player.volume == 0f && previousVolumeLevel > 0f) {
-        player.volume = previousVolumeLevel
-      } else if (player.volume == 0f) {
-        player.volume = 1f
+      if (player.volume < 1f) {
+        player.volume = if (previousVolumeLevel > 0.05f) previousVolumeLevel else 1f
       }
 
       player.play()
@@ -388,6 +402,7 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun stop() {
+    cancelFade()
     preparedSession = null
     finishedListener = null
     player.stop()
@@ -460,6 +475,7 @@ class ExoPlayerAudioPlayer(
     playbackSpeed.value = speed
     settings.playbackSpeed = speed
     player.setPlaybackSpeed(speed)
+    updatePlaylistMetadata()
   }
 
   override fun setTimer(timer: PlaybackTimer) {
@@ -558,6 +574,7 @@ class ExoPlayerAudioPlayer(
         observeProgress(player)
       } else {
         progressJob?.cancel()
+        cancelFade()
       }
     }
 
@@ -565,6 +582,7 @@ class ExoPlayerAudioPlayer(
     // end of chapter, then stop the playback
     if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION)) {
       sleepTimerManager.endOfChapter()
+      updatePlaylistMetadata()
     }
   }
 
@@ -586,6 +604,48 @@ class ExoPlayerAudioPlayer(
     currentTime.value = player.currentPosition.milliseconds
     currentDuration.value = player.duration.milliseconds
     overallTime.value = player.overallPosition.milliseconds
+    updatePlaylistMetadata()
+  }
+
+  internal fun updatePlaylistMetadata() {
+    val session = preparedSession ?: return
+    val media = session.libraryItem.media
+    val author = media.metadata.author ?: media.metadata.authorName ?: media.metadata.title
+    val speed = playbackSpeed.value.takeIf { it > 0f } ?: 1.0f
+
+    val totalDurationMs = session.episode?.durationInMillis ?: media.durationInMillis
+    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
+    val rawRemainingMs = (totalDurationMs - currentPositionMs).coerceAtLeast(0L)
+    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
+    val formatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
+    val artistLine = if (author.isNullOrBlank()) {
+      if (formatted.isNotBlank()) "$formatted left" else null
+    } else if (formatted.isNotBlank()) {
+      "$formatted left • $author"
+    } else {
+      author
+    }
+
+    val currentPlaylistMeta = exoPlayer.playlistMetadata
+    if (currentPlaylistMeta.artist?.toString() != artistLine) {
+      exoPlayer.playlistMetadata = currentPlaylistMeta.buildUpon()
+        .setArtist(artistLine)
+        .build()
+    }
+
+    val currentItem = exoPlayer.currentMediaItem
+    if (currentItem != null && currentItem.mediaMetadata.artist?.toString() != artistLine) {
+      val newMetadata = currentItem.mediaMetadata.buildUpon()
+        .setArtist(artistLine)
+        .build()
+      val newItem = currentItem.buildUpon()
+        .setMediaMetadata(newMetadata)
+        .build()
+      val currentIndex = exoPlayer.currentMediaItemIndex
+      if (currentIndex in 0 until exoPlayer.mediaItemCount) {
+        exoPlayer.replaceMediaItem(currentIndex, newItem)
+      }
+    }
   }
 }
 

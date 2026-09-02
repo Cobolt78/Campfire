@@ -112,6 +112,14 @@ class CampfireSettingsImpl(
   override var showConfirmDownload: Boolean by showConfirmDownloadProperty
   override fun observeShowConfirmDownload(): StateFlow<Boolean> = showConfirmDownloadProperty.observe()
 
+  private val confirmActionsProperty = booleanSetting(KEY_CONFIRM_ACTIONS, true)
+  override var confirmActions: Boolean by confirmActionsProperty
+  override fun observeConfirmActions(): StateFlow<Boolean> = confirmActionsProperty.observe()
+
+  private val warnOnCellularDownloadProperty = booleanSetting(KEY_WARN_ON_CELLULAR_DOWNLOAD, true)
+  override var warnOnCellularDownload: Boolean by warnOnCellularDownloadProperty
+  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> = warnOnCellularDownloadProperty.observe()
+
   private val hasShownWidgetPinningProperty = booleanSetting(KEY_SHOW_WIDGET_PINNING, false)
   override var hasShownWidgetPinning: Boolean by hasShownWidgetPinningProperty
   override fun observeHasShownWidgetPinning(): StateFlow<Boolean> = hasShownWidgetPinningProperty.observe()
@@ -158,6 +166,8 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
 internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
 internal const val KEY_CURRENT_USER_ID = "pref_current_user_id"
 internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
+internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
+internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
 internal const val KEY_SHOW_WIDGET_PINNING = "pref_show_widget_pinning"
 internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
 internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"

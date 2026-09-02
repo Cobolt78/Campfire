@@ -238,6 +238,7 @@ private fun buildSlots(
     imageUrl = libraryItem.media.coverImageUrl,
     contentDescription = libraryItem.media.metadata.title,
     sharedTransitionKey = sharedTransitionKey,
+    progress = libraryItem.userMediaProgress,
   )
 
   this += TitleSlot(

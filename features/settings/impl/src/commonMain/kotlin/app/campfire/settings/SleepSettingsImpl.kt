@@ -14,6 +14,7 @@ import com.russhwolf.settings.ExperimentalSettingsApi
 import com.russhwolf.settings.ObservableSettings
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.datetime.LocalTime
@@ -35,6 +36,17 @@ class SleepSettingsImpl(
   private val shakeToResetEnabledProperty = booleanSetting(KEY_SHAKE_TO_RESET, DefaultShakeToResetEnabled)
   override var shakeToResetEnabled: Boolean by shakeToResetEnabledProperty
   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = shakeToResetEnabledProperty.observe()
+
+  private val resetTimerOnPauseEnabledProperty = booleanSetting(
+    KEY_RESET_TIMER_ON_PAUSE,
+    DefaultResetTimerOnPauseEnabled,
+  )
+  override var resetTimerOnPauseEnabled: Boolean by resetTimerOnPauseEnabledProperty
+  override fun observeResetTimerOnPauseEnabled(): StateFlow<Boolean> = resetTimerOnPauseEnabledProperty.observe()
+
+  private val fadeOutDurationProperty = durationSetting(KEY_FADE_OUT_DURATION, DefaultFadeOutDuration)
+  override var fadeOutDuration: Duration by fadeOutDurationProperty
+  override fun observeFadeOutDuration(): StateFlow<Duration> = fadeOutDurationProperty.observe()
 
   private val shakeSensitivityProperty = enumSetting(KEY_SHAKE_SENSITIVITY, ShakeSensitivity)
   override var shakeSensitivity: ShakeSensitivity by shakeSensitivityProperty
@@ -101,6 +113,8 @@ class SleepSettingsImpl(
 
 private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
 private const val KEY_SHAKE_TO_RESET = "pref_sleep_shake_to_reset"
+private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
+private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 private const val KEY_SHAKE_SENSITIVITY = "pref_sleep_shake_sensitivity"
 private const val KEY_AUTO_SLEEP_TIMER_ENABLED = "pref_sleep_auto_timer_enabled"
 private const val KEY_AUTO_SLEEP_START = "pref_sleep_auto_timer_start"
@@ -110,6 +124,8 @@ private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
 private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
 
 private const val DefaultShakeToResetEnabled = false
+private const val DefaultResetTimerOnPauseEnabled = false
 private const val DefaultAutoSleepTimerEnabled = false
 private const val DefaultAutoRewindEnabled = false
 private val DefaultAutoRewindAmount = 5.minutes
+private val DefaultFadeOutDuration = 30.seconds

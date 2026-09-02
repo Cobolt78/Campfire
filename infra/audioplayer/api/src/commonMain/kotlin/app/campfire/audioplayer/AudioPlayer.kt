@@ -80,6 +80,8 @@ interface AudioPlayer {
     tickRate: Long = DefaultFadeTickRate,
   ): Job
 
+  fun cancelFade() {}
+
   fun playPause()
   fun stop()
   fun seekTo(itemIndex: Int)

@@ -42,11 +42,13 @@ import app.campfire.common.compose.extensions.readoutAtMost
 import app.campfire.common.compose.extensions.toRichTextHtml
 import app.campfire.common.compose.layout.ContentLayout
 import app.campfire.common.compose.layout.LocalContentLayout
+import app.campfire.common.compose.network.rememberIsCellularOrMetered
 import app.campfire.common.compose.permission.PermissionState
 import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
 import app.campfire.common.compose.widgets.MetadataChip
 import app.campfire.common.compose.widgets.MetadataHeader
 import app.campfire.common.compose.widgets.WithTimestampUriHandler
+import app.campfire.common.compose.widgets.dialog.ConfirmActionDialog
 import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
 import app.campfire.core.di.ComponentHolder
 import app.campfire.core.di.UserScope
@@ -124,13 +126,95 @@ private fun PodcastEpisodeBottomSheet(
   }
 
   var showDownloadConfirmation by remember { mutableStateOf(false) }
+  var showCellularDownloadConfirmation by remember { mutableStateOf(false) }
+  var showDeleteDownloadConfirmation by remember { mutableStateOf(false) }
+  var showDiscardProgressConfirmation by remember { mutableStateOf(false) }
+  var showMarkFinishedConfirmation by remember { mutableStateOf(false) }
   var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
+
+  val isCellular = rememberIsCellularOrMetered()
+
   val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
     if (granted) {
       state.eventSink(PodcastEpisodeUiEvent.DownloadClick(doNotShowDownloadConfirmationAgain))
       showDownloadConfirmation = false
     }
   }
+
+  if (showCellularDownloadConfirmation) {
+    val episodeTitle = state.episode.title
+    val sizeBytes = state.episode.sizeInBytes.takeIf { it > 0L } ?: state.libraryItem.media.sizeInBytes
+    val sizeText = sizeBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
+    val message = if (sizeText.isNotEmpty()) {
+      "You are connected to mobile data. Downloading \"$episodeTitle\" ($sizeText) will use your cellular data plan."
+    } else {
+      "You are connected to mobile data. Downloading \"$episodeTitle\" will use your cellular data plan."
+    }
+    ConfirmActionDialog(
+      title = "Download Over Cellular?",
+      message = message,
+      confirmButtonText = "Download",
+      onConfirm = {
+        showCellularDownloadConfirmation = false
+        if (state.showConfirmDownloadDialog) {
+          showDownloadConfirmation = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
+        }
+      },
+      onDismissRequest = { showCellularDownloadConfirmation = false },
+    )
+  }
+
+  if (showDeleteDownloadConfirmation) {
+    val episodeTitle = state.episode.title
+    val sizeBytes = state.episode.sizeInBytes.takeIf { it > 0L } ?: state.libraryItem.media.sizeInBytes
+    val sizeText = sizeBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
+    val message = if (sizeText.isNotEmpty()) {
+      "Are you sure you want to delete the local download of \"$episodeTitle\"? This will free up $sizeText on your device."
+    } else {
+      "Are you sure you want to delete the local download of \"$episodeTitle\"?"
+    }
+    ConfirmActionDialog(
+      title = "Delete Download?",
+      message = message,
+      confirmButtonText = "Delete",
+      onConfirm = {
+        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+        showDeleteDownloadConfirmation = false
+      },
+      onDismissRequest = { showDeleteDownloadConfirmation = false },
+    )
+  }
+
+  if (showDiscardProgressConfirmation) {
+    val episodeTitle = state.episode.title
+    ConfirmActionDialog(
+      title = "Discard Progress?",
+      message = "Are you sure you want to reset your listening progress for \"$episodeTitle\"? Your saved position will be lost.",
+      confirmButtonText = "Discard",
+      onConfirm = {
+        state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
+        showDiscardProgressConfirmation = false
+      },
+      onDismissRequest = { showDiscardProgressConfirmation = false },
+    )
+  }
+
+  if (showMarkFinishedConfirmation) {
+    val episodeTitle = state.episode.title
+    ConfirmActionDialog(
+      title = "Mark as Finished?",
+      message = "Are you sure you want to mark \"$episodeTitle\" as finished? This will set your progress to 100%.",
+      confirmButtonText = "Mark Finished",
+      onConfirm = {
+        state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
+        showMarkFinishedConfirmation = false
+      },
+      onDismissRequest = { showMarkFinishedConfirmation = false },
+    )
+  }
+
   if (showDownloadConfirmation) {
     ConfirmDownloadDialog(
       item = state.libraryItem,
@@ -147,6 +231,10 @@ private fun PodcastEpisodeBottomSheet(
       onDismissRequest = { showDownloadConfirmation = false },
     )
   }
+
+  val hasProgress = state.progress != null &&
+    state.progress.progress > 0f &&
+    !state.progress.isFinished
 
   Column(
     modifier = modifier
@@ -213,20 +301,38 @@ private fun PodcastEpisodeBottomSheet(
       offlineDownload = state.offlineDownload,
       onPlayClick = { state.eventSink(PodcastEpisodeUiEvent.PlayClick) },
       onDownloadClick = {
-        if (state.showConfirmDownloadDialog) {
+        if (state.warnOnCellularDownload && isCellular) {
+          showCellularDownloadConfirmation = true
+        } else if (state.showConfirmDownloadDialog) {
           showDownloadConfirmation = true
         } else {
           state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
         }
       },
-      onMarkFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkFinished) },
+      onMarkFinished = {
+        if (state.confirmActions && hasProgress) {
+          showMarkFinishedConfirmation = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
+        }
+      },
       onMarkNotFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkNotFinished) },
-      onDiscardProgress = { state.eventSink(PodcastEpisodeUiEvent.DiscardProgress) },
+      onDiscardProgress = {
+        if (state.confirmActions) {
+          showDiscardProgressConfirmation = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
+        }
+      },
       onStopDownloadClick = {
         state.eventSink(PodcastEpisodeUiEvent.StopDownloadClick)
       },
       onDeleteDownloadClick = {
-        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+        if (state.confirmActions) {
+          showDeleteDownloadConfirmation = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+        }
       },
       onAddToPlaylistClick = {
         showAddToPlaylistDialog = true

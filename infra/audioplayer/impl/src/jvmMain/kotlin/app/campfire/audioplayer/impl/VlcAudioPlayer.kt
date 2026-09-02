@@ -43,8 +43,6 @@ class VlcAudioPlayer(
     setListener(VlcPlayerListener())
   }
 
-  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
-
   override var preparedSession: Session? = null
   private var finishedListener: OnFinishedListener? = null
 
@@ -55,6 +53,8 @@ class VlcAudioPlayer(
   override val currentDuration = MutableStateFlow(0.seconds)
   override val currentMetadata = MutableStateFlow(Metadata())
   override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
+
+  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
 
   override val runningTimer: StateFlow<RunningTimer?>
     get() = sleepTimerManager.runningTimer

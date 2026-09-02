@@ -76,6 +76,8 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnabled
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
 import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
@@ -167,6 +169,10 @@ class SettingsPresenter(
     // Downloads Settings
     val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
       .collectAsState()
+    val confirmActions by remember { settings.observeConfirmActions() }
+      .collectAsState()
+    val warnOnCellularDownload by remember { settings.observeWarnOnCellularDownload() }
+      .collectAsState()
 
     val downloads by remember {
       offlineDownloadManager.observeAll()
@@ -203,6 +209,8 @@ class SettingsPresenter(
 
     // Sleep Settings
     val shakeToResetEnabled by remember { sleepSettings.observeShakeToResetEnabled() }.collectAsState()
+    val resetTimerOnPauseEnabled by remember { sleepSettings.observeResetTimerOnPauseEnabled() }.collectAsState()
+    val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
     val shakeSensitivity by remember { sleepSettings.observeShakeSensitivity() }.collectAsState()
     val autoSleepTimerEnabled by remember { sleepSettings.observeAutoSleepTimerEnabled() }.collectAsState()
     val autoSleepTimerStart by remember { sleepSettings.observeAutoSleepStart() }.collectAsState()
@@ -252,6 +260,8 @@ class SettingsPresenter(
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
+        confirmActions = confirmActions,
+        warnOnCellularDownload = warnOnCellularDownload,
         downloads = downloadEntries,
       ),
       playbackSettings = PlaybackSettingsInfo(
@@ -272,7 +282,9 @@ class SettingsPresenter(
       ),
       sleepSettings = SleepSettingsInfo(
         shakeToReset = shakeToResetEnabled,
+        resetTimerOnPause = resetTimerOnPauseEnabled,
         shakeSensitivity = shakeSensitivity,
+        fadeOutDuration = fadeOutDuration,
         autoSleepSetting = if (autoSleepTimerEnabled) {
           SleepSettingsInfo.AutoSleepSetting(
             start = autoSleepTimerStart,
@@ -335,6 +347,8 @@ class SettingsPresenter(
 
         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
           is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
+          is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> settings.confirmActions = event.enabled
+          is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> settings.warnOnCellularDownload = event.enabled
           is DownloadClicked -> navigator.goTo(
             LibraryItemScreen(
               libraryItemId = event.entry.libraryItem.id,
@@ -384,6 +398,8 @@ class SettingsPresenter(
 
         is SettingsUiEvent.SleepSettingEvent -> when (event) {
           is ShakeToReset -> sleepSettings.shakeToResetEnabled = event.enabled
+          is ResetTimerOnPause -> sleepSettings.resetTimerOnPauseEnabled = event.enabled
+          is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
           is ShakeSensitivity -> sleepSettings.shakeSensitivity = event.sensitivity
           is AutoSleepTimerEnabled -> sleepSettings.autoSleepTimerEnabled = event.enabled
           is AutoSleepTimerStart -> sleepSettings.autoSleepStart = event.time

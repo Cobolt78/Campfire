@@ -68,6 +68,12 @@ interface CampfireSettings {
   var showConfirmDownload: Boolean
   fun observeShowConfirmDownload(): StateFlow<Boolean>
 
+  var confirmActions: Boolean
+  fun observeConfirmActions(): StateFlow<Boolean>
+
+  var warnOnCellularDownload: Boolean
+  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
+
   var hasShownWidgetPinning: Boolean
   fun observeHasShownWidgetPinning(): StateFlow<Boolean>
 

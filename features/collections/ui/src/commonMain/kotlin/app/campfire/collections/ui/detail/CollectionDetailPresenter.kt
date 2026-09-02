@@ -22,6 +22,7 @@ import app.campfire.core.model.LibraryItem
 import app.campfire.core.session.UserSession
 import app.campfire.core.session.user
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
@@ -41,6 +42,7 @@ class CollectionDetailPresenter(
   @Assisted private val navigator: Navigator,
   private val currentSession: UserSession,
   private val collectionsRepository: CollectionsRepository,
+  private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
   private val analytics: Analytics,
 ) : NonPausablePresenter<CollectionDetailUiState> {
@@ -64,6 +66,13 @@ class CollectionDetailPresenter(
         .catch<LoadState<out List<LibraryItem>>> { emit(LoadState.Error) }
     }.collectAsState(LoadState.Loading)
 
+    val userMediaProgress by remember {
+      mediaProgressRepository.observeAllProgress()
+        .map { allProgress ->
+          allProgress.associateBy { it.libraryItemId }
+        }
+    }.collectAsState(emptyMap())
+
     val offlineDownloads by remember {
       snapshotFlow { collectionContentState.dataOrNull }
         .filterNotNull()
@@ -77,6 +86,7 @@ class CollectionDetailPresenter(
       collection = collection,
       collectionContentState = collectionContentState,
       offlineStates = offlineDownloads,
+      progressStates = userMediaProgress,
     ) { event ->
       when (event) {
         CollectionDetailUiEvent.Back -> navigator.pop()

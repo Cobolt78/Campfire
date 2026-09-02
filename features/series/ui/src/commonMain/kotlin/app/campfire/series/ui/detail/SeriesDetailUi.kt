@@ -42,6 +42,7 @@ import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
 import app.campfire.core.offline.OfflineStatus
 import campfire.features.series.ui.generated.resources.Res
 import campfire.features.series.ui.generated.resources.action_back
@@ -104,6 +105,7 @@ fun SeriesDetail(
         seriesName = screen.seriesName,
         items = state.seriesContentState.data,
         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
+        progressStatus = { state.progressStates[it] },
         onLibraryItemClick = { state.eventSink(SeriesDetailUiEvent.LibraryItemClick(it)) },
         contentPadding = paddingValues,
       )
@@ -116,6 +118,7 @@ private fun LoadedState(
   seriesName: String,
   items: List<LibraryItem>,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId) -> MediaProgress?,
   onLibraryItemClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
   contentPadding: PaddingValues = PaddingValues(),
@@ -138,6 +141,7 @@ private fun LoadedState(
         sharedTransitionKey = item.id + seriesName,
         sharedTransitionZIndex = (items.size - index) + 1f,
         offlineStatus = offlineStatus(item.id),
+        progress = progressStatus(item.id) ?: item.userMediaProgress,
         onClick = { onLibraryItemClick(item) },
       )
     }

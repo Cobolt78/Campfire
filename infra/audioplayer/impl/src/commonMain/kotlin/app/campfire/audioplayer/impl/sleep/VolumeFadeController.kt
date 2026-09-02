@@ -3,7 +3,6 @@
 
 package app.campfire.audioplayer.impl.sleep
 
-import app.campfire.core.extensions.asSeconds
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
@@ -25,20 +24,32 @@ object VolumeFadeController {
   ): Job {
     return scope.launch {
       val startVolume = getVolume()
+      val totalMillis = duration.inWholeMilliseconds.toFloat()
       val delayStep = 1000L / tickRate
-      val fadeStep = getVolume() / (duration.asSeconds() * tickRate)
 
-      // Grab a timestamp and never let the loop here extend passed the [duration]
-      val start = now()
-      while (isActive && getVolume() > 0f && now() - start < duration.inWholeMilliseconds) {
-        setVolume((getVolume() - fadeStep).coerceAtLeast(0f))
-        delay(delayStep)
+      // Grab a timestamp and never let the loop here extend past the [duration]
+      try {
+        val start = now()
+        while (isActive) {
+          val elapsed = (now() - start).toFloat()
+          if (elapsed >= totalMillis) break
+
+          // Calculate remaining fraction (1.0 at start down to 0.0 at end)
+          val remainingFraction = ((totalMillis - elapsed) / totalMillis).coerceIn(0f, 1f)
+
+          // Apply perceptual loudness curve (squared) for human hearing
+          val volumeFactor = remainingFraction * remainingFraction
+          setVolume((startVolume * volumeFactor).coerceIn(0f, 1f))
+
+          delay(delayStep)
+        }
+
+        setVolume(0f)
+        onPause()
+      } finally {
+        // Reset the volume to where it started whether completed or cancelled
+        setVolume(startVolume)
       }
-
-      onPause()
-
-      // Reset the volume to where it started
-      setVolume(startVolume)
     }
   }
 }

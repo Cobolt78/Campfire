@@ -23,6 +23,7 @@ import app.campfire.libraries.api.screen.LibraryScreen
 import app.campfire.search.api.SearchRepository
 import app.campfire.search.api.SearchResult
 import app.campfire.search.api.ui.SearchResultNavEvent
+import app.campfire.user.api.MediaProgressRepository
 import com.slack.circuit.runtime.presenter.Presenter
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,6 +31,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
@@ -43,6 +45,7 @@ typealias SearchPresenterFactory = (
 @Inject
 class SearchPresenter(
   private val searchRepository: SearchRepository,
+  private val mediaProgressRepository: MediaProgressRepository,
   @Assisted private val textFieldState: TextFieldState,
   @Assisted private val onSearchEvent: (SearchResultNavEvent) -> Unit,
   private val offlineDownloadManager: OfflineDownloadManager,
@@ -68,6 +71,13 @@ class SearchPresenter(
         }
     }.collectAsState(SearchResult.Empty)
 
+    val userMediaProgress by remember {
+      mediaProgressRepository.observeAllProgress()
+        .map { allProgress ->
+          allProgress.associateBy { it.libraryItemId }
+        }
+    }.collectAsState(emptyMap())
+
     val offlineDownloads by remember {
       snapshotFlow { (searchResult as? SearchResult.Success)?.books }
         .filterNotNull()
@@ -80,6 +90,7 @@ class SearchPresenter(
       query = textFieldState.text.toString(),
       searchResult = searchResult,
       offlineStates = offlineDownloads,
+      progressStates = userMediaProgress,
     ) { event ->
       when (event) {
         is SearchUiEvent.OnAuthorClick -> {

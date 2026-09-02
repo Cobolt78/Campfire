@@ -18,6 +18,7 @@ import app.campfire.core.model.ShelfType
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.model.Shelf
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.libraries.test.FakeLibraryItemRepository
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.test.FakeMediaProgressRepository
 import assertk.Assert
@@ -46,6 +47,7 @@ class HomePresenterTest {
   val analytics = FakeAnalytics()
   val offlineDownloadManager = FakeOfflineDownloadManager()
   val mediaProgressRepository = FakeMediaProgressRepository()
+  val libraryItemRepository = FakeLibraryItemRepository()
 
   @Test
   fun present_LoadingState() = runTest {
@@ -59,6 +61,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
 
@@ -88,6 +91,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
 
@@ -145,6 +149,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
 
@@ -218,6 +223,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
 
@@ -265,6 +271,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
 
@@ -296,6 +303,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
     val libraryItemId = "test_library_item"
@@ -324,6 +332,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
     val authorId = "test_authorId"
@@ -352,6 +361,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       analytics = analytics,
     )
     val seriesId = "test_seriesId"

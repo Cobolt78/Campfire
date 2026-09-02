@@ -15,6 +15,8 @@ import app.campfire.settings.api.SleepSettings
 import app.campfire.shake.ShakeDetector
 import app.campfire.shake.ShakeSensitivity
 import com.r0adkll.kimchi.annotations.ContributesBinding
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -53,6 +55,45 @@ class CoroutineSleepTimerManager(
   private var lastPlaybackTimer: PlaybackTimer? = null
   private var playbackTimerJob: Job? = null
   private var shakeDetectorJob: Job? = null
+  private var isResetPendingResume = false
+
+  init {
+    applicationScope.launch(dispatcherProvider.main) {
+      player.state.collect { state ->
+        when (state) {
+          AudioPlayer.State.Paused -> {
+            player.cancelFade()
+            if (sleepSettings.resetTimerOnPauseEnabled && playbackTimer != null) {
+              dbark { "Player paused with resetTimerOnPauseEnabled, resetting timer to original duration" }
+              playbackTimerJob?.cancel()
+              playbackTimerJob = null
+              isResetPendingResume = true
+              val timerToReset = lastPlaybackTimer ?: playbackTimer!!
+              runningTimer.value = RunningTimer(
+                timerToReset,
+                fatherTime.nowInEpochMillis(),
+                sleepSettings.shakeToResetEnabled,
+                isPaused = true,
+              )
+            }
+          }
+          AudioPlayer.State.Playing -> {
+            player.cancelFade()
+            if (sleepSettings.resetTimerOnPauseEnabled && isResetPendingResume && lastPlaybackTimer != null) {
+              dbark { "Player resumed with reset pending, restarting full timer countdown" }
+              isResetPendingResume = false
+              setTimer(lastPlaybackTimer!!)
+            }
+          }
+          AudioPlayer.State.Disabled,
+          AudioPlayer.State.Finished -> {
+            isResetPendingResume = false
+          }
+          else -> Unit
+        }
+      }
+    }
+  }
 
   override fun onSessionStart() {
     if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
@@ -87,10 +128,22 @@ class CoroutineSleepTimerManager(
   override fun setTimer(timer: PlaybackTimer) {
     ibark { "setTimer($timer)" }
     clearTimerInternal()
+    player.cancelFade()
     playbackTimer = timer
     lastPlaybackTimer = timer
-    runningTimer.value = RunningTimer(timer, fatherTime.nowInEpochMillis(), sleepSettings.shakeToResetEnabled)
-    startTimer(timer)
+    val isPaused = player.state.value == AudioPlayer.State.Paused && sleepSettings.resetTimerOnPauseEnabled
+    runningTimer.value = RunningTimer(
+      timer,
+      fatherTime.nowInEpochMillis(),
+      sleepSettings.shakeToResetEnabled,
+      isPaused = isPaused,
+    )
+    if (isPaused) {
+      isResetPendingResume = true
+    } else {
+      isResetPendingResume = false
+      startTimer(timer)
+    }
 
     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
       ibark { "Shake to reset enabled, starting shake detector" }
@@ -112,6 +165,7 @@ class CoroutineSleepTimerManager(
   private fun resetTimer() {
     dbark { "resetTimer(lastTimer=$lastPlaybackTimer)" }
     if (lastPlaybackTimer != null) {
+      player.cancelFade()
       // Cancel our shake detector time out job so that it doesn't kill
       // the shake detection while the timer is re-activated
       shakeDetectorJob?.cancel()
@@ -140,6 +194,8 @@ class CoroutineSleepTimerManager(
     playbackTimerJob = null
     playbackTimer = null
     runningTimer.value = null
+    isResetPendingResume = false
+    player.cancelFade()
   }
 
   private fun endTimer() {
@@ -159,15 +215,8 @@ class CoroutineSleepTimerManager(
       }
     }
 
-    if (playbackTimer is PlaybackTimer.EndOfChapter) {
-      player.pause()
-      onPauseComplete()
-    } else {
-      // Pause playback and clear the timer
-      player.fadeToPause().invokeOnCompletion {
-        onPauseComplete()
-      }
-    }
+    player.pause()
+    onPauseComplete()
 
     clearTimerInternal()
 
@@ -209,8 +258,27 @@ class CoroutineSleepTimerManager(
   private fun startTimer(timer: PlaybackTimer) {
     if (timer is PlaybackTimer.Epoch) {
       playbackTimerJob = applicationScope.async(dispatcherProvider.computation) {
-        dbark { "--> Starting Epoch Timer" }
-        delay(timer.epochMillis)
+        val totalMillis = timer.epochMillis
+        val configuredFade = sleepSettings.fadeOutDuration
+        val effectiveFade = if (configuredFade > Duration.ZERO) {
+          minOf(configuredFade, (totalMillis / 2).milliseconds)
+        } else {
+          Duration.ZERO
+        }
+        val mainWaitMillis = (totalMillis - effectiveFade.inWholeMilliseconds).coerceAtLeast(0L)
+
+        dbark { "--> Starting Epoch Timer (total=${totalMillis}ms, main=${mainWaitMillis}ms, fade=${effectiveFade})" }
+        if (mainWaitMillis > 0L) {
+          delay(mainWaitMillis)
+        }
+
+        if (effectiveFade > Duration.ZERO) {
+          withContext(dispatcherProvider.main) {
+            player.fadeToPause(duration = effectiveFade)
+          }
+          delay(effectiveFade.inWholeMilliseconds)
+        }
+
         dbark { "<-- Epoch Timer Ended" }
         withContext(dispatcherProvider.main) {
           endTimer()

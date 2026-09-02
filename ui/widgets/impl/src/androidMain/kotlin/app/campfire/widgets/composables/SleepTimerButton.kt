@@ -44,15 +44,15 @@ internal fun SleepTimerButton(
 ) {
   if (runningTimer != null && runningTimer.timer is PlaybackTimer.Epoch) {
     val timer = runningTimer.timer as PlaybackTimer.Epoch
-    val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
+    val elapsed = if (runningTimer.isPaused) 0L else kotlin.time.Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
     val remainingMs = timer.epochMillis - elapsed
 
     val context = LocalContext.current
     val color = contentColor.getColor(context).toArgb()
-    val remoteViews = remember(remainingMs, color) {
+    val remoteViews = remember(remainingMs, color, runningTimer.isPaused) {
       RemoteViews(context.packageName, R.layout.widget_sleep_timer_button).apply {
         setChronometerCountDown(R.id.chronometer, true)
-        setChronometer(R.id.chronometer, SystemClock.elapsedRealtime() + remainingMs, null, true)
+        setChronometer(R.id.chronometer, SystemClock.elapsedRealtime() + remainingMs, null, !runningTimer.isPaused)
         setTextColor(R.id.chronometer, color)
         setInt(R.id.icon, "setColorFilter", color)
       }

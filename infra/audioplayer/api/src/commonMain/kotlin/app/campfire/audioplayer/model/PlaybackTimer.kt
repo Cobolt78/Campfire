@@ -20,4 +20,5 @@ data class RunningTimer(
   val timer: PlaybackTimer,
   val startedAt: Long,
   val isShakeToRestartEnabled: Boolean,
+  val isPaused: Boolean = false,
 )

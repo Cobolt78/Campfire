@@ -115,6 +115,16 @@ class TestCampfireSettings(
     observeBoolean(::showConfirmDownload)
       .stateIn(testScope, SharingStarted.Lazily, showConfirmDownload)
 
+  override var confirmActions: Boolean by boolean()
+  override fun observeConfirmActions(): StateFlow<Boolean> =
+    observeBoolean(::confirmActions)
+      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
+
+  override var warnOnCellularDownload: Boolean by boolean()
+  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
+    observeBoolean(::warnOnCellularDownload)
+      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
+
   override var hasShownWidgetPinning: Boolean by boolean()
   override fun observeHasShownWidgetPinning(): StateFlow<Boolean> =
     observeBoolean(::hasShownWidgetPinning)

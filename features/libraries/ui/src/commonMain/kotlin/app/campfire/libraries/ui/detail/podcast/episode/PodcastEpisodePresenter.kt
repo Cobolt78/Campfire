@@ -130,6 +130,14 @@ class PodcastEpisodePresenter(
       settings.observeShowConfirmDownload()
     }.collectAsState()
 
+    val confirmActions by remember {
+      settings.observeConfirmActions()
+    }.collectAsState()
+
+    val warnOnCellularDownload by remember {
+      settings.observeWarnOnCellularDownload()
+    }.collectAsState()
+
     return PodcastEpisodeUiState(
       libraryItem = libraryItem,
       episode = episode,
@@ -141,6 +149,8 @@ class PodcastEpisodePresenter(
       sessionState = episodeSession,
       offlineDownload = offlineDownload,
       showConfirmDownloadDialog = showConfirmDownloadDialog,
+      confirmActions = confirmActions,
+      warnOnCellularDownload = warnOnCellularDownload,
       addToPlaylistDialog = addToPlaylistDialog,
     ) { event ->
       when (event) {

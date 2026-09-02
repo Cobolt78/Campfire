@@ -21,6 +21,7 @@ import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.loggableId
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.series.api.SeriesRepository
+import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
@@ -38,6 +39,7 @@ class SeriesDetailPresenter(
   @Assisted private val screen: SeriesDetailScreen,
   @Assisted private val navigator: Navigator,
   private val repository: SeriesRepository,
+  private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
   private val analytics: Analytics,
 ) : NonPausablePresenter<SeriesDetailUiState> {
@@ -69,6 +71,13 @@ class SeriesDetailPresenter(
       }
     }
 
+    val userMediaProgress by remember {
+      mediaProgressRepository.observeAllProgress()
+        .map { allProgress ->
+          allProgress.associateBy { it.libraryItemId }
+        }
+    }.collectAsState(emptyMap())
+
     val offlineDownloads by remember {
       snapshotFlow { seriesContentState.dataOrNull }
         .filterNotNull()
@@ -80,6 +89,7 @@ class SeriesDetailPresenter(
     return SeriesDetailUiState(
       seriesContentState = seriesContentState,
       offlineStates = offlineDownloads,
+      progressStates = userMediaProgress,
     ) { event ->
       when (event) {
         SeriesDetailUiEvent.Back -> navigator.pop()

@@ -19,9 +19,12 @@ import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.Click
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.common.compose.layout.LocalSnackBarHost
+import app.campfire.common.compose.network.rememberIsCellularOrMetered
 import app.campfire.common.compose.permission.PermissionState
 import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
+import app.campfire.common.compose.widgets.dialog.ConfirmActionDialog
 import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
+import app.campfire.core.extensions.asReadableBytes
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.MediaProgress
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
@@ -39,6 +42,8 @@ class ExpressiveControlSlot(
   private val isCurrentSession: Boolean,
   private val addToPlaylistDialog: AddToPlaylistDialog,
   @get:VisibleForTesting val showConfirmDownloadDialogSetting: Boolean,
+  val confirmActionsSetting: Boolean = true,
+  val warnOnCellularDownloadSetting: Boolean = true,
 ) : ContentSlot {
 
   override val id: String = "expressive_control_bar"
@@ -46,7 +51,14 @@ class ExpressiveControlSlot(
   @Composable
   override fun Content(modifier: Modifier, eventSink: (LibraryItemUiEvent) -> Unit) {
     var showConfirmDownloadDialog by remember { mutableStateOf(false) }
+    var showCellularDownloadConfirmation by remember { mutableStateOf(false) }
+    var showDeleteDownloadConfirmation by remember { mutableStateOf(false) }
+    var showDiscardProgressConfirmation by remember { mutableStateOf(false) }
+    var showMarkFinishedConfirmation by remember { mutableStateOf(false) }
     var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
+
+    val isCellular = rememberIsCellularOrMetered()
+
     val postNotificationPermissionState = rememberPostNotificationPermissionState {
       if (it) {
         eventSink(LibraryItemUiEvent.DownloadClick(doNotShowDownloadConfirmationAgain))
@@ -84,6 +96,10 @@ class ExpressiveControlSlot(
       )
     }
 
+    val hasProgress = mediaProgress != null &&
+      mediaProgress.progress > 0f &&
+      !mediaProgress.isFinished
+
     ExpressiveControlBar(
       isQueued = isQueued,
       hasSession = hasSession,
@@ -96,26 +112,40 @@ class ExpressiveControlSlot(
         eventSink(LibraryItemUiEvent.PlayClick)
       },
       onDownloadClick = {
-        if (showConfirmDownloadDialogSetting) {
+        if (warnOnCellularDownloadSetting && isCellular) {
+          showCellularDownloadConfirmation = true
+        } else if (showConfirmDownloadDialogSetting) {
           showConfirmDownloadDialog = true
         } else {
           eventSink(LibraryItemUiEvent.DownloadClick())
         }
       },
       onMarkFinished = {
-        eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+        if (confirmActionsSetting && hasProgress) {
+          showMarkFinishedConfirmation = true
+        } else {
+          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+        }
       },
       onMarkNotFinished = {
         eventSink(LibraryItemUiEvent.MarkNotFinished(libraryItem))
       },
       onDiscardProgress = {
-        eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+        if (confirmActionsSetting) {
+          showDiscardProgressConfirmation = true
+        } else {
+          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+        }
       },
       onStopDownloadClick = {
         eventSink(LibraryItemUiEvent.StopDownloadClick)
       },
       onDeleteDownloadClick = {
-        eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+        if (confirmActionsSetting) {
+          showDeleteDownloadConfirmation = true
+        } else {
+          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+        }
       },
       onAddToQueueClick = {
         if (isQueued) {
@@ -131,6 +161,78 @@ class ExpressiveControlSlot(
       },
       modifier = modifier.padding(horizontal = 16.dp),
     )
+
+    if (showCellularDownloadConfirmation) {
+      val itemTitle = libraryItem.media.metadata.title.orEmpty()
+      val sizeText = libraryItem.media.sizeInBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
+      val message = if (sizeText.isNotEmpty()) {
+        "You are connected to mobile data. Downloading \"$itemTitle\" ($sizeText) will use your cellular data plan."
+      } else {
+        "You are connected to mobile data. Downloading \"$itemTitle\" will use your cellular data plan."
+      }
+      ConfirmActionDialog(
+        title = "Download Over Cellular?",
+        message = message,
+        confirmButtonText = "Download",
+        onConfirm = {
+          showCellularDownloadConfirmation = false
+          if (showConfirmDownloadDialogSetting) {
+            showConfirmDownloadDialog = true
+          } else {
+            eventSink(LibraryItemUiEvent.DownloadClick())
+          }
+        },
+        onDismissRequest = { showCellularDownloadConfirmation = false },
+      )
+    }
+
+    if (showDeleteDownloadConfirmation) {
+      val itemTitle = libraryItem.media.metadata.title.orEmpty()
+      val sizeText = libraryItem.media.sizeInBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
+      val message = if (sizeText.isNotEmpty()) {
+        "Are you sure you want to delete the local download of \"$itemTitle\"? This will free up $sizeText on your device."
+      } else {
+        "Are you sure you want to delete the local download of \"$itemTitle\"?"
+      }
+      ConfirmActionDialog(
+        title = "Delete Download?",
+        message = message,
+        confirmButtonText = "Delete",
+        onConfirm = {
+          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+          showDeleteDownloadConfirmation = false
+        },
+        onDismissRequest = { showDeleteDownloadConfirmation = false },
+      )
+    }
+
+    if (showDiscardProgressConfirmation) {
+      val itemTitle = libraryItem.media.metadata.title.orEmpty()
+      ConfirmActionDialog(
+        title = "Discard Progress?",
+        message = "Are you sure you want to reset your listening progress for \"$itemTitle\"? Your saved position will be lost.",
+        confirmButtonText = "Discard",
+        onConfirm = {
+          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+          showDiscardProgressConfirmation = false
+        },
+        onDismissRequest = { showDiscardProgressConfirmation = false },
+      )
+    }
+
+    if (showMarkFinishedConfirmation) {
+      val itemTitle = libraryItem.media.metadata.title.orEmpty()
+      ConfirmActionDialog(
+        title = "Mark as Finished?",
+        message = "Are you sure you want to mark \"$itemTitle\" as finished? This will set your progress to 100%.",
+        confirmButtonText = "Mark Finished",
+        onConfirm = {
+          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+          showMarkFinishedConfirmation = false
+        },
+        onDismissRequest = { showMarkFinishedConfirmation = false },
+      )
+    }
 
     if (showConfirmDownloadDialog) {
       ConfirmDownloadDialog(

@@ -8,12 +8,14 @@ import app.campfire.core.coroutines.LoadState
 import app.campfire.core.model.Author
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
 import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
 
 data class AuthorDetailUiState(
   val authorContentState: LoadState<out Author>,
   val offlineStates: Map<LibraryItemId, OfflineDownload>,
+  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
   val eventSink: (AuthorDetailUiEvent) -> Unit,
 ) : CircuitUiState
 

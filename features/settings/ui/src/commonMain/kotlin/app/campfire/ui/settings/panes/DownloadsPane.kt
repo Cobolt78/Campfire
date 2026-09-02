@@ -87,6 +87,20 @@ internal fun DownloadsPane(
     modifier = modifier,
   ) {
     SwitchSetting(
+      value = state.downloadsSettings.confirmActions,
+      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ConfirmActions(it)) },
+      headlineContent = { Text("Action Confirmations") },
+      supportingContent = { Text("Ask for confirmation before deleting downloads, discarding progress, or marking books as finished.") },
+    )
+
+    SwitchSetting(
+      value = state.downloadsSettings.warnOnCellularDownload,
+      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload(it)) },
+      headlineContent = { Text("Warn on Cellular Downloads") },
+      supportingContent = { Text("Show a warning before downloading media over mobile data.") },
+    )
+
+    SwitchSetting(
       value = state.downloadsSettings.showDownloadConfirmation,
       onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ShowDownloadConfirmation(it)) },
       headlineContent = { Text(stringResource(Res.string.setting_show_download_confirmation_title)) },

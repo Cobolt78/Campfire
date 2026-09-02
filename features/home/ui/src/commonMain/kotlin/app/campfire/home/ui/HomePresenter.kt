@@ -12,6 +12,7 @@ import androidx.compose.runtime.snapshotFlow
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
+import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.common.screens.AuthorDetailScreen
 import app.campfire.common.screens.HomeScreen
@@ -19,10 +20,14 @@ import app.campfire.common.screens.SeriesDetailScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.Media
 import app.campfire.core.model.ShelfEntity
+import app.campfire.core.model.ShelfType
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
 import app.campfire.home.api.map
+import app.campfire.home.api.model.ShelfIds
+import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.api.MediaProgressRepository
@@ -32,6 +37,7 @@ import com.slack.circuit.runtime.Navigator
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -39,6 +45,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
@@ -50,6 +57,7 @@ class HomePresenter(
   private val homeRepository: HomeRepository,
   private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
+  private val libraryItemRepository: LibraryItemRepository,
   private val analytics: Analytics,
 ) : NonPausablePresenter<HomeUiState> {
 
@@ -88,18 +96,64 @@ class HomePresenter(
         }
     }.collectAsState(persistentMapOf())
 
+    val allDownloads by remember {
+      offlineDownloadManager.observeAll()
+    }.collectAsState(emptyList())
+
+    val downloadedEntities by remember {
+      snapshotFlow { allDownloads }
+        .mapLatest { downloads ->
+          downloads
+            .filter { it.state == OfflineDownload.State.Completed }
+            .mapNotNull { download ->
+              val libraryItem = try {
+                libraryItemRepository.getLibraryItem(download.libraryItemId)
+              } catch (e: CancellationException) {
+                throw e
+              } catch (e: Exception) {
+                null
+              } ?: return@mapNotNull null
+
+              val episodeId = download.episodeId
+              if (episodeId == null) {
+                libraryItem
+              } else {
+                val media = libraryItem.media as? Media.Podcast ?: return@mapNotNull null
+                val episode = media.episodes.find { it.id == episodeId } ?: return@mapNotNull null
+                ShelfEntity.EpisodeShelfEntry(libraryItem, episode)
+              }
+            }
+        }
+    }.collectAsState(emptyList())
+
     // Now combine both the shelves and entities into the final set of UiShelf to render
-    // in the UI.
+    // in the UI, replacing Newest Authors with Downloads.
     val feed by remember {
       derivedStateOf {
         domainFeed.map { shelves ->
-          shelves.map { shelf ->
+          val filteredShelves = shelves.filterNot {
+            it.id == ShelfIds.NewestAuthors || it.type == ShelfType.AUTHOR
+          }
+          val uiShelves = filteredShelves.map { shelf ->
             UiShelf(
               shelf,
               shelfEntities[shelf.id]
                 ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
             )
-          }.toPersistentList()
+          }.toMutableList()
+
+          if (downloadedEntities.isNotEmpty()) {
+            uiShelves.add(
+              UiShelf(
+                id = "downloads",
+                label = "Downloads",
+                total = downloadedEntities.size,
+                entities = LoadState.Loaded(downloadedEntities),
+              ),
+            )
+          }
+
+          uiShelves.toPersistentList()
         }
       }
     }
@@ -114,16 +168,9 @@ class HomePresenter(
     }.collectAsState(persistentMapOf())
 
     val offlineDownloads by remember {
-      snapshotFlow { shelfEntities.values }
-        .map { responses ->
-          responses
-            .mapNotNull { it.dataOrNull }
-            .flatten()
-            .filterIsInstance<LibraryItem>()
-        }
-        .flatMapLatest { libraryItems ->
-          offlineDownloadManager.observeForItems(libraryItems)
-            .map { it.toPersistentMap() }
+      snapshotFlow { allDownloads }
+        .map { downloads ->
+          downloads.associateBy { it.libraryItemId }.toPersistentMap()
         }
     }.collectAsState(persistentMapOf())
 

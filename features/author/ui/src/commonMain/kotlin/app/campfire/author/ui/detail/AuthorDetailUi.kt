@@ -48,6 +48,7 @@ import app.campfire.core.di.UserScope
 import app.campfire.core.model.Author
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
 import app.campfire.core.offline.OfflineStatus
 import campfire.features.author.ui.generated.resources.Res
 import campfire.features.author.ui.generated.resources.action_back
@@ -109,6 +110,7 @@ fun AuthorDetail(
       is LoadState.Loaded -> LoadedState(
         author = state.authorContentState.data,
         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
+        progressStatus = { state.progressStates[it] },
         contentPadding = paddingValues,
         onLibraryItemClick = { state.eventSink(AuthorDetailUiEvent.LibraryItemClick(it)) },
       )
@@ -120,6 +122,7 @@ fun AuthorDetail(
 private fun LoadedState(
   author: Author,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId) -> MediaProgress?,
   onLibraryItemClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
   contentPadding: PaddingValues = PaddingValues(),
@@ -156,6 +159,7 @@ private fun LoadedState(
       LibraryItemCard(
         item = item,
         offlineStatus = offlineStatus(item.id),
+        progress = progressStatus(item.id) ?: item.userMediaProgress,
         onClick = { onLibraryItemClick(item) },
       )
     }

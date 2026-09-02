@@ -45,9 +45,13 @@ internal fun RunningTimerText(
   var timeLeft by remember { mutableStateOf("") }
   LaunchedEffect(runningTimer) {
     val timer = (runningTimer.timer as? PlaybackTimer.Epoch) ?: return@LaunchedEffect
+    if (runningTimer.isPaused) {
+      timeLeft = timer.epochMillis.milliseconds.clockFormat()
+      return@LaunchedEffect
+    }
     while (isActive) {
       val elapsed = Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
-      val remaining = (timer.epochMillis - elapsed).milliseconds
+      val remaining = maxOf(0L, timer.epochMillis - elapsed).milliseconds
       timeLeft = remaining.clockFormat()
       delay(1000L)
     }

@@ -54,6 +54,10 @@ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_subt
 import campfire.features.settings.ui.generated.resources.setting_auto_sleep_timer
 import campfire.features.settings.ui.generated.resources.setting_auto_sleep_title
 import campfire.features.settings.ui.generated.resources.setting_playback_shake_sensitivity_title
+import campfire.features.settings.ui.generated.resources.setting_playback_sleep_fade_out_duration_subtitle
+import campfire.features.settings.ui.generated.resources.setting_playback_sleep_fade_out_duration_title
+import campfire.features.settings.ui.generated.resources.setting_playback_sleep_reset_on_pause_subtitle
+import campfire.features.settings.ui.generated.resources.setting_playback_sleep_reset_on_pause_title
 import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_subtitle
 import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_title
 import campfire.features.settings.ui.generated.resources.setting_sleep_title
@@ -67,6 +71,7 @@ import com.slack.circuit.overlay.LocalOverlayHost
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalTime
@@ -84,11 +89,29 @@ internal fun SleepPane(
     onBackClick = onBackClick,
     modifier = modifier,
   ) {
-    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
-      Header(
-        title = { Text(stringResource(Res.string.header_shake_to_reset)) },
-      )
+    Header(
+      title = { Text(stringResource(Res.string.header_shake_to_reset)) },
+    )
 
+    // Reset timer on pause
+    SwitchSetting(
+      value = state.sleepSettings.resetTimerOnPause,
+      onValueChange = { state.eventSink(SleepSettingEvent.ResetTimerOnPause(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_playback_sleep_reset_on_pause_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_playback_sleep_reset_on_pause_subtitle)) },
+    )
+
+    // Fade out duration
+    TimeJumpSetting(
+      time = state.sleepSettings.fadeOutDuration,
+      onTimeChange = { state.eventSink(SleepSettingEvent.FadeOutDuration(it)) },
+      jumps = FadeOutJumps,
+      textFormat = { if (it == Duration.ZERO) "Off" else it.toString() },
+      headlineContent = { Text(stringResource(Res.string.setting_playback_sleep_fade_out_duration_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_playback_sleep_fade_out_duration_subtitle)) },
+    )
+
+    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
       // Shake to Reset
       SwitchSetting(
         value = state.sleepSettings.shakeToReset,
@@ -232,6 +255,31 @@ enum class AutoRewindJumps(val duration: Duration) {
 
     override fun nextFrom(duration: Duration): Duration {
       val jump = AutoRewindJumps.entries.find { it.duration == duration } ?: Medium
+      return jump.next().duration
+    }
+  }
+}
+
+enum class FadeOutJumps(val duration: Duration) {
+  Off(0.seconds),
+  Ten(10.seconds),
+  Twenty(20.seconds),
+  Thirty(30.seconds),
+  Forty(40.seconds),
+  Fifty(50.seconds),
+  Sixty(60.seconds),
+  ;
+
+  fun next(): FadeOutJumps {
+    val newOrdinal = (ordinal + 1) % entries.size
+    return entries[newOrdinal]
+  }
+
+  companion object : TimeJumps {
+    val Default: Duration get() = Thirty.duration
+
+    override fun nextFrom(duration: Duration): Duration {
+      val jump = entries.find { it.duration == duration } ?: Thirty
       return jump.next().duration
     }
   }

@@ -187,6 +187,14 @@ class BookPresenter(
       settings.observeShowConfirmDownload()
     }.collectAsState()
 
+    val confirmActions by remember {
+      settings.observeConfirmActions()
+    }.collectAsState()
+
+    val warnOnCellularDownload by remember {
+      settings.observeWarnOnCellularDownload()
+    }.collectAsState()
+
     val showTimeInBook by remember {
       settings.observeShowTimeInBook()
     }.collectAsState()
@@ -204,6 +212,8 @@ class BookPresenter(
       seriesContentState = seriesContentState,
       showTimeInBook = showTimeInBook,
       showConfirmDownloadDialog = showConfirmDownloadDialog,
+      confirmActions = confirmActions,
+      warnOnCellularDownload = warnOnCellularDownload,
       hasSession = currentSession != null,
       session = itemSession.sessionOrNull(),
       isQueued = isQueued,
@@ -370,17 +380,21 @@ private fun buildSlots(
   seriesContentState: LoadState<out List<SeriesWithBooks>>,
   showTimeInBook: Boolean,
   showConfirmDownloadDialog: Boolean,
+  confirmActions: Boolean,
+  warnOnCellularDownload: Boolean,
   hasSession: Boolean,
   isQueued: Boolean,
   session: Session?,
   addToPlaylistDialog: AddToPlaylistDialog,
   collapseListenedChapters: Boolean,
 ): List<ContentSlot> {
+  val currentProgress = (mediaProgressState as? LoadState.Loaded)?.data ?: libraryItem.userMediaProgress
   return buildList {
     this += CoverImageSlot(
       imageUrl = libraryItem.media.coverImageUrl,
       contentDescription = libraryItem.media.metadata.title,
       sharedTransitionKey = sharedTransitionKey,
+      progress = currentProgress,
     )
 
     this += TitleSlot(
@@ -441,6 +455,8 @@ private fun buildSlots(
       hasSession = hasSession,
       isQueued = isQueued,
       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
+      confirmActionsSetting = confirmActions,
+      warnOnCellularDownloadSetting = warnOnCellularDownload,
       addToPlaylistDialog = addToPlaylistDialog,
     )
 

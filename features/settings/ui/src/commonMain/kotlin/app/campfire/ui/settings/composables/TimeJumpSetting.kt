@@ -18,6 +18,7 @@ internal fun TimeJumpSetting(
   jumps: TimeJumps,
   headlineContent: @Composable () -> Unit,
   supportingContent: (@Composable () -> Unit)? = null,
+  textFormat: (Duration) -> String = { it.toString() },
   modifier: Modifier = Modifier,
 ) {
   SettingListItem(
@@ -25,7 +26,7 @@ internal fun TimeJumpSetting(
     supportingContent = supportingContent,
     trailingContent = {
       Text(
-        text = time.toString(),
+        text = textFormat(time),
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.Bold,

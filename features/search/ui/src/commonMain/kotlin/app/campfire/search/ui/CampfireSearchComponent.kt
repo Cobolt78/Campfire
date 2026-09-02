@@ -47,6 +47,7 @@ class CampfireSearchComponent(
       query = state.query,
       results = state.searchResult,
       offlineStatus = { state.offlineStates[it].asWidgetStatus() },
+      progressStatus = { state.progressStates[it] },
       onBookClick = { book -> eventSink(SearchUiEvent.OnBookClick(book)) },
       onNarratorClick = { narrator -> eventSink(SearchUiEvent.OnNarratorClick(narrator)) },
       onAuthorClick = { author -> eventSink(SearchUiEvent.OnAuthorClick(author)) },

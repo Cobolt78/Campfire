@@ -17,6 +17,7 @@ import app.campfire.common.screens.AuthorDetailScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
@@ -35,6 +36,7 @@ class AuthorDetailPresenter(
   @Assisted private val screen: AuthorDetailScreen,
   @Assisted private val navigator: Navigator,
   private val authorRepository: AuthorRepository,
+  private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
   private val analytics: Analytics,
 ) : NonPausablePresenter<AuthorDetailUiState> {
@@ -47,6 +49,13 @@ class AuthorDetailPresenter(
         .catch { LoadState.Error }
     }.collectAsState(LoadState.Loading)
 
+    val userMediaProgress by remember {
+      mediaProgressRepository.observeAllProgress()
+        .map { allProgress ->
+          allProgress.associateBy { it.libraryItemId }
+        }
+    }.collectAsState(emptyMap())
+
     val offlineDownloads by remember {
       snapshotFlow { authorContentState.dataOrNull }
         .filterNotNull()
@@ -58,6 +67,7 @@ class AuthorDetailPresenter(
     return AuthorDetailUiState(
       authorContentState = authorContentState,
       offlineStates = offlineDownloads,
+      progressStates = userMediaProgress,
     ) { event ->
       when (event) {
         is AuthorDetailUiEvent.LibraryItemClick -> {

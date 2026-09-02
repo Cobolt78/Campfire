@@ -1,0 +1,2709 @@
+diff --git a/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
+new file mode 100644
+index 00000000..9fd3ad95
+--- /dev/null
++++ b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
+@@ -0,0 +1,27 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.network
++
++import android.content.Context
++import android.net.ConnectivityManager
++import android.net.NetworkCapabilities
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.remember
++import androidx.compose.ui.platform.LocalContext
++
++@Composable
++actual fun rememberIsCellularOrMetered(): Boolean {
++  val context = LocalContext.current
++  return remember(context) {
++    try {
++      val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++      val activeNetwork = cm?.activeNetwork
++      val capabilities = activeNetwork?.let { cm.getNetworkCapabilities(it) }
++      capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true ||
++        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
++    } catch (_: Throwable) {
++      false
++    }
++  }
++}
+diff --git a/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt b/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt
+new file mode 100644
+index 00000000..7c6e9709
+--- /dev/null
++++ b/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt
+@@ -0,0 +1,9 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.network
++
++import androidx.compose.runtime.Composable
++
++@Composable
++actual fun rememberIsCellularOrMetered(): Boolean = false
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
+new file mode 100644
+index 00000000..5a9e9a88
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
+@@ -0,0 +1,12 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.network
++
++import androidx.compose.runtime.Composable
++
++/**
++ * Returns true if the device is currently connected via cellular or a metered connection.
++ */
++@Composable
++expect fun rememberIsCellularOrMetered(): Boolean
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
+index a44fd1f2..8bbd9d43 100644
+--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
+@@ -265,29 +265,7 @@ private fun BoxScope.ProgressDecorator(
+   large: Boolean = true,
+ ) {
+   progress?.let { mediaProgress ->
+-    if (mediaProgress.isFinished) {
+-      AnimatedVisibility(
+-        visible = isTransitioning,
+-        enter = fadeIn(),
+-        exit = fadeOut(),
+-        modifier = Modifier
+-          .align(Alignment.TopStart),
+-      ) {
+-        MediaFinishedIndicator(
+-          size = if (large) 24.dp else 18.dp,
+-          modifier = Modifier
+-            .thenIf(
+-              condition = large,
+-              whenTrue = {
+-                Modifier.padding(8.dp)
+-              },
+-              whenFalse = {
+-                Modifier.padding(4.dp)
+-              },
+-            ),
+-        )
+-      }
+-    } else {
++    if (mediaProgress.isFinished || mediaProgress.actualProgress > 0f) {
+       AnimatedVisibility(
+         visible = isTransitioning,
+         enter = fadeIn(),
+@@ -297,7 +275,7 @@ private fun BoxScope.ProgressDecorator(
+       ) {
+         MediaProgressBar(
+           mediaProgress = mediaProgress,
+-          trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
++          trackHeight = if (large) 6.dp else 4.dp,
+           modifier = Modifier
+             .fillMaxWidth(),
+         )
+@@ -562,35 +540,39 @@ private fun LibraryItemCardEditingScrim(
+   }
+ }
+ 
++private val AudiobookshelfOrange = Color(0xFFE58B22)
++private val AudiobookshelfGreen = Color(0xFF4CAF50)
++private val AudiobookshelfTrack = Color(0x99000000)
++
+ @Composable
+ fun MediaProgressBar(
+   mediaProgress: MediaProgress,
+   modifier: Modifier = Modifier,
+-  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
+-  progressColor: Color = MaterialTheme.colorScheme.primary,
+-  trackHeight: Dp = LargeProgressBarHeight,
++  trackColor: Color = AudiobookshelfTrack,
++  progressColor: Color = if (mediaProgress.isFinished) AudiobookshelfGreen else AudiobookshelfOrange,
++  trackHeight: Dp = 6.dp,
+ ) {
+   Canvas(
+     modifier = modifier
++      .fillMaxWidth()
+       .height(trackHeight),
+   ) {
+-    // Draw Track
+-    drawRect(
+-      color = trackColor,
+-      size = size,
+-      alpha = ProgressBarAlpha,
+-    )
+-
+-    val cornerRadiusPx = trackHeight.toPx() / 2f
+-    val progressSize = size.copy(
+-      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
+-    )
+-    drawRoundRect(
+-      color = progressColor,
+-      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
+-      size = progressSize,
+-      cornerRadius = CornerRadius(cornerRadiusPx),
+-    )
++    if (mediaProgress.isFinished) {
++      drawRect(
++        color = progressColor,
++        size = size,
++      )
++    } else {
++      drawRect(
++        color = trackColor,
++        size = size,
++      )
++      val progressWidth = size.width * mediaProgress.actualProgress.coerceIn(0f, 1f)
++      drawRect(
++        color = progressColor,
++        size = size.copy(width = progressWidth),
++      )
++    }
+   }
+ }
+ 
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
+index 3c727236..179fb6af 100644
+--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
+@@ -134,26 +134,17 @@ fun LibraryItemListItem(
+           )
+         }
+ 
+-        if (mediaProgress?.isFinished == true) {
+-          MediaFinishedIndicator(
+-            size = 18.dp,
+-            modifier = Modifier
+-              .align(Alignment.TopStart)
+-              .padding(8.dp),
+-          )
+-        }
+-
+-        mediaProgress
+-          ?.takeUnless { it.isFinished }
+-          ?.let { progress ->
++        mediaProgress?.let { progress ->
++          if (progress.isFinished || progress.actualProgress > 0f) {
+             MediaProgressBar(
+               mediaProgress = progress,
+-              trackHeight = SmallProgressBarHeight,
++              trackHeight = 4.dp,
+               modifier = Modifier
+                 .align(Alignment.BottomCenter)
+                 .fillMaxWidth(),
+             )
+           }
++        }
+       }
+ 
+       Spacer(Modifier.size(16.dp))
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt
+new file mode 100644
+index 00000000..ec1ea7a4
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt
+@@ -0,0 +1,49 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.widgets.dialog
++
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++
++@Composable
++fun ConfirmActionDialog(
++  title: String,
++  message: String,
++  confirmButtonText: String,
++  dismissButtonText: String = "Cancel",
++  onConfirm: () -> Unit,
++  onDismissRequest: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  AlertDialog(
++    modifier = modifier,
++    onDismissRequest = onDismissRequest,
++    title = {
++      Text(
++        text = title,
++        style = MaterialTheme.typography.headlineSmall,
++      )
++    },
++    text = {
++      Text(
++        text = message,
++        style = MaterialTheme.typography.bodyMedium,
++      )
++    },
++    confirmButton = {
++      TextButton(onClick = onConfirm) {
++        Text(confirmButtonText)
++      }
++    },
++    dismissButton = {
++      TextButton(onClick = onDismissRequest) {
++        Text(dismissButtonText)
++      }
++    },
++  )
++}
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt b/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
+index 32190c7a..a77e963c 100644
+--- a/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
++++ b/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
+@@ -27,3 +27,19 @@ fun Duration.asSeconds(): Float = toDouble(DurationUnit.SECONDS).toFloat()
+ infix fun ClosedRange<Duration>.isIn(other: ClosedRange<Duration>): Boolean {
+   return start >= other.start && endInclusive <= other.endInclusive
+ }
++
++/**
++ * Format duration as human-readable hours and minutes (e.g. "14h 22m", "45m", "1h").
++ */
++fun Duration.formatHoursAndMinutes(): String {
++  val hours = inWholeHours
++  val minutes = inWholeMinutes % 60
++  return buildString {
++    if (hours > 0) {
++      append("${hours}h ")
++    }
++    if (minutes > 0 || hours == 0L) {
++      append("${minutes}m")
++    }
++  }.trim()
++}
+diff --git a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseInitializer.kt b/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseInitializer.kt
+index 13405e5f..fd60aa3f 100644
+--- a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseInitializer.kt
++++ b/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseInitializer.kt
+@@ -45,8 +45,16 @@ class FirebaseInitializer(
+   override val priority: Int = AppInitializer.FIREBASE_INIT_PRIORITY
+ 
+   override suspend fun onInitialize() {
+-    // ONLY initialize firebase on release builds
+-    FirebaseApp.initializeApp(application)
++    // ONLY initialize firebase on release builds if configuration exists
++    val firebaseApp = try {
++      FirebaseApp.initializeApp(application)
++    } catch (t: Throwable) {
++      null
++    }
++    if (firebaseApp == null) {
++      bark("Firebase", WARN) { "FirebaseApp not initialized (no google-services.json). Skipping Crashlytics." }
++      return
++    }
+ 
+     // Setup logging
+     Heartwood.grow(FirebaseBark)
+diff --git a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailPresenter.kt b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailPresenter.kt
+index c77e2403..06ae96bb 100644
+--- a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailPresenter.kt
++++ b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailPresenter.kt
+@@ -17,6 +17,7 @@ import app.campfire.common.screens.AuthorDetailScreen
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
+ import app.campfire.libraries.api.screen.LibraryItemScreen
++import app.campfire.user.api.MediaProgressRepository
+ import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+ import com.slack.circuit.runtime.Navigator
+@@ -35,6 +36,7 @@ class AuthorDetailPresenter(
+   @Assisted private val screen: AuthorDetailScreen,
+   @Assisted private val navigator: Navigator,
+   private val authorRepository: AuthorRepository,
++  private val mediaProgressRepository: MediaProgressRepository,
+   private val offlineDownloadManager: OfflineDownloadManager,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<AuthorDetailUiState> {
+@@ -47,6 +49,13 @@ class AuthorDetailPresenter(
+         .catch { LoadState.Error }
+     }.collectAsState(LoadState.Loading)
+ 
++    val userMediaProgress by remember {
++      mediaProgressRepository.observeAllProgress()
++        .map { allProgress ->
++          allProgress.associateBy { it.libraryItemId }
++        }
++    }.collectAsState(emptyMap())
++
+     val offlineDownloads by remember {
+       snapshotFlow { authorContentState.dataOrNull }
+         .filterNotNull()
+@@ -58,6 +67,7 @@ class AuthorDetailPresenter(
+     return AuthorDetailUiState(
+       authorContentState = authorContentState,
+       offlineStates = offlineDownloads,
++      progressStates = userMediaProgress,
+     ) { event ->
+       when (event) {
+         is AuthorDetailUiEvent.LibraryItemClick -> {
+diff --git a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUi.kt b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUi.kt
+index e38fc40a..03372ad9 100644
+--- a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUi.kt
++++ b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUi.kt
+@@ -48,6 +48,7 @@ import app.campfire.core.di.UserScope
+ import app.campfire.core.model.Author
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import app.campfire.core.offline.OfflineStatus
+ import campfire.features.author.ui.generated.resources.Res
+ import campfire.features.author.ui.generated.resources.action_back
+@@ -109,6 +110,7 @@ fun AuthorDetail(
+       is LoadState.Loaded -> LoadedState(
+         author = state.authorContentState.data,
+         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
++        progressStatus = { state.progressStates[it] },
+         contentPadding = paddingValues,
+         onLibraryItemClick = { state.eventSink(AuthorDetailUiEvent.LibraryItemClick(it)) },
+       )
+@@ -120,6 +122,7 @@ fun AuthorDetail(
+ private fun LoadedState(
+   author: Author,
+   offlineStatus: (LibraryItemId) -> OfflineStatus,
++  progressStatus: (LibraryItemId) -> MediaProgress?,
+   onLibraryItemClick: (LibraryItem) -> Unit,
+   modifier: Modifier = Modifier,
+   contentPadding: PaddingValues = PaddingValues(),
+@@ -156,6 +159,7 @@ private fun LoadedState(
+       LibraryItemCard(
+         item = item,
+         offlineStatus = offlineStatus(item.id),
++        progress = progressStatus(item.id) ?: item.userMediaProgress,
+         onClick = { onLibraryItemClick(item) },
+       )
+     }
+diff --git a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUiState.kt b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUiState.kt
+index 5d12565f..bcf18a54 100644
+--- a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUiState.kt
++++ b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUiState.kt
+@@ -8,12 +8,14 @@ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.model.Author
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import com.slack.circuit.runtime.CircuitUiEvent
+ import com.slack.circuit.runtime.CircuitUiState
+ 
+ data class AuthorDetailUiState(
+   val authorContentState: LoadState<out Author>,
+   val offlineStates: Map<LibraryItemId, OfflineDownload>,
++  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
+   val eventSink: (AuthorDetailUiEvent) -> Unit,
+ ) : CircuitUiState
+ 
+diff --git a/features/collections/ui/build.gradle.kts b/features/collections/ui/build.gradle.kts
+index 85565849..493a55ad 100644
+--- a/features/collections/ui/build.gradle.kts
++++ b/features/collections/ui/build.gradle.kts
+@@ -10,6 +10,7 @@ kotlin {
+     commonMain {
+       dependencies {
+         implementation(projects.features.collections.api)
++        implementation(projects.features.user.api)
+         implementation(projects.data.crashreporting.api)
+         implementation(projects.infra.audioplayer.api)
+         implementation(projects.ui.appbar)
+diff --git a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailPresenter.kt b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailPresenter.kt
+index b26dc4c6..bd77f762 100644
+--- a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailPresenter.kt
++++ b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailPresenter.kt
+@@ -22,6 +22,7 @@ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.session.UserSession
+ import app.campfire.core.session.user
+ import app.campfire.libraries.api.screen.LibraryItemScreen
++import app.campfire.user.api.MediaProgressRepository
+ import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+ import com.slack.circuit.runtime.Navigator
+@@ -41,6 +42,7 @@ class CollectionDetailPresenter(
+   @Assisted private val navigator: Navigator,
+   private val currentSession: UserSession,
+   private val collectionsRepository: CollectionsRepository,
++  private val mediaProgressRepository: MediaProgressRepository,
+   private val offlineDownloadManager: OfflineDownloadManager,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<CollectionDetailUiState> {
+@@ -64,6 +66,13 @@ class CollectionDetailPresenter(
+         .catch<LoadState<out List<LibraryItem>>> { emit(LoadState.Error) }
+     }.collectAsState(LoadState.Loading)
+ 
++    val userMediaProgress by remember {
++      mediaProgressRepository.observeAllProgress()
++        .map { allProgress ->
++          allProgress.associateBy { it.libraryItemId }
++        }
++    }.collectAsState(emptyMap())
++
+     val offlineDownloads by remember {
+       snapshotFlow { collectionContentState.dataOrNull }
+         .filterNotNull()
+@@ -77,6 +86,7 @@ class CollectionDetailPresenter(
+       collection = collection,
+       collectionContentState = collectionContentState,
+       offlineStates = offlineDownloads,
++      progressStates = userMediaProgress,
+     ) { event ->
+       when (event) {
+         CollectionDetailUiEvent.Back -> navigator.pop()
+diff --git a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUi.kt b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUi.kt
+index d34ad66b..75981c41 100644
+--- a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUi.kt
++++ b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUi.kt
+@@ -222,6 +222,7 @@ fun CollectionDetail(
+         selectedItems = selectedItems,
+         items = state.collectionContentState.data,
+         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
++        progressStatus = { state.progressStates[it] },
+         onLibraryItemClick = { item ->
+           if (isItemEditing) {
+             if (selectedItems.contains(item)) {
+@@ -265,6 +266,7 @@ private fun LoadedState(
+   selectedItems: List<LibraryItem>,
+   items: List<LibraryItem>,
+   offlineStatus: (LibraryItemId) -> OfflineStatus,
++  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress?,
+   onLibraryItemClick: (LibraryItem) -> Unit,
+   onLibraryItemLongClick: (LibraryItem) -> Unit,
+   modifier: Modifier = Modifier,
+@@ -309,6 +311,7 @@ private fun LoadedState(
+         sharedTransitionKey = item.id + collectionName,
+         sharedTransitionZIndex = (items.size - index) + 1f,
+         offlineStatus = offlineStatus(item.id),
++        progress = progressStatus(item.id) ?: item.userMediaProgress,
+         isSelectable = isEditing,
+         selected = selectedItems.contains(item),
+         modifier = Modifier
+diff --git a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUiState.kt b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUiState.kt
+index 7758ff8d..07bcacd8 100644
+--- a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUiState.kt
++++ b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUiState.kt
+@@ -8,6 +8,7 @@ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.model.Collection
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import com.slack.circuit.runtime.CircuitUiEvent
+ import com.slack.circuit.runtime.CircuitUiState
+ 
+@@ -16,6 +17,7 @@ data class CollectionDetailUiState(
+   val collection: Collection?,
+   val collectionContentState: LoadState<out List<LibraryItem>>,
+   val offlineStates: Map<LibraryItemId, OfflineDownload>,
++  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
+   val eventSink: (CollectionDetailUiEvent) -> Unit,
+ ) : CircuitUiState
+ 
+diff --git a/features/home/ui/build.gradle.kts b/features/home/ui/build.gradle.kts
+index 4dad97b2..d4ccdacf 100644
+--- a/features/home/ui/build.gradle.kts
++++ b/features/home/ui/build.gradle.kts
+@@ -24,6 +24,7 @@ kotlin {
+       dependencies {
+         implementation(projects.common.test)
+         implementation(projects.data.analytics.test)
++        implementation(projects.features.libraries.test)
+         implementation(projects.features.user.test)
+         implementation(projects.infra.audioplayer.test)
+         implementation(libs.bundles.test.common)
+diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+index 00167638..0b66c85f 100644
+--- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+@@ -12,6 +12,7 @@ import androidx.compose.runtime.snapshotFlow
+ import app.campfire.analytics.Analytics
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
++import app.campfire.audioplayer.offline.OfflineDownload
+ import app.campfire.audioplayer.offline.OfflineDownloadManager
+ import app.campfire.common.screens.AuthorDetailScreen
+ import app.campfire.common.screens.HomeScreen
+@@ -19,10 +20,14 @@ import app.campfire.common.screens.SeriesDetailScreen
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
+ import app.campfire.core.model.LibraryItem
++import app.campfire.core.model.Media
+ import app.campfire.core.model.ShelfEntity
++import app.campfire.core.model.ShelfType
+ import app.campfire.home.api.FeedResponse
+ import app.campfire.home.api.HomeRepository
+ import app.campfire.home.api.map
++import app.campfire.home.api.model.ShelfIds
++import app.campfire.libraries.api.LibraryItemRepository
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.user.api.MediaProgressKey
+ import app.campfire.user.api.MediaProgressRepository
+@@ -32,6 +37,7 @@ import com.slack.circuit.runtime.Navigator
+ import kotlinx.collections.immutable.persistentMapOf
+ import kotlinx.collections.immutable.toPersistentList
+ import kotlinx.collections.immutable.toPersistentMap
++import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.flow.catch
+ import kotlinx.coroutines.flow.combine
+@@ -39,6 +45,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
+ import kotlinx.coroutines.flow.filterNotNull
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.flow.mapLatest
+ import kotlinx.coroutines.flow.onStart
+ import me.tatarka.inject.annotations.Assisted
+ import me.tatarka.inject.annotations.Inject
+@@ -50,6 +57,7 @@ class HomePresenter(
+   private val homeRepository: HomeRepository,
+   private val mediaProgressRepository: MediaProgressRepository,
+   private val offlineDownloadManager: OfflineDownloadManager,
++  private val libraryItemRepository: LibraryItemRepository,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<HomeUiState> {
+ 
+@@ -88,18 +96,64 @@ class HomePresenter(
+         }
+     }.collectAsState(persistentMapOf())
+ 
++    val allDownloads by remember {
++      offlineDownloadManager.observeAll()
++    }.collectAsState(emptyList())
++
++    val downloadedEntities by remember {
++      snapshotFlow { allDownloads }
++        .mapLatest { downloads ->
++          downloads
++            .filter { it.state == OfflineDownload.State.Completed }
++            .mapNotNull { download ->
++              val libraryItem = try {
++                libraryItemRepository.getLibraryItem(download.libraryItemId)
++              } catch (e: CancellationException) {
++                throw e
++              } catch (e: Exception) {
++                null
++              } ?: return@mapNotNull null
++
++              val episodeId = download.episodeId
++              if (episodeId == null) {
++                libraryItem
++              } else {
++                val media = libraryItem.media as? Media.Podcast ?: return@mapNotNull null
++                val episode = media.episodes.find { it.id == episodeId } ?: return@mapNotNull null
++                ShelfEntity.EpisodeShelfEntry(libraryItem, episode)
++              }
++            }
++        }
++    }.collectAsState(emptyList())
++
+     // Now combine both the shelves and entities into the final set of UiShelf to render
+-    // in the UI.
++    // in the UI, replacing Newest Authors with Downloads.
+     val feed by remember {
+       derivedStateOf {
+         domainFeed.map { shelves ->
+-          shelves.map { shelf ->
++          val filteredShelves = shelves.filterNot {
++            it.id == ShelfIds.NewestAuthors || it.type == ShelfType.AUTHOR
++          }
++          val uiShelves = filteredShelves.map { shelf ->
+             UiShelf(
+               shelf,
+               shelfEntities[shelf.id]
+                 ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
+             )
+-          }.toPersistentList()
++          }.toMutableList()
++
++          if (downloadedEntities.isNotEmpty()) {
++            uiShelves.add(
++              UiShelf(
++                id = "downloads",
++                label = "Downloads",
++                total = downloadedEntities.size,
++                entities = LoadState.Loaded(downloadedEntities),
++              ),
++            )
++          }
++
++          uiShelves.toPersistentList()
+         }
+       }
+     }
+@@ -114,16 +168,9 @@ class HomePresenter(
+     }.collectAsState(persistentMapOf())
+ 
+     val offlineDownloads by remember {
+-      snapshotFlow { shelfEntities.values }
+-        .map { responses ->
+-          responses
+-            .mapNotNull { it.dataOrNull }
+-            .flatten()
+-            .filterIsInstance<LibraryItem>()
+-        }
+-        .flatMapLatest { libraryItems ->
+-          offlineDownloadManager.observeForItems(libraryItems)
+-            .map { it.toPersistentMap() }
++      snapshotFlow { allDownloads }
++        .map { downloads ->
++          downloads.associateBy { it.libraryItemId }.toPersistentMap()
+         }
+     }.collectAsState(persistentMapOf())
+ 
+diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
+index b67f6087..d0cbede0 100644
+--- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
++++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
+@@ -18,6 +18,7 @@ import app.campfire.core.model.ShelfType
+ import app.campfire.home.api.FeedResponse
+ import app.campfire.home.api.model.Shelf
+ import app.campfire.libraries.api.screen.LibraryItemScreen
++import app.campfire.libraries.test.FakeLibraryItemRepository
+ import app.campfire.user.api.MediaProgressKey
+ import app.campfire.user.test.FakeMediaProgressRepository
+ import assertk.Assert
+@@ -46,6 +47,7 @@ class HomePresenterTest {
+   val analytics = FakeAnalytics()
+   val offlineDownloadManager = FakeOfflineDownloadManager()
+   val mediaProgressRepository = FakeMediaProgressRepository()
++  val libraryItemRepository = FakeLibraryItemRepository()
+ 
+   @Test
+   fun present_LoadingState() = runTest {
+@@ -59,6 +61,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+ 
+@@ -88,6 +91,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+ 
+@@ -145,6 +149,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+ 
+@@ -218,6 +223,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+ 
+@@ -265,6 +271,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+ 
+@@ -296,6 +303,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+     val libraryItemId = "test_library_item"
+@@ -324,6 +332,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+     val authorId = "test_authorId"
+@@ -352,6 +361,7 @@ class HomePresenterTest {
+       homeRepository = repository,
+       mediaProgressRepository = mediaProgressRepository,
+       offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = libraryItemRepository,
+       analytics = analytics,
+     )
+     val seriesId = "test_seriesId"
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
+index 2b050d29..a18e364e 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
+@@ -187,6 +187,14 @@ class BookPresenter(
+       settings.observeShowConfirmDownload()
+     }.collectAsState()
+ 
++    val confirmActions by remember {
++      settings.observeConfirmActions()
++    }.collectAsState()
++
++    val warnOnCellularDownload by remember {
++      settings.observeWarnOnCellularDownload()
++    }.collectAsState()
++
+     val showTimeInBook by remember {
+       settings.observeShowTimeInBook()
+     }.collectAsState()
+@@ -204,6 +212,8 @@ class BookPresenter(
+       seriesContentState = seriesContentState,
+       showTimeInBook = showTimeInBook,
+       showConfirmDownloadDialog = showConfirmDownloadDialog,
++      confirmActions = confirmActions,
++      warnOnCellularDownload = warnOnCellularDownload,
+       hasSession = currentSession != null,
+       session = itemSession.sessionOrNull(),
+       isQueued = isQueued,
+@@ -370,17 +380,21 @@ private fun buildSlots(
+   seriesContentState: LoadState<out List<SeriesWithBooks>>,
+   showTimeInBook: Boolean,
+   showConfirmDownloadDialog: Boolean,
++  confirmActions: Boolean,
++  warnOnCellularDownload: Boolean,
+   hasSession: Boolean,
+   isQueued: Boolean,
+   session: Session?,
+   addToPlaylistDialog: AddToPlaylistDialog,
+   collapseListenedChapters: Boolean,
+ ): List<ContentSlot> {
++  val currentProgress = (mediaProgressState as? LoadState.Loaded)?.data ?: libraryItem.userMediaProgress
+   return buildList {
+     this += CoverImageSlot(
+       imageUrl = libraryItem.media.coverImageUrl,
+       contentDescription = libraryItem.media.metadata.title,
+       sharedTransitionKey = sharedTransitionKey,
++      progress = currentProgress,
+     )
+ 
+     this += TitleSlot(
+@@ -441,6 +455,8 @@ private fun buildSlots(
+       hasSession = hasSession,
+       isQueued = isQueued,
+       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
++      confirmActionsSetting = confirmActions,
++      warnOnCellularDownloadSetting = warnOnCellularDownload,
+       addToPlaylistDialog = addToPlaylistDialog,
+     )
+ 
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
+index 2785a544..41e0aef2 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
+@@ -1,28 +1,39 @@
+-// Copyright 2026, Drew Heavner and the Campfire project contributors
+-// SPDX-License-Identifier: GPL-3.0-only
++@file:OptIn(
++  ExperimentalSharedTransitionApi::class,
++  ExperimentalMaterial3ExpressiveApi::class,
++)
+ 
+ package app.campfire.libraries.ui.detail.composables.slots
+ 
+ import androidx.compose.animation.ExperimentalSharedTransitionApi
++import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.BoxWithConstraints
++import androidx.compose.foundation.layout.fillMaxSize
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
++import androidx.compose.material3.MaterialTheme
+ import androidx.compose.runtime.Composable
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.unit.dp
+ import app.campfire.common.compose.widgets.CoverImage
+ import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
++import app.campfire.common.compose.widgets.MediaProgressBar
++import app.campfire.core.model.MediaProgress
+ import app.campfire.libraries.ui.detail.LibraryItemUiEvent
+ import campfire.features.libraries.ui.generated.resources.Res
+ import campfire.features.libraries.ui.generated.resources.placeholder_book
+ import com.slack.circuit.sharedelements.SharedElementTransitionScope
+ import org.jetbrains.compose.resources.painterResource
+ 
+-@OptIn(ExperimentalSharedTransitionApi::class)
+ class CoverImageSlot(
+   private val imageUrl: String?,
+   private val contentDescription: String?,
+   private val sharedTransitionKey: String,
++  private val progress: MediaProgress? = null,
+ ) : ContentSlot {
+ 
+   override val id: String = "cover_image"
+@@ -33,27 +44,50 @@ class CoverImageSlot(
+       modifier = modifier.fillMaxWidth(),
+     ) {
+       val size = minWidth * 0.75f
+-      CoverImage(
+-        imageUrl = imageUrl,
+-        contentDescription = contentDescription,
+-        size = size,
+-        placeholder = painterResource(Res.drawable.placeholder_book),
++      val shape = MaterialTheme.shapes.largeIncreased
++      Box(
+         modifier = Modifier
+           .fillMaxWidth()
+-          .padding(
+-            vertical = 16.dp,
+-          ),
+-        sharedElementModifier = Modifier
+-          .sharedElement(
+-            sharedContentState = rememberSharedContentState(
+-              LibraryItemSharedTransitionKey(
+-                id = sharedTransitionKey,
+-                type = LibraryItemSharedTransitionKey.ElementType.Image,
++          .padding(vertical = 16.dp),
++        contentAlignment = Alignment.Center,
++      ) {
++        Box(
++          modifier = Modifier
++            .size(size)
++            .clip(shape),
++        ) {
++          CoverImage(
++            imageUrl = imageUrl,
++            contentDescription = contentDescription,
++            size = size,
++            placeholder = painterResource(Res.drawable.placeholder_book),
++            shape = shape,
++            modifier = Modifier.fillMaxSize(),
++            sharedElementModifier = Modifier
++              .sharedElement(
++                sharedContentState = rememberSharedContentState(
++                  LibraryItemSharedTransitionKey(
++                    id = sharedTransitionKey,
++                    type = LibraryItemSharedTransitionKey.ElementType.Image,
++                  ),
++                ),
++                animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
+               ),
+-            ),
+-            animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
+-          ),
+-      )
++          )
++
++          progress?.let { mediaProgress ->
++            if (mediaProgress.isFinished || mediaProgress.actualProgress > 0f) {
++              MediaProgressBar(
++                mediaProgress = mediaProgress,
++                trackHeight = 6.dp,
++                modifier = Modifier
++                  .align(Alignment.BottomCenter)
++                  .fillMaxWidth(),
++              )
++            }
++          }
++        }
++      }
+     }
+   }
+ }
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
+index 99d3fd06..35e35b52 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
+@@ -19,9 +19,12 @@ import app.campfire.analytics.events.ActionEvent
+ import app.campfire.analytics.events.Click
+ import app.campfire.audioplayer.offline.OfflineDownload
+ import app.campfire.common.compose.layout.LocalSnackBarHost
++import app.campfire.common.compose.network.rememberIsCellularOrMetered
+ import app.campfire.common.compose.permission.PermissionState
+ import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
++import app.campfire.common.compose.widgets.dialog.ConfirmActionDialog
+ import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
++import app.campfire.core.extensions.asReadableBytes
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.MediaProgress
+ import app.campfire.libraries.ui.detail.LibraryItemUiEvent
+@@ -39,6 +42,8 @@ class ExpressiveControlSlot(
+   private val isCurrentSession: Boolean,
+   private val addToPlaylistDialog: AddToPlaylistDialog,
+   @get:VisibleForTesting val showConfirmDownloadDialogSetting: Boolean,
++  val confirmActionsSetting: Boolean = true,
++  val warnOnCellularDownloadSetting: Boolean = true,
+ ) : ContentSlot {
+ 
+   override val id: String = "expressive_control_bar"
+@@ -46,7 +51,14 @@ class ExpressiveControlSlot(
+   @Composable
+   override fun Content(modifier: Modifier, eventSink: (LibraryItemUiEvent) -> Unit) {
+     var showConfirmDownloadDialog by remember { mutableStateOf(false) }
++    var showCellularDownloadConfirmation by remember { mutableStateOf(false) }
++    var showDeleteDownloadConfirmation by remember { mutableStateOf(false) }
++    var showDiscardProgressConfirmation by remember { mutableStateOf(false) }
++    var showMarkFinishedConfirmation by remember { mutableStateOf(false) }
+     var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
++
++    val isCellular = rememberIsCellularOrMetered()
++
+     val postNotificationPermissionState = rememberPostNotificationPermissionState {
+       if (it) {
+         eventSink(LibraryItemUiEvent.DownloadClick(doNotShowDownloadConfirmationAgain))
+@@ -84,6 +96,10 @@ class ExpressiveControlSlot(
+       )
+     }
+ 
++    val hasProgress = mediaProgress != null &&
++      mediaProgress.progress > 0f &&
++      !mediaProgress.isFinished
++
+     ExpressiveControlBar(
+       isQueued = isQueued,
+       hasSession = hasSession,
+@@ -96,26 +112,40 @@ class ExpressiveControlSlot(
+         eventSink(LibraryItemUiEvent.PlayClick)
+       },
+       onDownloadClick = {
+-        if (showConfirmDownloadDialogSetting) {
++        if (warnOnCellularDownloadSetting && isCellular) {
++          showCellularDownloadConfirmation = true
++        } else if (showConfirmDownloadDialogSetting) {
+           showConfirmDownloadDialog = true
+         } else {
+           eventSink(LibraryItemUiEvent.DownloadClick())
+         }
+       },
+       onMarkFinished = {
+-        eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++        if (confirmActionsSetting && hasProgress) {
++          showMarkFinishedConfirmation = true
++        } else {
++          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++        }
+       },
+       onMarkNotFinished = {
+         eventSink(LibraryItemUiEvent.MarkNotFinished(libraryItem))
+       },
+       onDiscardProgress = {
+-        eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++        if (confirmActionsSetting) {
++          showDiscardProgressConfirmation = true
++        } else {
++          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++        }
+       },
+       onStopDownloadClick = {
+         eventSink(LibraryItemUiEvent.StopDownloadClick)
+       },
+       onDeleteDownloadClick = {
+-        eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++        if (confirmActionsSetting) {
++          showDeleteDownloadConfirmation = true
++        } else {
++          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++        }
+       },
+       onAddToQueueClick = {
+         if (isQueued) {
+@@ -132,6 +162,78 @@ class ExpressiveControlSlot(
+       modifier = modifier.padding(horizontal = 16.dp),
+     )
+ 
++    if (showCellularDownloadConfirmation) {
++      val itemTitle = libraryItem.media.metadata.title.orEmpty()
++      val sizeText = libraryItem.media.sizeInBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
++      val message = if (sizeText.isNotEmpty()) {
++        "You are connected to mobile data. Downloading \"$itemTitle\" ($sizeText) will use your cellular data plan."
++      } else {
++        "You are connected to mobile data. Downloading \"$itemTitle\" will use your cellular data plan."
++      }
++      ConfirmActionDialog(
++        title = "Download Over Cellular?",
++        message = message,
++        confirmButtonText = "Download",
++        onConfirm = {
++          showCellularDownloadConfirmation = false
++          if (showConfirmDownloadDialogSetting) {
++            showConfirmDownloadDialog = true
++          } else {
++            eventSink(LibraryItemUiEvent.DownloadClick())
++          }
++        },
++        onDismissRequest = { showCellularDownloadConfirmation = false },
++      )
++    }
++
++    if (showDeleteDownloadConfirmation) {
++      val itemTitle = libraryItem.media.metadata.title.orEmpty()
++      val sizeText = libraryItem.media.sizeInBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
++      val message = if (sizeText.isNotEmpty()) {
++        "Are you sure you want to delete the local download of \"$itemTitle\"? This will free up $sizeText on your device."
++      } else {
++        "Are you sure you want to delete the local download of \"$itemTitle\"?"
++      }
++      ConfirmActionDialog(
++        title = "Delete Download?",
++        message = message,
++        confirmButtonText = "Delete",
++        onConfirm = {
++          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++          showDeleteDownloadConfirmation = false
++        },
++        onDismissRequest = { showDeleteDownloadConfirmation = false },
++      )
++    }
++
++    if (showDiscardProgressConfirmation) {
++      val itemTitle = libraryItem.media.metadata.title.orEmpty()
++      ConfirmActionDialog(
++        title = "Discard Progress?",
++        message = "Are you sure you want to reset your listening progress for \"$itemTitle\"? Your saved position will be lost.",
++        confirmButtonText = "Discard",
++        onConfirm = {
++          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++          showDiscardProgressConfirmation = false
++        },
++        onDismissRequest = { showDiscardProgressConfirmation = false },
++      )
++    }
++
++    if (showMarkFinishedConfirmation) {
++      val itemTitle = libraryItem.media.metadata.title.orEmpty()
++      ConfirmActionDialog(
++        title = "Mark as Finished?",
++        message = "Are you sure you want to mark \"$itemTitle\" as finished? This will set your progress to 100%.",
++        confirmButtonText = "Mark Finished",
++        onConfirm = {
++          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++          showMarkFinishedConfirmation = false
++        },
++        onDismissRequest = { showMarkFinishedConfirmation = false },
++      )
++    }
++
+     if (showConfirmDownloadDialog) {
+       ConfirmDownloadDialog(
+         item = libraryItem,
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt
+index 97e58eb1..10a3ee67 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt
+@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
+ import app.campfire.common.compose.extensions.readoutFormat
+ import app.campfire.common.compose.theme.PaytoneOneFontFamily
+ import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
++import app.campfire.core.extensions.asReadableBytes
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.libraries.ui.detail.LibraryItemUiEvent
+ import campfire.features.libraries.ui.generated.resources.Res
+@@ -104,7 +105,20 @@ class TitleSlot(
+           style = MaterialTheme.typography.titleSmall,
+           fontWeight = FontWeight.SemiBold,
+         )
+-        Spacer(Modifier.width(26.dp))
++        if (libraryItem.media.sizeInBytes > 0L) {
++          Spacer(Modifier.width(12.dp))
++          Text(
++            text = "•",
++            style = MaterialTheme.typography.titleSmall,
++            fontWeight = FontWeight.Bold,
++          )
++          Spacer(Modifier.width(12.dp))
++          Text(
++            text = libraryItem.media.sizeInBytes.asReadableBytes(),
++            style = MaterialTheme.typography.titleSmall,
++            fontWeight = FontWeight.SemiBold,
++          )
++        }
+       }
+ 
+       Spacer(Modifier.height(24.dp))
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/PodcastPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/PodcastPresenter.kt
+index 041c6899..1774aa50 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/PodcastPresenter.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/PodcastPresenter.kt
+@@ -238,6 +238,7 @@ private fun buildSlots(
+     imageUrl = libraryItem.media.coverImageUrl,
+     contentDescription = libraryItem.media.metadata.title,
+     sharedTransitionKey = sharedTransitionKey,
++    progress = libraryItem.userMediaProgress,
+   )
+ 
+   this += TitleSlot(
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
+index 8d5b6837..d7355dd1 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
+@@ -42,11 +42,13 @@ import app.campfire.common.compose.extensions.readoutAtMost
+ import app.campfire.common.compose.extensions.toRichTextHtml
+ import app.campfire.common.compose.layout.ContentLayout
+ import app.campfire.common.compose.layout.LocalContentLayout
++import app.campfire.common.compose.network.rememberIsCellularOrMetered
+ import app.campfire.common.compose.permission.PermissionState
+ import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
+ import app.campfire.common.compose.widgets.MetadataChip
+ import app.campfire.common.compose.widgets.MetadataHeader
+ import app.campfire.common.compose.widgets.WithTimestampUriHandler
++import app.campfire.common.compose.widgets.dialog.ConfirmActionDialog
+ import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
+ import app.campfire.core.di.ComponentHolder
+ import app.campfire.core.di.UserScope
+@@ -124,13 +126,95 @@ private fun PodcastEpisodeBottomSheet(
+   }
+ 
+   var showDownloadConfirmation by remember { mutableStateOf(false) }
++  var showCellularDownloadConfirmation by remember { mutableStateOf(false) }
++  var showDeleteDownloadConfirmation by remember { mutableStateOf(false) }
++  var showDiscardProgressConfirmation by remember { mutableStateOf(false) }
++  var showMarkFinishedConfirmation by remember { mutableStateOf(false) }
+   var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
++
++  val isCellular = rememberIsCellularOrMetered()
++
+   val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
+     if (granted) {
+       state.eventSink(PodcastEpisodeUiEvent.DownloadClick(doNotShowDownloadConfirmationAgain))
+       showDownloadConfirmation = false
+     }
+   }
++
++  if (showCellularDownloadConfirmation) {
++    val episodeTitle = state.episode.title
++    val sizeBytes = state.episode.sizeInBytes.takeIf { it > 0L } ?: state.libraryItem.media.sizeInBytes
++    val sizeText = sizeBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
++    val message = if (sizeText.isNotEmpty()) {
++      "You are connected to mobile data. Downloading \"$episodeTitle\" ($sizeText) will use your cellular data plan."
++    } else {
++      "You are connected to mobile data. Downloading \"$episodeTitle\" will use your cellular data plan."
++    }
++    ConfirmActionDialog(
++      title = "Download Over Cellular?",
++      message = message,
++      confirmButtonText = "Download",
++      onConfirm = {
++        showCellularDownloadConfirmation = false
++        if (state.showConfirmDownloadDialog) {
++          showDownloadConfirmation = true
++        } else {
++          state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
++        }
++      },
++      onDismissRequest = { showCellularDownloadConfirmation = false },
++    )
++  }
++
++  if (showDeleteDownloadConfirmation) {
++    val episodeTitle = state.episode.title
++    val sizeBytes = state.episode.sizeInBytes.takeIf { it > 0L } ?: state.libraryItem.media.sizeInBytes
++    val sizeText = sizeBytes.takeIf { it > 0 }?.asReadableBytes() ?: ""
++    val message = if (sizeText.isNotEmpty()) {
++      "Are you sure you want to delete the local download of \"$episodeTitle\"? This will free up $sizeText on your device."
++    } else {
++      "Are you sure you want to delete the local download of \"$episodeTitle\"?"
++    }
++    ConfirmActionDialog(
++      title = "Delete Download?",
++      message = message,
++      confirmButtonText = "Delete",
++      onConfirm = {
++        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
++        showDeleteDownloadConfirmation = false
++      },
++      onDismissRequest = { showDeleteDownloadConfirmation = false },
++    )
++  }
++
++  if (showDiscardProgressConfirmation) {
++    val episodeTitle = state.episode.title
++    ConfirmActionDialog(
++      title = "Discard Progress?",
++      message = "Are you sure you want to reset your listening progress for \"$episodeTitle\"? Your saved position will be lost.",
++      confirmButtonText = "Discard",
++      onConfirm = {
++        state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
++        showDiscardProgressConfirmation = false
++      },
++      onDismissRequest = { showDiscardProgressConfirmation = false },
++    )
++  }
++
++  if (showMarkFinishedConfirmation) {
++    val episodeTitle = state.episode.title
++    ConfirmActionDialog(
++      title = "Mark as Finished?",
++      message = "Are you sure you want to mark \"$episodeTitle\" as finished? This will set your progress to 100%.",
++      confirmButtonText = "Mark Finished",
++      onConfirm = {
++        state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
++        showMarkFinishedConfirmation = false
++      },
++      onDismissRequest = { showMarkFinishedConfirmation = false },
++    )
++  }
++
+   if (showDownloadConfirmation) {
+     ConfirmDownloadDialog(
+       item = state.libraryItem,
+@@ -148,6 +232,10 @@ private fun PodcastEpisodeBottomSheet(
+     )
+   }
+ 
++  val hasProgress = state.progress != null &&
++    state.progress.progress > 0f &&
++    !state.progress.isFinished
++
+   Column(
+     modifier = modifier
+       .padding(16.dp)
+@@ -213,20 +301,38 @@ private fun PodcastEpisodeBottomSheet(
+       offlineDownload = state.offlineDownload,
+       onPlayClick = { state.eventSink(PodcastEpisodeUiEvent.PlayClick) },
+       onDownloadClick = {
+-        if (state.showConfirmDownloadDialog) {
++        if (state.warnOnCellularDownload && isCellular) {
++          showCellularDownloadConfirmation = true
++        } else if (state.showConfirmDownloadDialog) {
+           showDownloadConfirmation = true
+         } else {
+           state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
+         }
+       },
+-      onMarkFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkFinished) },
++      onMarkFinished = {
++        if (state.confirmActions && hasProgress) {
++          showMarkFinishedConfirmation = true
++        } else {
++          state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
++        }
++      },
+       onMarkNotFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkNotFinished) },
+-      onDiscardProgress = { state.eventSink(PodcastEpisodeUiEvent.DiscardProgress) },
++      onDiscardProgress = {
++        if (state.confirmActions) {
++          showDiscardProgressConfirmation = true
++        } else {
++          state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
++        }
++      },
+       onStopDownloadClick = {
+         state.eventSink(PodcastEpisodeUiEvent.StopDownloadClick)
+       },
+       onDeleteDownloadClick = {
+-        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
++        if (state.confirmActions) {
++          showDeleteDownloadConfirmation = true
++        } else {
++          state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
++        }
+       },
+       onAddToPlaylistClick = {
+         showAddToPlaylistDialog = true
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodePresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodePresenter.kt
+index dba5307c..88dc65bf 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodePresenter.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodePresenter.kt
+@@ -130,6 +130,14 @@ class PodcastEpisodePresenter(
+       settings.observeShowConfirmDownload()
+     }.collectAsState()
+ 
++    val confirmActions by remember {
++      settings.observeConfirmActions()
++    }.collectAsState()
++
++    val warnOnCellularDownload by remember {
++      settings.observeWarnOnCellularDownload()
++    }.collectAsState()
++
+     return PodcastEpisodeUiState(
+       libraryItem = libraryItem,
+       episode = episode,
+@@ -141,6 +149,8 @@ class PodcastEpisodePresenter(
+       sessionState = episodeSession,
+       offlineDownload = offlineDownload,
+       showConfirmDownloadDialog = showConfirmDownloadDialog,
++      confirmActions = confirmActions,
++      warnOnCellularDownload = warnOnCellularDownload,
+       addToPlaylistDialog = addToPlaylistDialog,
+     ) { event ->
+       when (event) {
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeUiState.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeUiState.kt
+index bfb206e7..6c605be5 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeUiState.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeUiState.kt
+@@ -23,6 +23,8 @@ data class PodcastEpisodeUiState(
+   val sessionState: SessionUiState,
+   val offlineDownload: OfflineDownload?,
+   val showConfirmDownloadDialog: Boolean,
++  val confirmActions: Boolean = true,
++  val warnOnCellularDownload: Boolean = true,
+   val addToPlaylistDialog: AddToPlaylistDialog,
+   val eventSink: (PodcastEpisodeUiEvent) -> Unit,
+ ) : CircuitUiState
+diff --git a/features/search/impl/src/commonMain/kotlin/app/campfire/search/store/SearchSourceOfTruthFactory.kt b/features/search/impl/src/commonMain/kotlin/app/campfire/search/store/SearchSourceOfTruthFactory.kt
+index 90aeb2b3..bcc6cc7e 100644
+--- a/features/search/impl/src/commonMain/kotlin/app/campfire/search/store/SearchSourceOfTruthFactory.kt
++++ b/features/search/impl/src/commonMain/kotlin/app/campfire/search/store/SearchSourceOfTruthFactory.kt
+@@ -114,6 +114,9 @@ class SearchSourceOfTruthFactory(
+       afterCommit { onWriteSuccess(query, result) }
+       afterRollback { onWriteFailed(query, result) }
+ 
++      // Clear previous search records for this query key so stale/deleted items don't linger
++      db.searchQueries.delete(query.databaseKey)
++
+       // 1) Insert search key
+       db.searchQueries.insert(
+         Search(
+@@ -151,6 +154,13 @@ class SearchSourceOfTruthFactory(
+         }
+       }
+ 
++      // Insert Authors
++      authors.forEach { author ->
++        db.authorsQueries.insert(
++          author.asDbModel(urlHydrator),
++        )
++      }
++
+       // Insert narrators
+       db.searchQueries.insertNarrators(
+         Search_narrators(
+@@ -159,15 +169,6 @@ class SearchSourceOfTruthFactory(
+         ),
+       )
+ 
+-      // Insert Authors
+-      transactionWithResult {
+-        db.authorsQueries.transaction {
+-          authors.forEach { author ->
+-            db.authorsQueries.insert(author.asDbModel(urlHydrator))
+-          }
+-        }
+-      }
+-
+       // Insert Tags
+       db.searchQueries.insertTags(
+         Search_tags(
+@@ -192,6 +193,8 @@ class SearchSourceOfTruthFactory(
+             seriesSearchResult.series.asDbModel(query.userId, query.libraryId),
+           )
+ 
++          db.seriesBookJoinQueries.deleteForSeries(seriesSearchResult.series.id)
++
+           seriesSearchResult.books.forEach { libraryItem ->
+             libraryItemDao.insert(
+               item = libraryItem,
+diff --git a/features/search/ui/build.gradle.kts b/features/search/ui/build.gradle.kts
+index 80523f81..7d2f473d 100644
+--- a/features/search/ui/build.gradle.kts
++++ b/features/search/ui/build.gradle.kts
+@@ -10,6 +10,7 @@ kotlin {
+     commonMain {
+       dependencies {
+         implementation(projects.features.search.api)
++        implementation(projects.features.user.api)
+         implementation(projects.infra.audioplayer.api)
+         implementation(projects.ui.appbar)
+ 
+diff --git a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/CampfireSearchComponent.kt b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/CampfireSearchComponent.kt
+index 34dd82ea..a83c0d0f 100644
+--- a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/CampfireSearchComponent.kt
++++ b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/CampfireSearchComponent.kt
+@@ -47,6 +47,7 @@ class CampfireSearchComponent(
+       query = state.query,
+       results = state.searchResult,
+       offlineStatus = { state.offlineStates[it].asWidgetStatus() },
++      progressStatus = { state.progressStates[it] },
+       onBookClick = { book -> eventSink(SearchUiEvent.OnBookClick(book)) },
+       onNarratorClick = { narrator -> eventSink(SearchUiEvent.OnNarratorClick(narrator)) },
+       onAuthorClick = { author -> eventSink(SearchUiEvent.OnAuthorClick(author)) },
+diff --git a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
+index bb6a01d5..67a1a1a1 100644
+--- a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
++++ b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
+@@ -23,6 +23,7 @@ import app.campfire.libraries.api.screen.LibraryScreen
+ import app.campfire.search.api.SearchRepository
+ import app.campfire.search.api.SearchResult
+ import app.campfire.search.api.ui.SearchResultNavEvent
++import app.campfire.user.api.MediaProgressRepository
+ import com.slack.circuit.runtime.presenter.Presenter
+ import kotlin.time.Duration.Companion.milliseconds
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+@@ -30,6 +31,7 @@ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.filterNotNull
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.flowOf
++import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.flow.onStart
+ import me.tatarka.inject.annotations.Assisted
+ import me.tatarka.inject.annotations.Inject
+@@ -43,6 +45,7 @@ typealias SearchPresenterFactory = (
+ @Inject
+ class SearchPresenter(
+   private val searchRepository: SearchRepository,
++  private val mediaProgressRepository: MediaProgressRepository,
+   @Assisted private val textFieldState: TextFieldState,
+   @Assisted private val onSearchEvent: (SearchResultNavEvent) -> Unit,
+   private val offlineDownloadManager: OfflineDownloadManager,
+@@ -68,6 +71,13 @@ class SearchPresenter(
+         }
+     }.collectAsState(SearchResult.Empty)
+ 
++    val userMediaProgress by remember {
++      mediaProgressRepository.observeAllProgress()
++        .map { allProgress ->
++          allProgress.associateBy { it.libraryItemId }
++        }
++    }.collectAsState(emptyMap())
++
+     val offlineDownloads by remember {
+       snapshotFlow { (searchResult as? SearchResult.Success)?.books }
+         .filterNotNull()
+@@ -80,6 +90,7 @@ class SearchPresenter(
+       query = textFieldState.text.toString(),
+       searchResult = searchResult,
+       offlineStates = offlineDownloads,
++      progressStates = userMediaProgress,
+     ) { event ->
+       when (event) {
+         is SearchUiEvent.OnAuthorClick -> {
+diff --git a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchUiState.kt b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchUiState.kt
+index 67d667bd..4712f30f 100644
+--- a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchUiState.kt
++++ b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchUiState.kt
+@@ -8,6 +8,7 @@ import app.campfire.core.model.Author
+ import app.campfire.core.model.BasicSearchResult
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import app.campfire.core.model.Series
+ import app.campfire.search.api.SearchResult
+ import com.slack.circuit.runtime.CircuitUiEvent
+@@ -17,6 +18,7 @@ data class SearchUiState(
+   val query: String,
+   val searchResult: SearchResult,
+   val offlineStates: Map<LibraryItemId, OfflineDownload>,
++  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
+   val eventSink: (SearchUiEvent) -> Unit,
+ ) : CircuitUiState
+ 
+diff --git a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/composables/SearchResultContent.kt b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/composables/SearchResultContent.kt
+index cf980226..eaeb41f9 100644
+--- a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/composables/SearchResultContent.kt
++++ b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/composables/SearchResultContent.kt
+@@ -67,6 +67,7 @@ internal fun SearchResultContent(
+   query: String,
+   results: SearchResult,
+   offlineStatus: (LibraryItemId) -> OfflineStatus,
++  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress? = { null },
+   onBookClick: (LibraryItem) -> Unit,
+   onAuthorClick: (Author) -> Unit,
+   onSeriesClick: (Series) -> Unit,
+@@ -113,6 +114,7 @@ internal fun SearchResultContent(
+         SuccessContent(
+           result = results,
+           offlineStatus = offlineStatus,
++          progressStatus = progressStatus,
+           onBookClick = onBookClick,
+           onNarratorClick = onNarratorClick,
+           onAuthorClick = onAuthorClick,
+@@ -131,6 +133,7 @@ internal fun SearchResultContent(
+ private fun SuccessContent(
+   result: SearchResult.Success,
+   offlineStatus: (LibraryItemId) -> OfflineStatus,
++  progressStatus: (LibraryItemId) -> app.campfire.core.model.MediaProgress?,
+   onBookClick: (LibraryItem) -> Unit,
+   onAuthorClick: (Author) -> Unit,
+   onSeriesClick: (Series) -> Unit,
+@@ -159,6 +162,7 @@ private fun SuccessContent(
+         LibraryItemCard(
+           item = book,
+           offlineStatus = offlineStatus(book.id),
++          progress = progressStatus(book.id) ?: book.userMediaProgress,
+           onClick = { onBookClick(book) },
+           modifier = Modifier.animateItem(),
+           colors = CardDefaults.elevatedCardColors(
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
+index bfe895e3..f4702389 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
+@@ -21,6 +21,7 @@ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.loggableId
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.series.api.SeriesRepository
++import app.campfire.user.api.MediaProgressRepository
+ import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+ import com.slack.circuit.runtime.Navigator
+@@ -38,6 +39,7 @@ class SeriesDetailPresenter(
+   @Assisted private val screen: SeriesDetailScreen,
+   @Assisted private val navigator: Navigator,
+   private val repository: SeriesRepository,
++  private val mediaProgressRepository: MediaProgressRepository,
+   private val offlineDownloadManager: OfflineDownloadManager,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<SeriesDetailUiState> {
+@@ -69,6 +71,13 @@ class SeriesDetailPresenter(
+       }
+     }
+ 
++    val userMediaProgress by remember {
++      mediaProgressRepository.observeAllProgress()
++        .map { allProgress ->
++          allProgress.associateBy { it.libraryItemId }
++        }
++    }.collectAsState(emptyMap())
++
+     val offlineDownloads by remember {
+       snapshotFlow { seriesContentState.dataOrNull }
+         .filterNotNull()
+@@ -80,6 +89,7 @@ class SeriesDetailPresenter(
+     return SeriesDetailUiState(
+       seriesContentState = seriesContentState,
+       offlineStates = offlineDownloads,
++      progressStates = userMediaProgress,
+     ) { event ->
+       when (event) {
+         SeriesDetailUiEvent.Back -> navigator.pop()
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
+index 99dd0c96..9336105f 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
+@@ -42,6 +42,7 @@ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import app.campfire.core.offline.OfflineStatus
+ import campfire.features.series.ui.generated.resources.Res
+ import campfire.features.series.ui.generated.resources.action_back
+@@ -104,6 +105,7 @@ fun SeriesDetail(
+         seriesName = screen.seriesName,
+         items = state.seriesContentState.data,
+         offlineStatus = { state.offlineStates[it].asWidgetStatus() },
++        progressStatus = { state.progressStates[it] },
+         onLibraryItemClick = { state.eventSink(SeriesDetailUiEvent.LibraryItemClick(it)) },
+         contentPadding = paddingValues,
+       )
+@@ -116,6 +118,7 @@ private fun LoadedState(
+   seriesName: String,
+   items: List<LibraryItem>,
+   offlineStatus: (LibraryItemId) -> OfflineStatus,
++  progressStatus: (LibraryItemId) -> MediaProgress?,
+   onLibraryItemClick: (LibraryItem) -> Unit,
+   modifier: Modifier = Modifier,
+   contentPadding: PaddingValues = PaddingValues(),
+@@ -138,6 +141,7 @@ private fun LoadedState(
+         sharedTransitionKey = item.id + seriesName,
+         sharedTransitionZIndex = (items.size - index) + 1f,
+         offlineStatus = offlineStatus(item.id),
++        progress = progressStatus(item.id) ?: item.userMediaProgress,
+         onClick = { onLibraryItemClick(item) },
+       )
+     }
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
+index 68d30398..0e4d5183 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
+@@ -7,12 +7,14 @@ import app.campfire.audioplayer.offline.OfflineDownload
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
+ import com.slack.circuit.runtime.CircuitUiEvent
+ import com.slack.circuit.runtime.CircuitUiState
+ 
+ data class SeriesDetailUiState(
+   val seriesContentState: LoadState<out List<LibraryItem>>,
+   val offlineStates: Map<LibraryItemId, OfflineDownload>,
++  val progressStates: Map<LibraryItemId, MediaProgress> = emptyMap(),
+   val eventSink: (SeriesDetailUiEvent) -> Unit,
+ ) : CircuitUiState
+ 
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt
+index f47874af..70aa7335 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt
+@@ -45,9 +45,13 @@ internal fun RunningTimerText(
+   var timeLeft by remember { mutableStateOf("") }
+   LaunchedEffect(runningTimer) {
+     val timer = (runningTimer.timer as? PlaybackTimer.Epoch) ?: return@LaunchedEffect
++    if (runningTimer.isPaused) {
++      timeLeft = timer.epochMillis.milliseconds.clockFormat()
++      return@LaunchedEffect
++    }
+     while (isActive) {
+       val elapsed = Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
+-      val remaining = (timer.epochMillis - elapsed).milliseconds
++      val remaining = maxOf(0L, timer.epochMillis - elapsed).milliseconds
+       timeLeft = remaining.clockFormat()
+       delay(1000L)
+     }
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
+index e4d08498..fd455280 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
+@@ -617,6 +617,14 @@ fun TimerBottomSheetV2Preview() {
+               return mutableShakeToReset
+             }
+ 
++            override var resetTimerOnPauseEnabled: Boolean
++              get() = false
++              set(value) {}
++
++            override fun observeResetTimerOnPauseEnabled(): StateFlow<Boolean> {
++              return MutableStateFlow(false)
++            }
++
+             override var shakeSensitivity: SleepSettings.ShakeSensitivity
+               get() = TODO("Not yet implemented")
+               set(value) {}
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
+index 18dcdad5..be88ff11 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
+@@ -68,6 +68,12 @@ interface CampfireSettings {
+   var showConfirmDownload: Boolean
+   fun observeShowConfirmDownload(): StateFlow<Boolean>
+ 
++  var confirmActions: Boolean
++  fun observeConfirmActions(): StateFlow<Boolean>
++
++  var warnOnCellularDownload: Boolean
++  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
++
+   var hasShownWidgetPinning: Boolean
+   fun observeHasShownWidgetPinning(): StateFlow<Boolean>
+ 
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
+index d29c9d84..618e1c4d 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
+@@ -18,6 +18,12 @@ interface SleepSettings {
+   var shakeToResetEnabled: Boolean
+   fun observeShakeToResetEnabled(): StateFlow<Boolean>
+ 
++  var resetTimerOnPauseEnabled: Boolean
++  fun observeResetTimerOnPauseEnabled(): StateFlow<Boolean>
++
++  var fadeOutDuration: Duration
++  fun observeFadeOutDuration(): StateFlow<Duration>
++
+   var shakeSensitivity: ShakeSensitivity
+   fun observeShakeSensitivity(): StateFlow<ShakeSensitivity>
+ 
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
+index 4567443b..32a90464 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
+@@ -112,6 +112,14 @@ class CampfireSettingsImpl(
+   override var showConfirmDownload: Boolean by showConfirmDownloadProperty
+   override fun observeShowConfirmDownload(): StateFlow<Boolean> = showConfirmDownloadProperty.observe()
+ 
++  private val confirmActionsProperty = booleanSetting(KEY_CONFIRM_ACTIONS, true)
++  override var confirmActions: Boolean by confirmActionsProperty
++  override fun observeConfirmActions(): StateFlow<Boolean> = confirmActionsProperty.observe()
++
++  private val warnOnCellularDownloadProperty = booleanSetting(KEY_WARN_ON_CELLULAR_DOWNLOAD, true)
++  override var warnOnCellularDownload: Boolean by warnOnCellularDownloadProperty
++  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> = warnOnCellularDownloadProperty.observe()
++
+   private val hasShownWidgetPinningProperty = booleanSetting(KEY_SHOW_WIDGET_PINNING, false)
+   override var hasShownWidgetPinning: Boolean by hasShownWidgetPinningProperty
+   override fun observeHasShownWidgetPinning(): StateFlow<Boolean> = hasShownWidgetPinningProperty.observe()
+@@ -158,6 +166,8 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
+ internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
+ internal const val KEY_CURRENT_USER_ID = "pref_current_user_id"
+ internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
++internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
++internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
+ internal const val KEY_SHOW_WIDGET_PINNING = "pref_show_widget_pinning"
+ internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
+ internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
+index 074f368f..168aef40 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
+@@ -14,6 +14,7 @@ import com.russhwolf.settings.ExperimentalSettingsApi
+ import com.russhwolf.settings.ObservableSettings
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.minutes
++import kotlin.time.Duration.Companion.seconds
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.datetime.LocalTime
+@@ -36,6 +37,17 @@ class SleepSettingsImpl(
+   override var shakeToResetEnabled: Boolean by shakeToResetEnabledProperty
+   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = shakeToResetEnabledProperty.observe()
+ 
++  private val resetTimerOnPauseEnabledProperty = booleanSetting(
++    KEY_RESET_TIMER_ON_PAUSE,
++    DefaultResetTimerOnPauseEnabled,
++  )
++  override var resetTimerOnPauseEnabled: Boolean by resetTimerOnPauseEnabledProperty
++  override fun observeResetTimerOnPauseEnabled(): StateFlow<Boolean> = resetTimerOnPauseEnabledProperty.observe()
++
++  private val fadeOutDurationProperty = durationSetting(KEY_FADE_OUT_DURATION, DefaultFadeOutDuration)
++  override var fadeOutDuration: Duration by fadeOutDurationProperty
++  override fun observeFadeOutDuration(): StateFlow<Duration> = fadeOutDurationProperty.observe()
++
+   private val shakeSensitivityProperty = enumSetting(KEY_SHAKE_SENSITIVITY, ShakeSensitivity)
+   override var shakeSensitivity: ShakeSensitivity by shakeSensitivityProperty
+   override fun observeShakeSensitivity(): StateFlow<ShakeSensitivity> = shakeSensitivityProperty.observe()
+@@ -101,6 +113,8 @@ class SleepSettingsImpl(
+ 
+ private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
+ private const val KEY_SHAKE_TO_RESET = "pref_sleep_shake_to_reset"
++private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
++private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
+ private const val KEY_SHAKE_SENSITIVITY = "pref_sleep_shake_sensitivity"
+ private const val KEY_AUTO_SLEEP_TIMER_ENABLED = "pref_sleep_auto_timer_enabled"
+ private const val KEY_AUTO_SLEEP_START = "pref_sleep_auto_timer_start"
+@@ -110,6 +124,8 @@ private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
+ private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
+ 
+ private const val DefaultShakeToResetEnabled = false
++private const val DefaultResetTimerOnPauseEnabled = false
+ private const val DefaultAutoSleepTimerEnabled = false
+ private const val DefaultAutoRewindEnabled = false
+ private val DefaultAutoRewindAmount = 5.minutes
++private val DefaultFadeOutDuration = 30.seconds
+diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
+index 6cba532e..1224cc2e 100644
+--- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
++++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
+@@ -115,6 +115,16 @@ class TestCampfireSettings(
+     observeBoolean(::showConfirmDownload)
+       .stateIn(testScope, SharingStarted.Lazily, showConfirmDownload)
+ 
++  override var confirmActions: Boolean by boolean()
++  override fun observeConfirmActions(): StateFlow<Boolean> =
++    observeBoolean(::confirmActions)
++      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
++
++  override var warnOnCellularDownload: Boolean by boolean()
++  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
++    observeBoolean(::warnOnCellularDownload)
++      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
++
+   override var hasShownWidgetPinning: Boolean by boolean()
+   override fun observeHasShownWidgetPinning(): StateFlow<Boolean> =
+     observeBoolean(::hasShownWidgetPinning)
+diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
+index a8f96e53..2afe2db5 100644
+--- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
++++ b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
+@@ -95,6 +95,10 @@
+   <string name="header_shake_to_reset">Reset</string>
+   <string name="setting_playback_sleep_shake_to_reset_title">Shake-to-reset</string>
+   <string name="setting_playback_sleep_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
++  <string name="setting_playback_sleep_reset_on_pause_title">Reset timer on pause</string>
++  <string name="setting_playback_sleep_reset_on_pause_subtitle">Reset the active sleep timer back to its original duration when playback is paused</string>
++  <string name="setting_playback_sleep_fade_out_duration_title">Fade out before stopping</string>
++  <string name="setting_playback_sleep_fade_out_duration_subtitle">Gradually lower the volume over the final seconds before the timer ends</string>
+   <string name="setting_playback_shake_sensitivity_title">Shake sensitivity</string>
+   <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
+   <string name="shake_sensitivity_very_low">Very low</string>
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+index 388824b0..6d87e242 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+@@ -76,6 +76,8 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnabled
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
++import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
++import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
+ import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
+@@ -167,6 +169,10 @@ class SettingsPresenter(
+     // Downloads Settings
+     val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
+       .collectAsState()
++    val confirmActions by remember { settings.observeConfirmActions() }
++      .collectAsState()
++    val warnOnCellularDownload by remember { settings.observeWarnOnCellularDownload() }
++      .collectAsState()
+ 
+     val downloads by remember {
+       offlineDownloadManager.observeAll()
+@@ -203,6 +209,8 @@ class SettingsPresenter(
+ 
+     // Sleep Settings
+     val shakeToResetEnabled by remember { sleepSettings.observeShakeToResetEnabled() }.collectAsState()
++    val resetTimerOnPauseEnabled by remember { sleepSettings.observeResetTimerOnPauseEnabled() }.collectAsState()
++    val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
+     val shakeSensitivity by remember { sleepSettings.observeShakeSensitivity() }.collectAsState()
+     val autoSleepTimerEnabled by remember { sleepSettings.observeAutoSleepTimerEnabled() }.collectAsState()
+     val autoSleepTimerStart by remember { sleepSettings.observeAutoSleepStart() }.collectAsState()
+@@ -252,6 +260,8 @@ class SettingsPresenter(
+       ),
+       downloadsSettings = DownloadsSettingsInfo(
+         showDownloadConfirmation = showDownloadConfirmation,
++        confirmActions = confirmActions,
++        warnOnCellularDownload = warnOnCellularDownload,
+         downloads = downloadEntries,
+       ),
+       playbackSettings = PlaybackSettingsInfo(
+@@ -272,7 +282,9 @@ class SettingsPresenter(
+       ),
+       sleepSettings = SleepSettingsInfo(
+         shakeToReset = shakeToResetEnabled,
++        resetTimerOnPause = resetTimerOnPauseEnabled,
+         shakeSensitivity = shakeSensitivity,
++        fadeOutDuration = fadeOutDuration,
+         autoSleepSetting = if (autoSleepTimerEnabled) {
+           SleepSettingsInfo.AutoSleepSetting(
+             start = autoSleepTimerStart,
+@@ -335,6 +347,8 @@ class SettingsPresenter(
+ 
+         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
+           is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
++          is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> settings.confirmActions = event.enabled
++          is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> settings.warnOnCellularDownload = event.enabled
+           is DownloadClicked -> navigator.goTo(
+             LibraryItemScreen(
+               libraryItemId = event.entry.libraryItem.id,
+@@ -384,6 +398,8 @@ class SettingsPresenter(
+ 
+         is SettingsUiEvent.SleepSettingEvent -> when (event) {
+           is ShakeToReset -> sleepSettings.shakeToResetEnabled = event.enabled
++          is ResetTimerOnPause -> sleepSettings.resetTimerOnPauseEnabled = event.enabled
++          is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
+           is ShakeSensitivity -> sleepSettings.shakeSensitivity = event.sensitivity
+           is AutoSleepTimerEnabled -> sleepSettings.autoSleepTimerEnabled = event.enabled
+           is AutoSleepTimerStart -> sleepSettings.autoSleepStart = event.time
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+index 72686a15..cbf10838 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+@@ -56,6 +56,8 @@ data class AppearanceSettingsInfo(
+ @Immutable
+ data class DownloadsSettingsInfo(
+   val showDownloadConfirmation: Boolean,
++  val confirmActions: Boolean,
++  val warnOnCellularDownload: Boolean,
+   val downloads: List<DownloadEntry>,
+ )
+ 
+@@ -97,7 +99,9 @@ data class PlaybackSettingsInfo(
+ @Immutable
+ data class SleepSettingsInfo(
+   val shakeToReset: Boolean,
++  val resetTimerOnPause: Boolean,
+   val shakeSensitivity: ShakeSensitivity,
++  val fadeOutDuration: Duration,
+   val autoSleepSetting: AutoSleepSetting? = null,
+ ) {
+ 
+@@ -182,6 +186,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+   // Downloads Pane Events
+   sealed interface DownloadsSettingEvent : SettingsUiEvent {
+     data class ShowDownloadConfirmation(val enabled: Boolean) : DownloadsSettingEvent
++    data class ConfirmActions(val enabled: Boolean) : DownloadsSettingEvent
++    data class WarnOnCellularDownload(val enabled: Boolean) : DownloadsSettingEvent
+     data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
+     data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
+   }
+@@ -210,6 +216,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+   // Sleep Setting Events
+   sealed interface SleepSettingEvent : SettingsUiEvent {
+     data class ShakeToReset(val enabled: Boolean) : SleepSettingEvent
++    data class ResetTimerOnPause(val enabled: Boolean) : SleepSettingEvent
++    data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
+     data class ShakeSensitivity(val sensitivity: SleepSettings.ShakeSensitivity) : SleepSettingEvent
+     data class AutoSleepTimerEnabled(val enabled: Boolean) : SleepSettingEvent
+     data class AutoSleepTimerStart(val time: LocalTime) : SleepSettingEvent
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+index a87101fa..dcd420d8 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+@@ -39,6 +39,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnabled
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
++import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
+ import me.tatarka.inject.annotations.Inject
+@@ -74,6 +75,8 @@ class SettingsAnalyticUiEventHandler(
+ 
+     is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
+       is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
++      is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> send("confirm_actions", Updated, event.enabled.toString())
++      is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> send("warn_on_cellular_download", Updated, event.enabled.toString())
+       is DeleteDownload -> send("delete_download", Click)
+       is DownloadClicked -> send("download", Click)
+     }
+@@ -110,6 +113,9 @@ class SettingsAnalyticUiEventHandler(
+ 
+     is SettingsUiEvent.SleepSettingEvent -> when (event) {
+       is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
++      is ResetTimerOnPause -> send("reset_timer_on_pause", Updated, event.enabled)
++      is SettingsUiEvent.SleepSettingEvent.FadeOutDuration ->
++        send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
+       is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
+       is AutoSleepTimerEnabled -> send("auto_sleep", Updated, event.enabled)
+       is AutoSleepTimerStart -> send("auto_sleep_start", Updated, event.time.toString())
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/composables/TimeJumpSetting.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/composables/TimeJumpSetting.kt
+index b03ff6f1..e1a99bf0 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/composables/TimeJumpSetting.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/composables/TimeJumpSetting.kt
+@@ -18,6 +18,7 @@ internal fun TimeJumpSetting(
+   jumps: TimeJumps,
+   headlineContent: @Composable () -> Unit,
+   supportingContent: (@Composable () -> Unit)? = null,
++  textFormat: (Duration) -> String = { it.toString() },
+   modifier: Modifier = Modifier,
+ ) {
+   SettingListItem(
+@@ -25,7 +26,7 @@ internal fun TimeJumpSetting(
+     supportingContent = supportingContent,
+     trailingContent = {
+       Text(
+-        text = time.toString(),
++        text = textFormat(time),
+         style = MaterialTheme.typography.titleMedium,
+         color = MaterialTheme.colorScheme.primary,
+         fontWeight = FontWeight.Bold,
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
+index 93502414..5f4bd190 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
+@@ -86,6 +86,20 @@ internal fun DownloadsPane(
+     onBackClick = onBackClick,
+     modifier = modifier,
+   ) {
++    SwitchSetting(
++      value = state.downloadsSettings.confirmActions,
++      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ConfirmActions(it)) },
++      headlineContent = { Text("Action Confirmations") },
++      supportingContent = { Text("Ask for confirmation before deleting downloads, discarding progress, or marking books as finished.") },
++    )
++
++    SwitchSetting(
++      value = state.downloadsSettings.warnOnCellularDownload,
++      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload(it)) },
++      headlineContent = { Text("Warn on Cellular Downloads") },
++      supportingContent = { Text("Show a warning before downloading media over mobile data.") },
++    )
++
+     SwitchSetting(
+       value = state.downloadsSettings.showDownloadConfirmation,
+       onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ShowDownloadConfirmation(it)) },
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
+index 0780e1f0..5e2cfe39 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
+@@ -54,6 +54,10 @@ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_subt
+ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_timer
+ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_title
+ import campfire.features.settings.ui.generated.resources.setting_playback_shake_sensitivity_title
++import campfire.features.settings.ui.generated.resources.setting_playback_sleep_fade_out_duration_subtitle
++import campfire.features.settings.ui.generated.resources.setting_playback_sleep_fade_out_duration_title
++import campfire.features.settings.ui.generated.resources.setting_playback_sleep_reset_on_pause_subtitle
++import campfire.features.settings.ui.generated.resources.setting_playback_sleep_reset_on_pause_title
+ import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_subtitle
+ import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_title
+ import campfire.features.settings.ui.generated.resources.setting_sleep_title
+@@ -67,6 +71,7 @@ import com.slack.circuit.overlay.LocalOverlayHost
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.milliseconds
+ import kotlin.time.Duration.Companion.minutes
++import kotlin.time.Duration.Companion.seconds
+ import kotlin.time.DurationUnit
+ import kotlinx.coroutines.launch
+ import kotlinx.datetime.LocalTime
+@@ -84,11 +89,29 @@ internal fun SleepPane(
+     onBackClick = onBackClick,
+     modifier = modifier,
+   ) {
+-    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
+-      Header(
+-        title = { Text(stringResource(Res.string.header_shake_to_reset)) },
+-      )
++    Header(
++      title = { Text(stringResource(Res.string.header_shake_to_reset)) },
++    )
+ 
++    // Reset timer on pause
++    SwitchSetting(
++      value = state.sleepSettings.resetTimerOnPause,
++      onValueChange = { state.eventSink(SleepSettingEvent.ResetTimerOnPause(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_playback_sleep_reset_on_pause_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_playback_sleep_reset_on_pause_subtitle)) },
++    )
++
++    // Fade out duration
++    TimeJumpSetting(
++      time = state.sleepSettings.fadeOutDuration,
++      onTimeChange = { state.eventSink(SleepSettingEvent.FadeOutDuration(it)) },
++      jumps = FadeOutJumps,
++      textFormat = { if (it == Duration.ZERO) "Off" else it.toString() },
++      headlineContent = { Text(stringResource(Res.string.setting_playback_sleep_fade_out_duration_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_playback_sleep_fade_out_duration_subtitle)) },
++    )
++
++    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
+       // Shake to Reset
+       SwitchSetting(
+         value = state.sleepSettings.shakeToReset,
+@@ -236,3 +259,28 @@ enum class AutoRewindJumps(val duration: Duration) {
+     }
+   }
+ }
++
++enum class FadeOutJumps(val duration: Duration) {
++  Off(0.seconds),
++  Ten(10.seconds),
++  Twenty(20.seconds),
++  Thirty(30.seconds),
++  Forty(40.seconds),
++  Fifty(50.seconds),
++  Sixty(60.seconds),
++  ;
++
++  fun next(): FadeOutJumps {
++    val newOrdinal = (ordinal + 1) % entries.size
++    return entries[newOrdinal]
++  }
++
++  companion object : TimeJumps {
++    val Default: Duration get() = Thirty.duration
++
++    override fun nextFrom(duration: Duration): Duration {
++      val jump = entries.find { it.duration == duration } ?: Thirty
++      return jump.next().duration
++    }
++  }
++}
+diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
+index 41fa3e06..cfc66dc3 100644
+--- a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
++++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
+@@ -80,6 +80,8 @@ interface AudioPlayer {
+     tickRate: Long = DefaultFadeTickRate,
+   ): Job
+ 
++  fun cancelFade() {}
++
+   fun playPause()
+   fun stop()
+   fun seekTo(itemIndex: Int)
+diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/PlaybackTimer.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/PlaybackTimer.kt
+index a72d5219..d78148e8 100644
+--- a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/PlaybackTimer.kt
++++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/PlaybackTimer.kt
+@@ -20,4 +20,5 @@ data class RunningTimer(
+   val timer: PlaybackTimer,
+   val startedAt: Long,
+   val isShakeToRestartEnabled: Boolean,
++  val isPaused: Boolean = false,
+ )
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+index 66fe0bd3..355bc766 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+@@ -37,6 +37,7 @@ import app.campfire.audioplayer.impl.util.playbackStateAsDebugLog
+ import app.campfire.audioplayer.model.Metadata
+ import app.campfire.audioplayer.model.PlaybackTimer
+ import app.campfire.audioplayer.model.RunningTimer
++import app.campfire.core.extensions.formatHoursAndMinutes
+ import app.campfire.core.extensions.seconds
+ import app.campfire.core.logging.Cork
+ import app.campfire.core.logging.Corked
+@@ -98,8 +99,24 @@ class ExoPlayerAudioPlayer(
+     }
+   }
+ 
++  override var preparedSession: Session? = null
++  private var finishedListener: OnFinishedListener? = null
++
++  override val state = MutableStateFlow(AudioPlayer.State.Disabled)
++
++  private val _error = MutableStateFlow<Throwable?>(null)
++  override val error: StateFlow<Throwable?> = _error
++  override val overallTime = MutableStateFlow(0.seconds)
++  override val currentTime = MutableStateFlow(0.seconds)
++  override val currentDuration = MutableStateFlow(0.seconds)
++  override val currentMetadata = MutableStateFlow(Metadata())
++  override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
++
+   private val sleepTimerManager = sleepTimerManagerFactory.create(this)
+ 
++  override val runningTimer: StateFlow<RunningTimer?>
++    get() = sleepTimerManager.runningTimer
++
+   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+ 
+   private val exoPlayer = ExoPlayer.Builder(context)
+@@ -182,22 +199,6 @@ class ExoPlayerAudioPlayer(
+   private var fadeJob: Job? = null
+   private var previousVolumeLevel: Float = 0f
+ 
+-  override var preparedSession: Session? = null
+-  private var finishedListener: OnFinishedListener? = null
+-
+-  override val state = MutableStateFlow(AudioPlayer.State.Disabled)
+-
+-  private val _error = MutableStateFlow<Throwable?>(null)
+-  override val error: StateFlow<Throwable?> = _error
+-  override val overallTime = MutableStateFlow(0.seconds)
+-  override val currentTime = MutableStateFlow(0.seconds)
+-  override val currentDuration = MutableStateFlow(0.seconds)
+-  override val currentMetadata = MutableStateFlow(Metadata())
+-  override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
+-
+-  override val runningTimer: StateFlow<RunningTimer?>
+-    get() = sleepTimerManager.runningTimer
+-
+   override suspend fun prepare(
+     session: Session,
+     playImmediately: Boolean,
+@@ -339,6 +340,8 @@ class ExoPlayerAudioPlayer(
+         sleepTimerManager.onSessionStart()
+       }
+ 
++      updatePlaylistMetadata()
++
+       // Set when to play, and prepare
+       playWhenReady = playImmediately
+       prepare()
+@@ -352,11 +355,22 @@ class ExoPlayerAudioPlayer(
+   }
+ 
+   override fun pause() {
++    cancelFade()
+     player.pause()
+   }
+ 
++  override fun cancelFade() {
++    fadeJob?.cancel()
++    fadeJob = null
++    val targetVolume = if (previousVolumeLevel > 0.05f) previousVolumeLevel else 1f
++    player.volume = targetVolume
++    previousVolumeLevel = targetVolume
++  }
++
+   override fun fadeToPause(duration: Duration, tickRate: Long): Job {
+-    previousVolumeLevel = player.volume
++    if (fadeJob == null || !fadeJob!!.isActive) {
++      previousVolumeLevel = player.volume.takeIf { it > 0.05f } ?: 1f
++    }
+     fadeJob?.cancel()
+ 
+     return VolumeFadeController.fade(
+@@ -371,16 +385,16 @@ class ExoPlayerAudioPlayer(
+ 
+   override fun playPause() {
+     if (player.isPlaying) {
++      cancelFade()
+       player.pause()
+     } else {
++      cancelFade()
+       // Potentially trigger the auto sleep timer
+       sleepTimerManager.onSessionStart()
+ 
+       // Reset volume if stored
+-      if (player.volume == 0f && previousVolumeLevel > 0f) {
+-        player.volume = previousVolumeLevel
+-      } else if (player.volume == 0f) {
+-        player.volume = 1f
++      if (player.volume < 1f) {
++        player.volume = if (previousVolumeLevel > 0.05f) previousVolumeLevel else 1f
+       }
+ 
+       player.play()
+@@ -388,6 +402,7 @@ class ExoPlayerAudioPlayer(
+   }
+ 
+   override fun stop() {
++    cancelFade()
+     preparedSession = null
+     finishedListener = null
+     player.stop()
+@@ -460,6 +475,7 @@ class ExoPlayerAudioPlayer(
+     playbackSpeed.value = speed
+     settings.playbackSpeed = speed
+     player.setPlaybackSpeed(speed)
++    updatePlaylistMetadata()
+   }
+ 
+   override fun setTimer(timer: PlaybackTimer) {
+@@ -558,6 +574,7 @@ class ExoPlayerAudioPlayer(
+         observeProgress(player)
+       } else {
+         progressJob?.cancel()
++        cancelFade()
+       }
+     }
+ 
+@@ -565,6 +582,7 @@ class ExoPlayerAudioPlayer(
+     // end of chapter, then stop the playback
+     if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION)) {
+       sleepTimerManager.endOfChapter()
++      updatePlaylistMetadata()
+     }
+   }
+ 
+@@ -586,6 +604,48 @@ class ExoPlayerAudioPlayer(
+     currentTime.value = player.currentPosition.milliseconds
+     currentDuration.value = player.duration.milliseconds
+     overallTime.value = player.overallPosition.milliseconds
++    updatePlaylistMetadata()
++  }
++
++  internal fun updatePlaylistMetadata() {
++    val session = preparedSession ?: return
++    val media = session.libraryItem.media
++    val author = media.metadata.author ?: media.metadata.authorName ?: media.metadata.title
++    val speed = playbackSpeed.value.takeIf { it > 0f } ?: 1.0f
++
++    val totalDurationMs = session.episode?.durationInMillis ?: media.durationInMillis
++    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
++    val rawRemainingMs = (totalDurationMs - currentPositionMs).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    val formatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val artistLine = if (author.isNullOrBlank()) {
++      if (formatted.isNotBlank()) "$formatted left" else null
++    } else if (formatted.isNotBlank()) {
++      "$formatted left • $author"
++    } else {
++      author
++    }
++
++    val currentPlaylistMeta = exoPlayer.playlistMetadata
++    if (currentPlaylistMeta.artist?.toString() != artistLine) {
++      exoPlayer.playlistMetadata = currentPlaylistMeta.buildUpon()
++        .setArtist(artistLine)
++        .build()
++    }
++
++    val currentItem = exoPlayer.currentMediaItem
++    if (currentItem != null && currentItem.mediaMetadata.artist?.toString() != artistLine) {
++      val newMetadata = currentItem.mediaMetadata.buildUpon()
++        .setArtist(artistLine)
++        .build()
++      val newItem = currentItem.buildUpon()
++        .setMediaMetadata(newMetadata)
++        .build()
++      val currentIndex = exoPlayer.currentMediaItemIndex
++      if (currentIndex in 0 until exoPlayer.mediaItemCount) {
++        exoPlayer.replaceMediaItem(currentIndex, newItem)
++      }
++    }
+   }
+ }
+ 
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
+index e5a22fb8..2ac96b56 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
+@@ -3,6 +3,7 @@
+ 
+ package app.campfire.audioplayer.impl.mediaitem
+ 
++import app.campfire.core.extensions.formatHoursAndMinutes
+ import app.campfire.core.extensions.seconds
+ import app.campfire.core.logging.Corked
+ import app.campfire.core.model.AudioTrack
+@@ -15,6 +16,7 @@ import app.campfire.crashreporting.CrashReporter
+ import kotlin.math.abs
+ import kotlin.math.max
+ import kotlin.math.min
++import kotlin.time.Duration.Companion.milliseconds
+ import kotlin.time.Duration.Companion.seconds
+ 
+ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -204,11 +206,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     chapter: Chapter,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem.Metadata {
++    val author = media.metadata.authorName
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val rawRemainingMs = (media.durationInMillis - chapter.start.seconds.inWholeMilliseconds).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val artistLine = if (author.isNullOrBlank()) {
++      if (remainingFormatted.isNotBlank()) "$remainingFormatted left" else null
++    } else if (remainingFormatted.isNotBlank()) {
++      "$remainingFormatted left • $author"
++    } else {
++      author
++    }
++
+     return MediaItem.Metadata(
+       id = chapter.id,
+       title = chapter.title,
+-      artist = media.metadata.authorName,
++      artist = artistLine,
+       description = media.metadata.description ?: "",
+       subtitle = media.metadata.subtitle,
+       albumTitle = media.metadata.title,
+@@ -222,11 +238,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     track: AudioTrack,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem.Metadata {
++    val author = media.metadata.authorName
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val rawRemainingMs = (media.durationInMillis - track.startOffset.seconds.inWholeMilliseconds).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val artistLine = if (author.isNullOrBlank()) {
++      if (remainingFormatted.isNotBlank()) "$remainingFormatted left" else null
++    } else if (remainingFormatted.isNotBlank()) {
++      "$remainingFormatted left • $author"
++    } else {
++      author
++    }
++
+     return MediaItem.Metadata(
+       id = track.index,
+       title = track.taggedTitle,
+-      artist = media.metadata.authorName,
++      artist = artistLine,
+       description = media.metadata.description ?: "",
+       subtitle = media.metadata.subtitle,
+       albumTitle = media.metadata.title,
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
+index 6e4345ea..5c03b28d 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
+@@ -15,6 +15,8 @@ import app.campfire.settings.api.SleepSettings
+ import app.campfire.shake.ShakeDetector
+ import app.campfire.shake.ShakeSensitivity
+ import com.r0adkll.kimchi.annotations.ContributesBinding
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.milliseconds
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.async
+@@ -53,6 +55,45 @@ class CoroutineSleepTimerManager(
+   private var lastPlaybackTimer: PlaybackTimer? = null
+   private var playbackTimerJob: Job? = null
+   private var shakeDetectorJob: Job? = null
++  private var isResetPendingResume = false
++
++  init {
++    applicationScope.launch(dispatcherProvider.main) {
++      player.state.collect { state ->
++        when (state) {
++          AudioPlayer.State.Paused -> {
++            player.cancelFade()
++            if (sleepSettings.resetTimerOnPauseEnabled && playbackTimer != null) {
++              dbark { "Player paused with resetTimerOnPauseEnabled, resetting timer to original duration" }
++              playbackTimerJob?.cancel()
++              playbackTimerJob = null
++              isResetPendingResume = true
++              val timerToReset = lastPlaybackTimer ?: playbackTimer!!
++              runningTimer.value = RunningTimer(
++                timerToReset,
++                fatherTime.nowInEpochMillis(),
++                sleepSettings.shakeToResetEnabled,
++                isPaused = true,
++              )
++            }
++          }
++          AudioPlayer.State.Playing -> {
++            player.cancelFade()
++            if (sleepSettings.resetTimerOnPauseEnabled && isResetPendingResume && lastPlaybackTimer != null) {
++              dbark { "Player resumed with reset pending, restarting full timer countdown" }
++              isResetPendingResume = false
++              setTimer(lastPlaybackTimer!!)
++            }
++          }
++          AudioPlayer.State.Disabled,
++          AudioPlayer.State.Finished -> {
++            isResetPendingResume = false
++          }
++          else -> Unit
++        }
++      }
++    }
++  }
+ 
+   override fun onSessionStart() {
+     if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
+@@ -87,10 +128,22 @@ class CoroutineSleepTimerManager(
+   override fun setTimer(timer: PlaybackTimer) {
+     ibark { "setTimer($timer)" }
+     clearTimerInternal()
++    player.cancelFade()
+     playbackTimer = timer
+     lastPlaybackTimer = timer
+-    runningTimer.value = RunningTimer(timer, fatherTime.nowInEpochMillis(), sleepSettings.shakeToResetEnabled)
+-    startTimer(timer)
++    val isPaused = player.state.value == AudioPlayer.State.Paused && sleepSettings.resetTimerOnPauseEnabled
++    runningTimer.value = RunningTimer(
++      timer,
++      fatherTime.nowInEpochMillis(),
++      sleepSettings.shakeToResetEnabled,
++      isPaused = isPaused,
++    )
++    if (isPaused) {
++      isResetPendingResume = true
++    } else {
++      isResetPendingResume = false
++      startTimer(timer)
++    }
+ 
+     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
+       ibark { "Shake to reset enabled, starting shake detector" }
+@@ -112,6 +165,7 @@ class CoroutineSleepTimerManager(
+   private fun resetTimer() {
+     dbark { "resetTimer(lastTimer=$lastPlaybackTimer)" }
+     if (lastPlaybackTimer != null) {
++      player.cancelFade()
+       // Cancel our shake detector time out job so that it doesn't kill
+       // the shake detection while the timer is re-activated
+       shakeDetectorJob?.cancel()
+@@ -140,6 +194,8 @@ class CoroutineSleepTimerManager(
+     playbackTimerJob = null
+     playbackTimer = null
+     runningTimer.value = null
++    isResetPendingResume = false
++    player.cancelFade()
+   }
+ 
+   private fun endTimer() {
+@@ -159,15 +215,8 @@ class CoroutineSleepTimerManager(
+       }
+     }
+ 
+-    if (playbackTimer is PlaybackTimer.EndOfChapter) {
+-      player.pause()
+-      onPauseComplete()
+-    } else {
+-      // Pause playback and clear the timer
+-      player.fadeToPause().invokeOnCompletion {
+-        onPauseComplete()
+-      }
+-    }
++    player.pause()
++    onPauseComplete()
+ 
+     clearTimerInternal()
+ 
+@@ -209,8 +258,27 @@ class CoroutineSleepTimerManager(
+   private fun startTimer(timer: PlaybackTimer) {
+     if (timer is PlaybackTimer.Epoch) {
+       playbackTimerJob = applicationScope.async(dispatcherProvider.computation) {
+-        dbark { "--> Starting Epoch Timer" }
+-        delay(timer.epochMillis)
++        val totalMillis = timer.epochMillis
++        val configuredFade = sleepSettings.fadeOutDuration
++        val effectiveFade = if (configuredFade > Duration.ZERO) {
++          minOf(configuredFade, (totalMillis / 2).milliseconds)
++        } else {
++          Duration.ZERO
++        }
++        val mainWaitMillis = (totalMillis - effectiveFade.inWholeMilliseconds).coerceAtLeast(0L)
++
++        dbark { "--> Starting Epoch Timer (total=${totalMillis}ms, main=${mainWaitMillis}ms, fade=${effectiveFade})" }
++        if (mainWaitMillis > 0L) {
++          delay(mainWaitMillis)
++        }
++
++        if (effectiveFade > Duration.ZERO) {
++          withContext(dispatcherProvider.main) {
++            player.fadeToPause(duration = effectiveFade)
++          }
++          delay(effectiveFade.inWholeMilliseconds)
++        }
++
+         dbark { "<-- Epoch Timer Ended" }
+         withContext(dispatcherProvider.main) {
+           endTimer()
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/VolumeFadeController.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/VolumeFadeController.kt
+index d5d62f00..c1ead730 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/VolumeFadeController.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/VolumeFadeController.kt
+@@ -3,7 +3,6 @@
+ 
+ package app.campfire.audioplayer.impl.sleep
+ 
+-import app.campfire.core.extensions.asSeconds
+ import kotlin.time.Clock
+ import kotlin.time.Duration
+ import kotlinx.coroutines.CoroutineScope
+@@ -25,20 +24,32 @@ object VolumeFadeController {
+   ): Job {
+     return scope.launch {
+       val startVolume = getVolume()
++      val totalMillis = duration.inWholeMilliseconds.toFloat()
+       val delayStep = 1000L / tickRate
+-      val fadeStep = getVolume() / (duration.asSeconds() * tickRate)
+ 
+-      // Grab a timestamp and never let the loop here extend passed the [duration]
+-      val start = now()
+-      while (isActive && getVolume() > 0f && now() - start < duration.inWholeMilliseconds) {
+-        setVolume((getVolume() - fadeStep).coerceAtLeast(0f))
+-        delay(delayStep)
+-      }
++      // Grab a timestamp and never let the loop here extend past the [duration]
++      try {
++        val start = now()
++        while (isActive) {
++          val elapsed = (now() - start).toFloat()
++          if (elapsed >= totalMillis) break
++
++          // Calculate remaining fraction (1.0 at start down to 0.0 at end)
++          val remainingFraction = ((totalMillis - elapsed) / totalMillis).coerceIn(0f, 1f)
+ 
+-      onPause()
++          // Apply perceptual loudness curve (squared) for human hearing
++          val volumeFactor = remainingFraction * remainingFraction
++          setVolume((startVolume * volumeFactor).coerceIn(0f, 1f))
+ 
+-      // Reset the volume to where it started
+-      setVolume(startVolume)
++          delay(delayStep)
++        }
++
++        setVolume(0f)
++        onPause()
++      } finally {
++        // Reset the volume to where it started whether completed or cancelled
++        setVolume(startVolume)
++      }
+     }
+   }
+ }
+diff --git a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt
+index 3c1655a5..a31986b5 100644
+--- a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt
++++ b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt
+@@ -174,7 +174,7 @@ class MediaItemBuilderTest {
+     val m = result.first().metadata!!
+     assertThat(m.id).isEqualTo(0)
+     assertThat(m.title).isEqualTo("My Track")
+-    assertThat(m.artist).isEqualTo("Author A")
++    assertThat(m.artist).isEqualTo("1m left • Author A")
+     assertThat(m.description).isEqualTo("Desc")
+     assertThat(m.albumTitle).isEqualTo("Book X")
+     assertThat(m.durationMs).isEqualTo(60.seconds.inWholeMilliseconds)
+@@ -224,7 +224,7 @@ class MediaItemBuilderTest {
+     val m = result.first().metadata!!
+     assertThat(m.id).isEqualTo(5)
+     assertThat(m.title).isEqualTo("Opening")
+-    assertThat(m.artist).isEqualTo("Jane")
++    assertThat(m.artist).isEqualTo("2m left • Jane")
+     assertThat(m.description).isEqualTo("Desc")
+     assertThat(m.subtitle).isEqualTo("Sub")
+     assertThat(m.albumTitle).isEqualTo("Title")
+@@ -557,7 +557,7 @@ class MediaItemBuilderTest {
+ 
+     assertThat(result.id).isEqualTo(3)
+     assertThat(result.title).isEqualTo("The Beginning")
+-    assertThat(result.artist).isEqualTo("Author")
++    assertThat(result.artist).isEqualTo("0m left • Author")
+     assertThat(result.description).isEqualTo("Desc")
+     assertThat(result.subtitle).isEqualTo("Sub")
+     assertThat(result.albumTitle).isEqualTo("Title")
+@@ -576,6 +576,23 @@ class MediaItemBuilderTest {
+     assertThat(result.description).isEqualTo("")
+   }
+ 
++  @Test
++  fun `createMediaMetadata adjusts remaining time for playbackSpeed`() {
++    val ch = chapter(id = 0, start = 0f, end = 60f)
++    val med = media(
++      tracks = listOf(track(duration = 7200f)), // 2 hours
++      metadata = metadata(authorName = "Author"),
++    )
++
++    // At 1.0x -> 2h left
++    val result1x = MediaItemBuilder.createMediaMetadata(ch, med, libraryItemId = "item-1", playbackSpeed = 1.0f)
++    assertThat(result1x.artist).isEqualTo("2h left • Author")
++
++    // At 2.0x -> 1h left
++    val result2x = MediaItemBuilder.createMediaMetadata(ch, med, libraryItemId = "item-1", playbackSpeed = 2.0f)
++    assertThat(result2x.artist).isEqualTo("1h left • Author")
++  }
++
+   // endregion
+ 
+   // region createMediaMetadata (track)
+@@ -597,7 +614,7 @@ class MediaItemBuilderTest {
+ 
+     assertThat(result.id).isEqualTo(2)
+     assertThat(result.title).isEqualTo("Track Title")
+-    assertThat(result.artist).isEqualTo("Writer")
++    assertThat(result.artist).isEqualTo("0m left • Writer")
+     assertThat(result.description).isEqualTo("Info")
+     assertThat(result.subtitle).isEqualTo("Vol 1")
+     assertThat(result.albumTitle).isEqualTo("Saga")
+diff --git a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/VlcAudioPlayer.kt b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/VlcAudioPlayer.kt
+index 9d759741..6c3bad7d 100644
+--- a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/VlcAudioPlayer.kt
++++ b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/VlcAudioPlayer.kt
+@@ -43,8 +43,6 @@ class VlcAudioPlayer(
+     setListener(VlcPlayerListener())
+   }
+ 
+-  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
+-
+   override var preparedSession: Session? = null
+   private var finishedListener: OnFinishedListener? = null
+ 
+@@ -56,6 +54,8 @@ class VlcAudioPlayer(
+   override val currentMetadata = MutableStateFlow(Metadata())
+   override val playbackSpeed = MutableStateFlow(settings.playbackSpeed)
+ 
++  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
++
+   override val runningTimer: StateFlow<RunningTimer?>
+     get() = sleepTimerManager.runningTimer
+ 
+diff --git a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt
+index 06335a3a..eb415e5a 100644
+--- a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt
++++ b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt
+@@ -45,9 +45,13 @@ internal fun RunningTimerText(
+   var timeLeft by remember { mutableStateOf("") }
+   LaunchedEffect(runningTimer) {
+     val timer = (runningTimer.timer as? PlaybackTimer.Epoch) ?: return@LaunchedEffect
++    if (runningTimer.isPaused) {
++      timeLeft = timer.epochMillis.milliseconds.clockFormat()
++      return@LaunchedEffect
++    }
+     while (isActive) {
+       val elapsed = Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
+-      val remaining = (timer.epochMillis - elapsed).milliseconds
++      val remaining = maxOf(0L, timer.epochMillis - elapsed).milliseconds
+       timeLeft = remaining.clockFormat()
+       delay(1000L)
+     }
+diff --git a/ui/widgets/impl/src/androidMain/kotlin/app/campfire/widgets/composables/SleepTimerButton.kt b/ui/widgets/impl/src/androidMain/kotlin/app/campfire/widgets/composables/SleepTimerButton.kt
+index 4d92784b..302a397d 100644
+--- a/ui/widgets/impl/src/androidMain/kotlin/app/campfire/widgets/composables/SleepTimerButton.kt
++++ b/ui/widgets/impl/src/androidMain/kotlin/app/campfire/widgets/composables/SleepTimerButton.kt
+@@ -44,15 +44,15 @@ internal fun SleepTimerButton(
+ ) {
+   if (runningTimer != null && runningTimer.timer is PlaybackTimer.Epoch) {
+     val timer = runningTimer.timer as PlaybackTimer.Epoch
+-    val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
++    val elapsed = if (runningTimer.isPaused) 0L else kotlin.time.Clock.System.now().toEpochMilliseconds() - runningTimer.startedAt
+     val remainingMs = timer.epochMillis - elapsed
+ 
+     val context = LocalContext.current
+     val color = contentColor.getColor(context).toArgb()
+-    val remoteViews = remember(remainingMs, color) {
++    val remoteViews = remember(remainingMs, color, runningTimer.isPaused) {
+       RemoteViews(context.packageName, R.layout.widget_sleep_timer_button).apply {
+         setChronometerCountDown(R.id.chronometer, true)
+-        setChronometer(R.id.chronometer, SystemClock.elapsedRealtime() + remainingMs, null, true)
++        setChronometer(R.id.chronometer, SystemClock.elapsedRealtime() + remainingMs, null, !runningTimer.isPaused)
+         setTextColor(R.id.chronometer, color)
+         setInt(R.id.icon, "setColorFilter", color)
+       }
