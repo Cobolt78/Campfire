@@ -250,13 +250,36 @@ Added configurable safeguards under **Settings > Downloads** to prevent accident
 
 ---
 
-## 11. FOSS Release Build & Deployment Commands
+## 11. Shake-to-Reset Sensor Polling, Sensitivity Calibration & Haptic Feedback
+
+### Summary
+Fixed the "Shake to reset" feature in **Settings > Sleep** so that shaking the phone reliably and immediately resets the sleep timer:
+1. **Sensor Polling Rate**: Upgraded accelerometer listener from `SENSOR_DELAY_NORMAL` (5 Hz, ~200ms) to `SENSOR_DELAY_GAME` (50 Hz, ~20ms). 5 Hz was too slow to capture rapid back-and-forth shake peaks within the 500ms sliding sampling window.
+2. **Sensitivity Threshold Calibration**: Corrected the inverted thresholds where "High" had previously set a 15.0 m/s² threshold and "Very Low" set 10.0 m/s². The calibrated values now accurately map higher sensitivity to lower acceleration thresholds:
+   - **Very High**: 11.0 m/s² (light flick triggers it)
+   - **High**: 12.5 m/s²
+   - **Medium**: 13.5 m/s² (balanced default)
+   - **Low**: 15.5 m/s²
+   - **Very Low**: 17.5 m/s² (requires firm shake)
+3. **Haptic Vibration Feedback**: Added an immediate 100ms vibration pulse via `Vibrator` / `VibratorManager` when a shake is detected so the user feels confirmation that the shake was recognized.
+4. **Live Dynamic Setting Observation**: `CoroutineSleepTimerManager` now collects `sleepSettings.observeShakeSensitivity()` and `sleepSettings.observeShakeToResetEnabled()` in real-time, instantly applying sensitivity or toggle changes while a timer is counting down.
+
+### Modified Files:
+* `infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt`
+* `infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt`
+* `infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+
+---
+
+## 12. Release Build & Deployment Commands
 
 ### Build Command (PowerShell):
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
 $env:ANDROID_HOME = "C:\Android\Sdk"
 .\gradlew.bat :app:android:assembleFossRelease
+.\gradlew.bat :app:android:assembleStandardRelease
 ```
 
 ### Direct Install via ADB (Samsung Galaxy S24 Ultra):
@@ -266,7 +289,7 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 
 ---
 
-## 12. Modified Files Inventory
+## 13. Modified Files Inventory
 
 | File Path | Description |
 | :--- | :--- |
@@ -322,3 +345,6 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/settings/ui/.../SleepPane.kt` | Added `FadeOutJumps` enum and TimeJumpSetting |
 | `features/settings/test/.../TestCampfireSettings.kt` | Test implementation of confirmActions & warnOnCellularDownload |
 | `infra/audioplayer/api/.../AudioPlayer.kt` | Added `cancelFade()` to AudioPlayer interface |
+| `infra/shake/.../SeismicShakeDetector.kt` | Default sensor delay updated to SENSOR_DELAY_GAME (50 Hz) |
+| `infra/shake/.../ShakeDetector.android.kt` | Added 100ms haptic feedback vibration pulse & game delay |
+| `infra/shake/.../ShakeSensitivityMagnitudes.android.kt` | Corrected inverted thresholds (VeryHigh=11.0, VeryLow=17.5) |

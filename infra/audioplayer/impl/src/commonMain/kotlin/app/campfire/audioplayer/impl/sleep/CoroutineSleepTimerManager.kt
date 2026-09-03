@@ -93,6 +93,39 @@ class CoroutineSleepTimerManager(
         }
       }
     }
+
+    applicationScope.launch(dispatcherProvider.main) {
+      sleepSettings.observeShakeSensitivity().collect { sensitivity ->
+        if (shakeDetector.isRunning) {
+          dbark { "Updating shake detector sensitivity to $sensitivity" }
+          shakeDetector.start(
+            sensitivity = sensitivity.asShakeSensitivity(),
+            listener = {
+              dbark { "<~> Shake Detected!" }
+              resetTimer()
+            },
+          )
+        }
+      }
+    }
+
+    applicationScope.launch(dispatcherProvider.main) {
+      sleepSettings.observeShakeToResetEnabled().collect { enabled ->
+        if (enabled && playbackTimer != null && !shakeDetector.isRunning) {
+          dbark { "Shake to reset enabled while timer active, starting shake detector" }
+          shakeDetector.start(
+            sensitivity = sleepSettings.shakeSensitivity.asShakeSensitivity(),
+            listener = {
+              dbark { "<~> Shake Detected!" }
+              resetTimer()
+            },
+          )
+        } else if (!enabled && shakeDetector.isRunning) {
+          dbark { "Shake to reset disabled, stopping shake detector" }
+          stopShakeDetector()
+        }
+      }
+    }
   }
 
   override fun onSessionStart() {

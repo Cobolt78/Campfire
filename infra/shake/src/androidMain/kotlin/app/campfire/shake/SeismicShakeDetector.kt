@@ -38,7 +38,7 @@ class SeismicShakeDetector(
   @JvmOverloads
   fun start(
     sensorManager: SensorManager,
-    sensorDelay: Int = SensorManager.SENSOR_DELAY_NORMAL,
+    sensorDelay: Int = SensorManager.SENSOR_DELAY_GAME,
   ): Boolean {
     // Already started?
     if (accelerometer != null) {
