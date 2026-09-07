@@ -9,7 +9,8 @@
 
 2. **Releases & Binary Distribution**:
    - When compiling a release, build the release APK(s) using `./gradlew.bat :app:android:assembleFossRelease` (and/or `:app:android:assembleStandardRelease` if requested).
-   - Publish or update the release on GitHub via GitHub CLI (`gh release upload ... --repo Cobolt78/Campfire`) so that the user can download the APKs directly from `https://github.com/Cobolt78/Campfire/releases`.
+   - Name the release APKs using the versioned format: `android-foss-release_<version>.apk` and `android-standard-release_<version>.apk` (e.g. `android-standard-release_1.1.0.apk`).
+   - Publish or update the release on GitHub via GitHub CLI (`gh release upload <tag> <file> --clobber --repo Cobolt78/Campfire`). If replacing an existing release asset with a different filename, delete the stale asset first.
    - If the user's phone (`RFCX816WP0Z`) is connected via USB, automatically install the updated APK via `adb install -r`.
 
 3. **Repository Integrity**:
