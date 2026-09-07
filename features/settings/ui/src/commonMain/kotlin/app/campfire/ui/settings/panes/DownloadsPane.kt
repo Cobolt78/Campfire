@@ -72,6 +72,10 @@ import campfire.features.settings.ui.generated.resources.label_confirm_download_
 import campfire.features.settings.ui.generated.resources.setting_downloads_title
 import campfire.features.settings.ui.generated.resources.setting_show_download_confirmation_description
 import campfire.features.settings.ui.generated.resources.setting_show_download_confirmation_title
+import campfire.features.settings.ui.generated.resources.setting_confirm_actions_title
+import campfire.features.settings.ui.generated.resources.setting_confirm_actions_description
+import campfire.features.settings.ui.generated.resources.setting_warn_on_cellular_title
+import campfire.features.settings.ui.generated.resources.setting_warn_on_cellular_description
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -90,6 +94,18 @@ internal fun DownloadsPane(
       onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ShowDownloadConfirmation(it)) },
       headlineContent = { Text(stringResource(Res.string.setting_show_download_confirmation_title)) },
       supportingContent = { Text(stringResource(Res.string.setting_show_download_confirmation_description)) },
+    )
+    SwitchSetting(
+      value = state.downloadsSettings.confirmActions,
+      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ConfirmActions(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_confirm_actions_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_confirm_actions_description)) },
+    )
+    SwitchSetting(
+      value = state.downloadsSettings.warnOnCellularDownload,
+      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_warn_on_cellular_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_warn_on_cellular_description)) },
     )
 
     Header(title = { Text(stringResource(Res.string.download_header_downloads)) })

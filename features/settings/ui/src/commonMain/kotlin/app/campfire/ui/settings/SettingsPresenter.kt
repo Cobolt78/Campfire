@@ -177,6 +177,10 @@ class SettingsPresenter(
     // Downloads Settings
     val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
       .collectAsState()
+    val confirmActions by remember { settings.observeConfirmActions() }
+      .collectAsState()
+    val warnOnCellularDownload by remember { settings.observeWarnOnCellularDownload() }
+      .collectAsState()
 
     val downloads by remember {
       offlineDownloadManager.observeAll()
@@ -264,6 +268,8 @@ class SettingsPresenter(
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
+        confirmActions = confirmActions,
+        warnOnCellularDownload = warnOnCellularDownload,
         downloads = downloadEntries,
       ),
       playbackSettings = PlaybackSettingsInfo(
@@ -354,6 +360,8 @@ class SettingsPresenter(
 
         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
           is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
+          is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> settings.confirmActions = event.enabled
+          is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> settings.warnOnCellularDownload = event.enabled
           is DownloadClicked -> navigator.goTo(
             LibraryItemScreen(
               libraryItemId = event.entry.libraryItem.id,

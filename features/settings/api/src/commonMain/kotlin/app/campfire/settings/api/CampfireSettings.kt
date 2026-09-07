@@ -102,4 +102,23 @@ interface CampfireSettings {
    */
   var socketEnabled: Boolean
   fun observeSocketEnabled(): StateFlow<Boolean>
+
+  /**
+   * When `true`, the app shows a confirmation dialog before executing destructive actions such as
+   * deleting a download, discarding listening progress, or marking a book with active progress as finished.
+   * When `false`, those actions execute immediately without prompting.
+   *
+   * Defaults to `true`.
+   */
+  var confirmActions: Boolean
+  fun observeConfirmActions(): StateFlow<Boolean>
+
+  /**
+   * When `true`, the app warns the user before downloading media over a metered (cellular / hotspot)
+   * connection. When `false`, downloads proceed without a cellular data warning.
+   *
+   * Defaults to `true`.
+   */
+  var warnOnCellularDownload: Boolean
+  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
 }

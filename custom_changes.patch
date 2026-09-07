@@ -1,0 +1,591 @@
+diff --git a/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml b/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
+index d004f02..956ae73 100644
+--- a/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
++++ b/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
+@@ -2,6 +2,7 @@
+   <string name="home_feed_load_error">Unable to load your home feed.\n%1$s</string>
+   <string name="shelf_content_error_message">Unable to load content for "%1$s"</string>
+ 
++  <string name="downloads_shelf_title">Downloads</string>
+   <string name="upcoming_shelf_title">Upcoming releases</string>
+   <string name="upcoming_shelf_tba">TBA</string>
+   <string name="upcoming_view_all">View all</string>
+diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+index 6c1c04f..454ec0e 100644
+--- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+@@ -55,6 +55,7 @@ class HomePresenter(
+   private val homeRepository: HomeRepository,
+   private val mediaProgressRepository: MediaProgressRepository,
+   private val offlineDownloadManager: OfflineDownloadManager,
++  private val libraryItemRepository: app.campfire.libraries.api.LibraryItemRepository,
+   private val bookInfoRegistry: BookInfoRegistry,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<HomeUiState> {
+@@ -98,19 +99,54 @@ class HomePresenter(
+       bookInfoRegistry.observeCachedUpcoming()
+     }.collectAsState(emptyList())
+ 
++    val completedDownloads by remember {
++      offlineDownloadManager.observeAll()
++        .map { downloads ->
++          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
++        }
++        .distinctUntilChanged()
++        .mapLatest { downloadIds ->
++          downloadIds.mapNotNull { id ->
++            try {
++              libraryItemRepository.getLibraryItem(id)
++            } catch (e: kotlinx.coroutines.CancellationException) {
++              throw e
++            } catch (e: Exception) {
++              null
++            }
++          }
++        }
++    }.collectAsState(emptyList())
++
+     // Now combine both the shelves and entities into the final set of UiShelf to render
+     // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
+     val feed by remember {
+       derivedStateOf {
+         domainFeed.map { shelves ->
+-          val uiShelves = shelves.map { shelf ->
+-            UiShelf(
+-              shelf,
+-              shelfEntities[shelf.id]
+-                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
++          val uiShelves = shelves
++            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.home.api.model.ShelfType.AUTHOR }
++            .map { shelf ->
++              UiShelf(
++                shelf,
++                shelfEntities[shelf.id]
++                  ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
++              )
++            }
++          
++          val withUpcoming = insertUpcomingShelf(uiShelves, upcomingReleases).toMutableList()
++
++          if (completedDownloads.isNotEmpty()) {
++            withUpcoming.add(
++              UiShelf(
++                id = "downloads",
++                label = "Downloads",
++                total = completedDownloads.size,
++                entities = LoadState.Loaded(completedDownloads)
++              )
+             )
+           }
+-          insertUpcomingShelf(uiShelves, upcomingReleases).toPersistentList()
++
++          withUpcoming.toPersistentList()
+         }
+       }
+     }
+@@ -125,17 +161,22 @@ class HomePresenter(
+     }.collectAsState(persistentMapOf())
+ 
+     val offlineDownloads by remember {
+-      snapshotFlow { shelfEntities.values }
+-        .map { responses ->
+-          responses
+-            .mapNotNull { it.dataOrNull }
+-            .flatten()
+-            .filterIsInstance<LibraryItem>()
+-        }
+-        .flatMapLatest { libraryItems ->
+-          offlineDownloadManager.observeForItems(libraryItems)
+-            .map { it.toPersistentMap() }
+-        }
++      combine(
++        snapshotFlow { shelfEntities.values }
++          .map { responses ->
++            responses
++              .mapNotNull { it.dataOrNull }
++              .flatten()
++              .filterIsInstance<LibraryItem>()
++          },
++        snapshotFlow { completedDownloads }
++      ) { fromShelves, fromDownloads ->
++        (fromShelves + fromDownloads).distinctBy { it.id }
++      }
++      .flatMapLatest { libraryItems ->
++        offlineDownloadManager.observeForItems(libraryItems)
++          .map { it.toPersistentMap() }
++      }
+     }.collectAsState(persistentMapOf())
+ 
+     return HomeUiState(
+diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
+index 585f6e9..5857395 100644
+--- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
++++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
+@@ -32,10 +32,10 @@ fun ShelfHeader(
+     Text(
+       // The synthetic upcoming shelf is built outside composition, so its
+       // label resolves here instead of from the server feed.
+-      text = if (shelf.id == ShelfIds.UpcomingReleases) {
+-        stringResource(Res.string.upcoming_shelf_title)
+-      } else {
+-        shelf.label
++      text = when (shelf.id) {
++        ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
++        "downloads" -> stringResource(campfire.features.home.ui.generated.resources.downloads_shelf_title)
++        else -> shelf.label
+       },
+       style = MaterialTheme.typography.labelLarge,
+     )
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
+index 2dfc125..7da2235 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
+@@ -214,6 +214,14 @@ class BookPresenter(
+       settings.observeShowConfirmDownload()
+     }.collectAsState()
+ 
++    val confirmActionsSetting by remember {
++      settings.observeConfirmActions()
++    }.collectAsState()
++
++    val warnOnCellularDownloadSetting by remember {
++      settings.observeWarnOnCellularDownload()
++    }.collectAsState()
++
+     val showTimeInBook by remember {
+       settings.observeShowTimeInBook()
+     }.collectAsState()
+@@ -239,6 +247,8 @@ class BookPresenter(
+       communityInfoState = communityInfoState,
+       showTimeInBook = showTimeInBook,
+       showConfirmDownloadDialog = showConfirmDownloadDialog,
++      confirmActionsSetting = confirmActionsSetting,
++      warnOnCellularDownloadSetting = warnOnCellularDownloadSetting,
+       hasSession = currentSession != null,
+       session = itemSession.sessionOrNull(),
+       isQueued = isQueued,
+@@ -423,6 +433,8 @@ private fun buildSlots(
+   communityInfoState: CommunityInfoState?,
+   showTimeInBook: Boolean,
+   showConfirmDownloadDialog: Boolean,
++  confirmActionsSetting: Boolean,
++  warnOnCellularDownloadSetting: Boolean,
+   hasSession: Boolean,
+   isQueued: Boolean,
+   session: Session?,
+@@ -497,6 +509,8 @@ private fun buildSlots(
+       hasSession = hasSession,
+       isQueued = isQueued,
+       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
++      confirmActionsSetting = confirmActionsSetting,
++      warnOnCellularDownloadSetting = warnOnCellularDownloadSetting,
+       addToPlaylistDialog = addToPlaylistDialog,
+       canStreamHls = canStreamHls,
+       willStreamHls = willStreamHls,
+diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
+index d9d86e2..56f8cb4 100644
+--- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
++++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
+@@ -86,6 +86,13 @@ class ExpressiveControlSlot(
+       )
+     }
+ 
++    var showConfirmDeleteDialog by remember { mutableStateOf(false) }
++    var showConfirmDiscardDialog by remember { mutableStateOf(false) }
++    var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
++    var showCellularWarningDialog by remember { mutableStateOf(false) }
++
++    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
++
+     ExpressiveControlBar(
+       isQueued = isQueued,
+       hasSession = hasSession,
+@@ -100,26 +107,40 @@ class ExpressiveControlSlot(
+         eventSink(LibraryItemUiEvent.PlayClick(method))
+       },
+       onDownloadClick = {
+-        if (showConfirmDownloadDialogSetting) {
++        if (warnOnCellularDownloadSetting && isCellularOrMetered) {
++          showCellularWarningDialog = true
++        } else if (showConfirmDownloadDialogSetting) {
+           showConfirmDownloadDialog = true
+         } else {
+           eventSink(LibraryItemUiEvent.DownloadClick())
+         }
+       },
+       onMarkFinished = {
+-        eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++        if (confirmActionsSetting && mediaProgress != null && mediaProgress.progress > 0f) {
++          showConfirmMarkFinishedDialog = true
++        } else {
++          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++        }
+       },
+       onMarkNotFinished = {
+         eventSink(LibraryItemUiEvent.MarkNotFinished(libraryItem))
+       },
+       onDiscardProgress = {
+-        eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++        if (confirmActionsSetting) {
++          showConfirmDiscardDialog = true
++        } else {
++          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++        }
+       },
+       onStopDownloadClick = {
+         eventSink(LibraryItemUiEvent.StopDownloadClick)
+       },
+       onDeleteDownloadClick = {
+-        eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++        if (confirmActionsSetting) {
++          showConfirmDeleteDialog = true
++        } else {
++          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++        }
+       },
+       onAddToQueueClick = {
+         if (isQueued) {
+@@ -151,5 +172,61 @@ class ExpressiveControlSlot(
+         onDismissRequest = { showConfirmDownloadDialog = false },
+       )
+     }
++
++    if (showCellularWarningDialog) {
++      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
++        title = "Mobile Data Warning",
++        message = "You are currently on a mobile or metered connection. Downloading may result in extra data charges.",
++        confirmButtonText = "Download anyway",
++        onConfirm = {
++          showCellularWarningDialog = false
++          if (showConfirmDownloadDialogSetting) {
++            showConfirmDownloadDialog = true
++          } else {
++            eventSink(LibraryItemUiEvent.DownloadClick())
++          }
++        },
++        onDismissRequest = { showCellularWarningDialog = false },
++      )
++    }
++
++    if (showConfirmDeleteDialog) {
++      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
++        title = "Delete Download",
++        message = "Are you sure you want to delete this download from your device?",
++        confirmButtonText = "Delete",
++        onConfirm = {
++          showConfirmDeleteDialog = false
++          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
++        },
++        onDismissRequest = { showConfirmDeleteDialog = false },
++      )
++    }
++
++    if (showConfirmDiscardDialog) {
++      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
++        title = "Discard Progress",
++        message = "Are you sure you want to discard your listening progress for this item?",
++        confirmButtonText = "Discard",
++        onConfirm = {
++          showConfirmDiscardDialog = false
++          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
++        },
++        onDismissRequest = { showConfirmDiscardDialog = false },
++      )
++    }
++
++    if (showConfirmMarkFinishedDialog) {
++      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
++        title = "Mark as Finished",
++        message = "You have not completed listening to this item yet. Are you sure you want to mark it as finished?",
++        confirmButtonText = "Mark finished",
++        onConfirm = {
++          showConfirmMarkFinishedDialog = false
++          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
++        },
++        onDismissRequest = { showConfirmMarkFinishedDialog = false },
++      )
++    }
+   }
+ }
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
+index 18dcdad..0e46760 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt
+@@ -102,4 +102,23 @@ interface CampfireSettings {
+    */
+   var socketEnabled: Boolean
+   fun observeSocketEnabled(): StateFlow<Boolean>
++
++  /**
++   * When `true`, the app shows a confirmation dialog before executing destructive actions such as
++   * deleting a download, discarding listening progress, or marking a book with active progress as finished.
++   * When `false`, those actions execute immediately without prompting.
++   *
++   * Defaults to `true`.
++   */
++  var confirmActions: Boolean
++  fun observeConfirmActions(): StateFlow<Boolean>
++
++  /**
++   * When `true`, the app warns the user before downloading media over a metered (cellular / hotspot)
++   * connection. When `false`, downloads proceed without a cellular data warning.
++   *
++   * Defaults to `true`.
++   */
++  var warnOnCellularDownload: Boolean
++  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
+ }
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
+index 4567443..85373e3 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
+@@ -136,6 +136,14 @@ class CampfireSettingsImpl(
+   private val socketEnabledProperty = booleanSetting(KEY_SOCKET_ENABLED, true)
+   override var socketEnabled: Boolean by socketEnabledProperty
+   override fun observeSocketEnabled(): StateFlow<Boolean> = socketEnabledProperty.observe()
++
++  private val confirmActionsProperty = booleanSetting(KEY_CONFIRM_ACTIONS, true)
++  override var confirmActions: Boolean by confirmActionsProperty
++  override fun observeConfirmActions(): StateFlow<Boolean> = confirmActionsProperty.observe()
++
++  private val warnOnCellularDownloadProperty = booleanSetting(KEY_WARN_ON_CELLULAR_DOWNLOAD, true)
++  override var warnOnCellularDownload: Boolean by warnOnCellularDownloadProperty
++  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> = warnOnCellularDownloadProperty.observe()
+ }
+ 
+ internal const val KEY_DEVICE_ID = "pref_device_id"
+@@ -164,6 +172,8 @@ internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"
+ internal const val KEY_SOCKET_ENABLED = "pref_socket_enabled"
+ internal const val KEY_APP_UPDATE_SIGN_IN_DISMISSED = "pref_app_update_sign_in_dismissed"
+ internal const val KEY_APP_UPDATE_DISMISSED_VERSION_CODE = "pref_app_update_dismissed_version_code"
++internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
++internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
+ 
+ // Dead keys
+ internal const val KEY_USE_DYNAMIC_COLORS = "pref_dynamic_colors"
+diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
+index 6cba532..b741277 100644
+--- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
++++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
+@@ -139,4 +139,19 @@ class TestCampfireSettings(
+   override fun observeAppUpdateDismissedVersionCode(): StateFlow<Long> =
+     observeLong(::appUpdateDismissedVersionCode)
+       .stateIn(testScope, SharingStarted.Lazily, appUpdateDismissedVersionCode)
++
++  override var socketEnabled: Boolean by boolean()
++  override fun observeSocketEnabled(): StateFlow<Boolean> =
++    observeBoolean(::socketEnabled)
++      .stateIn(testScope, SharingStarted.Lazily, socketEnabled)
++
++  override var confirmActions: Boolean by boolean()
++  override fun observeConfirmActions(): StateFlow<Boolean> =
++    observeBoolean(::confirmActions)
++      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
++
++  override var warnOnCellularDownload: Boolean by boolean()
++  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
++    observeBoolean(::warnOnCellularDownload)
++      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
+ }
+diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
+index 1d1958a..a60cd85 100644
+--- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
++++ b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
+@@ -52,6 +52,10 @@
+   <!-- Downloads setting strings-->
+   <string name="setting_show_download_confirmation_title">Show download confirmation dialog</string>
+   <string name="setting_show_download_confirmation_description">Show a dialog to confirm each item download for offline listening</string>
++  <string name="setting_confirm_actions_title">Confirm destructive actions</string>
++  <string name="setting_confirm_actions_description">Ask for confirmation before deleting downloads, discarding progress, or marking books as finished</string>
++  <string name="setting_warn_on_cellular_title">Warn on cellular downloads</string>
++  <string name="setting_warn_on_cellular_description">Show a warning before downloading over mobile data to avoid unexpected data usage</string>
+   <string name="download_header_downloads">Downloads</string>
+   <string name="action_delete_download">Delete</string>
+   <string name="action_stop_download">Stop</string>
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+index 1bda967..ece6bde 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+@@ -177,6 +177,10 @@ class SettingsPresenter(
+     // Downloads Settings
+     val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
+       .collectAsState()
++    val confirmActions by remember { settings.observeConfirmActions() }
++      .collectAsState()
++    val warnOnCellularDownload by remember { settings.observeWarnOnCellularDownload() }
++      .collectAsState()
+ 
+     val downloads by remember {
+       offlineDownloadManager.observeAll()
+@@ -264,6 +268,8 @@ class SettingsPresenter(
+       ),
+       downloadsSettings = DownloadsSettingsInfo(
+         showDownloadConfirmation = showDownloadConfirmation,
++        confirmActions = confirmActions,
++        warnOnCellularDownload = warnOnCellularDownload,
+         downloads = downloadEntries,
+       ),
+       playbackSettings = PlaybackSettingsInfo(
+@@ -354,6 +360,8 @@ class SettingsPresenter(
+ 
+         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
+           is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
++          is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> settings.confirmActions = event.enabled
++          is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> settings.warnOnCellularDownload = event.enabled
+           is DownloadClicked -> navigator.goTo(
+             LibraryItemScreen(
+               libraryItemId = event.entry.libraryItem.id,
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+index 30a2aea..4f31c19 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+@@ -57,6 +57,8 @@ data class AppearanceSettingsInfo(
+ @Immutable
+ data class DownloadsSettingsInfo(
+   val showDownloadConfirmation: Boolean,
++  val confirmActions: Boolean,
++  val warnOnCellularDownload: Boolean,
+   val downloads: List<DownloadEntry>,
+ )
+ 
+@@ -190,6 +192,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+   // Downloads Pane Events
+   sealed interface DownloadsSettingEvent : SettingsUiEvent {
+     data class ShowDownloadConfirmation(val enabled: Boolean) : DownloadsSettingEvent
++    data class ConfirmActions(val enabled: Boolean) : DownloadsSettingEvent
++    data class WarnOnCellularDownload(val enabled: Boolean) : DownloadsSettingEvent
+     data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
+     data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
+   }
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
+index a397358..c4743dc 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
+@@ -72,6 +72,10 @@ import campfire.features.settings.ui.generated.resources.label_confirm_download_
+ import campfire.features.settings.ui.generated.resources.setting_downloads_title
+ import campfire.features.settings.ui.generated.resources.setting_show_download_confirmation_description
+ import campfire.features.settings.ui.generated.resources.setting_show_download_confirmation_title
++import campfire.features.settings.ui.generated.resources.setting_confirm_actions_title
++import campfire.features.settings.ui.generated.resources.setting_confirm_actions_description
++import campfire.features.settings.ui.generated.resources.setting_warn_on_cellular_title
++import campfire.features.settings.ui.generated.resources.setting_warn_on_cellular_description
+ import org.jetbrains.compose.resources.stringResource
+ 
+ @Composable
+@@ -91,6 +95,18 @@ internal fun DownloadsPane(
+       headlineContent = { Text(stringResource(Res.string.setting_show_download_confirmation_title)) },
+       supportingContent = { Text(stringResource(Res.string.setting_show_download_confirmation_description)) },
+     )
++    SwitchSetting(
++      value = state.downloadsSettings.confirmActions,
++      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.ConfirmActions(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_confirm_actions_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_confirm_actions_description)) },
++    )
++    SwitchSetting(
++      value = state.downloadsSettings.warnOnCellularDownload,
++      onValueChange = { state.eventSink(SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_warn_on_cellular_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_warn_on_cellular_description)) },
++    )
+ 
+     Header(title = { Text(stringResource(Res.string.download_header_downloads)) })
+ 
+diff --git a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt b/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
+index f43c61c..0cbf2a2 100644
+--- a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
++++ b/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
+@@ -38,7 +38,7 @@ class SeismicShakeDetector(
+   @JvmOverloads
+   fun start(
+     sensorManager: SensorManager,
+-    sensorDelay: Int = SensorManager.SENSOR_DELAY_NORMAL,
++    sensorDelay: Int = SensorManager.SENSOR_DELAY_GAME,
+   ): Boolean {
+     // Already started?
+     if (accelerometer != null) {
+diff --git a/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt b/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt
+index d1ca1c8..2a9a986 100644
+--- a/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt
++++ b/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt
+@@ -7,6 +7,10 @@ import android.app.Application
+ import android.content.Context
+ import android.hardware.Sensor
+ import android.hardware.SensorManager
++import android.os.Build
++import android.os.VibrationEffect
++import android.os.Vibrator
++import android.os.VibratorManager
+ import app.campfire.core.di.AppScope
+ import app.campfire.core.di.SingleIn
+ import me.tatarka.inject.annotations.Provides
+@@ -17,6 +21,14 @@ actual class ShakeDetector(
+   private val sensorManager = context.getSystemService(SensorManager::class.java)
+   private val seismicShakeDetector = SeismicShakeDetector(this)
+ 
++  @Suppress("DEPRECATION")
++  private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
++    val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
++    vibratorManager?.defaultVibrator
++  } else {
++    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
++  }
++
+   private var listener: Listener? = null
+ 
+   actual val isAvailable: Boolean
+@@ -27,8 +39,11 @@ actual class ShakeDetector(
+ 
+   actual fun start(sensitivity: ShakeSensitivity, listener: Listener) {
+     this.listener = listener
++    // Stop first so that setSensitivity + re-register always take effect,
++    // even if the detector was already running (e.g. sensitivity changed mid-timer).
++    seismicShakeDetector.stop()
+     seismicShakeDetector.setSensitivity(sensitivity)
+-    seismicShakeDetector.start(sensorManager)
++    seismicShakeDetector.start(sensorManager, SensorManager.SENSOR_DELAY_GAME)
+   }
+ 
+   actual fun stop() {
+@@ -42,8 +57,22 @@ actual class ShakeDetector(
+   }
+ 
+   override fun hearShake() {
++    performHapticFeedback()
+     listener?.onShake()
+   }
++
++  private fun performHapticFeedback() {
++    try {
++      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++        vibrator?.vibrate(VibrationEffect.createOneShot(100L, VibrationEffect.DEFAULT_AMPLITUDE))
++      } else {
++        @Suppress("DEPRECATION")
++        vibrator?.vibrate(100L)
++      }
++    } catch (_: Throwable) {
++      // Ignore vibration failures if permission or hardware is unavailable
++    }
++  }
+ }
+ 
+ actual interface ShakeDetectorPlatformComponent {
+diff --git a/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt b/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt
+index def256e..6bbe94e 100644
+--- a/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt
++++ b/infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt
+@@ -4,9 +4,9 @@
+ package app.campfire.shake
+ 
+ actual object ShakeSensitivityMagnitudes {
+-  actual val veryLow: Double = 10.0
+-  actual val low: Double = 11.0
+-  actual val medium: Double = 13.0
+-  actual val high: Double = 15.0
+-  actual val veryHigh: Double = 16.0
++  actual val veryLow: Double = 17.5  // Requires firm, intentional shake
++  actual val low: Double = 15.5
++  actual val medium: Double = 13.5   // Balanced default
++  actual val high: Double = 12.5
++  actual val veryHigh: Double = 11.0 // Light flick triggers it
+ }

@@ -139,4 +139,19 @@ class TestCampfireSettings(
   override fun observeAppUpdateDismissedVersionCode(): StateFlow<Long> =
     observeLong(::appUpdateDismissedVersionCode)
       .stateIn(testScope, SharingStarted.Lazily, appUpdateDismissedVersionCode)
+
+  override var socketEnabled: Boolean by boolean()
+  override fun observeSocketEnabled(): StateFlow<Boolean> =
+    observeBoolean(::socketEnabled)
+      .stateIn(testScope, SharingStarted.Lazily, socketEnabled)
+
+  override var confirmActions: Boolean by boolean()
+  override fun observeConfirmActions(): StateFlow<Boolean> =
+    observeBoolean(::confirmActions)
+      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
+
+  override var warnOnCellularDownload: Boolean by boolean()
+  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
+    observeBoolean(::warnOnCellularDownload)
+      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
 }

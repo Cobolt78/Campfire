@@ -32,10 +32,10 @@ fun ShelfHeader(
     Text(
       // The synthetic upcoming shelf is built outside composition, so its
       // label resolves here instead of from the server feed.
-      text = if (shelf.id == ShelfIds.UpcomingReleases) {
-        stringResource(Res.string.upcoming_shelf_title)
-      } else {
-        shelf.label
+      text = when (shelf.id) {
+        ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
+        "downloads" -> stringResource(campfire.features.home.ui.generated.resources.downloads_shelf_title)
+        else -> shelf.label
       },
       style = MaterialTheme.typography.labelLarge,
     )

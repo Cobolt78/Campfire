@@ -57,6 +57,8 @@ data class AppearanceSettingsInfo(
 @Immutable
 data class DownloadsSettingsInfo(
   val showDownloadConfirmation: Boolean,
+  val confirmActions: Boolean,
+  val warnOnCellularDownload: Boolean,
   val downloads: List<DownloadEntry>,
 )
 
@@ -190,6 +192,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
   // Downloads Pane Events
   sealed interface DownloadsSettingEvent : SettingsUiEvent {
     data class ShowDownloadConfirmation(val enabled: Boolean) : DownloadsSettingEvent
+    data class ConfirmActions(val enabled: Boolean) : DownloadsSettingEvent
+    data class WarnOnCellularDownload(val enabled: Boolean) : DownloadsSettingEvent
     data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
     data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
   }

@@ -55,6 +55,7 @@ class HomePresenter(
   private val homeRepository: HomeRepository,
   private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
+  private val libraryItemRepository: app.campfire.libraries.api.LibraryItemRepository,
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
 ) : NonPausablePresenter<HomeUiState> {
@@ -98,19 +99,54 @@ class HomePresenter(
       bookInfoRegistry.observeCachedUpcoming()
     }.collectAsState(emptyList())
 
+    val completedDownloads by remember {
+      offlineDownloadManager.observeAll()
+        .map { downloads ->
+          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
+        }
+        .distinctUntilChanged()
+        .mapLatest { downloadIds ->
+          downloadIds.mapNotNull { id ->
+            try {
+              libraryItemRepository.getLibraryItem(id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              null
+            }
+          }
+        }
+    }.collectAsState(emptyList())
+
     // Now combine both the shelves and entities into the final set of UiShelf to render
     // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
     val feed by remember {
       derivedStateOf {
         domainFeed.map { shelves ->
-          val uiShelves = shelves.map { shelf ->
-            UiShelf(
-              shelf,
-              shelfEntities[shelf.id]
-                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
+          val uiShelves = shelves
+            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.home.api.model.ShelfType.AUTHOR }
+            .map { shelf ->
+              UiShelf(
+                shelf,
+                shelfEntities[shelf.id]
+                  ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
+              )
+            }
+          
+          val withUpcoming = insertUpcomingShelf(uiShelves, upcomingReleases).toMutableList()
+
+          if (completedDownloads.isNotEmpty()) {
+            withUpcoming.add(
+              UiShelf(
+                id = "downloads",
+                label = "Downloads",
+                total = completedDownloads.size,
+                entities = LoadState.Loaded(completedDownloads)
+              )
             )
           }
-          insertUpcomingShelf(uiShelves, upcomingReleases).toPersistentList()
+
+          withUpcoming.toPersistentList()
         }
       }
     }
@@ -125,17 +161,22 @@ class HomePresenter(
     }.collectAsState(persistentMapOf())
 
     val offlineDownloads by remember {
-      snapshotFlow { shelfEntities.values }
-        .map { responses ->
-          responses
-            .mapNotNull { it.dataOrNull }
-            .flatten()
-            .filterIsInstance<LibraryItem>()
-        }
-        .flatMapLatest { libraryItems ->
-          offlineDownloadManager.observeForItems(libraryItems)
-            .map { it.toPersistentMap() }
-        }
+      combine(
+        snapshotFlow { shelfEntities.values }
+          .map { responses ->
+            responses
+              .mapNotNull { it.dataOrNull }
+              .flatten()
+              .filterIsInstance<LibraryItem>()
+          },
+        snapshotFlow { completedDownloads }
+      ) { fromShelves, fromDownloads ->
+        (fromShelves + fromDownloads).distinctBy { it.id }
+      }
+      .flatMapLatest { libraryItems ->
+        offlineDownloadManager.observeForItems(libraryItems)
+          .map { it.toPersistentMap() }
+      }
     }.collectAsState(persistentMapOf())
 
     return HomeUiState(

@@ -52,6 +52,10 @@
   <!-- Downloads setting strings-->
   <string name="setting_show_download_confirmation_title">Show download confirmation dialog</string>
   <string name="setting_show_download_confirmation_description">Show a dialog to confirm each item download for offline listening</string>
+  <string name="setting_confirm_actions_title">Confirm destructive actions</string>
+  <string name="setting_confirm_actions_description">Ask for confirmation before deleting downloads, discarding progress, or marking books as finished</string>
+  <string name="setting_warn_on_cellular_title">Warn on cellular downloads</string>
+  <string name="setting_warn_on_cellular_description">Show a warning before downloading over mobile data to avoid unexpected data usage</string>
   <string name="download_header_downloads">Downloads</string>
   <string name="action_delete_download">Delete</string>
   <string name="action_stop_download">Stop</string>
