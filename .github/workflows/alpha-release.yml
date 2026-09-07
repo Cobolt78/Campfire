@@ -1,0 +1,96 @@
+name: Alpha Release
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    paths:
+      - '.github/workflows/alpha-release.yml'
+
+jobs:
+  android-release:
+    name: Build Android Release
+    # Skip on fork PRs — this workflow needs first-party secrets (keystore, Firebase, Mixpanel).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup swap
+        run: |
+          sudo swapon --show
+          sudo swapoff -a
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo swapon -s
+
+      - name: Free up disk space
+        run: |
+          sudo apt purge -yq $(dpkg -l | grep '^ii' | awk '{ print $2 }' | grep -P '(aspnetcore|cabal-|dotnet-|ghc-|libmono|mongodb-|mysql-|php)') \
+            firefox google-chrome-stable google-cloud-cli microsoft-edge-stable mono-devel mono-runtime-common monodoc-manual powershell ruby
+          sudo apt autoremove -yq
+          sudo apt clean
+          sudo rm -fr /opt/ghc /opt/hostedtoolcache /opt/az /opt/microsoft /opt/google /usr/lib/node_modules /usr/local/share/boost /usr/share/dotnet /usr/share/swift
+
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode Keystore
+        env:
+          ENCODED_KEYSTORE: ${{ secrets.CAMPFIRE_KEYSTORE }}
+        run: |
+          echo $ENCODED_KEYSTORE | base64 -di > app/signing/campfire.keystore
+
+      - name: Download Service Accounts
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          APP_DISTRIBUTION_JSON: ${{ secrets.APP_DISTRIBUTION_SERVICE_ACCOUNT }}
+        run: |
+          echo $GOOGLE_SERVICES_JSON > app/android/google-services.json
+          echo $APP_DISTRIBUTION_JSON > app/android/campfire-app-distribution-service-account.json
+
+      - name: Assemble Alpha Release APK
+        run: ./gradlew :app:android:assembleAlphaRelease
+        env:
+          ORG_GRADLE_PROJECT_CAMPFIRE_KEYSTORE_PWD: ${{ secrets.CAMPFIRE_KEYSTORE_PWD }}
+          ORG_GRADLE_PROJECT_CAMPFIRE_KEY_PWD: ${{ secrets.CAMPFIRE_KEY_PWD }}
+          ORG_GRADLE_PROJECT_mixpanel_token: ${{ secrets.MIXPANEL_TOKEN }}
+          ORG_GRADLE_PROJECT_CAMPFIRE_VERSIONCODE: ${{ github.run_number }}
+          CI: true
+
+      # Alphas are 1:1 with squash-merged PRs, so the notes are the commit subject plus a
+      # link back to the PR (the subject carries the "(#123)" suffix GitHub adds on squash).
+      - name: Create Release Notes
+        run: |
+          subject="$(git log -1 --format='%s')"
+          echo "$subject" > app/android/release-notes.txt
+          if [[ "$subject" =~ \(#([0-9]+)\)$ ]]; then
+            echo "${{ github.server_url }}/${{ github.repository }}/pull/${BASH_REMATCH[1]}" >> app/android/release-notes.txt
+          fi
+          echo " "
+          cat app/android/release-notes.txt
+
+      - name: Firebase App Distribution
+        run: |
+          ./gradlew :app:android:appDistributionUploadAlphaRelease \
+            --serviceCredentialsFile="app/android/campfire-app-distribution-service-account.json" \
+            --releaseNotesFile="app/android/release-notes.txt"
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-build-outputs
+          path: app/android/build/outputs

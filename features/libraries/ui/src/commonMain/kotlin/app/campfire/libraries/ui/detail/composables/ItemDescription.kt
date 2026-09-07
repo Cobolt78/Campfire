@@ -1,0 +1,140 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
+package app.campfire.libraries.ui.detail.composables
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import app.campfire.analytics.Analytics
+import app.campfire.analytics.events.ActionEvent
+import app.campfire.common.compose.extensions.toRichTextHtml
+import app.campfire.common.compose.widgets.ShowMoreLessButton
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichText
+
+@Composable
+internal fun ItemDescription(
+  description: String,
+  modifier: Modifier = Modifier,
+  publisher: String? = null,
+  publishedYear: String? = null,
+  maxLines: Int = 5,
+) {
+  Column(
+    modifier = modifier.fillMaxWidth(),
+  ) {
+    var isOverflowed by remember { mutableStateOf(true) }
+    var isExpanded by remember { mutableStateOf(false) }
+
+    RichText(
+      state = rememberRichTextState(description.toRichTextHtml()),
+      style = MaterialTheme.typography.bodyLarge,
+      maxLines = if (isExpanded) Int.MAX_VALUE else maxLines,
+      overflow = TextOverflow.Ellipsis,
+      onTextLayout = { result ->
+        isOverflowed = result.didOverflowHeight || isExpanded
+      },
+      modifier = Modifier
+        .fillMaxWidth()
+        .animateContentSize()
+        .clickable(
+          enabled = isOverflowed && !isExpanded,
+          onClick = {
+            Analytics.send(
+              ActionEvent(
+                "item_description",
+                "toggled",
+                if (!isExpanded) "Expand" else "Collapse",
+              ),
+            )
+            isExpanded = !isExpanded
+          },
+        )
+        .padding(horizontal = 16.dp),
+    )
+
+    if (publisher != null) {
+      Spacer(Modifier.height(12.dp))
+      Text(
+        text = buildAnnotatedString {
+          append("Published by ")
+          withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+            append(publisher)
+          }
+          if (publishedYear != null) {
+            append(" in ")
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+              append(publishedYear)
+            }
+          }
+        },
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier
+          .padding(
+            horizontal = 16.dp,
+          ),
+      )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    AnimatedVisibility(
+      visible = isOverflowed,
+    ) {
+      ShowMoreLessButton(
+        expanded = isExpanded,
+        onExpandedChange = {
+          Analytics.send(ActionEvent("item_description", "toggled", if (it) "Expand" else "Collapse"))
+          isExpanded = it
+        },
+        modifier = Modifier
+          .padding(horizontal = 16.dp)
+          .testTag("button_show_more_less"),
+      )
+    }
+  }
+}
+
+@Composable
+internal fun rememberRichTextState(
+  html: String,
+  linkColor: Color = MaterialTheme.colorScheme.tertiary,
+): RichTextState {
+  val state = rememberRichTextState()
+
+  LaunchedEffect(html) {
+    state.setHtml(html)
+    state.config.apply {
+      this.linkColor = linkColor
+    }
+  }
+
+  return state
+}

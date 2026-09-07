@@ -1,0 +1,2 @@
+- Mini player cover art no longer stays blank while a book is playing
+- Fixing source for publishing to F-Droid

@@ -1,0 +1,40 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.core.model
+
+/**
+ * A union interface to tightly define what entities can be returned from the personalized
+ * home feed in a shelf.
+ */
+sealed interface ShelfEntity {
+
+  /**
+   * Entry shape used by `episodes-recently-added`-style shelves: a podcast [LibraryItem]
+   * paired with the specific [recentEpisode] the shelf is highlighting. The libraryItem's
+   * `media` is always [Media.Podcast]; it carries the full podcast metadata while the
+   * episode carries the actual playable content for that shelf entry.
+   */
+  data class EpisodeShelfEntry(
+    val libraryItem: LibraryItem,
+    val recentEpisode: PodcastEpisode,
+  ) : ShelfEntity {
+
+    val transitionKey: String get() = libraryItem.id + recentEpisode.id
+  }
+
+  /**
+   * Entry shape for the locally sourced upcoming-releases shelf: an
+   * announced-but-unreleased series book read from the book info cache rather
+   * than the server's personalized feed. [providerUrl] opens the provider's
+   * store page; null renders the card inert.
+   */
+  data class UpcomingBookShelfEntry(
+    val id: String,
+    val title: String,
+    val seriesName: String,
+    val releaseDate: String?,
+    val coverUrl: String?,
+    val providerUrl: String?,
+  ) : ShelfEntity
+}

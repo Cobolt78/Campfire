@@ -1,0 +1,43 @@
+import kotlin.Int;
+
+CREATE TABLE sessionQueue (
+  userId TEXT NOT NULL,
+  libraryItemId TEXT NOT NULL,
+  episodeId TEXT NOT NULL DEFAULT '',
+  queueIndex INTEGER AS Int NOT NULL,
+
+  PRIMARY KEY (userId, libraryItemId, episodeId),
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+-- Queries
+
+insert:
+INSERT OR FAIL INTO sessionQueue
+VALUES ?;
+
+updateIndex:
+UPDATE sessionQueue
+SET queueIndex = ?
+WHERE userId = ?
+  AND libraryItemId = ?
+  AND episodeId = ?;
+
+delete:
+DELETE FROM sessionQueue
+WHERE userId = ?
+  AND libraryItemId = ?
+  AND episodeId = ?;
+
+deleteAll:
+DELETE FROM sessionQueue
+WHERE userId = ?;
+
+getHighestIndex:
+SELECT queueIndex FROM sessionQueue
+ORDER BY queueIndex DESC LIMIT 1;
+
+selectAll:
+SELECT * FROM sessionQueue
+WHERE userId = ?
+ORDER BY queueIndex ASC;

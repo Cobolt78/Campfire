@@ -1,0 +1,274 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+import kotlinx.kover.gradle.aggregation.settings.dsl.KoverSettingsExtension
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+
+pluginManagement {
+  includeBuild("gradle/build-logic")
+
+  fun hasProperty(key: String): Boolean {
+    return settings.providers.gradleProperty(key).get().toBoolean()
+  }
+
+  repositories {
+
+    if (hasProperty("campfire.config.enableSnapshots")) {
+      maven("https://central.sonatype.com/repository/maven-snapshots/") {
+        name = "snapshots-maven-central"
+        mavenContent {
+          snapshotsOnly()
+        }
+
+        content {
+          includeGroup("com.r0adkll.swatchbuckler")
+          includeGroup("app.cash.sqldelight")
+          includeGroup("io.coil-kt.coil3")
+          includeGroup("com.r0adkll.cadence")
+          includeGroup("com.livewire-kt")
+        }
+      }
+    }
+
+    if (hasProperty("campfire.config.enableMavenLocal")) {
+      mavenLocal()
+    }
+
+    google()
+    gradlePluginPortal()
+    mavenCentral()
+  }
+}
+
+dependencyResolutionManagement {
+
+  fun hasProperty(key: String): Boolean {
+    return settings.providers.gradleProperty(key).get().toBoolean()
+  }
+
+  repositories {
+    if (hasProperty("campfire.config.enableSnapshots")) {
+      maven("https://central.sonatype.com/repository/maven-snapshots/") {
+        name = "snapshots-maven-central"
+        mavenContent { snapshotsOnly() }
+        content {
+          includeGroup("com.r0adkll.swatchbuckler")
+          includeGroup("app.cash.sqldelight")
+          includeGroup("io.coil-kt.coil3")
+          includeGroup("com.r0adkll.cadence")
+          includeGroup("com.livewire-kt")
+        }
+      }
+    }
+
+    if (hasProperty("campfire.config.enableMavenLocal")) {
+      mavenLocal()
+    }
+
+    google()
+    mavenCentral()
+  }
+}
+
+// The emulator.wtf plugin resolves from mavenCentral, but its `ew-cli` runner lives on
+// maven.emulator.wtf. That repo is registered by a standalone script, applied only when present, so
+// F-Droid can `scandelete` it: a custom Maven repo declared in any .gradle(.kts) trips F-Droid's
+// source scanner, and a FOSS build never runs emulator.wtf. Any build that does (CI profile
+// generation, local runs, future emulator.wtf use) just needs the file present — no extra flags.
+if (file("gradle/emulatorwtf-repo.gradle.kts").exists()) {
+  apply(from = "gradle/emulatorwtf-repo.gradle.kts")
+}
+
+plugins {
+  id("org.jetbrains.kotlinx.kover.aggregation") version "0.9.9"
+}
+
+extensions.configure<KoverSettingsExtension> {
+  enableCoverage()
+  reports {
+    excludedClasses.add("*.test.*")
+    verify {
+      rule {
+        bound {
+          minValue = 50
+          coverageUnits = CoverageUnit.LINE
+        }
+      }
+    }
+  }
+}
+
+rootProject.name = "Campfire"
+include(
+  ":app:android",
+  ":app:common",
+  ":app:desktop",
+  ":app:ios",
+)
+include(":app:baselineprofile")
+include(":core")
+include(
+  ":infra:audioplayer:api",
+  ":infra:audioplayer:impl",
+  ":infra:audioplayer:cast",
+  ":infra:audioplayer:public-ui",
+  ":infra:audioplayer:test",
+  ":infra:shake",
+  ":infra:updates:api",
+  ":infra:updates:impl",
+  ":infra:whats-new:api",
+  ":infra:whats-new:impl",
+  ":infra:whats-new:test",
+  ":infra:whats-new:ui",
+  ":infra:tracing",
+  ":infra:socket:api",
+  ":infra:socket:impl",
+  ":infra:socket:test",
+)
+include(
+  ":common:screens",
+  ":common:compose",
+  ":common:test",
+)
+include(
+  ":data:account:api",
+  ":data:account:impl",
+  ":data:account:ui",
+  ":data:account:test",
+)
+include(
+  ":data:analytics:api",
+  ":data:analytics:impl",
+  ":data:analytics:mixpanel",
+  ":data:analytics:test",
+)
+include(
+  ":data:bookinfo:api",
+  ":data:bookinfo:audible",
+  ":data:bookinfo:hardcover",
+  ":data:bookinfo:impl",
+  ":data:bookinfo:openlibrary",
+  ":data:bookinfo:test",
+  ":data:bookinfo:ui",
+)
+include(
+  ":data:crashreporting:api",
+  ":data:crashreporting:impl",
+  ":data:crashreporting:firebase",
+)
+include(
+  ":data:network:api",
+  ":data:network:impl",
+  ":data:network:oidc",
+  ":data:network:test",
+)
+include(
+  ":data:db:core",
+  ":data:db:mapping",
+  ":data:db:test",
+)
+include(
+  ":features:auth:api",
+  ":features:auth:impl",
+  ":features:auth:ui",
+)
+include(
+  ":features:user:api",
+  ":features:user:impl",
+  ":features:user:test",
+)
+include(
+  ":features:libraries:api",
+  ":features:libraries:impl",
+  ":features:libraries:ui",
+  ":features:libraries:test",
+)
+include(
+  ":features:home:api",
+  ":features:home:impl",
+  ":features:home:ui",
+)
+include(
+  ":features:series:api",
+  ":features:series:impl",
+  ":features:series:ui",
+  ":features:series:test",
+)
+include(
+  ":features:collections:api",
+  ":features:collections:impl",
+  ":features:collections:ui",
+)
+include(
+  ":features:author:api",
+  ":features:author:impl",
+  ":features:author:ui",
+)
+include(
+  ":features:sessions:api",
+  ":features:sessions:impl",
+  ":features:sessions:ui",
+  ":features:sessions:test",
+)
+include(
+  ":features:search:api",
+  ":features:search:impl",
+  ":features:search:ui",
+)
+include(
+  ":features:settings:api",
+  ":features:settings:impl",
+  ":features:settings:ui",
+  ":features:settings:test",
+)
+include(
+  ":features:stats:api",
+  ":features:stats:impl",
+  ":features:stats:ui",
+)
+include(
+  ":features:filters:api",
+  ":features:filters:impl",
+  ":features:filters:test",
+  ":features:filters:ui",
+)
+include(
+  ":features:playlists:api",
+  ":features:playlists:impl",
+  ":features:playlists:ui",
+)
+include(
+  ":features:podcasts:api",
+  ":features:podcasts:impl",
+  ":features:podcasts:ui",
+)
+include(
+  ":features:discover:api",
+  ":features:discover:impl",
+  ":features:discover:ui",
+)
+include(
+  ":ui:appbar",
+  ":ui:navigation:api",
+  ":ui:navigation:impl",
+  ":ui:navigation:ui",
+  ":ui:attribution",
+)
+include(
+  ":ui:widgets:api",
+  ":ui:widgets:impl",
+)
+include(
+  ":ui:theming:api",
+  ":ui:theming:impl",
+  ":ui:theming:ui",
+  ":ui:theming:ai",
+  ":ui:theming:test",
+)
+include(":scripts:app")
+include(
+  ":thirdparty:kmp-socketio",
+  ":thirdparty:socketio-kotlin",
+)
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")

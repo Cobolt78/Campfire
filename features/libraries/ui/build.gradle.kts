@@ -1,0 +1,51 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+plugins {
+  id("app.campfire.ui")
+  alias(libs.plugins.burst)
+}
+
+kotlin {
+  sourceSets {
+    commonMain {
+      dependencies {
+        implementation(projects.data.bookinfo.api)
+        implementation(projects.infra.audioplayer.api)
+        implementation(projects.features.author.api)
+        implementation(projects.features.collections.api)
+        implementation(projects.features.libraries.api)
+        implementation(projects.features.podcasts.api)
+        implementation(projects.features.series.api)
+        implementation(projects.features.sessions.api)
+        implementation(projects.features.user.api)
+        implementation(projects.features.filters.api)
+        implementation(projects.ui.appbar)
+        implementation(projects.features.playlists.api)
+        implementation(projects.ui.navigation.api)
+        implementation(projects.ui.theming.api)
+
+        implementation(libs.circuitx.overlays)
+        implementation(libs.compose.rich.text)
+        implementation(libs.swatchbuckler.compose)
+        implementation(libs.swatchbuckler.coil)
+        implementation(libs.androidx.paging.common)
+        implementation(libs.androidx.paging.compose)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(projects.data.analytics.test)
+        implementation(projects.data.bookinfo.test)
+        implementation(projects.features.libraries.test)
+        implementation(projects.features.sessions.test)
+        implementation(projects.features.series.test)
+        implementation(projects.features.settings.test)
+        implementation(projects.features.user.test)
+        implementation(projects.infra.audioplayer.test)
+        implementation(projects.ui.theming.test)
+      }
+    }
+  }
+}

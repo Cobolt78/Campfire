@@ -1,0 +1,43 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network.models
+
+import app.campfire.network.envelopes.Envelope
+import kotlinx.serialization.Serializable
+
+/**
+ * An author object which includes a description and image path. The library items and series associated with the author are optionally included.
+ *
+ * @param id The ID of the author.
+ * @param asin The Audible identifier (ASIN) of the author. Will be null if unknown. Not the Amazon identifier.
+ * @param name The name of the author.
+ * @param description The new description of the author.
+ * @param imagePath The absolute path for the author image. This will be in the `metadata/` directory. Will be null if there is no image.
+ * @param addedAt The time (in ms since POSIX epoch) when added to the server.
+ * @param updatedAt The time (in ms since POSIX epoch) when last updated.
+ * @param libraryItems The items associated with the author
+ * @param series The series associated with the author
+ */
+@Serializable
+data class Author(
+  val id: String,
+  val asin: String? = null,
+  val name: String,
+  val libraryId: String,
+  val description: String? = null,
+  val imagePath: String? = null,
+  val addedAt: Long,
+  val updatedAt: Long,
+  val numBooks: Int? = null,
+
+  // Attributes only included in /authors/:id endpoint
+  val libraryItems: List<LibraryItemMinified.Book>? = null,
+  val series: List<AuthorSeries>? = null,
+) : Envelope() {
+
+  override fun applyPostage() {
+    libraryItems?.forEach { it.applyOrigin(origin) }
+    series?.forEach { it.applyOrigin(origin) }
+  }
+}

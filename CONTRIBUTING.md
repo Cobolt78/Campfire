@@ -1,0 +1,21 @@
+# Contributing to Campfire
+
+## Issues
+
+Please feel free to create issues and enhancement requests at anytime. If you plan to fork and submit a Pull Request then please start by opening an issue for tracking purposes.
+
+## LLMs & "AI"
+
+I'm not opposed to user's using LLMs to assist in development but submitted code must ALWAYS be reviewed and cleaned
+up by a _human_ before submitting pull requests. The the quality of PRs is too low they will be automatically rejected
+at my discretion.
+
+## Contribution Flow
+
+1. **Fork** the repository on GitHub
+2. **Clone** the fork to your machine
+3. **Commit** changes to your own branch
+4. **Push** your work back up to your fork
+5. Submit **Pull request** so that we can review and merge your changes
+
+*Please follow the style of the project or your changes will be denied in review*

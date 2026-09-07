@@ -1,0 +1,32 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.series.ui.list
+
+import androidx.compose.runtime.Immutable
+import androidx.paging.compose.LazyPagingItems
+import app.campfire.core.filter.ContentFilter
+import app.campfire.core.model.Series
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.GroupDisplayState
+import app.campfire.core.settings.SortDirection
+import com.slack.circuit.runtime.CircuitUiEvent
+import com.slack.circuit.runtime.CircuitUiState
+
+@Immutable
+data class SeriesUiState(
+  val totalCount: Int,
+  val lazyPagingItems: LazyPagingItems<Series>,
+  val filter: ContentFilter?,
+  val sortMode: ContentSortMode,
+  val sortDirection: SortDirection,
+  val displayState: GroupDisplayState,
+  val eventSink: (SeriesUiEvent) -> Unit,
+) : CircuitUiState
+
+sealed interface SeriesUiEvent : CircuitUiEvent {
+  data class SeriesClicked(val series: Series) : SeriesUiEvent
+  data class FilterChanged(val filter: ContentFilter?) : SeriesUiEvent
+  data class SortModeChanged(val mode: ContentSortMode) : SeriesUiEvent
+  data object ToggleDisplayState : SeriesUiEvent
+}

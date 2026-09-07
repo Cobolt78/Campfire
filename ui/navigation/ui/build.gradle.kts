@@ -1,0 +1,29 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+plugins {
+  id("app.campfire.ui")
+}
+
+kotlin {
+  sourceSets {
+    commonMain {
+      dependencies {
+        api(projects.ui.navigation.api)
+
+        implementation(projects.data.account.api)
+        implementation(projects.infra.updates.api)
+        implementation(projects.infra.whatsNew.api)
+        implementation(projects.features.discover.api)
+        implementation(projects.features.libraries.api)
+        implementation(projects.features.playlists.api)
+        implementation(projects.features.podcasts.api)
+        implementation(projects.ui.theming.api)
+
+        implementation(libs.compose.components.resources)
+
+        implementation(libs.reorderable)
+      }
+    }
+  }
+}

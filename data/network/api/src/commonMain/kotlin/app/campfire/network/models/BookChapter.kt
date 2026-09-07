@@ -1,0 +1,22 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network.models
+
+import kotlinx.serialization.Serializable
+
+/**
+ * A book chapter. Includes the title and timestamps.
+ *
+ * @param id The ID of the book chapter.
+ * @param start When in the book (in seconds) the chapter starts.
+ * @param end When in the book (in seconds) the chapter ends.
+ * @param title The title of the chapter.
+ */
+@Serializable
+data class BookChapter(
+  val id: Int,
+  val start: Float,
+  val end: Float,
+  val title: String,
+)

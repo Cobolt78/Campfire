@@ -1,0 +1,44 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.data.mapping
+
+import app.campfire.data.Server as DatabaseServer
+import app.campfire.network.models.ServerSettings
+
+fun ServerSettings.asDatabaseModel(
+  url: String,
+  userId: String,
+  name: String,
+): DatabaseServer {
+  return DatabaseServer(
+    url = url,
+    userId = userId,
+    name = name,
+    scannerFindCovers = scannerFindCovers,
+    scannerCoverProvider = scannerCoverProvider,
+    scannerParseSubtitle = scannerParseSubtitle,
+    scannerPreferMatchedMetadata = scannerPreferMatchedMetadata,
+    scannerDisableWatcher = scannerDisableWatcher,
+    storeCoverWithItem = storeCoverWithItem,
+    storeMetadataWithItem = storeMetadataWithItem,
+    metadataFileFormat = metadataFileFormat,
+    rateLimitLoginRequests = rateLimitLoginRequests,
+    rateLimitLoginWindow = rateLimitLoginWindow,
+    backupSchedule = backupSchedule,
+    backupsToKeep = backupsToKeep,
+    maxBackupSize = maxBackupSize,
+    loggerDailyLogsToKeep = loggerDailyLogsToKeep,
+    loggerScannerLogsToKeep = loggerScannerLogsToKeep,
+    homeBookshelfView = homeBookshelfView,
+    bookshelfView = bookshelfView,
+    sortingIgnorePrefix = sortingIgnorePrefix,
+    sortingPrefixes = sortingPrefixes,
+    chromecastEnabled = chromecastEnabled,
+    dateFormat = dateFormat,
+    timeFormat = timeFormat,
+    language = language,
+    logLevel = logLevel,
+    version = version,
+  )
+}

@@ -1,0 +1,701 @@
+#!/usr/bin/env python3
+# Copyright 2026, Drew Heavner and the Campfire project contributors
+# SPDX-License-Identifier: GPL-3.0-only
+"""
+Guided, interactive release of Campfire from main.
+
+The version being released is always `campfire.version` in gradle.properties (the
+post-release job in .github/workflows/release.yml bumps it to the next version once a
+release ships). The script walks through these steps, stopping at each blocker with
+concrete ways to resolve it:
+
+  1. Preflight   on main, clean tree, up to date with origin, gh authenticated, version
+                 valid and not yet tagged/released
+  2. Baseline    regenerate app baseline/startup profiles on a local Gradle managed device
+                 or on emulator.wtf (token from the macOS Keychain via `set-ew-token`).
+                 Gradle output is quiet; it is captured to build/release/*.log
+  3. Changelog   roll `## [Unreleased]` into `## [<version>]` and write the F-Droid /
+                 IzzyOnDroid changelog (fastlane/.../changelogs/<versionCode>.txt); if it is
+                 over the 500-character store limit you can trim it in $EDITOR on the spot
+  4. Review      show the GitHub release notes (PRs merged since the last tag, bots excluded)
+  5. Publish     commit, push main, create the GitHub release (which triggers the Release
+                 workflow that builds and attaches the APKs/AAB)
+
+Usage:
+  scripts/release                  # the guided flow
+  scripts/release --emulator-wtf   # preselect emulator.wtf for baseline profiles
+  scripts/release --skip-baseline  # preselect skipping baseline profiles
+  scripts/release --yes            # non-interactive: take the defaults, never prompt
+  scripts/release --dry-run        # show what would happen; nothing is written or pushed
+  scripts/release set-ew-token     # store the emulator.wtf API token in the macOS Keychain
+
+Needs a test server for baseline generation: campfire_server_url / campfire_username /
+campfire_password as Gradle properties (~/.gradle/gradle.properties or ORG_GRADLE_PROJECT_*).
+The versionCode math mirrors gradle/build-logic Versioning.kt (MMmmppRR: rc number, or 99 for
+a final release) so the fastlane file name always matches the code CI derives from the tag.
+"""
+
+import argparse
+import getpass
+import itertools
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+GRADLE_PROPERTIES = REPO_ROOT / "gradle.properties"
+CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+FASTLANE_CHANGELOGS = REPO_ROOT / "fastlane/metadata/android/en-US/changelogs"
+BASELINE_PROFILES = REPO_ROOT / "app/android/src/main/generated/baselineProfiles"
+LOG_DIR = REPO_ROOT / "build/release"
+
+REPO = "r0adkll/Campfire"
+REPO_URL = f"https://github.com/{REPO}"
+SEMVER_REGEX = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$", re.IGNORECASE)
+PR_NUMBER_REGEX = re.compile(r"\(#(\d+)\)\s*$")
+CATEGORIES = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Other Notes & Contributions"]
+FASTLANE_CHAR_LIMIT = 500
+EXCLUDED_AUTHOR_PATTERNS = ("[bot]", "renovate", "app/", "dependabot", "github-actions")
+# Automated housekeeping PRs opened by our own workflows via CAMPFIRE_BOT_PAT.
+EXCLUDED_TITLE_PREFIXES = ("Bump campfire.version to ", "Update app baseline profile")
+UNRELEASED_SKELETON = "## [Unreleased]\n\n" + "\n\n".join(f"### {c}" for c in CATEGORIES) + "\n"
+
+BASELINE_GRADLE_ARGS = [
+    ":app:android:generateBaselineProfile",
+    "-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile",
+]
+BASELINE_PROPERTIES = ("campfire_server_url", "campfire_username", "campfire_password")
+EMULATOR_WTF_GRADLE_ARG = "-Pcampfire.config.useEmulatorWtf=true"
+EMULATOR_WTF_TOKEN_ENV = "EW_API_TOKEN"
+KEYCHAIN_SERVICE = "emulator.wtf"
+KEYCHAIN_ACCOUNT = "campfire-release"
+
+
+# =========================================================================== terminal ui
+
+IS_TTY = sys.stdout.isatty()
+
+
+def style(text, *codes):
+    if not IS_TTY or not codes:
+        return text
+    return "\033[" + ";".join(str(c) for c in codes) + "m" + text + "\033[0m"
+
+
+BOLD, DIM, RED, GREEN, YELLOW, BLUE, CYAN = 1, 2, 31, 32, 33, 34, 36
+
+
+def header(number, title):
+    print()
+    print(style(f"━━ {number}. {title} ", BOLD, CYAN) + style("━" * max(0, 60 - len(title)), CYAN))
+
+
+def ok(message):
+    print(style("  ✔ ", GREEN) + message)
+
+
+def info(message):
+    print("  · " + message)
+
+
+def warn(message):
+    print(style("  ! ", YELLOW) + message)
+
+
+def error(message):
+    print(style("  ✘ ", RED) + message)
+
+
+def block(text, indent="    "):
+    for line in text.rstrip("\n").splitlines():
+        print(style(indent + line, DIM))
+
+
+class Abort(Exception):
+    """Stop the release; the message has already been explained to the user."""
+
+
+class Ui:
+    """Prompts. In --yes mode every question takes its default without asking."""
+
+    def __init__(self, assume_yes):
+        self.assume_yes = assume_yes
+
+    def confirm(self, question, default=False):
+        if self.assume_yes:
+            return default
+        suffix = " [Y/n] " if default else " [y/N] "
+        while True:
+            answer = input(style("  ? ", BLUE) + question + suffix).strip().lower()
+            if not answer:
+                return default
+            if answer in ("y", "yes"):
+                return True
+            if answer in ("n", "no"):
+                return False
+
+    def choose(self, question, options, default_key):
+        """options: list of (key, label). Returns the chosen key."""
+        if self.assume_yes:
+            return default_key
+        print(style("  ? ", BLUE) + question)
+        for key, label in options:
+            marker = style(" (default)", DIM) if key == default_key else ""
+            print(f"      {style(key, BOLD)}  {label}{marker}")
+        keys = {key for key, _ in options}
+        while True:
+            answer = input("    › ").strip().lower()
+            if not answer:
+                return default_key
+            if answer in keys:
+                return answer
+
+
+class Spinner:
+    """A one-line progress indicator while a long subprocess runs quietly."""
+
+    def __init__(self, message):
+        self.message = message
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._started = time.monotonic()
+
+    def __enter__(self):
+        if IS_TTY:
+            self._thread.start()
+        else:
+            print("  … " + self.message)
+        return self
+
+    def __exit__(self, *_):
+        self._stop.set()
+        if IS_TTY:
+            self._thread.join()
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+
+    def elapsed(self):
+        return time.monotonic() - self._started
+
+    def _spin(self):
+        for frame in itertools.cycle("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"):
+            if self._stop.is_set():
+                break
+            minutes, seconds = divmod(int(self.elapsed()), 60)
+            sys.stdout.write(f"\r  {style(frame, CYAN)} {self.message} {style(f'{minutes:02d}:{seconds:02d}', DIM)}")
+            sys.stdout.flush()
+            time.sleep(0.1)
+
+
+# =========================================================================== helpers
+
+
+def run(args, check=True, capture=True, env=None):
+    return subprocess.run(args, cwd=REPO_ROOT, check=check, capture_output=capture, text=True, env=env)
+
+
+def git(*args, check=True):
+    return run(["git", *args], check=check).stdout.strip()
+
+
+def run_quietly(args, message, log_name, env=None):
+    """Runs a long command with output captured to build/release/<log_name>-<timestamp>.log.
+    Returns (returncode, log_path, elapsed_seconds)."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / f"{log_name}-{datetime.now():%Y%m%d-%H%M%S}.log"
+    with log_path.open("w") as log, Spinner(message) as spinner:
+        log.write("$ " + " ".join(args) + "\n\n")
+        log.flush()
+        result = subprocess.run(args, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
+        elapsed = spinner.elapsed()
+    return result.returncode, log_path, elapsed
+
+
+def show_log_tail(log_path, lines=25):
+    content = log_path.read_text().splitlines()
+    interesting = [line for line in content if re.search(r"error|FAILED|What went wrong|Exception", line, re.IGNORECASE)]
+    block("\n".join((interesting or content)[-lines:]))
+    info(f"full log: {log_path.relative_to(REPO_ROOT)}")
+
+
+def open_in_editor(path):
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or shutil.which("nano") or "vi"
+    subprocess.run([*editor.split(), str(path)], cwd=REPO_ROOT)
+
+
+def has_gradle_property(name):
+    if f"ORG_GRADLE_PROJECT_{name}" in os.environ:
+        return True
+    user_props = Path.home() / ".gradle" / "gradle.properties"
+    return user_props.exists() and re.search(rf"^{name}=", user_props.read_text(), re.MULTILINE) is not None
+
+
+# =========================================================================== versions
+
+
+def read_version():
+    match = re.search(r"^campfire\.version=(.+)$", GRADLE_PROPERTIES.read_text(), re.MULTILINE)
+    if not match:
+        raise Abort("could not find campfire.version in gradle.properties")
+    version = match.group(1).strip().lstrip("vV")
+    if not SEMVER_REGEX.match(version):
+        raise Abort(f"campfire.version '{version}' is not a valid version (expected major.minor.patch[-rcN])")
+    return version
+
+
+def derive_version_code(version):
+    """MMmmppRR, matching Versioning.kt: 1.0.0-rc3 -> 1000003, 1.0.0 -> 1000099."""
+    major, minor, patch, rc = SEMVER_REGEX.match(version).groups()
+    return int(major) * 1_000_000 + int(minor) * 10_000 + int(patch) * 100 + int(rc or 99)
+
+
+def read_version_code():
+    match = re.search(r"^campfire\.versionCode=(\d+)$", GRADLE_PROPERTIES.read_text(), re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
+def set_version_code(code):
+    text = GRADLE_PROPERTIES.read_text()
+    if re.search(r"^campfire\.versionCode=.+$", text, re.MULTILINE):
+        text = re.sub(r"^campfire\.versionCode=.+$", f"campfire.versionCode={code}", text, count=1, flags=re.MULTILINE)
+    else:
+        text = re.sub(r"^(campfire\.version=.+)$", rf"\1\ncampfire.versionCode={code}", text, count=1, flags=re.MULTILINE)
+    GRADLE_PROPERTIES.write_text(text)
+
+
+def resolve_tag(version):
+    for candidate in (version, f"v{version}"):
+        if run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{candidate}"], check=False).returncode == 0:
+            return candidate
+    return None
+
+
+def previous_tag():
+    return run(["git", "describe", "--tags", "--abbrev=0"], check=False).stdout.strip() or None
+
+
+def fastlane_path(version):
+    return FASTLANE_CHANGELOGS / f"{derive_version_code(version)}.txt"
+
+
+def baseline_profile_files():
+    return sorted(str(p.relative_to(REPO_ROOT)) for p in BASELINE_PROFILES.glob("*.txt"))
+
+
+def release_files(version):
+    return ["gradle.properties", "CHANGELOG.md", str(fastlane_path(version).relative_to(REPO_ROOT)), *baseline_profile_files()]
+
+
+# =========================================================================== keychain
+
+
+def read_emulator_wtf_token():
+    if shutil.which("security"):
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return os.environ.get(EMULATOR_WTF_TOKEN_ENV)
+
+
+def store_emulator_wtf_token():
+    if not shutil.which("security"):
+        raise Abort("the macOS Keychain (`security`) is not available; export EW_API_TOKEN instead")
+    token = getpass.getpass("  emulator.wtf API token (input hidden): ").strip()
+    if not token:
+        raise Abort("no token entered")
+    run([
+        "security", "add-generic-password", "-U",
+        "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT,
+        "-l", "emulator.wtf API token (Campfire scripts/release)",
+        "-w", token,
+    ])
+    ok(f"stored in the login Keychain (service '{KEYCHAIN_SERVICE}', account '{KEYCHAIN_ACCOUNT}')")
+    info(f"remove with: security delete-generic-password -s {KEYCHAIN_SERVICE} -a {KEYCHAIN_ACCOUNT}")
+
+
+# =========================================================================== steps
+
+
+def step_preflight(ui, version, dry_run):
+    header(1, f"Preflight — releasing {style(version, BOLD)}")
+
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if branch != "main":
+        error(f"on branch '{branch}'; releases are cut from main")
+        raise Abort("switch to main and re-run")
+    ok("on main")
+
+    if run(["gh", "auth", "status"], check=False).returncode != 0:
+        error("gh is not authenticated")
+        raise Abort("run `gh auth login` and re-run")
+    ok("gh authenticated")
+
+    if resolve_tag(version):
+        error(f"tag {version} already exists")
+        raise Abort("bump campfire.version in gradle.properties to the version you want to release")
+    if run(["gh", "release", "view", version, "--repo", REPO], check=False).returncode == 0:
+        error(f"GitHub release {version} already exists")
+        raise Abort("bump campfire.version in gradle.properties to the version you want to release")
+    ok(f"{version} is not tagged or released yet")
+
+    # Guard the source-of-truth invariant: campfire.versionCode must equal
+    # deriveVersionCode(campfire.version) (the build reads campfire.versionCode directly). It is
+    # normally kept in sync by the Release workflow's bump-version job, but a manual minor/major
+    # bump can leave it stale — correct it here so the release ships the right code.
+    expected_code = derive_version_code(version)
+    actual_code = read_version_code()
+    if actual_code == expected_code:
+        ok(f"campfire.versionCode {expected_code} matches campfire.version")
+    elif dry_run:
+        warn(f"campfire.versionCode is {actual_code}; would set it to {expected_code}")
+    else:
+        set_version_code(expected_code)
+        ok(f"campfire.versionCode set to {expected_code}" + (f" (was {actual_code})" if actual_code else ""))
+
+    with Spinner("fetching origin"):
+        run(["git", "fetch", "--quiet", "origin", "main", "--tags"])
+    behind = int(git("rev-list", "--count", "HEAD..origin/main"))
+    ahead = int(git("rev-list", "--count", "origin/main..HEAD"))
+    if behind:
+        warn(f"main is {behind} commit(s) behind origin/main")
+        if dry_run or not ui.confirm("Fast-forward main to origin/main now?", default=True):
+            raise Abort("pull main and re-run")
+        run(["git", "pull", "--ff-only", "--quiet", "origin", "main"])
+        ok("fast-forwarded to origin/main")
+    else:
+        ok("up to date with origin/main" + (f" ({ahead} unpushed commit(s) will go out with the release)" if ahead else ""))
+
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"]).stdout
+    dirty = [line[3:].split(" -> ")[-1] for line in status.splitlines()]
+    unexpected = sorted(set(dirty) - set(release_files(version)))
+    if unexpected:
+        warn("working tree has changes outside the release files:")
+        block("\n".join(unexpected))
+        raise Abort("commit or stash them so the release commit only contains release files")
+    ok("working tree clean" if not dirty else "only release files are modified")
+
+
+def step_baseline(ui, args, dry_run):
+    header(2, "Baseline profiles")
+
+    if args.skip_baseline:
+        choice = "s"
+    elif args.emulator_wtf:
+        choice = "e"
+    else:
+        choice = ui.choose(
+            "Regenerate baseline/startup profiles for this release?",
+            [("l", "local Gradle managed device (pixel6Api34)"), ("e", "emulator.wtf"), ("s", "skip")],
+            default_key="l",
+        )
+    if choice == "s":
+        info("skipped — the release ships the profiles currently in app/android/src/main")
+        return
+
+    missing = [name for name in BASELINE_PROPERTIES if not has_gradle_property(name)]
+    if missing:
+        error("the generator needs a test server to sign in to; missing Gradle properties: " + ", ".join(missing))
+        info("set them in ~/.gradle/gradle.properties (or ORG_GRADLE_PROJECT_<name> env vars)")
+        if ui.confirm("Skip baseline profiles and continue?", default=False):
+            return
+        raise Abort("configure the test server properties and re-run")
+
+    command = ["./gradlew", *BASELINE_GRADLE_ARGS]
+    env = None
+    where = "local managed device"
+    if choice == "e":
+        where = "emulator.wtf"
+        token = read_emulator_wtf_token()
+        while not token:
+            error("no emulator.wtf token in the Keychain or EW_API_TOKEN")
+            if not ui.confirm("Store one in the Keychain now?", default=True):
+                raise Abort("run `scripts/release set-ew-token` or re-run with --skip-baseline")
+            store_emulator_wtf_token()
+            token = read_emulator_wtf_token()
+        command.append(EMULATOR_WTF_GRADLE_ARG)
+        env = {**os.environ, EMULATOR_WTF_TOKEN_ENV: token}  # only the Gradle child sees it
+
+    if dry_run:
+        info(f"[dry-run] would run on {where}: {' '.join(command)}")
+        return
+
+    while True:
+        code, log_path, elapsed = run_quietly(command, f"generating baseline profiles on {where}", "baseline", env=env)
+        if code == 0:
+            break
+        error(f"baseline generation failed after {int(elapsed) // 60} min")
+        show_log_tail(log_path)
+        action = ui.choose(
+            "What next?",
+            [("r", "retry"), ("s", "skip baseline profiles and continue"), ("a", "abort")],
+            default_key="a",
+        )
+        if action == "s":
+            return
+        if action == "a":
+            raise Abort("fix the baseline generation and re-run")
+
+    changed = git("status", "--porcelain", "--", str(BASELINE_PROFILES.relative_to(REPO_ROOT)))
+    ok(f"profiles generated in {int(elapsed) // 60} min {int(elapsed) % 60}s" + ("" if changed else " (unchanged)"))
+    if changed:
+        block("\n".join(baseline_profile_files()))
+    info(f"log: {log_path.relative_to(REPO_ROOT)}")
+
+
+def parse_sections(body):
+    sections = {}
+    for section in re.split(r"^### ", body, flags=re.MULTILINE)[1:]:
+        heading, _, text = section.partition("\n")
+        text = text.strip("\n")
+        if text:
+            sections[heading.strip()] = text
+    return sections
+
+
+def roll_changelog(version):
+    """Renames [Unreleased] to [version], reinserts a fresh skeleton, adds a compare link.
+    Returns the released section's entries grouped by category."""
+    content = CHANGELOG.read_text()
+    match = re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[)", content, re.MULTILINE | re.DOTALL)
+    if not match:
+        raise Abort("could not find the ## [Unreleased] section in CHANGELOG.md")
+    sections = parse_sections(match.group(1))
+    if not sections:
+        raise Abort("the Unreleased section of CHANGELOG.md has no entries — nothing to release")
+
+    released = [f"## [{version}]"]
+    for category in CATEGORIES:
+        if category in sections:
+            released.append(f"\n### {category}\n\n{sections[category]}")
+    released_section = "\n".join(released) + "\n\n"
+    content = content[: match.start()] + UNRELEASED_SKELETON + "\n" + released_section + content[match.end():]
+
+    previous = re.search(r"^## \[(?!Unreleased)([^\]]+)\]", content[match.end():], re.MULTILINE)
+    if previous:
+        prev_version = previous.group(1)
+        prev_tag = resolve_tag(prev_version) or prev_version
+        link = f"[{version}]: {REPO_URL}/compare/{prev_tag}...{version}\n"
+        index = content.find(f"[{prev_version}]:")
+        if index != -1:
+            content = content[:index] + link + content[index:]
+
+    CHANGELOG.write_text(content)
+    return sections
+
+
+def released_sections(version):
+    """Entries of an already rolled ## [version] section (when re-running after an abort)."""
+    content = CHANGELOG.read_text()
+    match = re.search(rf"^## \[{re.escape(version)}\]\n(.*?)(?=^## \[|\Z)", content, re.MULTILINE | re.DOTALL)
+    return parse_sections(match.group(1)) if match else None
+
+
+def fastlane_text(sections):
+    lines = []
+    multiple = len(sections) > 1
+    for category in CATEGORIES:
+        if category in sections:
+            if multiple:
+                lines.append(f"{category}:")
+            lines.append(sections[category])
+    return "\n".join(lines) + "\n"
+
+
+def step_changelog(ui, version, dry_run):
+    header(3, "Changelog")
+
+    sections = released_sections(version)
+    if sections:
+        ok(f"CHANGELOG.md already has a [{version}] section (prepared earlier)")
+    elif dry_run:
+        info(f"[dry-run] would roll [Unreleased] into [{version}] in CHANGELOG.md")
+        match = re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[)", CHANGELOG.read_text(), re.MULTILINE | re.DOTALL)
+        sections = parse_sections(match.group(1)) if match else {}
+        if not sections:
+            raise Abort("the Unreleased section of CHANGELOG.md has no entries — nothing to release")
+    else:
+        sections = roll_changelog(version)
+        ok(f"rolled [Unreleased] into [{version}] in CHANGELOG.md")
+    block("\n\n".join(f"### {c}\n{sections[c]}" for c in CATEGORIES if c in sections))
+
+    path = fastlane_path(version)
+    if dry_run:
+        info(f"[dry-run] would write {path.relative_to(REPO_ROOT)} ({len(fastlane_text(sections))} chars)")
+        return
+    if not path.exists():
+        FASTLANE_CHANGELOGS.mkdir(parents=True, exist_ok=True)
+        path.write_text(fastlane_text(sections))
+        ok(f"wrote {path.relative_to(REPO_ROOT)}")
+    else:
+        ok(f"{path.relative_to(REPO_ROOT)} already exists (keeping your edits)")
+
+    while True:
+        length = len(path.read_text())
+        if length <= FASTLANE_CHAR_LIMIT:
+            ok(f"store changelog is {length}/{FASTLANE_CHAR_LIMIT} characters")
+            break
+        warn(f"store changelog is {length} characters; F-Droid / IzzyOnDroid cap it at {FASTLANE_CHAR_LIMIT}")
+        action = ui.choose(
+            "Trim it?",
+            [("e", f"open in {os.environ.get('VISUAL') or os.environ.get('EDITOR') or 'vi'} (condense to a user-facing summary)"),
+             ("a", "abort and edit by hand")],
+            default_key="e",
+        )
+        if action == "a" or ui.assume_yes:
+            raise Abort(f"trim {path.relative_to(REPO_ROOT)} to {FASTLANE_CHAR_LIMIT} characters and re-run")
+        open_in_editor(path)
+
+    if ui.confirm("Review the store changelog text before continuing?", default=False):
+        block(path.read_text())
+        if ui.confirm("Edit it?", default=False):
+            open_in_editor(path)
+            ok(f"store changelog is now {len(path.read_text())} characters")
+
+
+def merged_pull_requests():
+    result = run([
+        "gh", "pr", "list", "--repo", REPO, "--state", "merged", "--base", "main", "--limit", "300",
+        "--json", "number,title,author",
+    ])
+    return {pr["number"]: pr for pr in json.loads(result.stdout)}
+
+
+def is_excluded_author(login):
+    login = login.lower()
+    return any(pattern in login for pattern in EXCLUDED_AUTHOR_PATTERNS)
+
+
+def build_release_notes(version, prev_tag):
+    range_spec = f"{prev_tag}..HEAD" if prev_tag else "HEAD"
+    commits = git("log", "--first-parent", "--reverse", "--format=%s", range_spec).splitlines()
+    prs = merged_pull_requests()
+    lines, skipped = [], []
+    for subject in commits:
+        match = PR_NUMBER_REGEX.search(subject)
+        if not match:
+            continue
+        number = int(match.group(1))
+        pr = prs.get(number)
+        if pr is None:
+            skipped.append(number)
+            continue
+        login = pr["author"]["login"]
+        if is_excluded_author(login) or pr["title"].startswith(EXCLUDED_TITLE_PREFIXES):
+            continue
+        lines.append(f"* {pr['title']} by @{login} in {REPO_URL}/pull/{number}")
+    notes = "## What's Changed\n" + "\n".join(lines) + "\n"
+    if prev_tag:
+        notes += f"\n\n**Full Changelog**: {REPO_URL}/compare/{prev_tag}...{version}\n"
+    return notes, len(lines), skipped
+
+
+def step_review(ui, version):
+    header(4, "Review release notes")
+    prev_tag = previous_tag()
+    with Spinner("collecting merged pull requests"):
+        notes, count, skipped = build_release_notes(version, prev_tag)
+    info(f"previous release: {prev_tag or 'none'} · {count} PR(s) by humans since then")
+    if skipped:
+        warn("not found among recently merged PRs (skipped): " + ", ".join(f"#{n}" for n in skipped))
+    if count == 0:
+        warn("no non-bot PRs since the previous tag — the release body will be nearly empty")
+    block(notes)
+    return notes
+
+
+def step_publish(ui, version, notes, dry_run):
+    header(5, "Publish")
+    files = release_files(version)
+    to_commit = git("status", "--porcelain", "--", *files)
+
+    if dry_run:
+        info("[dry-run] would commit: " + (", ".join(l[3:] for l in to_commit.splitlines()) or "nothing"))
+        info(f"[dry-run] would push main and create GitHub release {version} (tag {version})")
+        return
+
+    if not ui.confirm(f"Push main and create GitHub release {style(version, BOLD)}?", default=True):
+        raise Abort("nothing was pushed; re-run when ready (the prepared changelog is kept)")
+
+    if to_commit:
+        run(["git", "add", *files])
+        run(["git", "commit", "--quiet", "-m", f"Prepare release {version} [skip ci]"])
+        ok(f"committed: Prepare release {version}")
+    with Spinner("pushing main"):
+        run(["git", "push", "--quiet", "origin", "main"])
+    ok("pushed main")
+
+    with Spinner(f"creating GitHub release {version}"):
+        run([
+            "gh", "release", "create", version,
+            "--repo", REPO, "--target", "main", "--title", version, "--notes", notes,
+            *(["--prerelease"] if "-rc" in version else []),
+        ])
+    ok(f"release created: {REPO_URL}/releases/tag/{version}")
+    info("the Release workflow is now building the APKs/AAB and will bump campfire.version when it succeeds")
+
+    if ui.confirm("Watch the Release workflow until it finishes?", default=False):
+        time.sleep(10)
+        result = run(["gh", "run", "list", "--repo", REPO, "--workflow", "release.yml", "--limit", "1",
+                      "--json", "databaseId", "--jq", ".[0].databaseId"], check=False)
+        run_id = result.stdout.strip()
+        if run_id:
+            subprocess.run(["gh", "run", "watch", run_id, "--repo", REPO], cwd=REPO_ROOT)
+        else:
+            warn("could not find the workflow run yet; check " + f"{REPO_URL}/actions/workflows/release.yml")
+
+
+# =========================================================================== main
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("command", nargs="?", choices=["set-ew-token"], help="store the emulator.wtf token in the Keychain")
+    parser.add_argument("--emulator-wtf", action="store_true", help="generate baseline profiles on emulator.wtf")
+    parser.add_argument("--skip-baseline", action="store_true", help="don't regenerate baseline profiles")
+    parser.add_argument("--dry-run", action="store_true", help="show what would happen without changing anything")
+    parser.add_argument("-y", "--yes", action="store_true", help="non-interactive: accept defaults, never prompt")
+    args = parser.parse_args()
+
+    ui = Ui(assume_yes=args.yes)
+    try:
+        if args.command == "set-ew-token":
+            store_emulator_wtf_token()
+            return
+        if args.dry_run:
+            print(style("dry run — nothing will be written, pushed or created", YELLOW))
+        version = read_version()
+        step_preflight(ui, version, args.dry_run)
+        step_baseline(ui, args, args.dry_run)
+        step_changelog(ui, version, args.dry_run)
+        notes = step_review(ui, version)
+        step_publish(ui, version, notes, args.dry_run)
+        print()
+        print(style(f"🎉 Release {version} is on its way.", BOLD, GREEN))
+    except Abort as e:
+        print()
+        print(style("aborted: ", RED, BOLD) + str(e))
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print()
+        print(style("interrupted — nothing further was changed", YELLOW))
+        sys.exit(130)
+    except subprocess.CalledProcessError as e:
+        print()
+        print(style("command failed: ", RED, BOLD) + " ".join(e.cmd))
+        if e.stderr:
+            block(e.stderr)
+        sys.exit(e.returncode)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,172 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.ui.settings.analytics
+
+import app.campfire.analytics.Analytics
+import app.campfire.analytics.events.Click
+import app.campfire.analytics.events.SettingActionEvent
+import app.campfire.analytics.events.Updated
+import app.campfire.analytics.events.Verb
+import app.campfire.audioplayer.model.PlaybackTimer
+import app.campfire.ui.settings.SettingsUiEvent
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.AttributionsClick
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.ChangelogClick
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.DeveloperClick
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.GithubClick
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.PrivacyPolicyClick
+import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.TermsOfServiceClick
+import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.ChangeName
+import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.Logout
+import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.DynamicItemDetailTheming
+import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.DynamicPlaybackTheming
+import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.ItemCardMarqueeEnabled
+import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.Theme
+import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.DeleteDownload
+import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.DownloadClicked
+import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.ShowDownloadConfirmation
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoSyncEnabled
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.BackwardTime
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.ForwardTime
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.Mp3IndexSeeking
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.PlaybackHistoryEnabled
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.RemoteNextPrevSkipsChapters
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.StreamingMethodChanged
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncEnabled
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncIntervalMetered
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.SyncIntervalUnmetered
+import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.TrackResetThreshold
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepRewindAmount
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepRewindEnabled
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnabled
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
+import me.tatarka.inject.annotations.Inject
+
+@Inject
+class SettingsAnalyticUiEventHandler(
+  private val analytics: Analytics,
+) {
+
+  private fun send(obj: String, verb: Verb, noun: Any? = null) {
+    analytics.send(SettingActionEvent(obj, verb, noun))
+  }
+
+  fun handle(event: SettingsUiEvent) = when (event) {
+    SettingsUiEvent.Back -> Unit
+    is SettingsUiEvent.SettingsPaneClick -> Unit
+    SettingsUiEvent.ConnectedProvidersClick -> send("connected_providers", Click)
+
+    is SettingsUiEvent.AccountSettingEvent -> when (event) {
+      is ChangeName -> send("account_name", Updated)
+      is SettingsUiEvent.AccountSettingEvent.SocketSyncEnabled -> {
+        send("socket_sync", Updated, event.enabled)
+      }
+      Logout -> send("logout", Click)
+    }
+
+    is SettingsUiEvent.AppearanceSettingEvent -> when (event) {
+      is Theme -> send("theme", Updated, event.themeMode.storageKey)
+      is DynamicItemDetailTheming -> send("dynamic_item_detail_theme", Updated, event.enabled.toString())
+      is DynamicPlaybackTheming -> send("dynamic_playback_theme", Updated, event.enabled.toString())
+      is ItemCardMarqueeEnabled -> send("item_card_marquee", Updated, event.enabled.toString())
+      SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> send("edit_theme", Click)
+    }
+
+    is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
+      is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
+      is DeleteDownload -> send("delete_download", Click)
+      is DownloadClicked -> send("download", Click)
+    }
+
+    is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
+      is SettingsUiEvent.PlaybackSettingEvent.PlaybackRateChanged ->
+        send("playback_rate_${event.index}", Updated, event.rate)
+      is ForwardTime -> send("forward_time", Updated, event.forwardTime.inWholeMilliseconds)
+      is BackwardTime -> send("backward_time", Updated, event.backwardTime.inWholeMilliseconds)
+      is TrackResetThreshold -> send("track_reset_threshold", Updated, event.trackResetThreshold.inWholeMilliseconds)
+      is Mp3IndexSeeking -> send("mp3_index_seeking", Updated, event.mp3IndexSeeking)
+      is RemoteNextPrevSkipsChapters -> send(
+        "remote_next_prev_skip_chapters",
+        Updated,
+        event.remoteNextPrevSkipsChapters,
+      )
+      is SyncEnabled -> send("sync", Updated, event.enabled)
+      is AutoSyncEnabled -> send("auto_sync", Updated, event.enabled)
+      is StreamingMethodChanged -> send("streaming_method", Updated, event.method.storageKey)
+      is SyncIntervalUnmetered -> send("sync_interval_unmetered", Updated, event.interval.inWholeSeconds)
+      is SyncIntervalMetered -> send("sync_interval_metered", Updated, event.interval.inWholeSeconds)
+      is PlaybackHistoryEnabled -> send("playback_history", Updated, event.enabled)
+      is SettingsUiEvent.PlaybackSettingEvent.AutoRewindOnResumeEnabled ->
+        send("auto_rewind_on_resume", Updated, event.enabled)
+      is SettingsUiEvent.PlaybackSettingEvent.MinPauseThreshold ->
+        send("resume_rewind_min_pause", Updated, event.threshold.inWholeMilliseconds)
+      is SettingsUiEvent.PlaybackSettingEvent.ResumeRewindRange -> send(
+        "resume_rewind_range",
+        Updated,
+        "${event.minRewind.inWholeMilliseconds}-${event.maxRewind.inWholeMilliseconds}",
+      )
+      is SettingsUiEvent.PlaybackSettingEvent.AutoRewindStopAtChapterBoundary ->
+        send("resume_rewind_stop_at_chapter", Updated, event.enabled)
+      is SettingsUiEvent.PlaybackSettingEvent.BookTimeInPlaybackUi ->
+        send("book_time_playback_ui", Updated, event.enabled)
+      is SettingsUiEvent.PlaybackSettingEvent.PlaybackWavyScrubber ->
+        send("wavy_playback_slider", Updated, event.enabled)
+    }
+
+    is SettingsUiEvent.SleepSettingEvent -> when (event) {
+      is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
+      is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
+      is AutoSleepTimerEnabled -> send("auto_sleep", Updated, event.enabled)
+      is AutoSleepTimerStart -> send("auto_sleep_start", Updated, event.time.toString())
+      is AutoSleepTimerEnd -> send("auto_sleep_end", Updated, event.time.toString())
+      is AutoSleepTimer -> when (event.timer) {
+        is PlaybackTimer.EndOfChapter -> send("sleep_timer", Updated, "end_of_chapter")
+        is PlaybackTimer.Epoch -> send("sleep_timer", Updated, "epoc")
+      }
+
+      is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
+      is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
+      is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
+    }
+
+    is SettingsUiEvent.AboutSettingEvent -> when (event) {
+      ChangelogClick -> send("changelog", Click)
+      AttributionsClick -> send("attributions", Click)
+      DeveloperClick -> send("developer", Click)
+      GithubClick -> send("contribute", Click)
+      PrivacyPolicyClick -> send("privacy_policy", Click)
+      TermsOfServiceClick -> send("terms_of_service", Click)
+      SettingsUiEvent.AboutSettingEvent.AppUpdateSignInClick -> send("app_update_sign_in", Click)
+      is SettingsUiEvent.AboutSettingEvent.AnalyticReportingEnabled -> Unit
+      is SettingsUiEvent.AboutSettingEvent.CrashReportingEnabled -> {
+        send("crash_reporting", Updated, event.enabled)
+      }
+    }
+
+    is SettingsUiEvent.DeveloperSettingEvent -> Unit
+
+    is SettingsUiEvent.AndroidAutoSettingEvent -> when (event) {
+      SettingsUiEvent.AndroidAutoSettingEvent.OpenAndroidAutoSettings -> send("open_android_auto_settings", Click)
+      is SettingsUiEvent.AndroidAutoSettingEvent.SetCategoryVisible -> send(
+        "android_auto_category_visible",
+        Updated,
+        "${event.category.storageKey}=${event.visible}",
+      )
+      is SettingsUiEvent.AndroidAutoSettingEvent.SetCategoryGridLayout -> send(
+        "android_auto_category_grid",
+        Updated,
+        "${event.category.storageKey}=${event.isGrid}",
+      )
+      is SettingsUiEvent.AndroidAutoSettingEvent.ReorderCategories -> send(
+        "android_auto_reorder",
+        Updated,
+        event.order.joinToString(",") { it.storageKey },
+      )
+    }
+  }
+}

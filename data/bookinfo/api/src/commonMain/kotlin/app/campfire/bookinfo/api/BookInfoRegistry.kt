@@ -1,0 +1,157 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.bookinfo.api
+
+import app.campfire.core.coroutines.LoadState
+import app.campfire.core.model.LibraryItem
+import kotlin.time.Duration
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * The single entry point features use to read third-party book information.
+ * Selects among the installed [BookInfoProvider]s by capability, enablement, and
+ * link state, and serves results through a local cache to respect provider rate
+ * limits.
+ */
+interface BookInfoRegistry {
+  fun observeProviders(): Flow<List<ProviderStatus>>
+
+  /**
+   * Community rating and reviews for [item]. By default the best available
+   * provider is chosen automatically; pass [preferredProvider] to pin a
+   * specific source (falls back to the automatic pick when the pinned provider
+   * is disabled, unlinked, or not installed).
+   *
+   * Emits null only when nothing could ever serve the item — no identifiers,
+   * or no enabled provider can match it. Otherwise the emitted state always
+   * carries the serving provider and switchable sources, with the fetch phase
+   * expressed in [CommunityInfoState.content] — so a section rendered from
+   * this state stays put across loads and source switches.
+   */
+  fun observeCommunityInfo(
+    item: LibraryItem,
+    preferredProvider: ProviderId? = null,
+  ): Flow<CommunityInfoState?>
+
+  /**
+   * The full series listing for [seriesName], merging the user's [ownedItems]
+   * with the best available provider's canonical entries — released books the
+   * user doesn't own become [SeriesEntry.Missing] and announced-but-unreleased
+   * ones [SeriesEntry.Upcoming]. The owned books are always emitted
+   * immediately; provider entries merge in when they arrive, and when no
+   * series-capable provider is available the listing simply stays owned-only.
+   */
+  fun observeSeriesEntries(
+    seriesName: String,
+    ownedItems: List<LibraryItem>,
+  ): Flow<LoadState<out SeriesInfoState>>
+
+  /**
+   * One-shot, definitive series listing for a bulk scan: serves from the cache
+   * when fresh and refreshes otherwise. Unlike [observeSeriesEntries] the
+   * result distinguishes "the provider has no listing for this series" from
+   * "the provider couldn't be asked".
+   *
+   * Pass [refresh] to bypass the cache TTL and refetch from the provider — the
+   * per-series equivalent of clearing the series cache, except a failed fetch
+   * keeps the cached row for later reads. A provider link that's known-invalid
+   * still serves the cache (a refetch would only 401).
+   */
+  suspend fun fetchSeriesEntries(
+    seriesName: String,
+    ownedItems: List<LibraryItem>,
+    refresh: Boolean = false,
+  ): SeriesFetchResult
+
+  /**
+   * Every announced-but-unreleased book across the user's locally cached
+   * series listings, sorted by release date (undated announcements last).
+   * Purely a cache read — nothing is fetched — so it reflects whatever the
+   * last scans stored and updates live as new listings land. Emits an empty
+   * list when nothing is cached.
+   */
+  fun observeCachedUpcoming(): Flow<List<UpcomingRelease>>
+
+  /**
+   * Drops all locally cached provider data (for every provider and user).
+   * Fresh data is fetched on the next read.
+   */
+  suspend fun clearCache()
+}
+
+/** An unreleased series entry read back from the local series cache. */
+data class UpcomingRelease(
+  val seriesName: String,
+  val entry: ProviderSeriesEntry,
+  val providerId: ProviderId,
+)
+
+sealed interface SeriesFetchResult {
+  /**
+   * A definitive answer; a null [SeriesInfoState.providerId] means the
+   * provider was asked and has no listing for the series.
+   */
+  data class Success(val state: SeriesInfoState) : SeriesFetchResult
+
+  /**
+   * The series can't be looked up at all — no series-capable provider, no
+   * user session, or no identifier-bearing owned members.
+   */
+  data object Unavailable : SeriesFetchResult
+
+  /**
+   * The provider's rate limit was hit; retry no sooner than [retryAfter].
+   * Distinct from [Error] so bulk scans can pause and resume instead of
+   * recording thousands of spurious failures.
+   */
+  data class RateLimited(val retryAfter: Duration?) : SeriesFetchResult
+
+  /** The fetch failed (network, server error) with nothing cached to serve. */
+  data object Error : SeriesFetchResult
+}
+
+data class ProviderStatus(
+  val provider: BookInfoProvider,
+  val enabled: Boolean,
+  val linkState: ProviderLinkState,
+)
+
+/**
+ * Presentation-ready community info from one serving provider. The provider
+ * identity doubles as the required attribution for aggregate data (a
+ * terms-of-service requirement for some providers, e.g. Hardcover) and must
+ * render wherever [CommunityContent.Available] data does.
+ *
+ * @param availableSources every provider currently able to serve the item,
+ * for source-switcher UI; always contains the serving provider.
+ * @param reviewsLinkProviderName when the serving provider has no review text
+ * but linking another provider (e.g. Hardcover) would add reviews, the name of
+ * that provider — for a "connect for reviews" affordance.
+ */
+data class CommunityInfoState(
+  val providerId: ProviderId,
+  val providerName: String,
+  val availableSources: List<CommunitySource> = emptyList(),
+  val needsRelink: Boolean = false,
+  val reviewsLinkProviderName: String? = null,
+  val content: CommunityContent = CommunityContent.Loading,
+)
+
+sealed interface CommunityContent {
+  /** The serving provider is being fetched with nothing cached yet. */
+  data object Loading : CommunityContent
+
+  /** The serving provider has nothing for this book. */
+  data object Unavailable : CommunityContent
+
+  data class Available(
+    val info: BookCommunityInfo,
+    val reviews: List<BookReview>,
+  ) : CommunityContent
+}
+
+data class CommunitySource(
+  val id: ProviderId,
+  val name: String,
+)

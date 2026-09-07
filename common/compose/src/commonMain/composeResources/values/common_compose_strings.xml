@@ -1,0 +1,59 @@
+<resources>
+  <string name="time_ago_now">now</string>
+  <string name="time_ago_minutes">%1$d minutes ago</string>
+  <string name="time_ago_hours">%1$d hours ago</string>
+  <string name="time_ago_days">%1$d days ago</string>
+  <string name="time_ago_months">%1$d months ago</string>
+  <string name="time_ago_years">%1$d years ago</string>
+
+  <string name="relative_day_today">Today</string>
+  <string name="relative_day_yesterday">Yesterday</string>
+
+  <string name="added_time_ago">Added %1$s</string>
+  <string name="duration_remaining">%1$s left</string>
+  <string name="duration_finished">Finished</string>
+
+  <string name="unknown_library_title">Unknown</string>
+  <string name="unknown_author_name">Unknown author</string>
+
+  <plurals name="filter_bar_book_count">
+    <item quantity="one">%1$d Book</item>
+    <item quantity="other">%1$d Books</item>
+  </plurals>
+
+  <string name="action_show_less">Show less</string>
+  <string name="action_show_more">Show more</string>
+  <string name="action_remove">REMOVE</string>
+  <string name="action_clear_search">Clear search</string>
+  <string name="action_filter">Filter</string>
+  <string name="action_sort">Sort</string>
+  <string name="action_open_menu">Open menu</string>
+
+  <string name="dialog_download_message_prefix">This will download</string>
+  <string name="dialog_download_message_suffix">onto your devices internal storage.</string>
+  <string name="dialog_download_do_not_show_label">Do not show again</string>
+  <string name="dialog_download_action_confirm">Download</string>
+  <string name="dialog_download_action_dismiss">Cancel</string>
+
+  <string-array name="empty_screen_quotes">
+    <item>May your compass always point to adventure.</item>
+    <item>Leave a trail of footprints and a heart full of stories.</item>
+    <item>The road less traveled is calling.</item>
+    <item>Let's get wonderfully lost.</item>
+    <item>Find your next adventure on the turn of a page.</item>
+    <item>Reading the world, one story at a time.</item>
+    <item>The best journeys happen with a book in your hand.</item>
+    <item>My favorite travel companion is a good story.</item>
+    <item>Lost in a book, and happy to be.</item>
+    <item>Let a book be your map.</item>
+    <item>Where will this story take you?</item>
+    <item>On a journey to find the edges of the world and the depths of a good book.</item>
+    <item>Every book is a new beginning.</item>
+  </string-array>
+
+  <string name="playback_speed_dialog_title">Custom speed</string>
+  <string name="playback_speed_dialog_label">Speed</string>
+  <string name="playback_speed_dialog_error">Enter a value between %1$s and %2$s</string>
+  <string name="playback_speed_dialog_apply">Apply</string>
+  <string name="playback_speed_dialog_cancel">Cancel</string>
+</resources>

@@ -1,0 +1,51 @@
+import kotlin.Boolean;
+import kotlin.Int;
+
+CREATE TABLE IF NOT EXISTS library (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  displayOrder INTEGER AS Int NOT NULL,
+  icon TEXT NOT NULL,
+  mediaType TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  createdAt INTEGER NOT NULL,
+  lastUpdate INTEGER NOT NULL,
+  coverAspectRatio INTEGER AS Int NOT NULL,
+  audiobooksOnly INTEGER AS Boolean NOT NULL,
+
+  userId TEXT NOT NULL,
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+insert:
+INSERT OR IGNORE INTO library
+VALUES ?;
+
+update:
+UPDATE library
+SET name = :name,
+    displayOrder = :displayOrder,
+    icon = :icon,
+    mediaType = :mediaType,
+    provider = :provider,
+    createdAt = :createdAt,
+    lastUpdate = :lastUpdate,
+    coverAspectRatio = :coverAspectRatio,
+    audiobooksOnly = :audiobooksOnly
+WHERE id = :id;
+
+selectAll:
+SELECT * FROM library
+WHERE userId = ?;
+
+selectById:
+SELECT * FROM library
+WHERE id = ?;
+
+deleteById:
+DELETE FROM library
+WHERE id = ?;
+
+deleteAll:
+DELETE FROM library
+WHERE userId = ?;

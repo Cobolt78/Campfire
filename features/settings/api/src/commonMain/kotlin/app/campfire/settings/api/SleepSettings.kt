@@ -1,0 +1,79 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.settings.api
+
+import app.campfire.core.settings.EnumSetting
+import app.campfire.core.settings.EnumSettingProvider
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.datetime.LocalTime
+
+interface SleepSettings {
+
+  var lastSetSleepTimer: Duration
+  fun observeLastSetSleepTimer(): StateFlow<Duration>
+
+  var shakeToResetEnabled: Boolean
+  fun observeShakeToResetEnabled(): StateFlow<Boolean>
+
+  var shakeSensitivity: ShakeSensitivity
+  fun observeShakeSensitivity(): StateFlow<ShakeSensitivity>
+
+  var autoSleepTimerEnabled: Boolean
+  fun observeAutoSleepTimerEnabled(): StateFlow<Boolean>
+
+  var autoSleepStart: LocalTime
+  fun observeAutoSleepStart(): StateFlow<LocalTime>
+
+  var autoSleepEnd: LocalTime
+  fun observeAutoSleepEnd(): StateFlow<LocalTime>
+
+  var autoSleepTimer: AutoSleepTimer
+  fun observeAutoSleepTimer(): StateFlow<AutoSleepTimer>
+
+  var autoRewindEnabled: Boolean
+  fun observeAutoRewindEnabled(): StateFlow<Boolean>
+
+  var autoRewindAmount: Duration
+  fun observeAutoRewindAmount(): StateFlow<Duration>
+
+  /**
+   * How long the volume fades out before a sleep timer pauses playback. [Duration.ZERO] pauses immediately.
+   */
+  var fadeOutDuration: Duration
+  fun observeFadeOutDuration(): StateFlow<Duration>
+
+  sealed class AutoSleepTimer {
+    data class Epoch(val millis: Long) : AutoSleepTimer()
+    data object EndOfChapter : AutoSleepTimer()
+
+    companion object {
+      val Default get() = Epoch(15.minutes.inWholeMilliseconds)
+    }
+  }
+
+  enum class ShakeSensitivity(override val storageKey: String) : EnumSetting {
+    VeryLow("very_low"),
+    Low("low"),
+    Medium("medium"),
+    High("high"),
+    VeryHigh("very_high"),
+    ;
+
+    companion object : EnumSettingProvider<ShakeSensitivity> {
+      val Default get() = Medium
+
+      override fun fromStorageKey(key: String?): ShakeSensitivity {
+        return entries.find { it.storageKey == key } ?: Medium
+      }
+    }
+  }
+
+  companion object {
+    val DefaultFadeOutDuration: Duration get() = 5.seconds
+    val FadeOutDurationRange: ClosedRange<Duration> get() = Duration.ZERO..60.seconds
+  }
+}

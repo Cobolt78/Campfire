@@ -1,0 +1,68 @@
+import app.campfire.core.model.ShelfType;
+import kotlin.Int;
+
+CREATE TABLE IF NOT EXISTS shelf (
+  id TEXT NOT NULL PRIMARY KEY,
+  libraryId TEXT NOT NULL,
+  label TEXT NOT NULL,
+  labelStringKey TEXT NOT NULL,
+  total INTEGER AS Int NOT NULL,
+  type TEXT AS ShelfType NOT NULL,
+  homeOrder INTEGER AS Int NOT NULL DEFAULT 0,
+
+  userId TEXT NOT NULL,
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS shelfJoin(
+  shelfId TEXT NOT NULL,
+  entityId TEXT NOT NULL,
+  shelfOrder INTEGER AS Int NOT NULL DEFAULT 0,
+  -- For EpisodeShelf entries: the specific recent episode the shelf is highlighting.
+  -- Empty string for Book/Podcast/Series/Author shelves so the composite PK still
+  -- collapses to (shelfId, entityId) for those types.
+  episodeId TEXT NOT NULL DEFAULT '',
+
+  PRIMARY KEY (shelfId, entityId, episodeId),
+  FOREIGN KEY (shelfId) REFERENCES shelf(id) ON DELETE CASCADE
+);
+
+-- Queries
+
+select:
+SELECT * FROM shelf
+WHERE libraryId = ?
+  AND userId = ?
+ORDER BY homeOrder ASC;
+
+insert:
+INSERT OR IGNORE INTO shelf
+VALUES ?;
+
+update:
+UPDATE shelf
+SET label = :label,
+    labelStringKey = :labelStringKey,
+    total = :total,
+    type = :type,
+    homeOrder = :homeOrder
+WHERE id = :id;
+
+delete:
+DELETE FROM shelf
+WHERE libraryId = ?
+  AND userId = ?;
+
+deleteById:
+DELETE FROM shelf
+WHERE id = ?;
+
+-- Join Queries
+
+insertJoins:
+INSERT OR IGNORE INTO shelfJoin
+VALUES ?;
+
+deleteJoinsForShelf:
+DELETE FROM shelfJoin
+WHERE shelfId = ?;

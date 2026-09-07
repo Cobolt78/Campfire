@@ -1,0 +1,40 @@
+import kotlin.Int;
+
+CREATE TABLE IF NOT EXISTS authors (
+  id TEXT NOT NULL PRIMARY KEY,
+  asin TEXT,
+  name TEXT NOT NULL,
+  description TEXT,
+  imagePath TEXT,
+  addedAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL,
+  numBooks INTEGER AS Int,
+
+  libraryId TEXT NOT NULL
+);
+
+insert:
+INSERT OR REPLACE INTO authors
+VALUES ?;
+
+selectForLibrary:
+SELECT * FROM authors
+WHERE libraryId = ?;
+
+selectForShelf:
+SELECT * FROM authors
+INNER JOIN shelfJoin ON shelfJoin.entityId = authors.id
+WHERE shelfJoin.shelfId = ?
+ORDER BY shelfJoin.shelfOrder ASC;
+
+selectForId:
+SELECT * FROM authors
+WHERE id = ?;
+
+deleteForLibrary:
+DELETE FROM authors
+WHERE libraryId = ?;
+
+deleteForId:
+DELETE FROM authors
+WHERE id = ?;

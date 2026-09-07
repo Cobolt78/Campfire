@@ -1,0 +1,433 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network
+
+import app.campfire.network.envelopes.EpisodeDownloadsResponse
+import app.campfire.network.envelopes.MediaProgressUpdatePayload
+import app.campfire.network.envelopes.SyncLocalSessionsResult
+import app.campfire.network.models.AudioBookmark
+import app.campfire.network.models.Author
+import app.campfire.network.models.Collection
+import app.campfire.network.models.DeviceInfo
+import app.campfire.network.models.FilterData
+import app.campfire.network.models.Library
+import app.campfire.network.models.LibraryItemExpanded
+import app.campfire.network.models.LibraryItemFilter
+import app.campfire.network.models.LibraryItemMinified
+import app.campfire.network.models.LibraryStats
+import app.campfire.network.models.ListeningStats
+import app.campfire.network.models.MediaProgress
+import app.campfire.network.models.PagedRecentEpisodesResponse
+import app.campfire.network.models.PlaySession
+import app.campfire.network.models.PlaybackSession
+import app.campfire.network.models.PlaylistExpanded
+import app.campfire.network.models.PlaylistItem
+import app.campfire.network.models.PodcastFeed
+import app.campfire.network.models.PodcastMetadata
+import app.campfire.network.models.PodcastSearchResultDto
+import app.campfire.network.models.RssPodcastEpisode
+import app.campfire.network.models.SearchResult
+import app.campfire.network.models.Series
+import app.campfire.network.models.Shelf
+import app.campfire.network.models.User
+
+interface AudioBookShelfApi {
+
+  /**
+   * Retrieve the current user information, including media progress and bookmarks
+   */
+  suspend fun getCurrentUser(): Result<User>
+
+  /**
+   * Fetch all the libraries accessible to the user
+   * @return a result with a list of library objects
+   */
+  suspend fun getAllLibraries(): Result<List<Library>>
+
+  /**
+   * Fetch a single library by its [libraryId]
+   * @return a result with the requested library
+   */
+  suspend fun getLibrary(libraryId: String): Result<Library>
+
+  /**
+   * Fetch a library's items
+   *
+   * @param libraryId the id of the library to fetch the items for
+   * @return as result with the list of library items
+   */
+  suspend fun getLibraryItemsMinified(
+    libraryId: String,
+    filter: LibraryItemFilter? = null,
+    sortMode: String? = null,
+    sortDescending: Boolean = false,
+    page: Int = INVALID,
+    limit: Int = INVALID,
+  ): Result<PagedResponse<LibraryItemMinified>>
+
+  /**
+   * Fetch a single library item
+   *
+   * @param itemId the id of the item to fetch
+   * @return as result with the library item with expanded details
+   */
+  suspend fun getLibraryItem(itemId: String): Result<LibraryItemExpanded>
+
+  /**
+   * This endpoint returns a library's stats
+   */
+  suspend fun getLibraryStats(libraryId: String): Result<LibraryStats>
+
+  /**
+   * Get a Library's Personalized View
+   * This endpoint returns a library's personalized view for home page display.
+   */
+  suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>>
+
+  /**
+   * Get a podcast library's most recently published episodes, sorted publishedAt DESC. The server
+   * applies a hardcoded unplayed filter (finished episodes are excluded) and does not return a
+   * total count. Returns 404 for non-podcast libraries.
+   */
+  suspend fun getRecentEpisodes(
+    libraryId: String,
+    page: Int = 0,
+    limit: Int = 50,
+  ): Result<PagedRecentEpisodesResponse>
+
+  /**
+   * Fetch the parsed live RSS feed for an arbitrary [rssFeedUrl]. Returns both podcast-level
+   * metadata and the full episode list. Used by the "Find episodes" flow (consumes only episodes)
+   * and the "Add podcast" flow (consumes metadata for the preview). Requires Admin or Root user;
+   * non-admin callers receive HTTP 403. No pagination — the server returns the full feed in a
+   * single response.
+   */
+  suspend fun getPodcastFeed(
+    rssFeedUrl: String,
+  ): Result<PodcastFeed>
+
+  /**
+   * Search for podcasts via the server's iTunes proxy. Available to any authenticated user. The
+   * server returns a bare JSON array; callers receive an empty list (not a failure) when there
+   * are no matches. [country] defaults to `"us"` on the server when null.
+   */
+  suspend fun searchPodcasts(
+    term: String,
+    country: String? = null,
+  ): Result<List<PodcastSearchResultDto>>
+
+  /**
+   * Create a new podcast library item from a feed. Requires Admin or Root user; regular users
+   * receive HTTP 403. The server validates [path] is a sub-path of the selected folder and
+   * rejects duplicates with HTTP 400. Response is the newly-created library item (expanded).
+   */
+  suspend fun createPodcast(
+    libraryId: String,
+    folderId: String,
+    path: String,
+    metadata: PodcastMetadata,
+    tags: List<String> = emptyList(),
+    autoDownloadEpisodes: Boolean = false,
+    autoDownloadSchedule: String? = null,
+  ): Result<LibraryItemExpanded>
+
+  /**
+   * Queue one or more RSS-derived episodes for download into the podcast identified by
+   * [libraryItemId]. Requires Admin or Root user; regular users receive HTTP 403. The server
+   * responds immediately and downloads asynchronously; subsequent duplicates by enclosure URL are
+   * silently ignored.
+   */
+  suspend fun downloadPodcastEpisodes(
+    libraryItemId: String,
+    episodes: List<RssPodcastEpisode>,
+  ): Result<Unit>
+
+  /**
+   * Fetch the current server-side podcast download state for [libraryId] — both the actively
+   * downloading item and the queued items.
+   * Endpoint: `GET /api/libraries/{libraryId}/episode-downloads`. Available to any authenticated user.
+   */
+  suspend fun getEpisodeDownloads(libraryId: String): Result<EpisodeDownloadsResponse>
+
+  /**
+   * Clear all queued downloads for the podcast identified by [libraryItemId]. Does NOT interrupt
+   * the actively-downloading item.
+   * Endpoint: `GET /api/podcasts/{libraryItemId}/clear-queue` (yes, GET — server defines it that way).
+   * Requires Admin or Root user; regular users receive HTTP 403.
+   */
+  suspend fun clearPodcastDownloadQueue(libraryItemId: String): Result<Unit>
+
+  //region Series
+
+  /**
+   * Get a Library's list of series
+   */
+  suspend fun getSeries(
+    libraryId: String,
+    filter: LibraryItemFilter? = null,
+    sortMode: String? = null,
+    sortDescending: Boolean = false,
+    page: Int = INVALID,
+    limit: Int = INVALID,
+  ): Result<PagedResponse<Series>>
+
+  /**
+   * Get a specific series by its id
+   */
+  suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series>
+
+  //endregion
+
+  //region Authors
+
+  /**
+   * Get a Library's list of authors
+   */
+  suspend fun getAuthors(
+    libraryId: String,
+    sortMode: String? = null,
+    sortDescending: Boolean = false,
+    page: Int = INVALID,
+    limit: Int = INVALID,
+  ): Result<PagedResponse<Author>>
+
+  /**
+   * Get a specific author
+   */
+  suspend fun getAuthor(authorId: String): Result<Author>
+
+  //endregion
+
+  //region Collections
+
+  /**
+   * Get a Library's list of collections
+   */
+  suspend fun getCollections(libraryId: String): Result<List<Collection>>
+
+  /**
+   * Get a single collection
+   */
+  suspend fun getCollection(collectionId: String): Result<Collection>
+
+  /**
+   * Create a new collection
+   */
+  suspend fun createCollection(
+    libraryId: String,
+    name: String,
+    description: String?,
+    bookIds: List<String>,
+  ): Result<Collection>
+
+  /**
+   * Update an existing collection
+   */
+  suspend fun updateCollection(
+    collectionId: String,
+    name: String? = null,
+    description: String? = null,
+  ): Result<Collection>
+
+  /**
+   * Add a book to an existing collection
+   */
+  suspend fun addBookToCollection(
+    collectionId: String,
+    libraryItemId: String,
+  ): Result<Collection>
+
+  /**
+   * Remove a book from an existing collection
+   */
+  suspend fun removeBookFromCollection(
+    collectionId: String,
+    libraryItemId: String,
+  ): Result<Collection>
+
+  /**
+   * Remove a batch of books from an existing collection
+   */
+  suspend fun removeBooksFromCollection(
+    collectionId: String,
+    libraryItemIds: List<String>,
+  ): Result<Collection>
+
+  /**
+   * Delete an existing collection
+   */
+  suspend fun deleteCollection(collectionId: String): Result<Unit>
+
+  /**
+   * Delete a library item. Pass `hard = true` to also remove the item's files
+   * from the server's filesystem; otherwise only the DB row + cascading data
+   * (progress, playlist membership, RSS feed, metadata cache) are removed.
+   */
+  suspend fun deleteLibraryItem(itemId: String, hard: Boolean = false): Result<Unit>
+
+  //endregion
+
+  //region Playlists
+
+  suspend fun createPlaylist(
+    libraryId: String,
+    name: String,
+    description: String? = null,
+    items: List<PlaylistItem.Minified> = emptyList(),
+  ): Result<PlaylistExpanded>
+
+  suspend fun getPlaylists(libraryId: String): Result<List<PlaylistExpanded>>
+
+  suspend fun getPlaylist(playlistId: String): Result<PlaylistExpanded>
+
+  suspend fun updatePlaylist(
+    playlistId: String,
+    name: String,
+    description: String? = null,
+    items: List<PlaylistItem.Minified>,
+  ): Result<PlaylistExpanded>
+
+  suspend fun deletePlaylist(playlistId: String): Result<Unit>
+
+  suspend fun addToPlaylist(
+    playlistId: String,
+    item: PlaylistItem.Minified,
+  ): Result<PlaylistExpanded>
+
+  suspend fun removeFromPlaylist(
+    playlistId: String,
+    item: PlaylistItem.Minified,
+  ): Result<PlaylistExpanded>
+
+  suspend fun createPlaylistFromCollection(collectionId: String): Result<PlaylistExpanded>
+
+  //endregion
+
+  //region MediaProgress
+
+  /**
+   * This endpoint retrieves your media progress that is associated with the given library item ID or
+   * podcast episode ID. Pass [episodeId] to read podcast episode progress, otherwise it returns
+   * book/item-level progress.
+   */
+  suspend fun getMediaProgress(
+    libraryItemId: String,
+    episodeId: String? = null,
+  ): Result<MediaProgress>
+
+  /**
+   * Create/Update the media progress for a specific item or podcast episode. Pass [episodeId] to
+   * target a podcast episode's progress; otherwise the request applies to book/item-level progress.
+   */
+  suspend fun updateMediaProgress(
+    libraryItemId: String,
+    update: MediaProgressUpdatePayload,
+    episodeId: String? = null,
+  ): Result<Unit>
+
+  /**
+   * This endpoint batch creates/updates your media progress.
+   */
+  suspend fun batchUpdateMediaProgress(updates: List<MediaProgressUpdatePayload>): Result<Unit>
+
+  /**
+   * Remove the media progress for a given [mediaProgressId]
+   */
+  suspend fun deleteMediaProgress(mediaProgressId: String): Result<Unit>
+
+  //endregion
+
+  //region Bookmarks
+
+  /**
+   * This endpoint creates a bookmark for a book library item and returns the created bookmark.
+   */
+  suspend fun createBookmark(libraryItemId: String, timeInSeconds: Int, title: String): Result<AudioBookmark>
+
+  /**
+   * This endpoint removes a bookmark(
+   */
+  suspend fun removeBookmark(libraryItemId: String, timeInSeconds: Int): Result<Unit>
+
+  //endregion
+
+  //region Sessions
+
+  /**
+   * This endpoint creates/updates multiple local listening sessions on the server. Used for syncing offline listening
+   * sessions. The client must use UUIDv4 as the id for the local listening sessions because this will be used as the
+   * identifier on the server as well.
+   */
+  suspend fun syncLocalSessions(sessions: List<PlaybackSession>): Result<SyncLocalSessionsResult>
+
+  /**
+   * This endpoint creates/updates a local listening session on the server. Used for syncing offline listening
+   */
+  suspend fun syncLocalSession(session: PlaybackSession): Result<Unit>
+
+  /**
+   * Starts a server-side playback session for a library item (or one of its podcast episodes),
+   * returning the server-created session with its per-session audio tracks: static
+   * authenticated file URLs for direct play, or a single HLS playlist URL for transcode.
+   *
+   * The server dedupes open sessions by (user, deviceInfo.id) — a new call silently closes any
+   * other session open on the same device id. Always pass a fully-populated [deviceInfo]:
+   * the server nulls stored device fields missing from a new payload.
+   */
+  suspend fun startPlaybackSession(
+    libraryItemId: String,
+    episodeId: String? = null,
+    deviceInfo: DeviceInfo,
+    mediaPlayer: String,
+    supportedMimeTypes: List<String>,
+    forceDirectPlay: Boolean = false,
+    forceTranscode: Boolean = false,
+  ): Result<PlaySession>
+
+  /**
+   * Syncs listening progress into an open server playback session. [timeListened] is a
+   * DELTA in seconds since the previous sync, not a running total, and MUST be positive:
+   * the server writes the user's media progress unconditionally on every sync — including
+   * zero-delta ones — while only positive deltas accrue listening time and keep the session
+   * alive against the server's idle reaper.
+   */
+  suspend fun syncPlaybackSession(
+    sessionId: String,
+    currentTime: Double,
+    timeListened: Double,
+    duration: Double,
+  ): Result<Unit>
+
+  /**
+   * Closes an open server playback session, optionally delivering a final sync in the same
+   * request. A final sync is only sent when [timeListened] is a positive delta — otherwise
+   * the close is sent with an empty body (a zero-delta payload would plant a stray media
+   * progress write server-side).
+   */
+  suspend fun closePlaybackSession(
+    sessionId: String,
+    currentTime: Double? = null,
+    timeListened: Double? = null,
+    duration: Double? = null,
+  ): Result<Unit>
+
+  //endregion
+
+  /**
+   * This endpoint searches a library for the query and returns the results.
+   */
+  suspend fun searchLibrary(libraryId: String, query: String): Result<SearchResult>
+
+  /**
+   * This endpoint retrieves a user's listening statistics.
+   */
+  suspend fun getListeningStats(): Result<ListeningStats>
+
+  /**
+   * Get all the data that the user can filter the list of library items with
+   */
+  suspend fun getFilterData(libraryId: String): Result<FilterData>
+}
+
+const val INVALID = -1

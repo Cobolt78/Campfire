@@ -1,0 +1,224 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.db
+
+import app.campfire.CampfireDatabase
+import app.campfire.core.di.AppScope
+import app.campfire.data.Authors
+import app.campfire.data.AuthorsPage
+import app.campfire.data.AuthorsPageJoin
+import app.campfire.data.BookmarkFailedCreate
+import app.campfire.data.BookmarkFailedDelete
+import app.campfire.data.Bookmarks
+import app.campfire.data.CollectionsBookJoin
+import app.campfire.data.FilterData
+import app.campfire.data.Library
+import app.campfire.data.LibraryItem
+import app.campfire.data.LibraryItemPage
+import app.campfire.data.LibraryItemPageJoin
+import app.campfire.data.Media
+import app.campfire.data.MediaAudioFiles
+import app.campfire.data.MediaAudioTracks
+import app.campfire.data.MediaChapters
+import app.campfire.data.MediaProgress
+import app.campfire.data.PlaybackAction
+import app.campfire.data.PlaylistItemJoin
+import app.campfire.data.PodcastEpisode
+import app.campfire.data.PodcastEpisodeAudioTrack
+import app.campfire.data.PodcastEpisodePage
+import app.campfire.data.PodcastEpisodePageJoin
+import app.campfire.data.PodcastMedia
+import app.campfire.data.Search_genres
+import app.campfire.data.Search_narrators
+import app.campfire.data.Search_tags
+import app.campfire.data.SeriesPage
+import app.campfire.data.SeriesPageJoin
+import app.campfire.data.Server
+import app.campfire.data.Session
+import app.campfire.data.SessionQueue
+import app.campfire.data.Shelf
+import app.campfire.data.ShelfJoin
+import app.campfire.data.User
+import app.cash.sqldelight.EnumColumnAdapter
+import app.cash.sqldelight.adapter.primitive.IntColumnAdapter
+import app.cash.sqldelight.db.SqlDriver
+import com.r0adkll.kimchi.annotations.ContributesBinding
+import me.tatarka.inject.annotations.Inject
+
+@ContributesBinding(AppScope::class)
+@Inject
+class DatabaseFactory(
+  private val driver: SqlDriver,
+) : DatabaseAdapters {
+
+  override val libraryItemAdapter: LibraryItem.Adapter
+    get() = LibraryItem.Adapter(
+      mediaTypeAdapter = EnumColumnAdapter(),
+      numFilesAdapter = IntColumnAdapter,
+    )
+
+  override val mediaAdapter: Media.Adapter
+    get() = Media.Adapter(
+      tagsAdapter = StringListAdapter,
+      numTracksAdapter = IntColumnAdapter,
+      numChaptersAdapter = IntColumnAdapter,
+      numAudioFilesAdapter = IntColumnAdapter,
+      numMissingPartsAdapter = IntColumnAdapter,
+      numInvalidAudioFilesAdapter = IntColumnAdapter,
+      propertySizeAdapter = IntColumnAdapter,
+      metadata_genresAdapter = StringListAdapter,
+      metadata_seriesAdapter = SeriesSequenceListAdapter,
+    )
+
+  fun build(): CampfireDatabase = CampfireDatabase(
+    driver = driver,
+    serverAdapter = Server.Adapter(
+      loggerScannerLogsToKeepAdapter = IntColumnAdapter,
+      backupsToKeepAdapter = IntColumnAdapter,
+      bookshelfViewAdapter = IntColumnAdapter,
+      logLevelAdapter = IntColumnAdapter,
+      sortingPrefixesAdapter = StringListAdapter,
+      homeBookshelfViewAdapter = IntColumnAdapter,
+      loggerDailyLogsToKeepAdapter = IntColumnAdapter,
+      rateLimitLoginRequestsAdapter = IntColumnAdapter,
+      maxBackupSizeAdapter = IntColumnAdapter,
+    ),
+    userAdapter = User.Adapter(
+      typeAdapter = EnumColumnAdapter(),
+      itemTagsAccessibleAdapter = StringListAdapter,
+      librariesAccessibleAdapter = StringListAdapter,
+      seriesHideFromContinueListeningAdapter = StringListAdapter,
+    ),
+    libraryAdapter = Library.Adapter(
+      displayOrderAdapter = IntColumnAdapter,
+      coverAspectRatioAdapter = IntColumnAdapter,
+    ),
+    libraryItemAdapter = libraryItemAdapter,
+    mediaAdapter = mediaAdapter,
+    authorsAdapter = Authors.Adapter(
+      numBooksAdapter = IntColumnAdapter,
+    ),
+    mediaAudioFilesAdapter = MediaAudioFiles.Adapter(
+      mediaIndexAdapter = IntColumnAdapter,
+      bitRateAdapter = IntColumnAdapter,
+      channelsAdapter = IntColumnAdapter,
+      discNumFromMetaAdapter = IntColumnAdapter,
+      trackNumFromMetaAdapter = IntColumnAdapter,
+      discNumFromFilenameAdapter = IntColumnAdapter,
+      trackNumFromFilenameAdapter = IntColumnAdapter,
+    ),
+    mediaChaptersAdapter = MediaChapters.Adapter(IntColumnAdapter),
+    mediaAudioTracksAdapter = MediaAudioTracks.Adapter(
+      mediaIndexAdapter = IntColumnAdapter,
+    ),
+    mediaProgressAdapter = MediaProgress.Adapter(
+      mediaItemTypeAdapter = EnumColumnAdapter(),
+      sourceAdapter = EnumColumnAdapter(),
+    ),
+    sessionAdapter = Session.Adapter(
+      idAdapter = UuidAdapter,
+      playMethodAdapter = EnumColumnAdapter(),
+      timeListeningAdapter = DurationAdapter,
+      startTimeAdapter = DurationAdapter,
+      currentTimeAdapter = DurationAdapter,
+      startedAtAdapter = LocalDateTimeAdapter,
+      updatedAtAdapter = LocalDateTimeAdapter,
+      lastPlayedAtAdapter = LocalDateTimeAdapter,
+      reportedTimeListeningAdapter = DurationAdapter,
+    ),
+    bookmarksAdapter = Bookmarks.Adapter(
+      timeInSecondsAdapter = IntColumnAdapter,
+      createdAtAdapter = LocalDateTimeAdapter,
+    ),
+    bookmarkFailedCreateAdapter = BookmarkFailedCreate.Adapter(
+      timeInSecondsAdapter = IntColumnAdapter,
+    ),
+    bookmarkFailedDeleteAdapter = BookmarkFailedDelete.Adapter(
+      timeInSecondsAdapter = IntColumnAdapter,
+    ),
+    search_tagsAdapter = Search_tags.Adapter(
+      tagsAdapter = BasicSearchResultListAdapter,
+    ),
+    search_narratorsAdapter = Search_narrators.Adapter(
+      narratorsAdapter = BasicSearchResultListAdapter,
+    ),
+    search_genresAdapter = Search_genres.Adapter(
+      genresAdapter = BasicSearchResultListAdapter,
+    ),
+    filterDataAdapter = FilterData.Adapter(
+      bookCountAdapter = IntColumnAdapter,
+      authorCountAdapter = IntColumnAdapter,
+      seriesCountAdapter = IntColumnAdapter,
+      podcastCountAdapter = IntColumnAdapter,
+      numIssuesAdapter = IntColumnAdapter,
+    ),
+    shelfAdapter = Shelf.Adapter(
+      totalAdapter = IntColumnAdapter,
+      typeAdapter = EnumColumnAdapter(),
+      homeOrderAdapter = IntColumnAdapter,
+    ),
+    shelfJoinAdapter = ShelfJoin.Adapter(
+      shelfOrderAdapter = IntColumnAdapter,
+    ),
+    libraryItemPageAdapter = LibraryItemPage.Adapter(
+      pageAdapter = IntColumnAdapter,
+      nextPageAdapter = IntColumnAdapter,
+      totalAdapter = IntColumnAdapter,
+    ),
+    libraryItemPageJoinAdapter = LibraryItemPageJoin.Adapter(
+      pageIndexAdapter = IntColumnAdapter,
+    ),
+    authorsPageAdapter = AuthorsPage.Adapter(
+      pageAdapter = IntColumnAdapter,
+      nextPageAdapter = IntColumnAdapter,
+      totalAdapter = IntColumnAdapter,
+    ),
+    authorsPageJoinAdapter = AuthorsPageJoin.Adapter(
+      pageIndexAdapter = IntColumnAdapter,
+    ),
+    seriesPageAdapter = SeriesPage.Adapter(
+      pageAdapter = IntColumnAdapter,
+      nextPageAdapter = IntColumnAdapter,
+      totalAdapter = IntColumnAdapter,
+    ),
+    seriesPageJoinAdapter = SeriesPageJoin.Adapter(
+      pageIndexAdapter = IntColumnAdapter,
+    ),
+    collectionsBookJoinAdapter = CollectionsBookJoin.Adapter(
+      itemOrderAdapter = IntColumnAdapter,
+    ),
+    sessionQueueAdapter = SessionQueue.Adapter(
+      queueIndexAdapter = IntColumnAdapter,
+    ),
+    playlistItemJoinAdapter = PlaylistItemJoin.Adapter(
+      itemOrderAdapter = IntColumnAdapter,
+    ),
+    playbackActionAdapter = PlaybackAction.Adapter(
+      typeAdapter = EnumColumnAdapter(),
+      timestampAdapter = LocalDateTimeAdapter,
+      fromPositionAdapter = DurationAdapter,
+      toPositionAdapter = DurationAdapter,
+    ),
+    podcastMediaAdapter = PodcastMedia.Adapter(
+      tagsAdapter = StringListAdapter,
+      numEpisodesAdapter = IntColumnAdapter,
+      maxEpisodesToKeepAdapter = IntColumnAdapter,
+      maxNewEpisodesToDownloadAdapter = IntColumnAdapter,
+      metadata_genresAdapter = StringListAdapter,
+    ),
+    podcastEpisodeAdapter = PodcastEpisode.Adapter(
+      episodeIndexAdapter = IntColumnAdapter,
+    ),
+    podcastEpisodeAudioTrackAdapter = PodcastEpisodeAudioTrack.Adapter(
+      trackIndexAdapter = IntColumnAdapter,
+    ),
+    podcastEpisodePageAdapter = PodcastEpisodePage.Adapter(
+      pageAdapter = IntColumnAdapter,
+      nextPageAdapter = IntColumnAdapter,
+    ),
+    podcastEpisodePageJoinAdapter = PodcastEpisodePageJoin.Adapter(
+      pageIndexAdapter = IntColumnAdapter,
+    ),
+  )
+}

@@ -1,0 +1,179 @@
+import app.campfire.core.model.PlayMethod;
+import kotlin.Boolean;
+import kotlin.time.Duration;
+import kotlin.uuid.Uuid;
+import kotlinx.datetime.LocalDateTime;
+
+CREATE TABLE IF NOT EXISTS session (
+  id TEXT AS Uuid NOT NULL UNIQUE,
+  userId TEXT NOT NULL,
+  libraryItemId TEXT NOT NULL,
+  isActive INTEGER AS Boolean NOT NULL DEFAULT 0,
+  isDeleted INTEGER AS Boolean NOT NULL DEFAULT 0,
+
+  playMethod TEXT AS PlayMethod NOT NULL,
+  mediaPlayer TEXT NOT NULL,
+
+  timeListening INTEGER AS Duration NOT NULL DEFAULT 0,
+  startTime INTEGER AS Duration NOT NULL DEFAULT 0,
+  currentTime INTEGER AS Duration NOT NULL DEFAULT 0,
+  lastPlayedAt TEXT AS LocalDateTime,
+
+  startedAt TEXT AS LocalDateTime NOT NULL,
+  updatedAt TEXT AS LocalDateTime NOT NULL,
+
+  -- For books: empty string. For podcast episodes: the episode id. Mirrors the convention
+  -- used by mediaProgress/playbackAction so callers can filter with plain `=` rather than
+  -- null-safe `IS` comparisons.
+  episodeId TEXT NOT NULL DEFAULT '',
+
+  -- The id of the server-side playback session this row is attached to, when one was
+  -- opened via /api/items/{id}/play. Null means the row is locally owned: its listening
+  -- time syncs after the fact through /api/session/local-all as before.
+  serverSessionId TEXT,
+
+  -- How much of timeListening has already been delivered to the server session via
+  -- /api/session/{id}/sync. When a server session dies mid-row, only the remainder
+  -- (timeListening - reportedTimeListening) may be uploaded through the local-session
+  -- path — the server sums listening stats across session rows, so re-reporting
+  -- server-delivered time would double-count it.
+  reportedTimeListening INTEGER AS Duration NOT NULL DEFAULT 0,
+
+  -- The server-relative HLS playlist path from the transcode /play response's
+  -- audioTracks[0].contentUrl — the authoritative stream location, stored rather than
+  -- derived so a non-null value always means a transcode stream was actually opened for
+  -- this attachment. Null for direct-play attachments.
+  hlsStreamPath TEXT,
+
+  PRIMARY KEY(userId, libraryItemId),
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+getActive:
+SELECT * FROM session
+WHERE isActive = 1
+  AND userId = ?;
+
+getAll:
+SELECT * FROM session
+WHERE userId = ?;
+
+-- Returns the (at most one) session row for a given libraryItem regardless of episode.
+getForId:
+SELECT * FROM session
+WHERE libraryItemId = ?
+  AND userId = ?;
+
+-- Returns the session row for a specific (libraryItem, episode) pair. For book sessions
+-- callers should pass episodeId = ''.
+getForEpisode:
+SELECT * FROM session
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND episodeId = :episodeId;
+
+insert:
+INSERT OR REPLACE INTO session
+VALUES ?;
+
+deactivateAll:
+UPDATE session
+SET isActive = 0
+WHERE userId = :userId;
+
+activateOnly:
+UPDATE session
+SET isActive = 1
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND episodeId = :episodeId;
+
+-- Mutates only when the session row's stored episodeId matches the supplied one. For
+-- book sessions both are ''. For podcasts, sibling episodes (if a future schema lets
+-- multiple coexist) aren't clobbered.
+markDeleted:
+UPDATE session
+SET isDeleted = 1
+WHERE libraryItemId = ?
+  AND userId = ?
+  AND episodeId = :episodeId;
+
+delete:
+DELETE FROM session
+WHERE libraryItemId = ?
+  AND userId = ?
+  AND episodeId = :episodeId;
+
+-- Playback time updates target the active session for the user. Scoping by isActive = 1
+-- (rather than (libraryItemId, episodeId)) keeps these queries unchanged from a caller
+-- perspective: there's only ever one active session per user.
+updatePlayback:
+UPDATE session
+SET currentTime = :currentTime,
+    updatedAt = :updatedAt
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND isActive = 1;
+
+updateLastPlayed:
+UPDATE session
+SET lastPlayedAt = :lastPlayedAt
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND isActive = 1;
+
+addTimeListening:
+UPDATE session
+SET timeListening = timeListening + :additionalTime,
+    updatedAt = :updatedAt
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND isActive = 1;
+
+disable:
+UPDATE session
+SET isActive = 0,
+    isDeleted = 1
+WHERE libraryItemId = ?
+  AND userId = ?
+  AND episodeId = :episodeId;
+
+markFinished:
+UPDATE session
+SET currentTime = :currentTime,
+    isActive = 0,
+    updatedAt = :updatedAt
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND episodeId = :episodeId;
+
+-- Attaching resets the watermark: a fresh server session has been told nothing yet.
+attachServerSession:
+UPDATE session
+SET serverSessionId = :serverSessionId,
+    hlsStreamPath = :hlsStreamPath,
+    reportedTimeListening = 0
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId
+  AND episodeId = :episodeId;
+
+-- Detaching keeps the watermark: it marks how much listening time the dead server session
+-- already recorded, so the local-session path only ever uploads the remainder.
+clearServerSession:
+UPDATE session
+SET serverSessionId = NULL,
+    hlsStreamPath = NULL
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId;
+
+updateReportedTimeListening:
+UPDATE session
+SET reportedTimeListening = :reportedTimeListening
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId;
+
+updatePlayMethod:
+UPDATE session
+SET playMethod = :playMethod
+WHERE libraryItemId = :libraryItemId
+  AND userId = :userId;

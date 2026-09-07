@@ -1,0 +1,194 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.common.compose.widgets
+
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardColors
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastForEach
+import androidx.compose.ui.util.fastForEachIndexed
+import androidx.compose.ui.util.fastMaxBy
+import androidx.compose.ui.util.fastSumBy
+import app.campfire.common.compose.extensions.thenIfNotNull
+import app.campfire.core.model.LibraryItem
+import com.slack.circuit.sharedelements.SharedElementTransitionScope
+import kotlin.math.min
+
+private val BookImageSize = 180.dp
+private val BookCornerSize = 12.dp
+const val MaxBookDisplay = 8
+
+data class ItemCollectionSharedTransitionKey(
+  val id: String,
+  val type: ElementType,
+) {
+  enum class ElementType {
+    Bounds,
+    Title,
+  }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+fun ItemCollectionCard(
+  name: String,
+  description: String?,
+  onClick: () -> Unit,
+  items: List<LibraryItem>,
+  modifier: Modifier = Modifier,
+  sharedTransitionKey: String = name,
+  itemSize: Dp = Dp.Unspecified,
+  colors: CardColors = CardDefaults.elevatedCardColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+  ),
+) = SharedElementTransitionScope {
+  val animationScope = findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)
+
+  ElevatedContentCard(
+    modifier = modifier
+      .thenIfNotNull(animationScope) { scope ->
+        sharedBounds(
+          sharedContentState = rememberSharedContentState(
+            ItemCollectionSharedTransitionKey(
+              id = sharedTransitionKey,
+              type = ItemCollectionSharedTransitionKey.ElementType.Bounds,
+            ),
+          ),
+          animatedVisibilityScope = scope,
+          zIndexInOverlay = 0f,
+        )
+      },
+    onClick = onClick,
+    colors = colors,
+  ) {
+    Box {
+      MultiBookLayout(
+        items = items,
+        sharedTransitionKeyModifier = name,
+        itemSize = itemSize,
+        modifier = Modifier
+          .background(MaterialTheme.colorScheme.primaryContainer)
+          .defaultMinSize(minHeight = BookImageSize)
+          .fillMaxWidth()
+          .clip(RoundedCornerShape(BookCornerSize)),
+      )
+
+      CollectionCountBadge(
+        count = items.size,
+        modifier = Modifier
+          .align(Alignment.TopEnd)
+          .padding(8.dp),
+      )
+    }
+
+    Column(
+      Modifier.padding(
+        horizontal = 16.dp,
+        vertical = 16.dp,
+      ),
+    ) {
+      Text(
+        text = name,
+        style = MaterialTheme.typography.titleSmall,
+        maxLines = 1,
+        modifier = Modifier.basicMarquee(),
+      )
+      description?.let { desc ->
+        Text(
+          text = desc,
+          style = MaterialTheme.typography.bodySmall,
+          maxLines = 2,
+          modifier = Modifier.basicMarquee(),
+        )
+      }
+    }
+  }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun MultiBookLayout(
+  items: List<LibraryItem>,
+  modifier: Modifier = Modifier,
+  sharedTransitionKeyModifier: String = "",
+  itemSize: Dp = Dp.Unspecified,
+) = SharedElementTransitionScope {
+  val bookImageSize = itemSize.takeIf { it != Dp.Unspecified } ?: BookImageSize
+  Layout(
+    content = {
+      val size = min(items.size, MaxBookDisplay)
+      items
+        .take(MaxBookDisplay)
+        .forEachIndexed { i, item ->
+          ItemImage(
+            imageUrl = item.media.coverImageUrl,
+            contentDescription = item.media.metadata.title,
+            modifier = Modifier
+              .thenIfNotNull(findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)) {
+                sharedElement(
+                  sharedContentState = rememberSharedContentState(
+                    LibraryItemSharedTransitionKey(
+                      id = item.id + sharedTransitionKeyModifier,
+                      type = LibraryItemSharedTransitionKey.ElementType.Image,
+                    ),
+                  ),
+                  animatedVisibilityScope = it,
+                  zIndexInOverlay = ((size - i) + 1f),
+                )
+              }
+              .clip(RoundedCornerShape(BookCornerSize))
+              .size(bookImageSize),
+          )
+        }
+    },
+    modifier = modifier,
+  ) { measurables, constraints ->
+    val ezConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+    val placeables = measurables.map { it.measure(ezConstraints) }
+
+    // Grab the total width
+    val totalItemWidth = placeables.fastSumBy { it.measuredWidth }
+    val maxItemWidth = placeables.fastMaxBy { it.measuredWidth }?.measuredWidth ?: bookImageSize.roundToPx()
+    val maxItemHeight = placeables.fastMaxBy { it.measuredHeight }?.measuredHeight ?: constraints.minHeight
+
+    // Compute the item offset amount
+    val smallOffset = (constraints.maxWidth - totalItemWidth) / 2
+
+    layout(constraints.maxWidth, maxItemHeight) {
+      if (totalItemWidth < constraints.maxWidth) {
+        // Too few items to offset, just lay them out like a center-aligned row
+        var widthOffset = 0
+        placeables.fastForEach { placeable ->
+          placeable.place(smallOffset + widthOffset, 0)
+          widthOffset += placeable.width
+        }
+      } else {
+        val itemOffset = (constraints.maxWidth - maxItemWidth) / (measurables.size - 1)
+        // Otherwise, layer them like an accordion
+        placeables.fastForEachIndexed { index, placeable ->
+          placeable.place(index * itemOffset, 0, zIndex = -index.toFloat())
+        }
+      }
+    }
+  }
+}

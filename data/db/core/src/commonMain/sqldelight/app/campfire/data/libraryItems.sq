@@ -1,0 +1,156 @@
+import app.campfire.core.model.MediaType;
+import kotlin.Boolean;
+import kotlin.Int;
+
+CREATE TABLE IF NOT EXISTS libraryItem (
+  id TEXT NOT NULL PRIMARY KEY,
+  ino TEXT NOT NULL,
+  libraryId TEXT NOT NULL,
+  oldLibraryItemId TEXT,
+  folderId TEXT NOT NULL,
+  path TEXT NOT NULL,
+  relPath TEXT NOT NULL,
+  isFile INTEGER AS Boolean NOT NULL DEFAULT 0,
+  mtimeMs INTEGER NOT NULL,
+  ctimeMs INTEGER NOT NULL,
+  birthtimeMs INTEGER NOT NULL,
+  addedAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL,
+  isMissing INTEGER AS Boolean NOT NULL DEFAULT 0,
+  isInvalid INTEGER AS Boolean NOT NULL DEFAULT 0,
+  mediaType TEXT AS MediaType NOT NULL,
+  numFiles INTEGER AS Int NOT NULL,
+  size INTEGER NOT NULL,
+
+  serverUrl TEXT NOT NULL,
+  FOREIGN KEY (serverUrl) REFERENCES server(url) ON DELETE CASCADE
+);
+
+insert:
+INSERT OR REPLACE INTO libraryItem
+VALUES ?;
+
+insertOrIgnore:
+INSERT OR IGNORE INTO libraryItem
+VALUES ?;
+
+selectForId:
+SELECT * FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+WHERE libraryItem.id = ?;
+
+selectForIdFull:
+SELECT libraryItem.*, media.*, mediaProgress.* FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE libraryItem.id = :id;
+
+-- Used by the source-of-truth to decide which join to run for an item.
+selectMediaTypeForId:
+SELECT mediaType FROM libraryItem
+WHERE id = ?;
+
+-- Podcast equivalents of selectForId / selectForIdFull. Podcast items don't have a
+-- row in the `media` table, so the book queries above naturally return nothing for
+-- them — these join `podcastMedia` instead.
+selectForPodcastId:
+SELECT * FROM libraryItem
+INNER JOIN podcastMedia ON podcastMedia.libraryItemId = libraryItem.id
+WHERE libraryItem.id = ?;
+
+selectForPodcastIdFull:
+SELECT libraryItem.*, podcastMedia.*, mediaProgress.* FROM libraryItem
+INNER JOIN podcastMedia ON podcastMedia.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE libraryItem.id = :id;
+
+selectForLibrary:
+SELECT * FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+WHERE libraryItem.libraryId = ?;
+
+-- Bare rows for every item in a library regardless of media type (selectForLibrary
+-- joins the book `media` table and silently drops podcasts). Callers dispatch on
+-- `mediaType` per row to hydrate the matching media variant.
+selectAllForLibrary:
+SELECT * FROM libraryItem
+WHERE libraryItem.libraryId = ?;
+
+selectForSeries:
+SELECT libraryItem.*,media.*,mediaProgress.* FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+LEFT JOIN seriesBookJoin ON seriesBookJoin.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE seriesBookJoin.seriesId = :seriesId
+ORDER BY media.metadata_series_sequence ASC;
+
+selectForShelf:
+SELECT libraryItem.*,media.*,mediaProgress.* FROM libraryItem
+INNER JOIN shelfJoin ON shelfJoin.entityId = libraryItem.id
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE shelfJoin.shelfId = :shelfId
+ORDER BY shelfJoin.shelfOrder ASC;
+
+-- Podcast variant: same shape as selectForShelf but joins podcastMedia. Used by
+-- PodcastShelf reads on the home feed.
+selectForPodcastShelf:
+SELECT libraryItem.*,podcastMedia.* FROM libraryItem
+INNER JOIN shelfJoin ON shelfJoin.entityId = libraryItem.id
+INNER JOIN podcastMedia ON podcastMedia.libraryItemId = libraryItem.id
+WHERE shelfJoin.shelfId = ?
+ORDER BY shelfJoin.shelfOrder ASC;
+
+-- Episode variant: pulls the highlighted recent episode per shelf entry. Returns one
+-- row per shelfJoin entry. Entries without an episodeId are filtered out (shouldn't
+-- happen for EpisodeShelf but guards the read path).
+selectForEpisodeShelf:
+SELECT libraryItem.*,podcastMedia.*,podcastEpisode.* FROM libraryItem
+INNER JOIN shelfJoin ON shelfJoin.entityId = libraryItem.id
+INNER JOIN podcastMedia ON podcastMedia.libraryItemId = libraryItem.id
+INNER JOIN podcastEpisode ON podcastEpisode.id = shelfJoin.episodeId
+WHERE shelfJoin.shelfId = ?
+  AND shelfJoin.episodeId IS NOT NULL
+ORDER BY shelfJoin.shelfOrder ASC;
+
+selectForCollection:
+SELECT libraryItem.*,media.*,mediaProgress.* FROM libraryItem
+INNER JOIN collectionsBookJoin ON collectionsBookJoin.libraryItemId = libraryItem.id
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE collectionsBookJoin.collectionsId = :collectionId
+ORDER BY collectionsBookJoin.itemOrder ASC;
+
+selectForAuthorName:
+SELECT libraryItem.*,media.*,mediaProgress.* FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE media.metadata_authorName = :authorName;
+
+deleteForLibrary:
+DELETE FROM libraryItem
+WHERE libraryId = ?;
+
+deleteForId:
+DELETE FROM libraryItem
+WHERE id = ?;
+
+-- Filterable - Count Queries
+
+countForLibrary:
+SELECT count(*) FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+WHERE libraryItem.libraryId = ?;
+

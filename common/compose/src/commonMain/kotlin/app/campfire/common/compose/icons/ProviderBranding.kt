@@ -1,0 +1,70 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.common.compose.icons
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import app.campfire.common.compose.icons.rounded.LocalLibrary
+
+/**
+ * Branding for book info providers, keyed by the provider's stable string key
+ * (`ProviderId.key` in `:data:bookinfo:api`) so this module doesn't depend on
+ * the bookinfo api. Multi-color vectors — render with `Image` (or `Icon` with
+ * `tint = Color.Unspecified`) so the brand colors survive.
+ */
+private const val HARDCOVER = "hardcover"
+private const val AUDIBLE = "audible"
+private const val OPEN_LIBRARY = "openlibrary"
+
+fun providerBrandIcon(providerKey: String): ImageVector? = when (providerKey) {
+  HARDCOVER -> CampfireIcons.Hardcover
+  AUDIBLE -> CampfireIcons.Audible
+  OPEN_LIBRARY -> CampfireIcons.Rounded.LocalLibrary
+  else -> null
+}
+
+@Composable
+fun providerBrandIconTint(providerKey: String): Color? = when (providerKey) {
+  AUDIBLE -> Color.Black
+  OPEN_LIBRARY -> MaterialTheme.colorScheme.onSurface
+  else -> null
+}
+
+fun providerBrandIconPadding(providerKey: String): Dp = when (providerKey) {
+  AUDIBLE -> 4.dp
+  OPEN_LIBRARY -> 4.dp
+  else -> 0.dp
+}
+
+/**
+ * The provider's primary brand color (Hardcover declares #6366F1 as its theme
+ * color; Audible's is its signature orange, #F8991C).
+ */
+fun providerBrandColor(providerKey: String): Color? = when (providerKey) {
+  HARDCOVER -> Color(0xFF6366F1)
+  AUDIBLE -> Color(0xFFF8991C)
+  else -> null
+}
+
+/** A deep shade of the brand hue, mirroring [providerBrandColor]'s scale. */
+fun providerBrandSecondaryColor(providerKey: String): Color? = when (providerKey) {
+  HARDCOVER -> Color(0xFF312E81)
+  AUDIBLE -> Color(0xFF78350F)
+  else -> null
+}
+
+/**
+ * Content color that stays legible on top of [providerBrandColor]. Audible's
+ * orange is light enough that white fails contrast — black is also the
+ * pairing Audible itself uses.
+ */
+fun providerOnBrandColor(providerKey: String): Color? = when (providerKey) {
+  HARDCOVER -> Color.White
+  AUDIBLE -> Color.Black
+  else -> null
+}

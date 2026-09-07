@@ -1,0 +1,51 @@
+CREATE TABLE IF NOT EXISTS collections (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  cover TEXT,
+  coverFullPath TEXT,
+  updatedAt INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL,
+
+  libraryId TEXT NOT NULL,
+  userId TEXT NOT NULL,
+
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+insert:
+INSERT OR REPLACE INTO collections
+VALUES ?;
+
+updateName:
+UPDATE collections
+SET name = ?,
+    updatedAt = ?
+WHERE id = ?;
+
+updateDescription:
+UPDATE collections
+SET description = ?,
+    updatedAt = ?
+WHERE id = ?;
+
+selectAll:
+SELECT * FROM collections
+WHERE userId = ?;
+
+selectById:
+SELECT * FROM collections
+WHERE id = ?;
+
+selectByLibraryId:
+SELECT * FROM collections
+WHERE libraryId = ?
+  AND userId = ?;
+
+delete:
+DELETE FROM collections
+WHERE id = ?;
+
+deleteOld:
+DELETE FROM collections
+WHERE id NOT IN ?;

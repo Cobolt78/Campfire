@@ -1,0 +1,119 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.sessions.sync
+
+import app.campfire.audioplayer.AudioPlayer
+import app.campfire.audioplayer.sync.PlaybackSynchronizer
+import app.campfire.core.di.AppScope
+import app.campfire.core.di.ComponentHolder
+import app.campfire.core.di.UserScope
+import app.campfire.core.extensions.asSeconds
+import app.campfire.core.extensions.epochMilliseconds
+import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
+import app.campfire.sessions.api.SessionsRepository
+import app.campfire.user.api.MediaProgressRepository
+import com.r0adkll.kimchi.annotations.ContributesMultibinding
+import com.r0adkll.kimchi.annotations.ContributesTo
+import kotlin.time.Duration
+import kotlin.uuid.Uuid
+import me.tatarka.inject.annotations.Inject
+
+@ContributesTo(UserScope::class)
+interface MediaProgressSynchronizerUserComponent {
+  val sessionsRepository: SessionsRepository
+  val mediaProgressRepository: MediaProgressRepository
+}
+
+@ContributesMultibinding(AppScope::class)
+@Inject
+class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
+
+  private val component: MediaProgressSynchronizerUserComponent
+    get() = ComponentHolder.component()
+
+  // We want this to process last in the list of synchronizers so other synchros
+  // have the chance to update the local database with the latest information.
+  override val rank: Int = PlaybackSynchronizer.RANK_HIGHEST
+
+  private val userPlayCache = mutableMapOf<String, Boolean>()
+
+  override suspend fun onOverallTimeChanged(libraryItemId: LibraryItemId, overallTime: Duration) {
+    if (userPlayCache[libraryItemId] ?: false) {
+      syncProgress(libraryItemId)
+    }
+  }
+
+  override suspend fun onStateChanged(
+    sessionId: Uuid,
+    libraryItemId: LibraryItemId,
+    state: AudioPlayer.State,
+    previousState: AudioPlayer.State,
+  ) {
+    if (
+      state == AudioPlayer.State.Paused &&
+      previousState == AudioPlayer.State.Playing
+    ) {
+      syncProgress(libraryItemId, force = true)
+    }
+
+    // If the user has deliberately started playback, then we'll want
+    // to mark the [libraryItemId] has having been played and allow it to sync media progress
+    if (
+      state == AudioPlayer.State.Playing &&
+      (
+        previousState == AudioPlayer.State.Paused ||
+          previousState == AudioPlayer.State.Buffering
+        )
+    ) {
+      userPlayCache[libraryItemId] = true
+    }
+
+    // Inversely, if the player finishes or loses state then we want to remove
+    // the playback mark to avoid erroneous progress syncs.
+    if (state == AudioPlayer.State.Finished || state == AudioPlayer.State.Disabled) {
+      userPlayCache.remove(libraryItemId)
+    }
+  }
+
+  private suspend fun syncProgress(libraryItemId: LibraryItemId, force: Boolean = false) {
+    val session = component.sessionsRepository.getSession(libraryItemId) ?: return
+
+    val updatedProgress = MediaProgress(
+      id = MediaProgress.UNKNOWN_ID,
+      userId = session.userId,
+      libraryItemId = session.libraryItem.id,
+      episodeId = session.episodeId,
+      // For podcast episodes the server keys progress by episodeId; mirror that locally
+      // so round-tripped rows align. Books continue to use the media id.
+      mediaItemId = session.episodeId ?: session.libraryItem.media.id,
+      mediaItemType = session.libraryItem.mediaType,
+      // session.duration is episode-aware (falls back to the parent item's duration only
+      // when episodeId is null), so podcast episodes report the correct per-episode total.
+      duration = session.duration.asSeconds(),
+      progress = session.progress,
+      currentTime = session.currentTime.asSeconds(),
+      isFinished = session.isFinished,
+      hideFromContinueListening = false,
+      ebookLocation = null,
+      ebookProgress = null,
+      finishedAt = if (session.isFinished) {
+        session.updatedAt.epochMilliseconds
+      } else {
+        null
+      },
+      lastUpdate = session.updatedAt.epochMilliseconds,
+      startedAt = session.startedAt.epochMilliseconds,
+      source = MediaProgress.Source.Local,
+    )
+
+    // Local mirror only: this keeps the row that drives the sync banner and resume logic
+    // fresh, but never uploads. The server learns playback progress exclusively through
+    // session syncs now (/api/session/{id}/sync while attached, the local-session batch
+    // otherwise — both write server-side MediaProgress), so a parallel PATCH here would be
+    // a redundant second writer of the same position. Explicit finish/unfinish actions
+    // still upload through markFinished/markNotFinished, which this path never handled.
+    component.mediaProgressRepository.updateProgress(updatedProgress, force, skipUpload = true)
+  }
+}

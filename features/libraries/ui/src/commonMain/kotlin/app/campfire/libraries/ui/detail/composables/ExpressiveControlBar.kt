@@ -1,0 +1,875 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
+package app.campfire.libraries.ui.detail.composables
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+import androidx.compose.ui.unit.dp
+import app.campfire.audioplayer.offline.OfflineDownload
+import app.campfire.audioplayer.offline.isNullOrNone
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.filled.MarkFinished
+import app.campfire.common.compose.icons.rounded.Backspace
+import app.campfire.common.compose.icons.rounded.Delete
+import app.campfire.common.compose.icons.rounded.DownloadDone
+import app.campfire.common.compose.icons.rounded.Downloading
+import app.campfire.common.compose.icons.rounded.MarkFinished
+import app.campfire.common.compose.icons.rounded.PlaylistAdd
+import app.campfire.common.compose.icons.rounded.QueuePlayNext
+import app.campfire.common.compose.icons.rounded.Replay
+import app.campfire.common.compose.icons.rounded.Stop
+import app.campfire.common.compose.icons.rounded.StopCircle
+import app.campfire.common.compose.icons.rounded.Warning
+import app.campfire.common.compose.layout.ContentLayout
+import app.campfire.common.compose.layout.LocalContentLayout
+import app.campfire.common.compose.theme.CampfireTheme
+import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.core.extensions.asReadableBytes
+import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.PlayMethod
+import app.campfire.core.model.preview.libraryItem
+import app.campfire.core.model.preview.mediaProgress
+import app.campfire.libraries.ui.detail.composables.slots.ExpressiveControlSlot
+import app.campfire.playlists.api.dialog.AddToPlaylistDialog
+import campfire.features.libraries.ui.generated.resources.Res
+import campfire.features.libraries.ui.generated.resources.action_add_to_dequeue
+import campfire.features.libraries.ui.generated.resources.action_add_to_enqueue
+import campfire.features.libraries.ui.generated.resources.action_add_to_playlist_long
+import campfire.features.libraries.ui.generated.resources.action_add_to_playlist_short
+import campfire.features.libraries.ui.generated.resources.action_delete_download
+import campfire.features.libraries.ui.generated.resources.action_delete_offline
+import campfire.features.libraries.ui.generated.resources.action_retry_download
+import campfire.features.libraries.ui.generated.resources.action_stop_downloading
+import campfire.features.libraries.ui.generated.resources.menu_item_discard_progress
+import campfire.features.libraries.ui.generated.resources.menu_item_discard_progress_short
+import campfire.features.libraries.ui.generated.resources.menu_item_mark_finished
+import campfire.features.libraries.ui.generated.resources.menu_item_mark_finished_short
+import campfire.features.libraries.ui.generated.resources.menu_item_mark_not_finished
+import org.jetbrains.compose.resources.stringResource
+
+@Composable
+internal fun ExpressiveControlBar(
+  isQueued: Boolean,
+  hasSession: Boolean,
+  isCurrentSession: Boolean,
+  mediaProgress: MediaProgress?,
+  offlineDownload: OfflineDownload?,
+  onPlayClick: (PlayMethod?) -> Unit,
+  onDownloadClick: () -> Unit,
+  onMarkFinished: () -> Unit,
+  onMarkNotFinished: () -> Unit,
+  onDiscardProgress: () -> Unit,
+  onStopDownloadClick: () -> Unit,
+  onDeleteDownloadClick: () -> Unit,
+  onAddToPlaylistClick: () -> Unit,
+  onAddToQueueClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  totalSizeInBytes: Long = -1L,
+  isEbookOnly: Boolean = false,
+  canStreamHls: Boolean = false,
+  willStreamHls: Boolean = false,
+) {
+  Surface(
+    modifier = modifier
+      .fillMaxWidth(),
+    shape = MaterialTheme.shapes.extraLarge,
+    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp),
+    ) {
+      val hasProgress = mediaProgress != null &&
+        mediaProgress.progress > 0f &&
+        !mediaProgress.isFinished
+
+      PlayAndDownloadButtons(
+        offlineDownload = offlineDownload,
+        onPlayClick = onPlayClick,
+        onDownloadClick = onDownloadClick,
+        hasProgress = hasProgress,
+        isCurrentSession = isCurrentSession,
+        isEbookOnly = isEbookOnly,
+        canStreamHls = canStreamHls,
+        willStreamHls = willStreamHls,
+      )
+
+      if (!offlineDownload.isNullOrNone()) {
+        Spacer(Modifier.size(8.dp))
+
+        OfflineStatus(
+          offlineDownload = offlineDownload,
+          totalSizeInBytes = totalSizeInBytes,
+          onDeleteClick = onDeleteDownloadClick,
+          onStopClick = onStopDownloadClick,
+          onRetryClick = onDownloadClick,
+        )
+      }
+
+      if (mediaProgress != null) {
+        Spacer(Modifier.size(2.dp))
+      }
+
+      ProgressModifierButtons(
+        hasProgress = hasProgress,
+        onDiscardProgress = onDiscardProgress,
+        mediaProgress = mediaProgress,
+        onMarkFinished = onMarkFinished,
+        onMarkNotFinished = onMarkNotFinished,
+      )
+
+      AddToButtons(
+        isQueued = isQueued,
+        canQueue = hasSession && !isCurrentSession && !isEbookOnly,
+        onAddToPlaylistClick = onAddToPlaylistClick,
+        onAddToQueueClick = onAddToQueueClick,
+      )
+    }
+  }
+}
+
+@Composable
+private fun OfflineStatus(
+  offlineDownload: OfflineDownload,
+  totalSizeInBytes: Long,
+  onDeleteClick: () -> Unit,
+  onStopClick: () -> Unit,
+  onRetryClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Card(
+    shape = MaterialTheme.shapes.medium,
+    colors = CardDefaults.cardColors(
+      containerColor = MaterialTheme.colorScheme.primaryContainer,
+      contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ),
+    modifier = modifier,
+  ) {
+    OfflineTitleBar(
+      state = offlineDownload.state,
+      title = {
+        Text(
+          when (offlineDownload.state) {
+            OfflineDownload.State.None,
+            OfflineDownload.State.Downloading,
+            -> "Downloading"
+
+            OfflineDownload.State.Queued -> "Queued"
+            OfflineDownload.State.Stopped -> "Stopped"
+            OfflineDownload.State.Failed -> "Download failed"
+            OfflineDownload.State.Completed -> "Available for offline"
+          },
+        )
+      },
+      subtitle = if (offlineDownload.state == OfflineDownload.State.Completed) {
+        {
+          Text(offlineDownload.progress.bytes.asReadableBytes())
+        }
+      } else {
+        null
+      },
+      trailing = {
+        AnimatedContent(
+          targetState = offlineDownload.isActive,
+        ) { isActive ->
+          if (isActive) {
+            val stopLabel = stringResource(Res.string.action_stop_downloading)
+            IconButtonTooltip(text = stopLabel) {
+              FilledIconButton(
+                onClick = onStopClick,
+                shapes = IconButtonDefaults.shapes(),
+                modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                  containerColor = MaterialTheme.colorScheme.errorContainer,
+                  contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+              ) {
+                Icon(
+                  CampfireIcons.Rounded.Stop,
+                  contentDescription = stopLabel,
+                  modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                )
+              }
+            }
+          } else {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              if (
+                offlineDownload.state == OfflineDownload.State.Failed ||
+                offlineDownload.state == OfflineDownload.State.Stopped
+              ) {
+                val retryLabel = stringResource(Res.string.action_retry_download)
+                IconButtonTooltip(text = retryLabel) {
+                  IconButton(
+                    onClick = onRetryClick,
+                    shapes = IconButtonDefaults.shapes(),
+                    modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+                  ) {
+                    Icon(
+                      CampfireIcons.Rounded.Replay,
+                      contentDescription = retryLabel,
+                      modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                    )
+                  }
+                }
+
+                Spacer(Modifier.size(8.dp))
+
+                val deleteDownloadLabel = stringResource(Res.string.action_delete_download)
+                IconButtonTooltip(text = deleteDownloadLabel) {
+                  FilledIconButton(
+                    onClick = onDeleteClick,
+                    shapes = IconButtonDefaults.shapes(),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                      containerColor = MaterialTheme.colorScheme.error,
+                      contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                    modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+                  ) {
+                    Icon(
+                      CampfireIcons.Rounded.Delete,
+                      contentDescription = deleteDownloadLabel,
+                      modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                    )
+                  }
+                }
+              } else {
+                val size = ButtonDefaults.ExtraSmallContainerHeight
+                val color = MaterialTheme.colorScheme.error
+                Button(
+                  onClick = onDeleteClick,
+                  shapes = ButtonDefaults.shapes(
+                    shape = ButtonDefaults.squareShape,
+                  ),
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = color,
+                    contentColor = MaterialTheme.colorScheme.contentColorFor(color),
+                  ),
+                  modifier = Modifier
+                    .heightIn(size),
+                  contentPadding = ButtonDefaults.contentPaddingFor(size),
+                ) {
+                  Icon(
+                    CampfireIcons.Rounded.Delete,
+                    contentDescription = stringResource(Res.string.action_stop_downloading),
+                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(size)),
+                  )
+                  Spacer(Modifier.size(ButtonDefaults.iconSpacingFor(size)))
+                  Text(
+                    text = stringResource(Res.string.action_delete_offline),
+                    style = ButtonDefaults.textStyleFor(size),
+                  )
+                }
+              }
+            }
+          }
+        }
+      },
+      modifier = Modifier.testTag("offline_status_title"),
+    )
+
+    if (!offlineDownload.isCompleted) {
+      val actualProgress = if (totalSizeInBytes > 0L) {
+        (offlineDownload.progress.bytes.toFloat() / totalSizeInBytes.toFloat())
+          .coerceIn(0f, 1f)
+      } else {
+        offlineDownload.progress.percent
+      }
+
+      OfflineProgressBar(
+        progress = actualProgress,
+        bytesDownloaded = offlineDownload.progress.bytes,
+        contentLength = totalSizeInBytes.takeIf { it > 0L }
+          ?: offlineDownload.contentLength,
+        isIndeterminate = offlineDownload.progress.indeterminate,
+      )
+    }
+  }
+}
+
+@Composable
+internal fun OfflineTitleBar(
+  state: OfflineDownload.State,
+  title: @Composable () -> Unit,
+  subtitle: (@Composable () -> Unit)?,
+  trailing: @Composable () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier = modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(
+      when (state) {
+        OfflineDownload.State.None -> CampfireIcons.Rounded.Downloading
+        OfflineDownload.State.Queued -> CampfireIcons.Rounded.Downloading
+        OfflineDownload.State.Downloading -> CampfireIcons.Rounded.Downloading
+        OfflineDownload.State.Stopped -> CampfireIcons.Rounded.StopCircle
+        OfflineDownload.State.Completed -> CampfireIcons.Rounded.DownloadDone
+        OfflineDownload.State.Failed -> CampfireIcons.Rounded.Warning
+      },
+      contentDescription = null,
+      modifier = Modifier
+        .padding(16.dp),
+    )
+
+    Column(
+      modifier = Modifier.weight(1f),
+      verticalArrangement = Arrangement.Center,
+      horizontalAlignment = Alignment.Start,
+    ) {
+      ProvideTextStyle(
+        if (subtitle != null) {
+          MaterialTheme.typography.titleSmall
+        } else {
+          MaterialTheme.typography.titleMedium
+        },
+      ) {
+        title()
+      }
+
+      if (subtitle != null) {
+        ProvideTextStyle(
+          MaterialTheme.typography.labelMedium,
+        ) {
+          CompositionLocalProvider(
+            LocalContentColor provides LocalContentColor.current.copy(alpha = 0.65f),
+          ) {
+            subtitle()
+          }
+        }
+      }
+    }
+
+    Spacer(Modifier.width(8.dp))
+
+    trailing()
+
+    Spacer(Modifier.width(16.dp))
+  }
+}
+
+@Composable
+private fun OfflineProgressBar(
+  progress: Float,
+  bytesDownloaded: Long,
+  contentLength: Long,
+  isIndeterminate: Boolean,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier = modifier
+      .padding(
+        start = 16.dp,
+        end = 16.dp,
+        bottom = 8.dp,
+      ),
+  ) {
+    if (isIndeterminate) {
+      LinearWavyProgressIndicator(
+        trackColor = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("indeterminate_progress_bar"),
+      )
+    } else {
+      LinearWavyProgressIndicator(
+        progress = { progress },
+        trackColor = MaterialTheme.colorScheme.surface,
+        color = LocalContentColor.current,
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("determinate_progress_bar"),
+      )
+    }
+
+    Spacer(Modifier.height(4.dp))
+
+    AnimatedVisibility(
+      visible = !isIndeterminate,
+    ) {
+      Row(
+        Modifier.fillMaxWidth(),
+      ) {
+        Text(
+          text = bytesDownloaded.asReadableBytes(),
+          style = MaterialTheme.typography.labelSmall,
+          modifier = Modifier.weight(1f),
+        )
+        Text(
+          text = contentLength.asReadableBytes(),
+          textAlign = TextAlign.End,
+          style = MaterialTheme.typography.labelSmall,
+          modifier = Modifier.weight(1f),
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun ProgressModifierButtons(
+  hasProgress: Boolean,
+  onDiscardProgress: () -> Unit,
+  mediaProgress: MediaProgress?,
+  onMarkFinished: () -> Unit,
+  onMarkNotFinished: () -> Unit,
+) {
+  val isSupportingContent = LocalContentLayout.current == ContentLayout.Supporting
+
+  val size = ButtonDefaults.ExtraSmallContainerHeight
+  val iconSize = ButtonDefaults.iconSizeFor(size)
+  val iconSpacing = ButtonDefaults.iconSpacingFor(size)
+  val textStyle = ButtonDefaults.textStyleFor(size)
+
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .heightIn(size),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    val shapes = ButtonDefaults.shapes(
+      shape = ButtonDefaults.squareShape,
+      pressedShape = ButtonDefaults.shape,
+    )
+
+    if (hasProgress) {
+      Button(
+        onClick = onDiscardProgress,
+        shapes = shapes,
+        contentPadding = ButtonDefaults.ExtraSmallContentPadding,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = MaterialTheme.colorScheme.secondary,
+          contentColor = MaterialTheme.colorScheme.onSecondary,
+        ),
+        modifier = Modifier
+          .weight(1f)
+          .heightIn(size)
+          .testTag("button_discard_progress"),
+      ) {
+        Icon(
+          CampfireIcons.Rounded.Backspace,
+          contentDescription = null,
+          modifier = Modifier.size(iconSize),
+        )
+        Spacer(Modifier.size(iconSpacing))
+        Text(
+          text = if (isSupportingContent) {
+            stringResource(Res.string.menu_item_discard_progress_short)
+          } else {
+            stringResource(Res.string.menu_item_discard_progress)
+          },
+          style = textStyle,
+        )
+      }
+    }
+
+    // Show the mark as (not) finished buttons based on the state
+    if (mediaProgress?.isFinished != true) {
+      Button(
+        onClick = onMarkFinished,
+        shapes = shapes,
+        contentPadding = ButtonDefaults.ExtraSmallContentPadding,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = MaterialTheme.colorScheme.secondary,
+          contentColor = MaterialTheme.colorScheme.onSecondary,
+        ),
+        modifier = Modifier
+          .weight(1f)
+          .heightIn(size)
+          .testTag("button_mark_finished"),
+      ) {
+        Icon(
+          CampfireIcons.Rounded.MarkFinished,
+          contentDescription = null,
+          modifier = Modifier.size(iconSize),
+        )
+        Spacer(Modifier.size(iconSpacing))
+        Text(
+          text = if (isSupportingContent) {
+            stringResource(Res.string.menu_item_mark_finished_short)
+          } else {
+            stringResource(Res.string.menu_item_mark_finished)
+          },
+          style = textStyle,
+        )
+      }
+    } else {
+      FilledTonalButton(
+        onClick = onMarkNotFinished,
+        shapes = shapes,
+        contentPadding = ButtonDefaults.ExtraSmallContentPadding,
+        modifier = Modifier
+          .weight(1f)
+          .heightIn(size)
+          .testTag("button_mark_not_finished"),
+      ) {
+        Icon(
+          CampfireIcons.Filled.MarkFinished,
+          contentDescription = null,
+          modifier = Modifier.size(iconSize),
+        )
+        Spacer(Modifier.size(iconSpacing))
+        Text(
+          text = stringResource(Res.string.menu_item_mark_not_finished),
+          style = textStyle,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun AddToButtons(
+  isQueued: Boolean,
+  canQueue: Boolean,
+  onAddToPlaylistClick: () -> Unit,
+  onAddToQueueClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val size = ButtonDefaults.MinHeight
+  val iconSize = ButtonDefaults.iconSizeFor(size)
+  val iconSpacing = ButtonDefaults.iconSpacingFor(size)
+  val textStyle = ButtonDefaults.textStyleFor(size)
+  val contentPadding = ButtonDefaults.contentPaddingFor(size)
+
+  Row(
+    horizontalArrangement = Arrangement.spacedBy(2.dp),
+    modifier = Modifier.height(IntrinsicSize.Min),
+  ) {
+    val smallCornerSize by animateDpAsState(
+      if (canQueue) 4.dp else 28.dp,
+    )
+    Button(
+      onClick = onAddToPlaylistClick,
+      shapes = ButtonDefaults.shapes(
+        shape = RoundedCornerShape(
+          topStart = 28.dp,
+          bottomStart = 28.dp,
+          topEnd = smallCornerSize,
+          bottomEnd = smallCornerSize,
+        ),
+        pressedShape = RoundedCornerShape(8.dp),
+      ),
+      contentPadding = contentPadding,
+      colors = ButtonDefaults.buttonColors(
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+      ),
+      modifier = modifier
+        .weight(1f)
+        .heightIn(size)
+        .testTag("button_add_to_playlist"),
+    ) {
+      Icon(
+        CampfireIcons.Rounded.PlaylistAdd,
+        contentDescription = null,
+        modifier = Modifier.size(iconSize),
+      )
+      Spacer(Modifier.size(iconSpacing))
+      Text(
+        text = if (canQueue) {
+          stringResource(Res.string.action_add_to_playlist_short)
+        } else {
+          stringResource(Res.string.action_add_to_playlist_long)
+        },
+        style = textStyle,
+      )
+    }
+
+    AnimatedVisibility(
+      visible = canQueue,
+      modifier = Modifier.weight(1f),
+    ) {
+      val containerColor by animateColorAsState(
+        if (isQueued) {
+          MaterialTheme.colorScheme.secondary
+        } else MaterialTheme.colorScheme.secondaryContainer,
+      )
+      val contentColor by animateColorAsState(
+        if (isQueued) {
+          MaterialTheme.colorScheme.onSecondary
+        } else MaterialTheme.colorScheme.onSecondaryContainer,
+      )
+      Button(
+        onClick = onAddToQueueClick,
+        shapes = ButtonDefaults.shapes(
+          shape = RoundedCornerShape(
+            topStart = 4.dp,
+            bottomStart = 4.dp,
+            topEnd = 28.dp,
+            bottomEnd = 28.dp,
+          ),
+          pressedShape = RoundedCornerShape(8.dp),
+        ),
+        contentPadding = contentPadding,
+        colors = ButtonDefaults.buttonColors(
+          containerColor = containerColor,
+          contentColor = contentColor,
+        ),
+        modifier = modifier
+          .fillMaxWidth()
+          .heightIn(size)
+          .testTag("button_add_to_queue"),
+      ) {
+        Icon(
+          if (isQueued) {
+            CampfireIcons.Filled.QueuePlayNext
+          } else CampfireIcons.Rounded.QueuePlayNext,
+          contentDescription = null,
+          modifier = Modifier.size(iconSize),
+        )
+        Spacer(Modifier.size(iconSpacing))
+        Text(
+          text = if (isQueued) {
+            stringResource(Res.string.action_add_to_dequeue)
+          } else {
+            stringResource(Res.string.action_add_to_enqueue)
+          },
+          style = textStyle,
+        )
+      }
+    }
+  }
+}
+
+class ControlSlotProvider : PreviewParameterProvider<ExpressiveControlSlot> {
+  override val values: Sequence<ExpressiveControlSlot> = sequenceOf(
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(numOfChapters = 0, numTracks = 0, ebookFormat = "epub"),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      willStreamHls = true,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = true,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = true,
+      isQueued = true,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = mediaProgress(),
+      isCurrentSession = true,
+      hasSession = true,
+      isQueued = true,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = "",
+        state = OfflineDownload.State.Failed,
+        contentLength = 5L * 1024L * 1024L,
+        progress = OfflineDownload.Progress(0L, 0f, true),
+      ),
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = "",
+        state = OfflineDownload.State.Downloading,
+        contentLength = 5L * 1024L * 1024L,
+        progress = OfflineDownload.Progress(
+          bytes = 2L * 1024L * 1024L,
+          percent = (2f / 5f),
+        ),
+      ),
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = "",
+        state = OfflineDownload.State.Downloading,
+        contentLength = 5L * 1024L * 1024L,
+        progress = OfflineDownload.Progress(
+          bytes = 2L * 1024L * 1024L,
+          percent = (2f / 5f),
+          indeterminate = true,
+        ),
+      ),
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+    ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = "",
+        state = OfflineDownload.State.Completed,
+        contentLength = 564L * 1024L * 1024L,
+        progress = OfflineDownload.Progress(
+          bytes = 2L * 1024L * 1024L,
+          percent = (2f / 5f),
+        ),
+      ),
+      mediaProgress = mediaProgress(),
+      isCurrentSession = false,
+      hasSession = false,
+      isQueued = false,
+      showConfirmDownloadDialogSetting = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+    ),
+  )
+}
+
+@Preview(widthDp = 365)
+@Composable
+fun ExpressiveControlSlotPreview(
+  @PreviewParameter(ControlSlotProvider::class) slot: ExpressiveControlSlot,
+) {
+  CampfireTheme(
+    useDarkColors = false,
+  ) {
+    CompositionLocalProvider(
+      LocalContentLayout provides ContentLayout.Root,
+    ) {
+      Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+      ) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+              vertical = 24.dp,
+            ),
+        ) {
+          slot.Content(Modifier) {}
+        }
+      }
+    }
+  }
+}
+
+@Preview
+@Composable
+fun DarkExpressiveControlSlotPreview(
+  @PreviewParameter(ControlSlotProvider::class) slot: ExpressiveControlSlot,
+) {
+  CampfireTheme(
+    useDarkColors = true,
+  ) {
+    CompositionLocalProvider(
+      LocalContentLayout provides ContentLayout.Root,
+    ) {
+      Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+      ) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+              vertical = 24.dp,
+            ),
+        ) {
+          slot.Content(Modifier) {}
+        }
+      }
+    }
+  }
+}

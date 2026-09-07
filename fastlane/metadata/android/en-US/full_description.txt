@@ -1,0 +1,22 @@
+Campfire is an unofficial, feature-rich native client for Audiobookshelf, the self-hosted audiobook and podcast server.
+
+Connect your server and enjoy your library on the go.
+
+Features:
+
+* Browse, filter and search your libraries: books, series, collections, playlists, authors, shows, and more
+* Stream audiobooks from your server, or download them for offline listening
+* Listening progress synced with your server and other devices in real time
+* Android Auto support for a hands-free experience while driving
+* Home screen widget for controlling playback on the fly
+* Landscape, foldables, and large screens supported natively
+* Listening stats: track your sessions, days listened, and minutes played
+* Sleep timer with shake-to-reset
+* OIDC authentication supported
+* Multiple accounts and servers, with fast switching
+* Content dynamically themed from cover art
+* Personalized theming with a selection of built-in themes or the ability to customize your own
+
+Campfire requires a self-hosted Audiobookshelf server to connect to. Visit audiobookshelf.org to learn how to set one up.
+
+This is a third-party client and is not affiliated with the Audiobookshelf project.

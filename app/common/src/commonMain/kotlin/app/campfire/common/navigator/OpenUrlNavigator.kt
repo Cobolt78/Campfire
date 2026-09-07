@@ -1,0 +1,24 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.common.navigator
+
+import app.campfire.common.screens.UrlScreen
+import com.slack.circuit.runtime.Navigator
+import com.slack.circuit.runtime.screen.Screen
+
+class OpenUrlNavigator(
+  private val navigator: Navigator,
+  private val onOpenUrl: (String) -> Unit,
+) : Navigator by navigator {
+
+  override fun goTo(screen: Screen): Boolean {
+    return when (screen) {
+      is UrlScreen -> {
+        onOpenUrl(screen.url)
+        true
+      }
+      else -> navigator.goTo(screen)
+    }
+  }
+}

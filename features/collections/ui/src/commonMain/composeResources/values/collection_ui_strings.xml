@@ -1,0 +1,37 @@
+<resources>
+  <string name="collections_title">Collections</string>
+
+  <plurals name="filter_bar_collection_count">
+    <item quantity="one">%1$d Collection</item>
+    <item quantity="other">%1$d Collections</item>
+  </plurals>
+
+  <string name="error_collection_items_message">Something went wrong when trying to load this library's collections</string>
+  <string name="empty_collection_items_message">Doesn't look like you have any collections. Try adding one now!</string>
+  <string name="error_collection_detail_message">Something went wrong when trying to load this collection</string>
+
+  <string name="action_add_new_collection">Create new</string>
+  <string name="action_edit_collection">Edit</string>
+  <string name="action_back">Back</string>
+  <string name="action_close">Close</string>
+  <string name="action_delete_collection">Delete collection</string>
+  <string name="action_delete_selected_items">Delete selected items</string>
+
+  <string name="dialog_confirm_delete_title">Delete collection</string>
+  <string name="dialog_confirm_delete_message">Are you sure you want to delete</string>
+  <string name="dialog_confirm_delete_action_delete">Delete</string>
+  <string name="dialog_confirm_delete_action_cancel">Cancel</string>
+
+  <string name="edit_collection_bottomsheet_title">Edit collection</string>
+  <string name="edit_collection_bottomsheet_input_title_label">Title</string>
+  <string name="edit_collection_bottomsheet_input_description_label">Description</string>
+  <string name="edit_collection_bottomsheet_action_creating">Updating</string>
+  <string name="edit_collection_bottomsheet_action_create">Update</string>
+
+  <string name="dialog_add_collection_action_dismiss">Cancel</string>
+  <string name="dialog_add_collection_action_create">Create</string>
+  <string name="dialog_add_collection_name_label">New collection name</string>
+  <string name="dialog_add_collection_title">Add to a collection</string>
+  <string name="dialog_add_collection_text">Choose an existing collection or create a new one to add </string>
+  <string name="dialog_add_collection_error_message">Something went wrong when trying to load your collections</string>
+</resources>

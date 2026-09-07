@@ -1,0 +1,92 @@
+import kotlin.Boolean;
+import kotlin.Int;
+import kotlin.String;
+import kotlin.collections.List;
+
+CREATE TABLE IF NOT EXISTS server (
+  url TEXT NOT NULL PRIMARY KEY,
+  userId TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  scannerFindCovers INTEGER AS Boolean NOT NULL DEFAULT 0,
+  scannerCoverProvider TEXT NOT NULL,
+  scannerParseSubtitle INTEGER AS Boolean NOT NULL DEFAULT 0,
+  scannerPreferMatchedMetadata INTEGER AS Boolean NOT NULL DEFAULT 0,
+  scannerDisableWatcher INTEGER AS Boolean NOT NULL DEFAULT 0,
+  storeCoverWithItem INTEGER AS Boolean NOT NULL DEFAULT 0,
+  storeMetadataWithItem INTEGER AS Boolean NOT NULL DEFAULT 0,
+  metadataFileFormat TEXT NOT NULL,
+  rateLimitLoginRequests INTEGER AS Int NOT NULL DEFAULT 0,
+  rateLimitLoginWindow INTEGER NOT NULL DEFAULT 0,
+  backupSchedule TEXT NOT NULL,
+  backupsToKeep INTEGER AS Int NOT NULL DEFAULT 0,
+  maxBackupSize INTEGER AS Int NOT NULL DEFAULT 0,
+  loggerDailyLogsToKeep INTEGER AS Int NOT NULL DEFAULT 0,
+  loggerScannerLogsToKeep INTEGER AS Int NOT NULL DEFAULT 0,
+  homeBookshelfView INTEGER AS Int NOT NULL DEFAULT 0,
+  bookshelfView INTEGER AS Int NOT NULL DEFAULT 0,
+  sortingIgnorePrefix INTEGER AS Boolean NOT NULL DEFAULT 0,
+  sortingPrefixes TEXT AS List<String> NOT NULL,
+  chromecastEnabled INTEGER AS Boolean NOT NULL DEFAULT 0,
+  dateFormat TEXT NOT NULL,
+  timeFormat TEXT NOT NULL,
+  language TEXT NOT NULL,
+  logLevel INTEGER AS Int NOT NULL DEFAULT 0,
+  version TEXT NOT NULL
+);
+
+selectAll:
+SELECT * FROM server
+INNER JOIN user ON user.id = server.userId;
+
+selectByUrl:
+SELECT * FROM server
+INNER JOIN user ON user.id = server.userId
+WHERE url = ?;
+
+selectByUserId:
+SELECT * FROM server
+INNER JOIN user ON user.id = server.userId
+WHERE userId = ?;
+
+insert:
+INSERT OR REPLACE INTO server
+VALUES ?;
+
+update:
+UPDATE server
+SET name = :name,
+    scannerFindCovers = :scannerFindCovers,
+    scannerCoverProvider = :scannerCoverProvider,
+    scannerParseSubtitle = :scannerParseSubtitle,
+    scannerPreferMatchedMetadata = :scannerPreferMatchedMetadata,
+    scannerDisableWatcher = :scannerDisableWatcher,
+    storeCoverWithItem = :storeCoverWithItem,
+    storeMetadataWithItem = :storeMetadataWithItem,
+    metadataFileFormat = :metadataFileFormat,
+    rateLimitLoginRequests = :rateLimitLoginRequests,
+    rateLimitLoginWindow = :rateLimitLoginWindow,
+    backupSchedule = :backupSchedule,
+    backupsToKeep = :backupsToKeep,
+    maxBackupSize = :maxBackupSize,
+    loggerDailyLogsToKeep = :loggerDailyLogsToKeep,
+    loggerScannerLogsToKeep = :loggerScannerLogsToKeep,
+    homeBookshelfView = :homeBookshelfView,
+    bookshelfView = :bookshelfView,
+    sortingIgnorePrefix = :sortingIgnorePrefix,
+    sortingPrefixes = :sortingPrefixes,
+    chromecastEnabled = :chromecastEnabled,
+    dateFormat = :dateFormat,
+    timeFormat = :timeFormat,
+    language = :language,
+    logLevel = :logLevel,
+    version = :version
+WHERE userId = :userId;
+
+updateName:
+UPDATE server
+SET name = ?
+WHERE userId = ?;
+
+delete:
+DELETE FROM server
+WHERE userId = ?;

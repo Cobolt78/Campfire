@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="notification_content_title">Playback cannot be resumed</string>
+  <string name="notification_content_text">Press on the play button on the media notification if it
+    is still present, otherwise please open the app to start the playback and re-connect the session
+    to the controller</string>
+  <string name="notification_channel_name">Audio Playback Notifications</string>
+
+  <string name="cast_failed_resumed_locally">Casting failed — resumed on this phone, paused</string>
+
+  <string name="hls_failed_switched_to_direct">Streaming interrupted — switched to direct playback</string>
+
+  <string name="download_notification_channel_name">Offline Download Notifications</string>
+  <string name="download_notification_channel_description">Notifications about downloading media for
+    offline playback will appear in this channel</string>
+  <!-- Appended to the Media3-provided status label when more than one library item is in flight.
+       Example: "Downloading · 3 items". -->
+  <string name="download_notification_title_with_count">%1$s · %2$d items</string>
+  <!-- Notification expanded summary line. Example: "42% · 1 of 3 done". -->
+  <string name="download_notification_summary">%1$d%% · %2$d of %3$d done</string>
+  <!-- Notification header sub-text. Rendered next to the app name as "Campfire · 3 items". -->
+  <plurals name="download_notification_items">
+    <item quantity="one">%d item</item>
+    <item quantity="other">%d items</item>
+  </plurals>
+
+  <string name="exo_controls_skip_backward">Skip backward</string>
+  <string name="exo_controls_skip_forward">Skip forward</string>
+  <string name="exo_controls_skip_next">Skip next</string>
+  <string name="exo_controls_skip_previous">Skip previous</string>
+  <string name="folder_home_title">Home</string>
+  <string name="folder_shows_title">Shows</string>
+  <string name="folder_series_title">Series</string>
+  <string name="folder_collections_title">Collections</string>
+  <string name="folder_authors_title">Authors</string>
+  <string name="folder_playlists_title">Playlists</string>
+  <string name="folder_downloads_title">Downloads</string>
+</resources>

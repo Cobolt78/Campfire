@@ -1,0 +1,37 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.home.ui.composables
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.PodcastEpisodeId
+import app.campfire.core.model.ShelfEntity
+import app.campfire.core.offline.OfflineStatus
+import app.campfire.home.ui.UiShelf
+
+@Composable
+fun ShelfListItem(
+  shelf: UiShelf<ShelfEntity>,
+  offlineStatus: (LibraryItemId) -> OfflineStatus,
+  progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
+  onItemClick: (Any) -> Unit,
+  onViewAllUpcomingClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier = modifier,
+  ) {
+    ShelfHeader(shelf)
+    ShelfContent(
+      shelf = shelf,
+      offlineStatus = offlineStatus,
+      progressStatus = progressStatus,
+      onItemClick = onItemClick,
+      onViewAllUpcomingClick = onViewAllUpcomingClick,
+    )
+  }
+}

@@ -1,0 +1,22 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.collections.ui.list
+
+import app.campfire.core.coroutines.LoadState
+import app.campfire.core.model.Collection
+import app.campfire.core.settings.GroupDisplayState
+import com.slack.circuit.runtime.CircuitUiEvent
+import com.slack.circuit.runtime.CircuitUiState
+
+data class CollectionsUiState(
+  val collectionContentState: LoadState<out List<Collection>>,
+  val displayState: GroupDisplayState,
+  val eventSink: (CollectionsUiEvent) -> Unit,
+) : CircuitUiState
+
+sealed interface CollectionsUiEvent : CircuitUiEvent {
+  data object Back : CollectionsUiEvent
+  data object ToggleDisplayState : CollectionsUiEvent
+  data class CollectionClick(val collection: Collection) : CollectionsUiEvent
+}

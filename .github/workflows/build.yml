@@ -1,0 +1,374 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+  pull_request:
+
+jobs:
+  danger-pr:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    name: "danger-pr"
+    container:
+      image: docker://ghcr.io/r0adkll/danger-kotlin:2.0.8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run Danger
+        run: danger-kotlin ci --failOnErrors --no-publish-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  code-style:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' }}
+        with:
+          token: ${{ secrets.CAMPFIRE_BOT_PAT }}
+          ref: ${{ github.head_ref }}
+
+      - uses: actions/checkout@v7
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository && github.event_name != 'push' }}
+
+      - name: Cache ktlint
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/campfire
+          key: ktlint-${{ runner.os }}-${{ hashFiles('scripts/ktlint') }}
+
+      - name: Check code style with ktlint
+        if: always()
+        run: ./scripts/ktlint --format
+
+      - name: Push changes to PR if exist
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' }}
+        env:
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        run: |
+          # If there are any changes from running the formatter, push to PR
+          if [[ $(git diff --stat .) != '' ]]; then
+            echo "Changes detected…"
+            # We only want to push changes to the branch if we are on a pull request
+            if [[ "$IS_PULL_REQUEST" == "true" ]]; then
+              echo "Pull Request, pushing changes to branch"
+              git config user.name Rotom-Bot
+              git config user.email veedubusc+deckbox@gmail.com
+              git commit -am "Automated Code Style Updates"
+              git push
+            fi
+
+            # If there are changes, always fail
+            exit 1
+          fi
+
+  code-coverage:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Kotlin/Native dist + cinterop caches live outside ~/.gradle. Cache them so KMP
+      # configuration / cinterop steps don't re-download the K/N dist on every run.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Download Google Services JSON
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > app/android/google-services.json
+          else
+            echo "Skipping google-services.json (no secret available — fork PR or external contributor)"
+          fi
+
+      - name: Check skip-coverage label is added
+        id: label-check
+        run: |
+          if gh api --jq '.labels.[].name' /repos/r0adkll/Campfire/pulls/${{ github.event.number }} | grep -q "skip-coverage"
+          then
+            echo "SKIP_COVERAGE=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SKIP_COVERAGE=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check label output
+        run: echo "${{ steps.label-check.outputs.SKIP_COVERAGE }}"
+
+      - name: Run tests and generate coverage report
+        if: ${{ steps.label-check.outputs.SKIP_COVERAGE == 'false' }}
+        run: ./gradlew --quiet jvmTest koverXmlReport
+
+      - name: Add coverage report to PR
+        if: ${{ steps.label-check.outputs.SKIP_COVERAGE == 'false' }}
+        id: kover
+        uses: mi-kas/kover-report@v2
+        with:
+          path: ${{ github.workspace }}/build/reports/kover/report.xml
+          title: Code Coverage
+          token: ${{ secrets.CAMPFIRE_BOT_PAT }}
+          update-comment: true
+          min-coverage-overall: 50
+          min-coverage-changed-files: 80
+          coverage-counter-type: LINE
+
+# Ignoring failing this task for now until we set out to bring coverage up to snuff
+#      - name: Fail if coverage is not met
+#        if: ${{ steps.label-check.outputs.SKIP_COVERAGE == 'false' }}
+#        run: |
+#          if [[ "${{ steps.kover.outputs.coverage-changed-files }}" -lt 50 ]]; then
+#            exit 1
+#          fi
+
+  android:
+    name: Android / Compilation
+    needs: [code-style]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Download Google Services JSON
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > app/android/google-services.json
+          else
+            echo "Skipping google-services.json (no secret available — fork PR or external contributor)"
+          fi
+
+      - name: Build-logic tests
+        run: ./gradlew -p gradle/build-logic :convention:test
+
+      # Guards the source-of-truth invariant that the build depends on:
+      # campfire.versionCode must equal deriveVersionCode(campfire.version).
+      - name: Verify versionCode matches version
+        run: ./gradlew :app:android:verifyVersionCode
+
+      - name: Validate Android compilation
+        run: ./gradlew :app:android:compileAlphaReleaseSources
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-compile-reports
+          path: |
+            **/build/reports/*
+
+  android-apk:
+    name: Android / APK
+    # Async w.r.t. `android` validation — runs in parallel, only on first-party PRs so we
+    # have somewhere to post the comment (and access to first-party secrets if needed).
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    needs: [code-style]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Setup swap
+        run: |
+          sudo swapon --show
+          sudo swapoff -a
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo swapon -s
+
+      - name: Free up disk space
+        run: |
+          sudo apt purge -yq $(dpkg -l | grep '^ii' | awk '{ print $2 }' | grep -P '(aspnetcore|cabal-|dotnet-|ghc-|libmono|mongodb-|mysql-|php)') \
+            firefox google-chrome-stable google-cloud-cli microsoft-edge-stable mono-devel mono-runtime-common monodoc-manual powershell ruby
+          sudo apt autoremove -yq
+          sudo apt clean
+          sudo rm -fr /opt/ghc /opt/hostedtoolcache /opt/az /opt/microsoft /opt/google /usr/lib/node_modules /usr/local/share/boost /usr/share/dotnet /usr/share/swift
+
+      - name: Generate build number
+        shell: bash
+        run: echo "ORG_GRADLE_PROJECT_CAMPFIRE_VERSIONCODE=$(( $GITHUB_RUN_NUMBER + 10000 ))" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Download Google Services JSON
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > app/android/google-services.json
+          else
+            echo "Skipping google-services.json (no secret available)"
+          fi
+
+      - name: Build Alpha Release APK
+        run: ./gradlew :app:android:assembleAlphaRelease
+
+      - name: Upload APK
+        id: upload_artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-alpha-release-apk
+          path: app/android/build/outputs/apk/alpha/release/android-alpha-release.apk
+
+      - name: Post Artifact URL to PR
+        uses: thollander/actions-comment-pull-request@v3
+        with:
+          message: |
+            [Android APK](${{ steps.upload_artifact.outputs.artifact-url }}) @ ${{ github.sha }}
+          comment-tag: apk_url
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-apk-reports
+          path: |
+            **/build/reports/*
+
+  desktop:
+    needs: [code-style]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build Desktop App
+        run: ./gradlew --quiet :app:desktop:packageDistributionForCurrentOS
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-build-binaries
+          path: app/desktop/build/compose/binaries
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-reports
+          path: |
+            **/build/reports/*
+
+  ios:
+    name: iOS / Simulator App
+    needs: [code-style]
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Kotlin/Native dist + cinterop caches live outside ~/.gradle, so they aren't
+      # restored by setup-java's gradle cache or setup-gradle. Caching ~/.konan
+      # avoids re-downloading and re-compiling the K/N dist on every run.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      # xcodebuild triggers ./gradlew :app:ios:embedAndSignAppleFrameworkForXcode
+      # via the project's Run Script build phase, producing the shared K/N framework
+      # before linking the simulator .app.
+      # `-arch arm64` is required: without it xcodebuild builds for both arm64
+      # and x86_64 simulator slices, and Compose's syncComposeResourcesForIos
+      # fails with "Unknown iOS simulator arch: 'x86_64'". macos-latest runners
+      # are Apple Silicon, so arm64 is the only slice we need.
+      - name: Build iOS simulator app
+        run: |
+          xcodebuild build \
+            -project app/ios/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -arch arm64 \
+            -derivedDataPath build
+
+      - name: Upload iOS simulator app
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-simulator-app
+          path: build/Build/Products/Debug-iphonesimulator/*
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-reports
+          path: |
+            **/build/reports/*

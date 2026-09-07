@@ -1,0 +1,34 @@
+<resources>
+  <string name="welcome_title">Campfire</string>
+  <string name="welcome_add_campsite_title">Add a campsite</string>
+  <string name="welcome_add_campsite_subtitle">Connect your audiobookshelf server and begin listening to stories</string>
+
+  <string name="label_server_url">Server address</string>
+  <string name="label_server_name_placeholder">Enter a campsite name</string>
+  <string name="invalid_server_url">Invalid address</string>
+  <string name="valid_server_url">Connected!</string>
+  <string name="loading_server_url">Testing…</string>
+  <string name="label_username">Username</string>
+  <string name="label_password">Password</string>
+  <string name="action_add_campsite">Add campsite</string>
+  <string name="action_login_openid">Login with OpenID</string>
+
+  <string name="label_authenticating_loading_message">Logging in…</string>
+  <string name="label_login_error_network">A network error has occurred. Please try again.</string>
+  <string name="label_login_error_auth">The provided username and password combination is incorrect.</string>
+  <string name="label_login_error_no_libraries">Your account doesn't have access to any libraries on this server. Ask your server admin to grant library access, then try again.</string>
+  <string name="label_login_error_unexpected_response">The server returned an unexpected response. Please try again, and check that Campfire and your server are up to date.</string>
+  <string name="label_login_error_oauth">Something went wrong with the OpenID provider.</string>
+  <string name="label_login_error_oauth_invalid_redirect_uri">The server rejected the mobile redirect URI. Please configure "campfireaudiobooks://oauth" as an allowed Mobile Redirect URI in your Audiobookshelf OpenID settings.</string>
+
+  <string name="login_add_account_title">Add campsite</string>
+  <string name="login_reauth_account_title">Reauthenticate</string>
+  <string name="action_finish_analytics_consent">Finish</string>
+
+  <string name="action_back">Back</string>
+  <string name="action_clear_server_url">Clear server address</string>
+  <string name="action_show_password">Show password</string>
+  <string name="action_hide_password">Hide password</string>
+  <string name="action_add_header">Add extra header</string>
+  <string name="action_delete_header">Delete extra header</string>
+</resources>

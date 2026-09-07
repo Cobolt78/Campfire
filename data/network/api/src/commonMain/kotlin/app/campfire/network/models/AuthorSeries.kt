@@ -1,0 +1,25 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network.models
+
+import app.campfire.network.envelopes.Envelope
+import kotlinx.serialization.Serializable
+
+/**
+ * Series and the included library items that an author has written.
+ *
+ * @param id The ID of the series.
+ * @param name The name of the series.
+ * @param items The items in the series. Each library item's media's metadata will have a `series` attribute, a `Series Sequence`, which is the matching series.
+ */
+@Serializable
+data class AuthorSeries(
+  val id: String,
+  val name: String,
+  val items: List<LibraryItemMinified.Book>? = null,
+) : Envelope() {
+  override fun applyPostage() {
+    items?.forEach { it.applyOrigin(origin) }
+  }
+}

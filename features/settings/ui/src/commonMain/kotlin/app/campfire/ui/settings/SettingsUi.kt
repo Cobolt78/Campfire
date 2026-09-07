@@ -1,0 +1,524 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.ui.settings
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import app.campfire.common.compose.CampfireWindowInsets
+import app.campfire.common.compose.LocalWindowSizeClass
+import app.campfire.common.compose.extensions.thenIf
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.outline.Library
+import app.campfire.common.compose.icons.rounded.AccountCircle
+import app.campfire.common.compose.icons.rounded.ArrowBack
+import app.campfire.common.compose.icons.rounded.DeveloperMode
+import app.campfire.common.compose.icons.rounded.DirectionsCar
+import app.campfire.common.compose.icons.rounded.Download
+import app.campfire.common.compose.icons.rounded.Info
+import app.campfire.common.compose.icons.rounded.NotificationsPaused
+import app.campfire.common.compose.icons.rounded.Palette
+import app.campfire.common.compose.icons.rounded.VolumeUp
+import app.campfire.common.compose.layout.LocalSupportingContentState
+import app.campfire.common.compose.layout.SupportingContentState
+import app.campfire.common.compose.layout.isSupportingPaneEnabled
+import app.campfire.common.compose.widgets.CampfireTopAppBar
+import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.screens.SettingsScreen
+import app.campfire.core.di.UserScope
+import app.campfire.ui.settings.composables.SettingPaneListItem
+import app.campfire.ui.settings.composables.SettingsPaneDefaults
+import app.campfire.ui.settings.panes.AboutPane
+import app.campfire.ui.settings.panes.AccountPane
+import app.campfire.ui.settings.panes.AndroidAutoPane
+import app.campfire.ui.settings.panes.AppearancePane
+import app.campfire.ui.settings.panes.DeveloperPane
+import app.campfire.ui.settings.panes.DownloadsPane
+import app.campfire.ui.settings.panes.LocalPaneState
+import app.campfire.ui.settings.panes.PaneState
+import app.campfire.ui.settings.panes.PlaybackPane
+import app.campfire.ui.settings.panes.SleepPane
+import campfire.features.settings.ui.generated.resources.Res
+import campfire.features.settings.ui.generated.resources.action_back
+import campfire.features.settings.ui.generated.resources.setting_about_subtitle
+import campfire.features.settings.ui.generated.resources.setting_about_title
+import campfire.features.settings.ui.generated.resources.setting_account_subtitle
+import campfire.features.settings.ui.generated.resources.setting_account_title
+import campfire.features.settings.ui.generated.resources.setting_android_auto_subtitle
+import campfire.features.settings.ui.generated.resources.setting_android_auto_title
+import campfire.features.settings.ui.generated.resources.setting_appearance_subtitle
+import campfire.features.settings.ui.generated.resources.setting_appearance_title
+import campfire.features.settings.ui.generated.resources.setting_developer_subtitle
+import campfire.features.settings.ui.generated.resources.setting_developer_title
+import campfire.features.settings.ui.generated.resources.setting_downloads_subtitle
+import campfire.features.settings.ui.generated.resources.setting_downloads_title
+import campfire.features.settings.ui.generated.resources.setting_playback_subtitle
+import campfire.features.settings.ui.generated.resources.setting_playback_title
+import campfire.features.settings.ui.generated.resources.setting_providers_subtitle
+import campfire.features.settings.ui.generated.resources.setting_providers_title
+import campfire.features.settings.ui.generated.resources.setting_sleep_subtitle
+import campfire.features.settings.ui.generated.resources.setting_sleep_title
+import campfire.features.settings.ui.generated.resources.settings_title
+import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+import org.jetbrains.compose.resources.stringResource
+
+@CircuitInject(SettingsScreen::class, UserScope::class)
+@Composable
+fun SettingsUi(
+  screen: SettingsScreen,
+  state: SettingsUiState,
+  modifier: Modifier = Modifier,
+) {
+  val windowSizeClass by rememberUpdatedState(LocalWindowSizeClass.current)
+  val supportingContentState by rememberUpdatedState(LocalSupportingContentState.current)
+  val isTwoPaneLayout = (
+    windowSizeClass.isSupportingPaneEnabled &&
+      supportingContentState == SupportingContentState.Closed
+    ) ||
+    windowSizeClass.widthSizeClass >= WindowWidthSizeClass.ExtraLarge
+
+  var currentSettingsPane by rememberSaveable {
+    mutableStateOf(
+      when (screen.page) {
+        SettingsScreen.Page.Root -> null
+        SettingsScreen.Page.Account -> SettingsPane.Account
+        SettingsScreen.Page.Appearance -> SettingsPane.Appearance
+        SettingsScreen.Page.Downloads -> SettingsPane.Downloads
+        SettingsScreen.Page.Playback -> SettingsPane.Playback
+        SettingsScreen.Page.Sleep -> SettingsPane.Sleep
+        SettingsScreen.Page.AndroidAuto -> SettingsPane.AndroidAuto
+        SettingsScreen.Page.About -> SettingsPane.About
+        SettingsScreen.Page.Developer -> SettingsPane.Developer
+      },
+    )
+  }
+
+  if (isTwoPaneLayout) {
+    TwoPaneLayout(
+      state = state,
+      pane = currentSettingsPane,
+      onPaneClick = { currentSettingsPane = it },
+      modifier = modifier,
+    )
+  } else if (screen.page == SettingsScreen.Page.Root) {
+    OnePaneLayout(
+      state = state,
+      pane = currentSettingsPane,
+      onPaneClick = { state.eventSink(SettingsUiEvent.SettingsPaneClick(it)) },
+      modifier = modifier,
+    )
+  } else {
+    OnlyPaneLayout(
+      state = state,
+      pane = currentSettingsPane!!,
+      onBackClick = { state.eventSink(SettingsUiEvent.Back) },
+    )
+  }
+}
+
+@Composable
+private fun TwoPaneLayout(
+  state: SettingsUiState,
+  pane: SettingsPane?,
+  onPaneClick: (SettingsPane?) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val forcedPane = pane ?: SettingsPane.Account
+  Row(
+    modifier = modifier.fillMaxSize(),
+  ) {
+    SettingsRootPane(
+      isTwoPane = true,
+      pane = forcedPane,
+      onPaneClick = onPaneClick,
+      onConnectedProvidersClick = { state.eventSink(SettingsUiEvent.ConnectedProvidersClick) },
+      onBackClick = { state.eventSink(SettingsUiEvent.Back) },
+      showDeveloperPane = state.developerSettings.developerModeEnabled,
+      showAndroidAutoPane = state.isAndroidAutoPaneVisible,
+      modifier = Modifier
+        .padding(top = 16.dp)
+        .fillMaxHeight()
+        .weight(1f),
+    )
+
+    Spacer(Modifier.width(16.dp))
+
+    Surface(
+      contentColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+      tonalElevation = 4.dp,
+      shape = RoundedCornerShape(
+        topStart = 16.dp,
+        bottomStart = 16.dp,
+      ),
+      modifier = Modifier
+        .systemBarsPadding()
+        .padding(
+          top = 16.dp,
+          bottom = 16.dp,
+        )
+        .fillMaxHeight()
+        .weight(1f),
+    ) {
+      CompositionLocalProvider(
+        LocalPaneState provides PaneState.Double,
+      ) {
+        AnimatedContent(
+          targetState = forcedPane,
+          modifier = Modifier.fillMaxSize(),
+        ) { currentSettingPane ->
+          SettingPaneContent(
+            state = state,
+            settingsPane = currentSettingPane,
+            onBackClick = {}, // Does nothing in two-pane layout
+            modifier = Modifier
+              .fillMaxSize(),
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun OnePaneLayout(
+  state: SettingsUiState,
+  pane: SettingsPane?,
+  onPaneClick: (SettingsPane) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  SettingsRootPane(
+    pane = pane,
+    onPaneClick = onPaneClick,
+    onConnectedProvidersClick = { state.eventSink(SettingsUiEvent.ConnectedProvidersClick) },
+    onBackClick = { state.eventSink(SettingsUiEvent.Back) },
+    showDeveloperPane = state.developerSettings.developerModeEnabled,
+    showAndroidAutoPane = state.isAndroidAutoPaneVisible,
+    modifier = modifier
+      .systemBarsPadding()
+      .fillMaxSize(),
+  )
+}
+
+@Composable
+private fun OnlyPaneLayout(
+  state: SettingsUiState,
+  pane: SettingsPane,
+  onBackClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Box(
+    modifier
+      .background(MaterialTheme.colorScheme.surface)
+      .fillMaxSize(),
+  ) {
+    SettingPaneContent(
+      state = state,
+      settingsPane = pane,
+      onBackClick = onBackClick,
+    )
+  }
+}
+
+@Composable
+private fun SettingsRootPane(
+  pane: SettingsPane?,
+  onPaneClick: (SettingsPane) -> Unit,
+  onConnectedProvidersClick: () -> Unit,
+  onBackClick: () -> Unit,
+  showDeveloperPane: Boolean,
+  showAndroidAutoPane: Boolean,
+  modifier: Modifier = Modifier,
+  isTwoPane: Boolean = false,
+) {
+  Scaffold(
+    topBar = {
+      if (!isTwoPane) {
+        CampfireTopAppBar(
+          title = { Text(stringResource(Res.string.settings_title)) },
+          navigationIcon = {
+            val windowSizeClass = LocalWindowSizeClass.current
+            if (!windowSizeClass.isSupportingPaneEnabled) {
+              val backLabel = stringResource(Res.string.action_back)
+              IconButtonTooltip(text = backLabel) {
+                IconButton(
+                  onClick = onBackClick,
+                ) {
+                  Icon(
+                    CampfireIcons.Rounded.ArrowBack,
+                    contentDescription = backLabel,
+                  )
+                }
+              }
+            }
+          },
+        )
+      }
+    },
+    modifier = modifier,
+    contentWindowInsets = CampfireWindowInsets,
+  ) { paddingValues ->
+    Column(
+      verticalArrangement = Arrangement.spacedBy(SettingsPaneDefaults.ContentSpacing),
+      modifier = Modifier
+        .padding(paddingValues)
+        .thenIf(!isTwoPane) {
+          padding(horizontal = 16.dp)
+        }
+        .verticalScroll(rememberScrollState()),
+    ) {
+      // Account
+      SettingPaneListItem(
+        selected = pane == SettingsPane.Account && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.AccountCircle,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_account_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_account_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.Account)
+        },
+        shape = SettingsPaneDefaults.topShape(),
+      )
+
+      // Appearance
+      SettingPaneListItem(
+        selected = pane == SettingsPane.Appearance && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.Palette,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_appearance_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_appearance_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.Appearance)
+        },
+        shape = SettingsPaneDefaults.middleShape(),
+      )
+
+      // Connected book info providers (standalone screen)
+      SettingPaneListItem(
+        selected = false,
+        icon = {
+          Icon(
+            CampfireIcons.Outline.Library,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_providers_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_providers_subtitle)) },
+        onClick = onConnectedProvidersClick,
+        shape = SettingsPaneDefaults.bottomShape(),
+      )
+
+      Spacer(Modifier.height(8.dp))
+
+      // Appearance
+      SettingPaneListItem(
+        selected = pane == SettingsPane.Downloads && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.Download,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_downloads_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_downloads_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.Downloads)
+        },
+        shape = SettingsPaneDefaults.topShape(),
+      )
+
+      // Playback
+      SettingPaneListItem(
+        selected = pane == SettingsPane.Playback && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.VolumeUp,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_playback_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_playback_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.Playback)
+        },
+      )
+
+      // Sleep
+      SettingPaneListItem(
+        selected = pane == SettingsPane.Sleep && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.NotificationsPaused,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_sleep_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_sleep_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.Sleep)
+        },
+        shape = if (showAndroidAutoPane) {
+          SettingsPaneDefaults.middleShape()
+        } else {
+          SettingsPaneDefaults.bottomShape()
+        },
+      )
+
+      // Android Auto (Android only)
+      if (showAndroidAutoPane) {
+        SettingPaneListItem(
+          selected = pane == SettingsPane.AndroidAuto && isTwoPane,
+          icon = {
+            Icon(
+              CampfireIcons.Rounded.DirectionsCar,
+              contentDescription = null,
+            )
+          },
+          title = { Text(stringResource(Res.string.setting_android_auto_title)) },
+          subtitle = { Text(stringResource(Res.string.setting_android_auto_subtitle)) },
+          onClick = {
+            onPaneClick(SettingsPane.AndroidAuto)
+          },
+          shape = SettingsPaneDefaults.bottomShape(),
+        )
+      }
+
+      Spacer(Modifier.height(8.dp))
+
+      // About
+      SettingPaneListItem(
+        selected = pane == SettingsPane.About && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.Info,
+            contentDescription = null,
+          )
+        },
+        title = { Text(stringResource(Res.string.setting_about_title)) },
+        subtitle = { Text(stringResource(Res.string.setting_about_subtitle)) },
+        onClick = {
+          onPaneClick(SettingsPane.About)
+        },
+        shape = if (showDeveloperPane) {
+          SettingsPaneDefaults.topShape()
+        } else {
+          SettingsPaneDefaults.singleShape()
+        },
+      )
+
+      // Developer - DEBUG ONLY
+      if (showDeveloperPane) {
+        SettingPaneListItem(
+          selected = pane == SettingsPane.Developer && isTwoPane,
+          icon = {
+            Icon(
+              CampfireIcons.Rounded.DeveloperMode,
+              contentDescription = null,
+            )
+          },
+          title = { Text(stringResource(Res.string.setting_developer_title)) },
+          subtitle = { Text(stringResource(Res.string.setting_developer_subtitle)) },
+          onClick = {
+            onPaneClick(SettingsPane.Developer)
+          },
+          shape = SettingsPaneDefaults.bottomShape(),
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SettingPaneContent(
+  state: SettingsUiState,
+  settingsPane: SettingsPane,
+  onBackClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  when (settingsPane) {
+    SettingsPane.Account -> AccountPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.Appearance -> AppearancePane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.Downloads -> DownloadsPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.Playback -> PlaybackPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.Sleep -> SleepPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.AndroidAuto -> AndroidAutoPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.About -> AboutPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.Developer -> DeveloperPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+  }
+}

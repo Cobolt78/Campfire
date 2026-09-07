@@ -1,0 +1,427 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.sessions.db
+
+import app.campfire.CampfireDatabase
+import app.campfire.audioplayer.history.PlaybackHistoryRecorder
+import app.campfire.core.coroutines.DispatcherProvider
+import app.campfire.core.di.SingleIn
+import app.campfire.core.di.UserScope
+import app.campfire.core.extensions.epochMilliseconds
+import app.campfire.core.extensions.seconds
+import app.campfire.core.logging.Corked
+import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.Media
+import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.PlayMethod
+import app.campfire.core.model.PlaybackActionType
+import app.campfire.core.model.PodcastEpisodeId
+import app.campfire.core.model.Session
+import app.campfire.core.model.UserId
+import app.campfire.core.session.UserSession
+import app.campfire.core.session.requiredUserId
+import app.campfire.core.session.serverUrl
+import app.campfire.core.session.userId
+import app.campfire.core.time.FatherTime
+import app.campfire.data.Session as DbSession
+import app.campfire.libraries.api.LibraryItemRepository
+import app.campfire.settings.api.DevSettings
+import app.campfire.settings.api.PlaybackSettings
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToOneOrNull
+import com.r0adkll.kimchi.annotations.ContributesBinding
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import me.tatarka.inject.annotations.Inject
+
+@SingleIn(UserScope::class)
+@ContributesBinding(UserScope::class)
+@Inject
+class SqlDelightSessionDataSource(
+  private val userSession: UserSession,
+  private val db: CampfireDatabase,
+  private val fatherTime: FatherTime,
+  private val libraryItemRepository: LibraryItemRepository,
+  private val devSettings: DevSettings,
+  private val playbackSettings: PlaybackSettings,
+  private val playbackHistoryRecorder: PlaybackHistoryRecorder,
+  private val dispatcherProvider: DispatcherProvider,
+) : SessionDataSource {
+  companion object : Corked("SqlDelightSessionDataSource") {
+    private const val DEFAULT_MEDIA_PLAYER = "campfire"
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  override fun observeCurrentSession(): Flow<Session?> {
+    val userId = userSession.userId ?: return flowOf(null)
+    return db.sessionQueries
+      .getActive(userId)
+      .asFlow()
+      .mapToOneOrNull(dispatcherProvider.databaseRead)
+      .map {
+        it?.let { model -> hydrateSession(model) }
+      }
+  }
+
+  override suspend fun getCurrentSession(): Session? {
+    val currentUserId = userSession.userId ?: return null
+    return db.sessionQueries.getActive(currentUserId)
+      .awaitAsOneOrNull()
+      ?.let { hydrateSession(it) }
+  }
+
+  override suspend fun getSession(libraryItemId: LibraryItemId): Session? {
+    val currentUserId = userSession.userId ?: return null
+    return read {
+      db.sessionQueries.getForId(libraryItemId, currentUserId)
+        .executeAsOneOrNull()
+        ?.let { hydrateSession(it) }
+    }
+  }
+
+  override suspend fun getSessions(userId: UserId): List<Session> {
+    return read {
+      db.sessionQueries.getAll(userId)
+        .awaitAsList()
+        .map { hydrateSession(it) }
+    }
+  }
+
+  /**
+   * Sessions should be pretty ephemeral and more/less synced to the user experience.
+   * Anytime we call this method, essentially when the user opens the app again and auto-loads
+   * or starts a new listening session then we'll want to replace the current db entry that
+   * has a new id and reset timeListening.
+   *
+   * This helps provide better accuracy and reporting on the backend for the user stats
+   */
+  override suspend fun createOrStartSession(
+    libraryItemId: LibraryItemId,
+    playMethod: PlayMethod,
+    progress: MediaProgress?,
+    episodeId: PodcastEpisodeId?,
+  ): Session {
+    val now = fatherTime.now()
+    val currentUserId = userSession.requiredUserId
+
+    // The session table holds at most one row per (user, libraryItem). For podcasts the
+    // row's episodeId pins the session to a single episode — `getForEpisode` returns it
+    // only when the caller's episodeId matches, so a different-episode start naturally
+    // falls through to the create path (which replaces the existing row via the
+    // deactivateAll + INSERT-OR-REPLACE transaction below).
+    val existingSession = read {
+      db.sessionQueries.getForEpisode(
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+        episodeId = episodeId.orEmpty(),
+      )
+        .awaitAsOneOrNull()
+        ?.takeIf { !it.isDeleted }
+    }
+
+    // If the current progress is finished, skip check the existing session
+    // and force the creation of a new one using the progress as the source of time.
+    val forceNew = progress?.isFinished == true
+
+    // If an existing session has been updated withing allowed time interval,
+    // just re-use the session
+    if (existingSession != null && !existingSession.isDeleted && !forceNew) {
+      val now = fatherTime.now()
+      val elapsed = now.epochMilliseconds - existingSession.updatedAt.epochMilliseconds
+      if (elapsed <= devSettings.sessionAge.inWholeMilliseconds && now.date == existingSession.updatedAt.date) {
+        ibark {
+          "Existing session is still young enough[${elapsed.milliseconds} < ${devSettings.sessionAge}], " +
+            "returning it."
+        }
+        write {
+          db.sessionQueries.transaction {
+            db.sessionQueries.deactivateAll(currentUserId)
+            db.sessionQueries.activateOnly(
+              libraryItemId = libraryItemId,
+              userId = currentUserId,
+              episodeId = episodeId.orEmpty(),
+            )
+          }
+        }
+        return hydrateSession(existingSession)
+      } else {
+        ibark {
+          "Existing session is too old, creating new. Age [${elapsed.milliseconds}], " +
+            "Session Age [${devSettings.sessionAge}]"
+        }
+      }
+    }
+
+    // Check the incoming media progress against an existing session
+    // to see if we have new progress to sync to.
+    val hasSync = existingSession != null && progress != null &&
+      (existingSession.lastPlayedAt?.epochMilliseconds ?: 0L) < progress.lastUpdate &&
+      existingSession.currentTime.inWholeSeconds != progress.currentTime.seconds.inWholeSeconds
+    val autoSync = hasSync &&
+      playbackSettings.syncEnabled &&
+      playbackSettings.autoSyncEnabled
+
+    // If we DID have an old session, we'll want to re-use its time stamps instead of the passed, media progress,
+    // timestamps.
+    val newTime = if (autoSync) {
+      // Record the sync action in the history; route to the right episode timeline for
+      // podcast sessions. The DB stores '' for "no episode"; the recorder takes nullable.
+      playbackHistoryRecorder.record(
+        libraryItemId = libraryItemId,
+        type = PlaybackActionType.Sync,
+        fromPosition = existingSession.currentTime,
+        toPosition = progress.actualTime,
+        episodeId = existingSession.episodeId.takeIf { it.isNotEmpty() },
+      )
+
+      progress.actualTime
+    } else {
+      existingSession?.currentTime
+        ?: progress?.actualTime
+        ?: Duration.ZERO
+    }
+
+    val lastPlayedAt = if (autoSync) {
+      // If we are syncing against an updated progress, go ahead
+      // and set the "last played" timestamp to the current time
+      now
+    } else {
+      existingSession?.lastPlayedAt
+        ?: existingSession?.updatedAt
+    }
+
+    // If there is no existing, or its too old. Create a new session.
+    ibark {
+      """
+        |Creating new session for library item
+        |  => autoSync = $autoSync,
+        |  => lastPlayed = $lastPlayedAt,
+        |  => newTime = $newTime,
+      """.trimMargin()
+    }
+    return write {
+      val dbSession = DbSession(
+        id = Uuid.random(),
+        userId = currentUserId,
+        libraryItemId = libraryItemId,
+        // Important! We deactivate all prior sessions before inserting this,
+        // and this MUST be true for the change to be picked up
+        isActive = true,
+        isDeleted = false,
+        playMethod = playMethod,
+        mediaPlayer = DEFAULT_MEDIA_PLAYER,
+        timeListening = 0.seconds,
+        startTime = newTime,
+        currentTime = newTime,
+        // This is important to track when the user last played/updated the local
+        // playback session for this item.
+        lastPlayedAt = lastPlayedAt,
+        startedAt = now,
+        updatedAt = now,
+        episodeId = episodeId.orEmpty(),
+        serverSessionId = null,
+        reportedTimeListening = Duration.ZERO,
+        hlsStreamPath = null,
+      )
+
+      // Insert, replacing any existing session and disable any other active sessions
+      db.transaction {
+        db.sessionQueries.deactivateAll(currentUserId)
+        db.sessionQueries.insert(dbSession)
+      }
+
+      // Hydrate with latest item
+      hydrateSession(dbSession)
+    }
+  }
+
+  override suspend fun updateCurrentTime(libraryItemId: LibraryItemId, currentTime: Duration) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      // Update the playback session information with the new time
+      db.sessionQueries.updatePlayback(
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+        currentTime = currentTime,
+        updatedAt = fatherTime.now(),
+      )
+    }
+  }
+
+  override suspend fun updateLastPlayed(libraryItemId: LibraryItemId) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.updateLastPlayed(
+        lastPlayedAt = fatherTime.now(),
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
+  override suspend fun addTimeListening(libraryItemId: LibraryItemId, amount: Duration) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.addTimeListening(
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+        additionalTime = amount,
+        updatedAt = fatherTime.now(),
+      )
+    }
+  }
+
+  override suspend fun markDeleted(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.markDeleted(libraryItemId, currentUserId, episodeId.orEmpty())
+    }
+  }
+
+  override suspend fun deleteSession(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.delete(libraryItemId, currentUserId, episodeId.orEmpty())
+    }
+  }
+
+  override suspend fun stopSession(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.disable(libraryItemId, currentUserId, episodeId.orEmpty())
+    }
+  }
+
+  override suspend fun markFinished(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
+    val currentUserId = userSession.userId ?: return
+    val libraryItem = libraryItemRepository.getLibraryItem(libraryItemId)
+    // For podcast episodes use the episode's duration, otherwise the book/item duration.
+    val finishedAt = if (episodeId != null) {
+      (libraryItem.media as? Media.Podcast)
+        ?.episodes
+        ?.firstOrNull { it.id == episodeId }
+        ?.duration
+        ?: libraryItem.media.duration
+    } else {
+      libraryItem.media.duration
+    }
+    write {
+      db.sessionQueries.markFinished(
+        currentTime = finishedAt,
+        updatedAt = fatherTime.now(),
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+        episodeId = episodeId.orEmpty(),
+      )
+    }
+  }
+
+  override suspend fun attachServerSession(
+    libraryItemId: LibraryItemId,
+    serverSessionId: String,
+    episodeId: PodcastEpisodeId?,
+    hlsStreamPath: String?,
+  ) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.attachServerSession(
+        serverSessionId = serverSessionId,
+        hlsStreamPath = hlsStreamPath,
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+        episodeId = episodeId.orEmpty(),
+      )
+    }
+  }
+
+  override suspend fun clearServerSession(libraryItemId: LibraryItemId) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.clearServerSession(
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
+  override suspend fun updateReportedTimeListening(
+    libraryItemId: LibraryItemId,
+    reported: Duration,
+  ) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.updateReportedTimeListening(
+        reportedTimeListening = reported,
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
+  override suspend fun updatePlayMethod(
+    libraryItemId: LibraryItemId,
+    playMethod: PlayMethod,
+  ) {
+    val currentUserId = userSession.userId ?: return
+    write {
+      db.sessionQueries.updatePlayMethod(
+        playMethod = playMethod,
+        libraryItemId = libraryItemId,
+        userId = currentUserId,
+      )
+    }
+  }
+
+  private suspend fun hydrateSession(session: DbSession): Session {
+    val libraryItem = libraryItemRepository.getLibraryItem(session.libraryItemId)
+    return Session(
+      id = session.id,
+      userId = session.userId,
+      isDeleted = session.isDeleted,
+      libraryItem = libraryItem,
+      playMethod = session.playMethod,
+      mediaPlayer = session.mediaPlayer,
+      timeListening = session.timeListening,
+      startTime = session.startTime,
+      currentTime = session.currentTime,
+      lastPlayedAt = session.lastPlayedAt,
+      startedAt = session.startedAt,
+      updatedAt = session.updatedAt,
+      // '' is the DB sentinel for "no episode" (book progress) — surface as null.
+      episodeId = session.episodeId.takeIf { it.isNotEmpty() },
+      serverSessionId = session.serverSessionId,
+      reportedTimeListening = session.reportedTimeListening,
+      // The playlist location is whatever the transcode /play response said it is; a
+      // stored path is also the proof that a stream was actually opened (a constructed
+      // URL can point at a session that never transcoded)
+      hlsStreamUrl = session.hlsStreamPath?.let { path ->
+        if (path.startsWith("http")) {
+          path
+        } else {
+          userSession.serverUrl?.let { base -> "$base$path" }
+        }
+      },
+    )
+  }
+
+  private suspend fun <T> read(block: suspend CoroutineScope.() -> T) = withContext(
+    context = dispatcherProvider.databaseRead,
+    block = block,
+  )
+
+  private suspend fun <T> write(block: suspend CoroutineScope.() -> T) = withContext(
+    context = dispatcherProvider.databaseWrite,
+    block = block,
+  )
+}

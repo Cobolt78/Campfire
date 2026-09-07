@@ -1,0 +1,5 @@
+- Tap the speed value in the playback speed sheet to type an exact playback speed
+- Cover art is now requested at the size it is displayed, so full-screen player and detail artwork is sharp instead of upscaled
+- App freezing on the search empty state when system animations are disabled
+- Series with decimal sequence numbers now sort in the correct order
+- Covers updated on the server now refresh in the app instead of showing the old image until the cache expires

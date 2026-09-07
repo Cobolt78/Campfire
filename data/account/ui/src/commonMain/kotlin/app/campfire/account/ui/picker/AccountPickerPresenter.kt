@@ -1,0 +1,98 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.account.ui.picker
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import app.campfire.account.api.AccountManager
+import app.campfire.account.api.ServerRepository
+import app.campfire.core.coroutines.LoadState
+import app.campfire.core.model.Server
+import com.slack.circuit.foundation.NonPausablePresenter
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import me.tatarka.inject.annotations.Assisted
+import me.tatarka.inject.annotations.Inject
+
+typealias AccountPickerPresenterFactory = (() -> Unit) -> AccountPickerPresenter
+
+@Inject
+class AccountPickerPresenter(
+  @Assisted private val requestDismiss: () -> Unit,
+  private val serverRepository: ServerRepository,
+  private val accountManager: AccountManager,
+) : NonPausablePresenter<AccountPickerUiState> {
+
+  @Composable
+  override fun present(): AccountPickerUiState {
+    val scope = rememberCoroutineScope()
+
+    val accountState by remember {
+      combine(
+        serverRepository.observeCurrentServer(),
+        serverRepository.observeAllServers().map { servers ->
+          servers.map { server ->
+            val serverToken = accountManager.getToken(server.user.id)
+            UiServer(
+              server = server,
+              authState = if (serverToken != null) {
+                AuthState.Valid
+              } else {
+                AuthState.NeedsReauthentication
+              },
+            )
+          }
+        },
+      ) { current, all ->
+        AccountState(
+          current = current,
+          all = all.sortedWith(ServerComparator(current)),
+        )
+      }.map {
+        LoadState.Loaded(it)
+      }.catch<LoadState<out AccountState>> {
+        emit(LoadState.Error)
+      }
+    }.collectAsState(LoadState.Loading)
+
+    return AccountPickerUiState(
+      accountState = accountState,
+    ) { event ->
+      when (event) {
+        is AccountPickerUiEvent.Logout -> {
+          scope.launch {
+            accountManager.logout(event.server)
+            requestDismiss()
+          }
+        }
+      }
+    }
+  }
+}
+
+private class ServerComparator(
+  val current: Server,
+) : Comparator<UiServer> {
+
+  /**
+   * Compares its two arguments for order. Returns zero if the arguments are equal,
+   * a negative number if the first argument is less than the second, or a positive number
+   * if the first argument is greater than the second.
+   */
+  override fun compare(a: UiServer, b: UiServer): Int {
+    val isCurrentA = a.server.user.id == current.user.id
+    val isCurrentB = b.server.user.id == current.user.id
+
+    return when {
+      isCurrentA -> -1
+      isCurrentB -> 1
+      else -> a.server.name.compareTo(b.server.name)
+    }
+  }
+}

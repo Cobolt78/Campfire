@@ -1,0 +1,40 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.series.api
+
+import app.campfire.core.filter.ContentFilter
+import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.Series
+import app.campfire.core.model.User
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.SortDirection
+import app.campfire.series.api.paging.SeriesPager
+import kotlinx.coroutines.flow.Flow
+
+interface SeriesRepository {
+
+  /**
+   * The full series listing (with owned books hydrated). With [refresh] the
+   * listing is also refetched from the server — note the resulting cache
+   * rewrite invalidates the series list screen's pagination, so bulk
+   * consumers like the upcoming scan should pass false to read the local
+   * cache without side effects (an empty listing is then a valid emission).
+   */
+  fun observeAllSeries(refresh: Boolean = true): Flow<List<Series>>
+
+  fun createSeriesPager(
+    user: User,
+    filter: ContentFilter? = null,
+    sortMode: ContentSortMode = ContentSortMode.Name,
+    sortDirection: SortDirection = SortDirection.Default,
+  ): SeriesPager
+
+  fun observeFilteredSeriesCount(
+    filter: ContentFilter? = null,
+    sortMode: ContentSortMode = ContentSortMode.Name,
+    sortDirection: SortDirection = SortDirection.Default,
+  ): Flow<Int?>
+
+  fun observeSeriesLibraryItems(seriesId: String): Flow<List<LibraryItem>>
+}

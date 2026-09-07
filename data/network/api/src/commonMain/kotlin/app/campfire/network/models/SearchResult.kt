@@ -1,0 +1,54 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network.models
+
+import app.campfire.network.envelopes.Envelope
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class SearchResult(
+  val book: List<LibraryItemSearchResult>,
+  val narrators: List<NarratorSearchResult>,
+  val authors: List<Author>,
+  val tags: List<TagSearchResult>,
+  val genres: List<TagSearchResult>,
+  val series: List<SeriesSearchResult>,
+) : Envelope() {
+
+  override fun applyPostage() {
+    book.forEach { b -> b.libraryItem.applyOrigin(origin) }
+    authors.forEach { a -> a.applyOrigin(origin) }
+    series.forEach { s -> s.books.forEach { sb -> sb.applyOrigin(origin) } }
+  }
+
+  fun toShortString(): String {
+    return "SearchResult(books=${book.size}, narrators=${narrators.size}, authors=${authors.size}, " +
+      "tags=${tags.size}, genres=${genres.size}, series=${series.size})"
+  }
+}
+
+@Serializable
+data class LibraryItemSearchResult(
+  val libraryItem: LibraryItemExpanded,
+  val matchKey: String? = null,
+  val matchText: String? = null,
+)
+
+@Serializable
+data class SeriesSearchResult(
+  val series: Series,
+  val books: List<LibraryItemExpanded>,
+)
+
+@Serializable
+data class NarratorSearchResult(
+  val name: String,
+  val numBooks: Int,
+)
+
+@Serializable
+data class TagSearchResult(
+  val name: String,
+  val numItems: Int,
+)

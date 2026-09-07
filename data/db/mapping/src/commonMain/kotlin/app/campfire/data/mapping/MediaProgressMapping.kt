@@ -1,0 +1,128 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.data.mapping
+
+import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.MediaProgressId
+import app.campfire.core.model.MediaType
+import app.campfire.data.MediaProgress as DatabaseMediaProgress
+import app.campfire.network.envelopes.MediaProgressUpdatePayload
+import app.campfire.network.models.MediaProgress as NetworkMediaProgress
+import app.campfire.network.models.MediaType as NetworkMediaType
+
+fun NetworkMediaProgress.asDbModel(): DatabaseMediaProgress {
+  return DatabaseMediaProgress(
+    id = id,
+    userId = userId,
+    libraryItemId = libraryItemId,
+    // The DB column is NOT NULL with default '' so per-episode and book rows can share
+    // the (libraryItemId, userId, episodeId) PK. Domain/network keep nullable semantics.
+    episodeId = episodeId.orEmpty(),
+    mediaItemId = mediaItemId,
+    mediaItemType = when (mediaItemType) {
+      NetworkMediaType.Book -> MediaType.Book
+      NetworkMediaType.Podcast -> MediaType.Podcast
+      NetworkMediaType.Podcast2 -> MediaType.Podcast
+    },
+    duration = duration?.toDouble(),
+    progress = progress.toDouble(),
+    currentTime = currentTime.toDouble(),
+    isFinished = isFinished,
+    hideFromContinueListening = hideFromContinueListening,
+    ebookLocation = ebookLocation,
+    ebookProgress = ebookProgress?.toDouble(),
+    lastUpdate = lastUpdate,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+    source = MediaProgress.Source.Remote,
+  )
+}
+
+fun MediaProgress.asDbModel(existingId: MediaProgressId? = null): DatabaseMediaProgress {
+  return DatabaseMediaProgress(
+    id = existingId.takeIf { it != MediaProgress.UNKNOWN_ID } ?: id,
+    userId = userId,
+    libraryItemId = libraryItemId,
+    episodeId = episodeId.orEmpty(),
+    mediaItemId = mediaItemId,
+    mediaItemType = mediaItemType,
+    duration = duration?.toDouble(),
+    progress = progress.toDouble(),
+    currentTime = currentTime.toDouble(),
+    isFinished = isFinished,
+    hideFromContinueListening = hideFromContinueListening,
+    ebookLocation = ebookLocation,
+    ebookProgress = ebookProgress?.toDouble(),
+    lastUpdate = lastUpdate,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+    source = source,
+  )
+}
+
+fun MediaProgress.asNetworkUpdate(
+  libraryItemId: LibraryItemId? = null,
+): MediaProgressUpdatePayload {
+  return MediaProgressUpdatePayload(
+    libraryItemId = libraryItemId,
+    episodeId = episodeId,
+    duration = duration,
+    progress = progress,
+    currentTime = currentTime,
+    isFinished = isFinished.takeIf { it },
+    hideFromContinueListening = hideFromContinueListening,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+  )
+}
+
+fun NetworkMediaProgress.asDomainModel(): MediaProgress {
+  return MediaProgress(
+    id = id,
+    userId = userId,
+    libraryItemId = libraryItemId,
+    episodeId = episodeId,
+    mediaItemId = mediaItemId,
+    mediaItemType = when (mediaItemType) {
+      NetworkMediaType.Book -> MediaType.Book
+      NetworkMediaType.Podcast -> MediaType.Podcast
+      NetworkMediaType.Podcast2 -> MediaType.Podcast
+    },
+    duration = duration,
+    progress = progress,
+    currentTime = currentTime,
+    isFinished = isFinished,
+    hideFromContinueListening = hideFromContinueListening,
+    ebookLocation = ebookLocation,
+    ebookProgress = ebookProgress,
+    lastUpdate = lastUpdate,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+    source = MediaProgress.Source.Remote,
+  )
+}
+
+fun DatabaseMediaProgress.asDomainModel(): MediaProgress {
+  return MediaProgress(
+    id = id,
+    userId = userId,
+    libraryItemId = libraryItemId,
+    // '' on the DB side represents "no episode" (book progress); domain keeps null semantics.
+    episodeId = episodeId.takeIf { it.isNotEmpty() },
+    mediaItemId = mediaItemId,
+    mediaItemType = mediaItemType,
+    duration = duration?.toFloat(),
+    progress = progress.toFloat(),
+    currentTime = currentTime.toFloat(),
+    isFinished = isFinished,
+    hideFromContinueListening = hideFromContinueListening,
+    ebookLocation = ebookLocation,
+    ebookProgress = ebookProgress?.toFloat(),
+    lastUpdate = lastUpdate,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+    source = source,
+  )
+}

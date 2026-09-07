@@ -1,0 +1,577 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.auth.ui.login
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import app.campfire.auth.ui.composables.MaxContentWidth
+import app.campfire.auth.ui.login.composables.ServerCard
+import app.campfire.auth.ui.login.composables.ServerUrlAssistBar
+import app.campfire.auth.ui.login.composables.ServerUrlFieldState
+import app.campfire.auth.ui.login.composables.TitleBanner
+import app.campfire.auth.ui.login.composables.rememberServerUrlFieldState
+import app.campfire.auth.ui.login.settings.NetworkSettingsResult
+import app.campfire.auth.ui.login.settings.showNetworkSettingsBottomSheet
+import app.campfire.common.compose.LocalWindowSizeClass
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Add
+import app.campfire.common.compose.icons.rounded.ArrowBack
+import app.campfire.common.compose.icons.rounded.IdBadge
+import app.campfire.common.compose.layout.ContentLayout
+import app.campfire.common.compose.layout.LocalContentLayout
+import app.campfire.common.compose.theme.CampfireTheme
+import app.campfire.common.compose.theme.LocalUseDarkColors
+import app.campfire.common.compose.widgets.CampfireTopAppBar
+import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.screens.LoginScreen
+import app.campfire.core.di.UserScope
+import app.campfire.ui.theming.api.AppTheme
+import app.campfire.ui.theming.api.colorScheme
+import campfire.features.auth.ui.generated.resources.Res
+import campfire.features.auth.ui.generated.resources.action_add_campsite
+import campfire.features.auth.ui.generated.resources.action_back
+import campfire.features.auth.ui.generated.resources.action_login_openid
+import campfire.features.auth.ui.generated.resources.label_authenticating_loading_message
+import campfire.features.auth.ui.generated.resources.login_add_account_title
+import campfire.features.auth.ui.generated.resources.login_reauth_account_title
+import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+import com.slack.circuit.overlay.LocalOverlayHost
+import com.slack.circuit.overlay.rememberOverlayHost
+import com.slack.circuit.sharedelements.PreviewSharedElementTransitionLayout
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
+
+@CircuitInject(LoginScreen::class, UserScope::class)
+@Composable
+fun Login(
+  screen: LoginScreen,
+  state: LoginUiState,
+  modifier: Modifier = Modifier,
+) {
+  LoginContent(
+    screen = screen,
+    state = state,
+    modifier = modifier,
+  )
+}
+
+@Composable
+private fun LoginContent(
+  screen: LoginScreen,
+  state: LoginUiState,
+  modifier: Modifier = Modifier,
+) = CampfireTheme(
+  colorScheme = { colorScheme(state.theme) },
+  useDarkColors = LocalUseDarkColors.current,
+) {
+  Surface(
+    modifier = modifier
+      .systemBarsPadding()
+      .fillMaxSize(),
+  ) {
+    val urlFieldState = rememberServerUrlFieldState(state.serverUrl)
+    Box(Modifier.fillMaxSize()) {
+      Box(Modifier.fillMaxSize()) {
+        if (screen !is LoginScreen.New) {
+          CampfireTopAppBar(
+            title = {
+              Text(
+                when (screen) {
+                  is LoginScreen.Additional -> stringResource(Res.string.login_add_account_title)
+                  is LoginScreen.ReAuthentication -> stringResource(Res.string.login_reauth_account_title)
+                },
+              )
+            },
+            navigationIcon = {
+              if (screen is LoginScreen.Additional) {
+                val backLabel = stringResource(Res.string.action_back)
+                IconButtonTooltip(text = backLabel) {
+                  IconButton(
+                    onClick = { state.eventSink(LoginUiEvent.NavigateBack) },
+                  ) {
+                    Icon(CampfireIcons.Rounded.ArrowBack, contentDescription = backLabel)
+                  }
+                }
+              }
+            },
+          )
+        } else {
+          TitleBanner(
+            modifier = Modifier
+              .padding(
+                horizontal = 24.dp,
+                vertical = 48.dp,
+              ),
+          )
+        }
+
+        LoginUiContent(
+          state = state,
+          urlFieldState = urlFieldState,
+          autoFocus = screen is LoginScreen.Additional,
+          modifier = Modifier
+            .align(Alignment.Center)
+            .fillMaxWidth(),
+        )
+      }
+
+      ServerUrlAssistBar(
+        urlState = urlFieldState,
+        onUrlChange = { state.eventSink(LoginUiEvent.ServerUrl(it)) },
+        modifier = Modifier
+          .align(Alignment.BottomCenter)
+          .imePadding(),
+      )
+    }
+  }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun LoginUiContent(
+  state: LoginUiState,
+  urlFieldState: ServerUrlFieldState,
+  modifier: Modifier = Modifier,
+  autoFocus: Boolean = false,
+) {
+  val scope = rememberCoroutineScope()
+  val overlayHost = LocalOverlayHost.current
+  val eventSink = state.eventSink
+  var hasFocus by remember { mutableStateOf(false) }
+  val authMethodState = (state.connectionState as? ConnectionState.Success)?.authMethodState
+
+  Column(
+    modifier = modifier.padding(horizontal = 16.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    ServerCard(
+      autoFocus = autoFocus,
+      theme = state.theme,
+      onThemeChange = { eventSink(LoginUiEvent.ChangeTheme(it)) },
+      serverName = state.serverName,
+      onServerNameChange = { eventSink(LoginUiEvent.ServerName(it)) },
+      serverUrl = state.serverUrl,
+      onServerUrlChange = { eventSink(LoginUiEvent.ServerUrl(it)) },
+      urlState = urlFieldState,
+      networkSettings = state.networkSettings,
+      onEditNetworkSettingsClick = {
+        scope.launch {
+          val result = overlayHost.showNetworkSettingsBottomSheet(state.networkSettings)
+          if (result is NetworkSettingsResult.Success) {
+            eventSink(LoginUiEvent.ChangeNetworkSettings(result.settings))
+          }
+        }
+      },
+      username = state.userName,
+      onUsernameChange = { eventSink(LoginUiEvent.UserName(it)) },
+      password = state.password,
+      onPasswordChange = { eventSink(LoginUiEvent.Password(it)) },
+      onGo = { eventSink(LoginUiEvent.AddCampsite) },
+      connectionState = state.connectionState,
+      authError = state.authError,
+      isAuthenticating = state.isAuthenticating,
+      modifier = Modifier.onFocusChanged {
+        hasFocus = it.hasFocus
+      }.widthIn(max = MaxContentWidth),
+    )
+
+    Spacer(Modifier.height(16.dp))
+
+    if (authMethodState?.passwordAuthEnabled == true) {
+      Button(
+        enabled = state.serverUrl.isNotBlank() &&
+          state.userName.isNotBlank() &&
+          state.password.isNotBlank() &&
+          !state.isAuthenticating,
+        onClick = {
+          eventSink(LoginUiEvent.AddCampsite)
+        },
+        modifier = Modifier
+          .widthIn(max = MaxContentWidth)
+          .fillMaxWidth(),
+      ) {
+        if (!state.isAuthenticating) {
+          Icon(
+            CampfireIcons.Rounded.Add,
+            contentDescription = null,
+          )
+          Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+          Text(stringResource(Res.string.action_add_campsite))
+        } else {
+          Text(stringResource(Res.string.label_authenticating_loading_message))
+        }
+      }
+    } else {
+      AnimatedVisibility(
+        visible = state.isAuthenticating,
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          CircularWavyProgressIndicator(
+            Modifier.size(32.dp),
+          )
+          Text(
+            text = stringResource(Res.string.label_authenticating_loading_message),
+            style = MaterialTheme.typography.labelLargeEmphasized,
+          )
+        }
+      }
+    }
+
+    // Show the OIDC authentication button if available
+    OpenIdAuthButton(
+      authMethodState = authMethodState,
+      isAuthenticating = state.isAuthenticating,
+      onClick = {
+        eventSink(LoginUiEvent.StartOpenIdAuth)
+      },
+      modifier = Modifier.widthIn(max = MaxContentWidth),
+    )
+
+    Spacer(
+      Modifier.imePadding(),
+    )
+  }
+}
+
+@Composable
+private fun OpenIdAuthButton(
+  authMethodState: AuthMethodState?,
+  isAuthenticating: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  AnimatedVisibility(
+    visible = authMethodState?.openIdState != null,
+    modifier = modifier.fillMaxWidth(),
+  ) {
+    Column {
+      // Only show the '----- OR -----' if password auth is also enabled
+      if (authMethodState?.passwordAuthEnabled == true) {
+        Row(
+          modifier = Modifier
+            .widthIn(max = 500.dp)
+            .padding(vertical = 16.dp)
+            .fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          HorizontalDivider(
+            Modifier.weight(1f),
+          )
+
+          Text(
+            text = "OR",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+          )
+
+          HorizontalDivider(
+            Modifier.weight(1f),
+          )
+        }
+      } else {
+        Spacer(Modifier.size(8.dp))
+      }
+
+      FilledTonalButton(
+        enabled = !isAuthenticating,
+        onClick = onClick,
+        modifier = Modifier
+          .widthIn(max = 500.dp)
+          .fillMaxWidth(),
+      ) {
+        Icon(
+          CampfireIcons.Rounded.IdBadge,
+          contentDescription = null,
+        )
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(authMethodState?.openIdState?.buttonText ?: stringResource(Res.string.action_login_openid))
+      }
+    }
+  }
+}
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun LoginUiPreview(
+  state: LoginUiState,
+  screen: LoginScreen = LoginScreen.New,
+) {
+  PreviewSharedElementTransitionLayout {
+    CampfireTheme {
+      CompositionLocalProvider(
+        LocalWindowSizeClass provides calculateWindowSizeClass(),
+        LocalOverlayHost provides rememberOverlayHost(),
+        LocalContentLayout provides ContentLayout.Root,
+      ) {
+        Login(
+          screen = screen,
+          state = state,
+        )
+      }
+    }
+  }
+}
+
+@Preview
+@Composable
+fun LoginUI_Blank() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "",
+    serverUrl = "",
+    userName = "",
+    password = "",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = null,
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_Additional_Blank() = LoginUiPreview(
+  screen = LoginScreen.Additional,
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "",
+    serverUrl = "",
+    userName = "",
+    password = "",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = null,
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_ReAuthentication_Blank() = LoginUiPreview(
+  screen = LoginScreen.ReAuthentication("user_id", "r0adkll", "", "https://abs.example.com"),
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Abs",
+    serverUrl = "https://abs.example.com",
+    userName = "r0adkll",
+    password = "",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = true,
+        openIdState = null,
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_Both_Methods() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "",
+    password = "",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = true,
+        openIdState = OpenIdUiState(
+          customMessage = "Custom message",
+          buttonText = "Login with Pocket ID",
+        ),
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyOIDC() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "",
+    password = "",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = false,
+        openIdState = OpenIdUiState(
+          customMessage = "Custom message",
+          buttonText = "Login with Pocket ID",
+        ),
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyOIDC_Failure() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "",
+    password = "",
+    isAuthenticating = false,
+    authError = AuthError.OAuthError,
+    connectionState = ConnectionState.Error(Throwable()),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyOIDC_Authenticating() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "",
+    password = "",
+    isAuthenticating = true,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = false,
+        openIdState = OpenIdUiState(
+          customMessage = "Custom message",
+          buttonText = "Login with Pocket ID",
+        ),
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyPassword() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "Admin",
+    password = "password",
+    isAuthenticating = false,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = true,
+        openIdState = null,
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyPassword_Failure() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "Admin",
+    password = "password",
+    isAuthenticating = false,
+    authError = AuthError.InvalidCredentials,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = true,
+        openIdState = null,
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)
+
+@Preview
+@Composable
+fun LoginUI_OnlyPassword_Authenticating() = LoginUiPreview(
+  state = LoginUiState(
+    theme = AppTheme.Fixed.Tent,
+    serverName = "Campfire",
+    serverUrl = "https://campfire.homelab.net",
+    userName = "Admin",
+    password = "password",
+    isAuthenticating = true,
+    authError = null,
+    connectionState = ConnectionState.Success(
+      authMethodState = AuthMethodState(
+        passwordAuthEnabled = true,
+        openIdState = null,
+      ),
+    ),
+    networkSettings = null,
+    eventSink = {},
+  ),
+)

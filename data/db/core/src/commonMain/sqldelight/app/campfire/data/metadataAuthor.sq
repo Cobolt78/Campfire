@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS metadataAuthor (
+  id TEXT NOT NULL,
+  name TEXT NOT NULL,
+
+  mediaId TEXT NOT NULL,
+  PRIMARY KEY (id, mediaId),
+  FOREIGN KEY (mediaId) REFERENCES media(mediaId) ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+insert:
+INSERT OR IGNORE INTO metadataAuthor
+VALUES ?;
+
+selectForMediaId:
+SELECT * FROM metadataAuthor
+WHERE mediaId = ?;

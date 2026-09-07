@@ -1,0 +1,162 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.common.compose.widgets
+
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import app.campfire.core.extensions.fluentIf
+import app.campfire.core.model.Author
+import campfire.common.compose.generated.resources.Res
+import campfire.common.compose.generated.resources.placeholder_book
+import campfire.common.compose.generated.resources.placeholder_person
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import com.r0adkll.material3.themebuilder.coil.observeAsImageBitmap
+import com.slack.circuit.sharedelements.SharedElementTransitionScope
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import org.jetbrains.compose.resources.painterResource
+
+val CoverImageSize = 256.dp
+val CoverImageCornerRadius = 32.dp
+val CoverImageShape = RoundedCornerShape(CoverImageCornerRadius)
+
+/**
+ * The standard book cover placeholder for covers that are missing or fail to
+ * load — the generated resource class is internal to this module, so consumers
+ * reach the drawable through this accessor.
+ */
+@Composable
+fun placeholderBookPainter(): Painter = painterResource(Res.drawable.placeholder_book)
+
+@Composable
+fun CoverImage(
+  imageUrl: String?,
+  contentDescription: String?,
+  modifier: Modifier = Modifier,
+  sharedElementModifier: Modifier = Modifier,
+  placeholder: Painter? = null,
+  size: Dp = CoverImageSize,
+  requestSize: Dp = size,
+  shape: Shape = CoverImageShape,
+  impressionThreshold: Duration = 500.milliseconds,
+  contentScale: ContentScale = ContentScale.Crop,
+  imageBitmapListener: ((ImageBitmap) -> Unit)? = null,
+) {
+  Box(
+    modifier = modifier,
+    contentAlignment = Alignment.Center,
+  ) {
+    val painter = key(imageUrl) {
+      rememberAsyncImagePainter(
+        model = rememberDrawSizedRequest(imageUrl, requestSize),
+        error = placeholder,
+      )
+    }
+
+    if (imageBitmapListener != null) {
+      LaunchedEffect(Unit) {
+        painter.state
+          .observeAsImageBitmap()
+          .collectLatest { bitmap ->
+            delay(impressionThreshold)
+            imageBitmapListener(bitmap)
+          }
+      }
+    }
+
+    Image(
+      painter = painter,
+      contentDescription = contentDescription,
+      contentScale = contentScale,
+      modifier = sharedElementModifier
+        .fluentIf(size != Dp.Unspecified) {
+          size(size)
+        }
+        .clip(shape),
+    )
+
+    val painterState by painter.state.collectAsState()
+    when (painterState) {
+      is AsyncImagePainter.State.Loading -> LoadingCover(
+        shape = shape,
+        size = size,
+      )
+      else -> Unit
+    }
+  }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun AuthorCoverImage(
+  author: Author,
+  modifier: Modifier = Modifier,
+) = SharedElementTransitionScope {
+  val placeHolderResource = remember {
+    Res.drawable.placeholder_person
+  }
+  CoverImage(
+    imageUrl = author.imagePath ?: "",
+    contentDescription = author.name,
+    placeholder = painterResource(placeHolderResource),
+    modifier = modifier,
+    sharedElementModifier = Modifier
+      .sharedElement(
+        sharedContentState = rememberSharedContentState(
+          AuthorSharedTransitionKey(
+            id = author.id,
+            type = AuthorSharedTransitionKey.ElementType.Image,
+          ),
+        ),
+        animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
+      ),
+  )
+}
+
+@Composable
+private fun LoadingCover(
+  shape: Shape,
+  size: Dp,
+  modifier: Modifier = Modifier,
+) {
+  Box(
+    modifier = modifier
+      .background(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = shape,
+      )
+      .fluentIf(size != Dp.Unspecified) {
+        size(size)
+      },
+    contentAlignment = Alignment.Center,
+  ) {
+    CircularProgressIndicator(
+      color = MaterialTheme.colorScheme.onPrimaryContainer,
+    )
+  }
+}

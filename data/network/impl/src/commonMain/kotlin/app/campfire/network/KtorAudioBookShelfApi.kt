@@ -1,0 +1,783 @@
+// Copyright 2026, Drew Heavner and the Campfire project contributors
+// SPDX-License-Identifier: GPL-3.0-only
+
+package app.campfire.network
+
+import app.campfire.core.di.SingleIn
+import app.campfire.core.di.UserScope
+import app.campfire.core.session.UserSession
+import app.campfire.core.session.requireServerUrl
+import app.campfire.core.session.userId
+import app.campfire.network.di.ServerUrl
+import app.campfire.network.di.UserClient
+import app.campfire.network.envelopes.AddBookToCollectionRequest
+import app.campfire.network.envelopes.AllLibrariesResponse
+import app.campfire.network.envelopes.AuthorResponse
+import app.campfire.network.envelopes.BatchBooksRequest
+import app.campfire.network.envelopes.CollectionsResponse
+import app.campfire.network.envelopes.CreateBookmarkRequest
+import app.campfire.network.envelopes.CreatePodcastMedia
+import app.campfire.network.envelopes.CreatePodcastRequest
+import app.campfire.network.envelopes.EmptyRequest
+import app.campfire.network.envelopes.EpisodeDownloadsResponse
+import app.campfire.network.envelopes.MediaProgressUpdatePayload
+import app.campfire.network.envelopes.MinifiedLibraryItemsResponse
+import app.campfire.network.envelopes.NewCollectionRequest
+import app.campfire.network.envelopes.NewPlaylistRequest
+import app.campfire.network.envelopes.PlayItemRequest
+import app.campfire.network.envelopes.PlaylistsResponse
+import app.campfire.network.envelopes.PodcastFeedRequest
+import app.campfire.network.envelopes.PodcastFeedResponse
+import app.campfire.network.envelopes.SeriesResponse
+import app.campfire.network.envelopes.SyncLocalSessionsResult
+import app.campfire.network.envelopes.SyncPlaybackSessionRequest
+import app.campfire.network.envelopes.SyncSessionRequest
+import app.campfire.network.envelopes.UpdateCollectionRequest
+import app.campfire.network.envelopes.UpdatePlaylistRequest
+import app.campfire.network.models.AudioBookmark
+import app.campfire.network.models.Author
+import app.campfire.network.models.Collection
+import app.campfire.network.models.DeviceInfo
+import app.campfire.network.models.FilterData
+import app.campfire.network.models.Library
+import app.campfire.network.models.LibraryItemExpanded
+import app.campfire.network.models.LibraryItemFilter
+import app.campfire.network.models.LibraryItemMinified
+import app.campfire.network.models.LibraryStats
+import app.campfire.network.models.ListeningStats
+import app.campfire.network.models.MediaProgress
+import app.campfire.network.models.PagedRecentEpisodesResponse
+import app.campfire.network.models.PlaySession
+import app.campfire.network.models.PlaybackSession
+import app.campfire.network.models.PlaylistExpanded
+import app.campfire.network.models.PlaylistItem
+import app.campfire.network.models.PodcastFeed
+import app.campfire.network.models.PodcastMetadata
+import app.campfire.network.models.PodcastSearchResultDto
+import app.campfire.network.models.RssPodcastEpisode
+import app.campfire.network.models.SearchResult
+import app.campfire.network.models.Series
+import app.campfire.network.models.Shelf
+import app.campfire.network.models.User
+import com.r0adkll.kimchi.annotations.ContributesBinding
+import io.ktor.client.HttpClient
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.request.request
+import io.ktor.client.request.setBody
+import io.ktor.client.request.url
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
+import io.ktor.http.URLBuilder
+import io.ktor.http.appendPathSegments
+import io.ktor.http.contentType
+import io.ktor.http.encodeURLQueryComponent
+import io.ktor.http.takeFrom
+import io.ktor.util.encodeBase64
+import me.tatarka.inject.annotations.Inject
+
+@Inject
+@SingleIn(UserScope::class)
+@ContributesBinding(UserScope::class)
+class KtorAudioBookShelfApi(
+  private val userSession: UserSession,
+  @UserClient private val client: HttpClient,
+) : AudioBookShelfApi {
+
+  override suspend fun getCurrentUser(): Result<User> = trySendRequest {
+    hydratedClientRequest("/api/me")
+  }
+
+  override suspend fun getAllLibraries(): Result<List<Library>> = trySendRequest<AllLibrariesResponse> {
+    hydratedClientRequest("/api/libraries")
+  }.map { it.libraries }
+
+  override suspend fun getLibrary(libraryId: String): Result<Library> = trySendRequest<Library> {
+    hydratedClientRequest("/api/libraries/$libraryId")
+  }
+
+  override suspend fun getLibraryItemsMinified(
+    libraryId: String,
+    filter: LibraryItemFilter?,
+    sortMode: String?,
+    sortDescending: Boolean,
+    page: Int,
+    limit: Int,
+  ): Result<PagedResponse<LibraryItemMinified>> {
+    return trySendRequest<MinifiedLibraryItemsResponse> {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "items")
+          parameters.append("minified", "1")
+          filter?.let { f ->
+            val filterValue = "${f.group}.${f.value.encodeBase64().encodeURLQueryComponent()}"
+            parameters.append("filter", filterValue)
+          }
+          sortMode?.let { parameters.append("sort", it) }
+          if (sortDescending) parameters.append("desc", "1")
+          if (page != INVALID) parameters.append("page", page.toString())
+          if (limit != INVALID) parameters.append("limit", limit.toString())
+        },
+      )
+    }.map {
+      PagedResponse(
+        data = it.results,
+        page = it.page,
+        limit = it.limit,
+        total = it.total,
+        offset = it.offset,
+      )
+    }
+  }
+
+  override suspend fun getLibraryItem(itemId: String): Result<LibraryItemExpanded> {
+    return trySendRequest<LibraryItemExpanded> {
+      hydratedClientRequest("/api/items/$itemId?expanded=1&include=progress,authors,downloads")
+    }
+  }
+
+  override suspend fun getLibraryStats(libraryId: String): Result<LibraryStats> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/stats")
+    }
+  }
+
+  override suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>> {
+    return trySendRequest<List<Shelf>> {
+      hydratedClientRequest("/api/libraries/$libraryId/personalized")
+    }
+  }
+
+  override suspend fun getRecentEpisodes(
+    libraryId: String,
+    page: Int,
+    limit: Int,
+  ): Result<PagedRecentEpisodesResponse> {
+    return trySendRequest {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "recent-episodes")
+          parameters.append("page", page.toString())
+          parameters.append("limit", limit.toString())
+        },
+      )
+    }
+  }
+
+  override suspend fun getPodcastFeed(
+    rssFeedUrl: String,
+  ): Result<PodcastFeed> {
+    return trySendRequest<PodcastFeedResponse> {
+      hydratedClientRequest("/api/podcasts/feed") {
+        method = HttpMethod.Post
+        setBody(PodcastFeedRequest(rssFeed = rssFeedUrl))
+      }
+    }.map { response -> response.podcast }
+  }
+
+  override suspend fun searchPodcasts(
+    term: String,
+    country: String?,
+  ): Result<List<PodcastSearchResultDto>> {
+    return trySendRequest {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "search", "podcast")
+          parameters.append("term", term)
+          country?.let { parameters.append("country", it) }
+        },
+      )
+    }
+  }
+
+  override suspend fun createPodcast(
+    libraryId: String,
+    folderId: String,
+    path: String,
+    metadata: PodcastMetadata,
+    tags: List<String>,
+    autoDownloadEpisodes: Boolean,
+    autoDownloadSchedule: String?,
+  ): Result<LibraryItemExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/podcasts") {
+        method = HttpMethod.Post
+        setBody(
+          CreatePodcastRequest(
+            libraryId = libraryId,
+            folderId = folderId,
+            path = path,
+            media = CreatePodcastMedia(
+              metadata = metadata,
+              tags = tags,
+              autoDownloadEpisodes = autoDownloadEpisodes,
+              autoDownloadSchedule = autoDownloadSchedule,
+            ),
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun downloadPodcastEpisodes(
+    libraryItemId: String,
+    episodes: List<RssPodcastEpisode>,
+  ): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "podcasts", libraryItemId, "download-episodes")
+        },
+      ) {
+        method = HttpMethod.Post
+        setBody(episodes)
+      }
+    }
+  }
+
+  override suspend fun getEpisodeDownloads(libraryId: String): Result<EpisodeDownloadsResponse> {
+    return trySendRequest {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "episode-downloads")
+        },
+      )
+    }
+  }
+
+  override suspend fun clearPodcastDownloadQueue(libraryItemId: String): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "podcasts", libraryItemId, "clear-queue")
+        },
+      )
+    }
+  }
+
+  override suspend fun getSeries(
+    libraryId: String,
+    filter: LibraryItemFilter?,
+    sortMode: String?,
+    sortDescending: Boolean,
+    page: Int,
+    limit: Int,
+  ): Result<PagedResponse<Series>> {
+    return trySendRequest<SeriesResponse> {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "series")
+          filter?.let { f ->
+            val filterValue = "${f.group}.${f.value.encodeBase64().encodeURLQueryComponent()}"
+            parameters.append("filter", filterValue)
+          }
+          sortMode?.let { parameters.append("sort", it) }
+          if (sortDescending) parameters.append("desc", "1")
+          if (page != INVALID) parameters.append("page", page.toString())
+          if (limit != INVALID) {
+            parameters.append("limit", limit.toString())
+          } else {
+            parameters.append("limit", "1000")
+          }
+        },
+      )
+    }.map {
+      PagedResponse(
+        data = it.results,
+        page = it.page,
+        limit = it.limit,
+        total = it.total,
+        offset = it.page * it.limit,
+      )
+    }
+  }
+
+  override suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/series/$seriesId")
+    }
+  }
+
+  override suspend fun getAuthors(
+    libraryId: String,
+    sortMode: String?,
+    sortDescending: Boolean,
+    page: Int,
+    limit: Int,
+  ): Result<PagedResponse<Author>> {
+    return trySendRequest<AuthorResponse> {
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "authors")
+          sortMode?.let { parameters.append("sort", it) }
+          if (sortDescending) parameters.append("desc", "1")
+          if (page != INVALID) parameters.append("page", page.toString())
+          if (limit != INVALID) parameters.append("limit", limit.toString())
+        },
+      )
+    }.map {
+      PagedResponse(
+        data = it.results,
+        page = it.page,
+        limit = it.limit,
+        total = it.total,
+        offset = it.page * it.limit,
+      )
+    }
+  }
+
+  override suspend fun getAuthor(authorId: String): Result<Author> {
+    return trySendRequest<Author> {
+      hydratedClientRequest("/api/authors/$authorId?include=items")
+    }
+  }
+
+  override suspend fun getCollections(libraryId: String): Result<List<Collection>> {
+    return trySendRequest<CollectionsResponse> {
+      hydratedClientRequest("/api/libraries/$libraryId/collections")
+    }.map { it.results }
+  }
+
+  override suspend fun getCollection(collectionId: String): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections/$collectionId")
+    }
+  }
+
+  override suspend fun createCollection(
+    libraryId: String,
+    name: String,
+    description: String?,
+    bookIds: List<String>,
+  ): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections") {
+        method = HttpMethod.Post
+        setBody(
+          NewCollectionRequest(
+            libraryId = libraryId,
+            name = name,
+            description = description,
+            books = bookIds,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun updateCollection(
+    collectionId: String,
+    name: String?,
+    description: String?,
+  ): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections/$collectionId") {
+        method = HttpMethod.Patch
+        setBody(
+          UpdateCollectionRequest(
+            name = name,
+            description = description,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun addBookToCollection(collectionId: String, libraryItemId: String): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections/$collectionId/book") {
+        method = HttpMethod.Post
+        setBody(AddBookToCollectionRequest(libraryItemId))
+      }
+    }
+  }
+
+  override suspend fun removeBookFromCollection(collectionId: String, libraryItemId: String): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections/$collectionId/book/$libraryItemId") {
+        method = HttpMethod.Delete
+      }
+    }
+  }
+
+  override suspend fun removeBooksFromCollection(
+    collectionId: String,
+    libraryItemIds: List<String>,
+  ): Result<Collection> {
+    return trySendRequest {
+      hydratedClientRequest("/api/collections/$collectionId/batch/remove") {
+        method = HttpMethod.Post
+        setBody(BatchBooksRequest(libraryItemIds))
+      }
+    }
+  }
+
+  override suspend fun deleteCollection(collectionId: String): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest("/api/collections/$collectionId") {
+        method = HttpMethod.Delete
+      }
+    }
+  }
+
+  override suspend fun deleteLibraryItem(itemId: String, hard: Boolean): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest("/api/items/$itemId") {
+        method = HttpMethod.Delete
+        if (hard) parameter("hard", "1")
+      }
+    }
+  }
+
+  override suspend fun createPlaylist(
+    libraryId: String,
+    name: String,
+    description: String?,
+    items: List<PlaylistItem.Minified>,
+  ): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists") {
+        method = HttpMethod.Post
+        setBody(
+          NewPlaylistRequest(
+            libraryId = libraryId,
+            name = name,
+            description = description,
+            items = items,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun getPlaylists(libraryId: String): Result<List<PlaylistExpanded>> {
+    return trySendRequest<PlaylistsResponse> {
+      hydratedClientRequest("/api/libraries/$libraryId/playlists")
+    }.map { it.results }
+  }
+
+  override suspend fun getPlaylist(playlistId: String): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists/$playlistId")
+    }
+  }
+
+  override suspend fun updatePlaylist(
+    playlistId: String,
+    name: String,
+    description: String?,
+    items: List<PlaylistItem.Minified>,
+  ): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists/$playlistId") {
+        method = HttpMethod.Patch
+        setBody(
+          UpdatePlaylistRequest(
+            name = name,
+            description = description,
+            items = items,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun deletePlaylist(playlistId: String): Result<Unit> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists/$playlistId") {
+        method = HttpMethod.Delete
+      }
+    }
+  }
+
+  override suspend fun addToPlaylist(
+    playlistId: String,
+    item: PlaylistItem.Minified,
+  ): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists/$playlistId/item") {
+        method = HttpMethod.Post
+        setBody(item)
+      }
+    }
+  }
+
+  override suspend fun removeFromPlaylist(
+    playlistId: String,
+    item: PlaylistItem.Minified,
+  ): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest({
+        appendPathSegments("api", "playlists", playlistId, "item", item.libraryItemId)
+        item.episodeId?.let { episodeId ->
+          appendPathSegments(episodeId)
+        }
+      }) {
+        method = HttpMethod.Delete
+        setBody(item)
+      }
+    }
+  }
+
+  override suspend fun createPlaylistFromCollection(collectionId: String): Result<PlaylistExpanded> {
+    return trySendRequest {
+      hydratedClientRequest("/api/playlists/collection/$collectionId") {
+        method = HttpMethod.Post
+      }
+    }
+  }
+
+  override suspend fun getMediaProgress(
+    libraryItemId: String,
+    episodeId: String?,
+  ): Result<MediaProgress> {
+    val path = if (episodeId != null) {
+      "/api/me/progress/$libraryItemId/$episodeId"
+    } else {
+      "/api/me/progress/$libraryItemId"
+    }
+    return trySendRequest {
+      hydratedClientRequest(path)
+    }
+  }
+
+  override suspend fun updateMediaProgress(
+    libraryItemId: String,
+    update: MediaProgressUpdatePayload,
+    episodeId: String?,
+  ): Result<Unit> {
+    val path = if (episodeId != null) {
+      "/api/me/progress/$libraryItemId/$episodeId"
+    } else {
+      "/api/me/progress/$libraryItemId"
+    }
+    return trySendRequest({}) {
+      hydratedClientRequest(path) {
+        method = HttpMethod.Patch
+        setBody(update)
+      }
+    }
+  }
+
+  override suspend fun batchUpdateMediaProgress(updates: List<MediaProgressUpdatePayload>): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest("/api/me/progress/batch/update") {
+        method = HttpMethod.Patch
+        setBody(updates)
+      }
+    }
+  }
+
+  override suspend fun deleteMediaProgress(mediaProgressId: String): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest("/api/me/progress/$mediaProgressId") {
+        method = HttpMethod.Delete
+      }
+    }
+  }
+
+  override suspend fun createBookmark(libraryItemId: String, timeInSeconds: Int, title: String): Result<AudioBookmark> {
+    return trySendRequest {
+      hydratedClientRequest("/api/me/item/$libraryItemId/bookmark") {
+        method = HttpMethod.Post
+        setBody(
+          CreateBookmarkRequest(
+            time = timeInSeconds,
+            title = title,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun removeBookmark(libraryItemId: String, timeInSeconds: Int): Result<Unit> {
+    return trySendRequest({}) {
+      hydratedClientRequest("/api/me/item/$libraryItemId/bookmark/$timeInSeconds") {
+        method = HttpMethod.Delete
+      }
+    }
+  }
+
+  override suspend fun syncLocalSessions(
+    sessions: List<PlaybackSession>,
+  ): Result<SyncLocalSessionsResult> {
+    return trySendRequest<SyncLocalSessionsResult> {
+      hydratedClientRequest("/api/session/local-all") {
+        method = HttpMethod.Post
+        setBody(
+          SyncSessionRequest(
+            deviceInfo = sessions.first().deviceInfo,
+            sessions = sessions,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun syncLocalSession(session: PlaybackSession): Result<Unit> {
+    return trySendRequest(
+      responseMapper = {},
+    ) {
+      hydratedClientRequest("/api/session/local") {
+        method = HttpMethod.Post
+        setBody(session)
+      }
+    }
+  }
+
+  override suspend fun startPlaybackSession(
+    libraryItemId: String,
+    episodeId: String?,
+    deviceInfo: DeviceInfo,
+    mediaPlayer: String,
+    supportedMimeTypes: List<String>,
+    forceDirectPlay: Boolean,
+    forceTranscode: Boolean,
+  ): Result<PlaySession> {
+    return trySendRequest<PlaySession> {
+      hydratedClientRequest({
+        appendPathSegments("api", "items", libraryItemId, "play")
+        episodeId?.let { appendPathSegments(it) }
+      }) {
+        method = HttpMethod.Post
+        setBody(
+          PlayItemRequest(
+            deviceInfo = deviceInfo,
+            mediaPlayer = mediaPlayer,
+            supportedMimeTypes = supportedMimeTypes,
+            forceDirectPlay = forceDirectPlay,
+            forceTranscode = forceTranscode,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun syncPlaybackSession(
+    sessionId: String,
+    currentTime: Double,
+    timeListened: Double,
+    duration: Double,
+  ): Result<Unit> {
+    if (timeListened <= 0.0) {
+      return Result.failure(
+        IllegalArgumentException(
+          "timeListened must be a positive delta; the server treats zero-delta syncs as inert " +
+            "for session keepalive yet still writes media progress from them",
+        ),
+      )
+    }
+    return trySendRequest(
+      responseMapper = {},
+    ) {
+      hydratedClientRequest({
+        appendPathSegments("api", "session", sessionId, "sync")
+      }) {
+        method = HttpMethod.Post
+        setBody(
+          SyncPlaybackSessionRequest(
+            currentTime = currentTime,
+            timeListened = timeListened,
+            duration = duration,
+          ),
+        )
+      }
+    }
+  }
+
+  override suspend fun closePlaybackSession(
+    sessionId: String,
+    currentTime: Double?,
+    timeListened: Double?,
+    duration: Double?,
+  ): Result<Unit> {
+    val finalSync = if (currentTime != null && duration != null && timeListened != null && timeListened > 0.0) {
+      SyncPlaybackSessionRequest(
+        currentTime = currentTime,
+        timeListened = timeListened,
+        duration = duration,
+      )
+    } else {
+      null
+    }
+    return trySendRequest(
+      responseMapper = {},
+    ) {
+      hydratedClientRequest({
+        appendPathSegments("api", "session", sessionId, "close")
+      }) {
+        method = HttpMethod.Post
+        // A close with no (or a zero-delta) final sync must carry an empty body: the server
+        // writes media progress from any sync payload it sees, even a zero-delta one.
+        setBody(finalSync ?: EmptyRequest())
+      }
+    }
+  }
+
+  override suspend fun searchLibrary(libraryId: String, query: String): Result<SearchResult> {
+    return trySendRequest {
+      hydratedClientRequest("api/libraries/$libraryId/search?q=${query.encodeURLQueryComponent()}")
+    }
+  }
+
+  override suspend fun getListeningStats(): Result<ListeningStats> {
+    val currentUserId = userSession.userId ?: return Result.failure(NotLoggedInException())
+    return trySendRequest {
+      hydratedClientRequest("api/users/$currentUserId/listening-stats")
+    }
+  }
+
+  override suspend fun getFilterData(libraryId: String): Result<FilterData> {
+    return trySendRequest {
+      hydratedClientRequest("api/libraries/$libraryId/filterdata")
+    }
+  }
+
+  private suspend fun hydratedClientRequest(
+    endpoint: String,
+    builder: HttpRequestBuilder.() -> Unit = { },
+  ): HttpResponse {
+    val currentServerUrl = userSession.requireServerUrl
+    return client.request {
+      url("${cleanServerUrl(currentServerUrl)}${if (!endpoint.startsWith("/")) "/" else ""}$endpoint")
+      header(HttpHeaders.ServerUrl, currentServerUrl)
+      contentType(ContentType.Application.Json)
+      builder()
+    }
+  }
+
+  private suspend fun hydratedClientRequest(
+    urlBuilder: URLBuilder.() -> Unit,
+    builder: HttpRequestBuilder.() -> Unit = { },
+  ): HttpResponse {
+    val currentServerUrl = userSession.requireServerUrl
+    return client.request {
+      url {
+        takeFrom(cleanServerUrl(currentServerUrl))
+        urlBuilder()
+      }
+      header(HttpHeaders.ServerUrl, currentServerUrl)
+      contentType(ContentType.Application.Json)
+      builder()
+    }
+  }
+}
+
+class NotLoggedInException : Exception()
+
+internal fun cleanServerUrl(url: String): String {
+  fun String.withoutFinalSlash(): String = if (last() == '/') {
+    substringBeforeLast('/')
+  } else {
+    this
+  }
+
+  return if (url.startsWith("http://") || url.startsWith("https://")) {
+    url.withoutFinalSlash()
+  } else {
+    "https://${url.withoutFinalSlash()}"
+  }
+}

@@ -1,0 +1,1 @@
+- FOSS (F-Droid) builds are now byte-for-byte reproducible
