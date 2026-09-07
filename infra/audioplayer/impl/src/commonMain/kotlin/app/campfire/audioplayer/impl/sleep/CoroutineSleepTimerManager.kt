@@ -299,11 +299,17 @@ class CoroutineSleepTimerManager(
     val now = fatherTime.nowInEpochMillis()
     val resumedAt = countdownResumedAt
     if (resumedAt != null) {
-      dbark { "Playback paused, freezing sleep timer" }
-      remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
       countdownResumedAt = null
       countdownJob?.cancel()
       countdownJob = null
+      cancelFade()
+      if (sleepSettings.resetTimerOnPause) {
+        dbark { "Playback paused with reset-on-pause enabled, resetting sleep timer to ${timer.epochMillis}ms" }
+        remainingMillis = timer.epochMillis
+      } else {
+        dbark { "Playback paused, freezing sleep timer" }
+        remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
+      }
     }
     publishRunningTimer(timer, reference = now, pausedAt = now)
   }

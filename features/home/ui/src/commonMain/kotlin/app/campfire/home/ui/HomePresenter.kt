@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.mapLatest
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
 
@@ -124,7 +125,7 @@ class HomePresenter(
       derivedStateOf {
         domainFeed.map { shelves ->
           val uiShelves = shelves
-            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.home.api.model.ShelfType.AUTHOR }
+            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.core.model.ShelfType.AUTHOR }
             .map { shelf ->
               UiShelf(
                 shelf,

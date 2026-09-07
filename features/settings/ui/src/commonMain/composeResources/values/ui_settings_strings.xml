@@ -121,6 +121,8 @@
   <string name="header_shake_to_reset">Reset</string>
   <string name="setting_playback_sleep_shake_to_reset_title">Shake-to-reset</string>
   <string name="setting_playback_sleep_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
+  <string name="setting_sleep_reset_timer_on_pause_title">Reset timer on pause</string>
+  <string name="setting_sleep_reset_timer_on_pause_subtitle">Reset the sleep timer to its full duration when audio is paused instead of freezing the countdown</string>
   <string name="setting_playback_shake_sensitivity_title">Shake sensitivity</string>
   <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
   <string name="shake_sensitivity_very_low">Very low</string>

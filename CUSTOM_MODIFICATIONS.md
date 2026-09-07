@@ -154,17 +154,21 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
 - **UI Freeze on Pause**:
   - Added `isPaused: Boolean = false` field to `RunningTimer`.
   - In `RunningTimerText.kt` and `SleepTimerButton.kt`, when `isPaused` is true, the timer displays the frozen remaining duration without continuing to subtract elapsed wall-clock time.
-- **Reset Pending Resume**:
-  - In `CoroutineSleepTimerManager.kt`, pausing playback with `resetTimerOnPauseEnabled` cancels the active countdown job, sets `isPaused = true`, and preserves the original duration so resuming restarts the full countdown.
+- **Reset Timer on Pause (User Configurable)**:
+  - Added `resetTimerOnPause` (`pref_sleep_reset_timer_on_pause`, default `false`) setting in **Settings > Sleep** under the *Reset* section.
+  - When enabled, pausing playback (via earbuds, lockscreen, notification, or in-app button) cancels the active countdown job, cancels any pending volume fade, and immediately resets `remainingMillis = timer.epochMillis`.
+  - When disabled (default), pausing freezes the timer at its current elapsed time and resumes where it left off.
 
 ### Modified Files:
-* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
-* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/RunningTimer.kt`
-* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt`
-* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt`
-* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/sleep/SleepTimerButton.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt`
 * `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
-* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
 
 ---
 

@@ -30,6 +30,12 @@ class FakeSleepSettings : SleepSettings {
     set(value) { _shakeToResetEnabled.value = value }
   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = _shakeToResetEnabled.asStateFlow()
 
+  private val _resetTimerOnPause = MutableStateFlow(false)
+  override var resetTimerOnPause: Boolean
+    get() = _resetTimerOnPause.value
+    set(value) { _resetTimerOnPause.value = value }
+  override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
+
   private val _shakeSensitivity = MutableStateFlow(ShakeSensitivity.Default)
   override var shakeSensitivity: ShakeSensitivity
     get() = _shakeSensitivity.value

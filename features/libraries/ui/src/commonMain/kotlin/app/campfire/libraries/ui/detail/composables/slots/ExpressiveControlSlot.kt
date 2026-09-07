@@ -39,6 +39,8 @@ class ExpressiveControlSlot(
   private val isCurrentSession: Boolean,
   private val addToPlaylistDialog: AddToPlaylistDialog,
   @get:VisibleForTesting val showConfirmDownloadDialogSetting: Boolean,
+  @get:VisibleForTesting val confirmActionsSetting: Boolean = true,
+  @get:VisibleForTesting val warnOnCellularDownloadSetting: Boolean = true,
   @get:VisibleForTesting val canStreamHls: Boolean = false,
   @get:VisibleForTesting val willStreamHls: Boolean = false,
 ) : ContentSlot {

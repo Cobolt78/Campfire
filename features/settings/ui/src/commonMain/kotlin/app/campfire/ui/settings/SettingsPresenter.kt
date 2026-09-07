@@ -82,6 +82,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
 import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
@@ -225,6 +226,7 @@ class SettingsPresenter(
     val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
     val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
     val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
+    val resetTimerOnPause by remember { sleepSettings.observeResetTimerOnPause() }.collectAsState()
 
     // About Settings
     val crashReportingEnabled by remember { settings.observeCrashReportingEnabled() }
@@ -296,6 +298,7 @@ class SettingsPresenter(
         shakeToReset = shakeToResetEnabled,
         shakeSensitivity = shakeSensitivity,
         fadeOutDuration = fadeOutDuration,
+        resetTimerOnPause = resetTimerOnPause,
         autoSleepSetting = if (autoSleepTimerEnabled) {
           SleepSettingsInfo.AutoSleepSetting(
             start = autoSleepTimerStart,
@@ -433,6 +436,7 @@ class SettingsPresenter(
           is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
           is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
           is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
+          is ResetTimerOnPause -> sleepSettings.resetTimerOnPause = event.enabled
         }
 
         is SettingsUiEvent.AboutSettingEvent -> when (event) {

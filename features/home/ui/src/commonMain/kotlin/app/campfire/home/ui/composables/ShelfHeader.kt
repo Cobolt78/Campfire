@@ -34,7 +34,7 @@ fun ShelfHeader(
       // label resolves here instead of from the server feed.
       text = when (shelf.id) {
         ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
-        "downloads" -> stringResource(campfire.features.home.ui.generated.resources.downloads_shelf_title)
+        "downloads" -> "Downloads"
         else -> shelf.label
       },
       style = MaterialTheme.typography.labelLarge,

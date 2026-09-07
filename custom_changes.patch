@@ -356,10 +356,10 @@ index 0000000..d69f37d
 +| `infra/shake/.../ShakeSensitivityMagnitudes.android.kt` | Corrected inverted thresholds (VeryHigh=11.0, VeryLow=17.5) |
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
-index 0000000..1c36b70
+index 0000000..a9413c5
 --- /dev/null
 +++ b/GEMINI.md
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,18 @@
 +# Antigravity Rules for Campfire (Cobolt78/Campfire)
 +
 +## Workflow & GitHub Integration Invariants
@@ -371,7 +371,8 @@ index 0000000..1c36b70
 +
 +2. **Releases & Binary Distribution**:
 +   - When compiling a release, build the release APK(s) using `./gradlew.bat :app:android:assembleFossRelease` (and/or `:app:android:assembleStandardRelease` if requested).
-+   - Publish or update the release on GitHub via GitHub CLI (`gh release upload ... --repo Cobolt78/Campfire`) so that the user can download the APKs directly from `https://github.com/Cobolt78/Campfire/releases`.
++   - Name the release APKs using the versioned format: `android-foss-release_<version>.apk` and `android-standard-release_<version>.apk` (e.g. `android-standard-release_1.1.0.apk`).
++   - Publish or update the release on GitHub via GitHub CLI (`gh release upload <tag> <file> --clobber --repo Cobolt78/Campfire`). If replacing an existing release asset with a different filename, delete the stale asset first.
 +   - If the user's phone (`RFCX816WP0Z`) is connected via USB, automatically install the updated APK via `adb install -r`.
 +
 +3. **Repository Integrity**:
@@ -492,6 +493,57 @@ index 0000000..660fd81
 + */
 +@Composable
 +expect fun rememberIsCellularOrMetered(): Boolean
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
+index 1c3897f..e52c037 100644
+--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
+@@ -561,11 +561,13 @@ private fun LibraryItemCardEditingScrim(
+   }
+ }
+ 
++private val MediaProgressTrackColor = Color(0x80000000)
++
+ @Composable
+ fun MediaProgressBar(
+   mediaProgress: MediaProgress,
+   modifier: Modifier = Modifier,
+-  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
++  trackColor: Color = MediaProgressTrackColor,
+   progressColor: Color = MaterialTheme.colorScheme.primary,
+   trackHeight: Dp = LargeProgressBarHeight,
+ ) {
+@@ -577,19 +579,21 @@ fun MediaProgressBar(
+     drawRect(
+       color = trackColor,
+       size = size,
+-      alpha = ProgressBarAlpha,
+     )
+ 
+     val cornerRadiusPx = trackHeight.toPx() / 2f
+-    val progressSize = size.copy(
+-      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
+-    )
+-    drawRoundRect(
+-      color = progressColor,
+-      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
+-      size = progressSize,
+-      cornerRadius = CornerRadius(cornerRadiusPx),
+-    )
++    val progressFraction = mediaProgress.actualProgress.coerceIn(0f, 1f)
++    if (progressFraction > 0f) {
++      val progressSize = size.copy(
++        width = (size.width * progressFraction) + cornerRadiusPx,
++      )
++      drawRoundRect(
++        color = progressColor,
++        topLeft = Offset(x = -cornerRadiusPx, y = 0f),
++        size = progressSize,
++        cornerRadius = CornerRadius(cornerRadiusPx),
++      )
++    }
+   }
+ }
+ 
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt
 new file mode 100644
 index 0000000..896b126

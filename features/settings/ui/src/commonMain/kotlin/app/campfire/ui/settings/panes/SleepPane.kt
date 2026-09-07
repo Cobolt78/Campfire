@@ -58,6 +58,8 @@ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_titl
 import campfire.features.settings.ui.generated.resources.setting_playback_shake_sensitivity_title
 import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_subtitle
 import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_title
+import campfire.features.settings.ui.generated.resources.setting_sleep_reset_timer_on_pause_subtitle
+import campfire.features.settings.ui.generated.resources.setting_sleep_reset_timer_on_pause_title
 import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_duration_subtitle
 import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_duration_title
 import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_off
@@ -104,11 +106,19 @@ internal fun SleepPane(
       onValueChange = { state.eventSink(SleepSettingEvent.FadeOutDuration(it)) },
     )
 
-    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
-      Header(
-        title = { Text(stringResource(Res.string.header_shake_to_reset)) },
-      )
+    Header(
+      title = { Text(stringResource(Res.string.header_shake_to_reset)) },
+    )
 
+    // Reset Timer on Pause
+    SwitchSetting(
+      value = state.sleepSettings.resetTimerOnPause,
+      onValueChange = { state.eventSink(SleepSettingEvent.ResetTimerOnPause(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_sleep_reset_timer_on_pause_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_sleep_reset_timer_on_pause_subtitle)) },
+    )
+
+    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
       // Shake to Reset
       SwitchSetting(
         value = state.sleepSettings.shakeToReset,
