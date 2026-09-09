@@ -16,3 +16,15 @@
 3. **Repository Integrity**:
    - Do NOT delete `CHANGELOG.md` (it is required at build time by `GenerateChangelogTask` to generate the in-app "What's New" dialog).
    - Maintain a clean baseline against upstream `https://github.com/r0adkll/Campfire.git`.
+
+4. **Mandatory Version Upgrade & Feature Retention Protocol**:
+   - **Never Silently Drop a Feature**: When migrating to a new upstream release (e.g., v1.1.1, v1.2.0, v2.0+), NEVER assume an upstream change supersedes, replaces, or conflicts with any custom modification without performing an explicit audit and confirming with the user.
+   - **Mandatory Section-by-Section Audit**: Every single numbered section in `CUSTOM_MODIFICATIONS.md` (Sections 1 through 11+) must be checked off in an explicit audit list before any upgrade is finalized:
+     1. The code for the feature must be verified as actively present and compiling in the new codebase.
+     2. If upstream modified a subsystem touching our features (such as Android Auto, player architecture, sleep timer, or home shelves), verify that the *exact* custom user experience (e.g., speed-adjusted total countdown, volume fade curves) is preserved. If not identical, adapt the custom feature to sit on top of upstream's new architecture.
+     3. If an upstream feature genuinely makes a custom modification redundant, or if an architectural conflict arises, STOP and explicitly present the options to the user in chat. Never unilaterally omit a feature.
+   - **Patch & Inventory Verification**:
+     - Cross-check the modified file list in the new version against `CUSTOM_MODIFICATIONS.md` (Section 11: Modified Files Inventory) and the previous version's `custom_changes.patch`.
+     - If any file or feature that previously had custom code is untouched in the new version, treat it as an immediate regression alert that must be resolved before cutting a release.
+   - **Lockstep Synchronization**:
+     - Keep `CUSTOM_MODIFICATIONS.md` and `custom_changes.patch` in 100% sync with the actual repository code at all times.
