@@ -104,24 +104,28 @@ Added the media file size in megabytes directly alongside the total duration on 
 ## 5. Android Auto & System Media: Dynamic Speed-Adjusted Total Book Countdown
 
 ### Summary
-Enriched the `MediaMetadata` artist line for Android Auto and system media notifications to display real-time speed-adjusted remaining listening time that counts down minute-by-minute as you drive.
+In Campfire 1.1.0, Android Auto formats the media screen with the Chapter Title on Line 1 (`MediaMetadata.title`), Book Title on Line 2 (`MediaMetadata.artist`), and the chapter scrubber on the progress bar. We enhanced Line 1 by stripping any raw chapter length suffix (e.g., `- 00:20:40` or `(20:40)`) and dynamically appending the live speed-adjusted total book remaining countdown (e.g., `Chapter 134 - 18h 45m left`), counting down minute-by-minute while you drive.
 
 ### Key Details
-- **Time-First Formatting for Screen Width**:
-  - The artist line is formatted as `"$remainingFormatted left • $author"` (e.g. `4h 12m left • Stephen King, Owen King`).
-  - By placing the remaining time first, long author lists or multiple authors on Android Auto screens will never cut off or obscure the remaining listening time.
+- **Line 1 - Chapter Title + Total Book Countdown**:
+  - The chapter title is formatted as `"$cleanTitle - $remainingFormatted left"` (e.g. `Chapter 134 - 18h 45m left`).
+  - Existing durations like `- 00:20:40` or `(20:40)` appended to chapter titles from metadata or track tagging are automatically cleaned using `MediaItemBuilder.cleanChapterTitle()`.
+- **Preserved Layout Elements**:
+  - **Line 2 (Book Title)**: Retains `albumTitle ?: artist` so the book title remains prominently visible beneath the chapter title.
+  - **Scrubber Bar**: Continues tracking the active chapter progress (`3:52 / 20:40`).
 - **Playback Speed Adjustment**:
   $$\text{Effective Remaining Time} = \frac{\text{Raw Remaining Audio Duration}}{\text{Playback Speed}}$$
-  *(e.g., at 1.25x speed, 5 hours of audio displays as 4h 0m remaining)*.
+  *(e.g., at 1.25x speed, 5 hours of remaining audio displays as 4h 0m left)*.
 - **Initial & Dynamic Updates**:
-  - `MediaItemBuilder.kt` initializes `.setArtist(metadata.artist)` on the platform `MediaMetadata`.
-  - `ExoPlayerAudioPlayer.kt` updates the active item's metadata via `exoPlayer.replaceMediaItem(currentIndex, newItem)` whenever the minute string updates, actively dispatching changes to Android Auto and the system media notification without interrupting audio playback.
+  - `MediaItemBuilder.kt` initializes `title` on the platform `MediaMetadata` with the formatted countdown.
+  - `ChapterWindowForwardingPlayer.kt` dynamically formats `chapterPlaylist` titles with `host.remainingFormatted()`.
+  - `ExoPlayerAudioPlayer.kt` updates the active item's title via `exoPlayer.replaceMediaItem(currentIndex, newItem)` whenever the minute string updates, actively dispatching changes to Android Auto and system media controls without interrupting playback.
 
 ### Modified Files:
 * `core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt`
 * `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
-* `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt`
 
 ---
 
@@ -333,9 +337,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `infra/audioplayer/public-ui/.../SleepTimerButton.kt` | Timer button pause freeze support |
 | `infra/audioplayer/impl/.../CoroutineSleepTimerManager.kt` | Managed pause reset & fade timing |
 | `infra/audioplayer/impl/.../VolumeFadeController.kt` | Perceptual quadratic fade & try-finally reset |
-| `infra/audioplayer/impl/.../MediaItemBuilder.kt` | Dynamic playlistMetadata for live remaining book time |
+| `infra/audioplayer/impl/.../MediaItemBuilder.kt` | Clean chapter title & format speed-adjusted remaining book time countdown |
+| `infra/audioplayer/impl/.../ChapterWindowForwardingPlayer.kt` | Dynamic chapter playlist titles with remaining book countdown |
 | `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Real-time minute countdown, replaceMediaItem & speed factor |
-| `infra/audioplayer/impl/.../MediaItemBuilderTest.kt` | Unit tests for remaining book time & playback speed |
 | `features/settings/api/.../CampfireSettings.kt` | Added `confirmActions` and `warnOnCellularDownload` |
 | `features/settings/impl/.../CampfireSettingsImpl.kt` | Persistent storage for `confirmActions` & `warnOnCellularDownload` |
 | `features/settings/api/.../SleepSettings.kt` | Added `fadeOutDuration` setting |

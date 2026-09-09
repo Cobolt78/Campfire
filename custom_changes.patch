@@ -1,9 +1,23 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 52cf4c5..6245fcd 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ 
+ ### Added
+ 
++- "Reset timer on pause" option in Settings → Sleep to reset the sleep timer back to its full original duration whenever playback is paused (e.g. from earbuds, Bluetooth, notification, or in-app) instead of freezing the countdown
++- Speed-adjusted total book remaining countdown next to the chapter title in Android Auto and system media notifications (e.g. "Chapter 134 - 18h 45m left"), updating dynamically every minute while preserving the book title on line 2 and chapter progress on the scrubber
++
+ ### Changed
+ 
+ ### Deprecated
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 0000000..d69f37d
+index 0000000..0234427
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,358 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -110,24 +124,28 @@ index 0000000..d69f37d
 +## 5. Android Auto & System Media: Dynamic Speed-Adjusted Total Book Countdown
 +
 +### Summary
-+Enriched the `MediaMetadata` artist line for Android Auto and system media notifications to display real-time speed-adjusted remaining listening time that counts down minute-by-minute as you drive.
++In Campfire 1.1.0, Android Auto formats the media screen with the Chapter Title on Line 1 (`MediaMetadata.title`), Book Title on Line 2 (`MediaMetadata.artist`), and the chapter scrubber on the progress bar. We enhanced Line 1 by stripping any raw chapter length suffix (e.g., `- 00:20:40` or `(20:40)`) and dynamically appending the live speed-adjusted total book remaining countdown (e.g., `Chapter 134 - 18h 45m left`), counting down minute-by-minute while you drive.
 +
 +### Key Details
-+- **Time-First Formatting for Screen Width**:
-+  - The artist line is formatted as `"$remainingFormatted left • $author"` (e.g. `4h 12m left • Stephen King, Owen King`).
-+  - By placing the remaining time first, long author lists or multiple authors on Android Auto screens will never cut off or obscure the remaining listening time.
++- **Line 1 - Chapter Title + Total Book Countdown**:
++  - The chapter title is formatted as `"$cleanTitle - $remainingFormatted left"` (e.g. `Chapter 134 - 18h 45m left`).
++  - Existing durations like `- 00:20:40` or `(20:40)` appended to chapter titles from metadata or track tagging are automatically cleaned using `MediaItemBuilder.cleanChapterTitle()`.
++- **Preserved Layout Elements**:
++  - **Line 2 (Book Title)**: Retains `albumTitle ?: artist` so the book title remains prominently visible beneath the chapter title.
++  - **Scrubber Bar**: Continues tracking the active chapter progress (`3:52 / 20:40`).
 +- **Playback Speed Adjustment**:
 +  $$\text{Effective Remaining Time} = \frac{\text{Raw Remaining Audio Duration}}{\text{Playback Speed}}$$
-+  *(e.g., at 1.25x speed, 5 hours of audio displays as 4h 0m remaining)*.
++  *(e.g., at 1.25x speed, 5 hours of remaining audio displays as 4h 0m left)*.
 +- **Initial & Dynamic Updates**:
-+  - `MediaItemBuilder.kt` initializes `.setArtist(metadata.artist)` on the platform `MediaMetadata`.
-+  - `ExoPlayerAudioPlayer.kt` updates the active item's metadata via `exoPlayer.replaceMediaItem(currentIndex, newItem)` whenever the minute string updates, actively dispatching changes to Android Auto and the system media notification without interrupting audio playback.
++  - `MediaItemBuilder.kt` initializes `title` on the platform `MediaMetadata` with the formatted countdown.
++  - `ChapterWindowForwardingPlayer.kt` dynamically formats `chapterPlaylist` titles with `host.remainingFormatted()`.
++  - `ExoPlayerAudioPlayer.kt` updates the active item's title via `exoPlayer.replaceMediaItem(currentIndex, newItem)` whenever the minute string updates, actively dispatching changes to Android Auto and system media controls without interrupting playback.
 +
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt`
 +* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
-+* `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt`
 +
 +---
 +
@@ -160,17 +178,21 @@ index 0000000..d69f37d
 +- **UI Freeze on Pause**:
 +  - Added `isPaused: Boolean = false` field to `RunningTimer`.
 +  - In `RunningTimerText.kt` and `SleepTimerButton.kt`, when `isPaused` is true, the timer displays the frozen remaining duration without continuing to subtract elapsed wall-clock time.
-+- **Reset Pending Resume**:
-+  - In `CoroutineSleepTimerManager.kt`, pausing playback with `resetTimerOnPauseEnabled` cancels the active countdown job, sets `isPaused = true`, and preserves the original duration so resuming restarts the full countdown.
++- **Reset Timer on Pause (User Configurable)**:
++  - Added `resetTimerOnPause` (`pref_sleep_reset_timer_on_pause`, default `false`) setting in **Settings > Sleep** under the *Reset* section.
++  - When enabled, pausing playback (via earbuds, lockscreen, notification, or in-app button) cancels the active countdown job, cancels any pending volume fade, and immediately resets `remainingMillis = timer.epochMillis`.
++  - When disabled (default), pausing freezes the timer at its current elapsed time and resumes where it left off.
 +
 +### Modified Files:
-+* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
-+* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/model/RunningTimer.kt`
-+* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerText.kt`
-+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerText.kt`
-+* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/sleep/SleepTimerButton.kt`
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
++* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt`
 +* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
-+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
 +
 +---
 +
@@ -335,9 +357,9 @@ index 0000000..d69f37d
 +| `infra/audioplayer/public-ui/.../SleepTimerButton.kt` | Timer button pause freeze support |
 +| `infra/audioplayer/impl/.../CoroutineSleepTimerManager.kt` | Managed pause reset & fade timing |
 +| `infra/audioplayer/impl/.../VolumeFadeController.kt` | Perceptual quadratic fade & try-finally reset |
-+| `infra/audioplayer/impl/.../MediaItemBuilder.kt` | Dynamic playlistMetadata for live remaining book time |
++| `infra/audioplayer/impl/.../MediaItemBuilder.kt` | Clean chapter title & format speed-adjusted remaining book time countdown |
++| `infra/audioplayer/impl/.../ChapterWindowForwardingPlayer.kt` | Dynamic chapter playlist titles with remaining book countdown |
 +| `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Real-time minute countdown, replaceMediaItem & speed factor |
-+| `infra/audioplayer/impl/.../MediaItemBuilderTest.kt` | Unit tests for remaining book time & playback speed |
 +| `features/settings/api/.../CampfireSettings.kt` | Added `confirmActions` and `warnOnCellularDownload` |
 +| `features/settings/impl/.../CampfireSettingsImpl.kt` | Persistent storage for `confirmActions` & `warnOnCellularDownload` |
 +| `features/settings/api/.../SleepSettings.kt` | Added `fadeOutDuration` setting |
@@ -606,6 +628,30 @@ index 0000000..896b126
 +    },
 +  )
 +}
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt b/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
+index 32190c7..a77e963 100644
+--- a/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
++++ b/core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt
+@@ -27,3 +27,19 @@ fun Duration.asSeconds(): Float = toDouble(DurationUnit.SECONDS).toFloat()
+ infix fun ClosedRange<Duration>.isIn(other: ClosedRange<Duration>): Boolean {
+   return start >= other.start && endInclusive <= other.endInclusive
+ }
++
++/**
++ * Format duration as human-readable hours and minutes (e.g. "14h 22m", "45m", "1h").
++ */
++fun Duration.formatHoursAndMinutes(): String {
++  val hours = inWholeHours
++  val minutes = inWholeMinutes % 60
++  return buildString {
++    if (hours > 0) {
++      append("${hours}h ")
++    }
++    if (minutes > 0 || hours == 0L) {
++      append("${minutes}m")
++    }
++  }.trim()
++}
 diff --git a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt b/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt
 index 494a9b2..de6bdd2 100644
 --- a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt
@@ -693,10 +739,18 @@ index d004f02..956ae73 100644
    <string name="upcoming_shelf_tba">TBA</string>
    <string name="upcoming_view_all">View all</string>
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index 6c1c04f..454ec0e 100644
+index 6c1c04f..231460f 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-@@ -55,6 +55,7 @@ class HomePresenter(
+@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.filterNotNull
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.flow.onStart
++import kotlinx.coroutines.flow.mapLatest
+ import me.tatarka.inject.annotations.Assisted
+ import me.tatarka.inject.annotations.Inject
+ 
+@@ -55,6 +56,7 @@ class HomePresenter(
    private val homeRepository: HomeRepository,
    private val mediaProgressRepository: MediaProgressRepository,
    private val offlineDownloadManager: OfflineDownloadManager,
@@ -704,7 +758,7 @@ index 6c1c04f..454ec0e 100644
    private val bookInfoRegistry: BookInfoRegistry,
    private val analytics: Analytics,
  ) : NonPausablePresenter<HomeUiState> {
-@@ -98,19 +99,54 @@ class HomePresenter(
+@@ -98,19 +100,54 @@ class HomePresenter(
        bookInfoRegistry.observeCachedUpcoming()
      }.collectAsState(emptyList())
  
@@ -738,7 +792,7 @@ index 6c1c04f..454ec0e 100644
 -              shelfEntities[shelf.id]
 -                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
 +          val uiShelves = shelves
-+            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.home.api.model.ShelfType.AUTHOR }
++            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.core.model.ShelfType.AUTHOR }
 +            .map { shelf ->
 +              UiShelf(
 +                shelf,
@@ -765,7 +819,7 @@ index 6c1c04f..454ec0e 100644
          }
        }
      }
-@@ -125,17 +161,22 @@ class HomePresenter(
+@@ -125,17 +162,22 @@ class HomePresenter(
      }.collectAsState(persistentMapOf())
  
      val offlineDownloads by remember {
@@ -800,7 +854,7 @@ index 6c1c04f..454ec0e 100644
  
      return HomeUiState(
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
-index 585f6e9..5857395 100644
+index 585f6e9..54b47c6 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
 @@ -32,10 +32,10 @@ fun ShelfHeader(
@@ -813,7 +867,7 @@ index 585f6e9..5857395 100644
 -        shelf.label
 +      text = when (shelf.id) {
 +        ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
-+        "downloads" -> stringResource(campfire.features.home.ui.generated.resources.downloads_shelf_title)
++        "downloads" -> "Downloads"
 +        else -> shelf.label
        },
        style = MaterialTheme.typography.labelLarge,
@@ -865,10 +919,19 @@ index 2dfc125..7da2235 100644
        canStreamHls = canStreamHls,
        willStreamHls = willStreamHls,
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
-index d9d86e2..56f8cb4 100644
+index d9d86e2..acfdd59 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
-@@ -86,6 +86,13 @@ class ExpressiveControlSlot(
+@@ -39,6 +39,8 @@ class ExpressiveControlSlot(
+   private val isCurrentSession: Boolean,
+   private val addToPlaylistDialog: AddToPlaylistDialog,
+   @get:VisibleForTesting val showConfirmDownloadDialogSetting: Boolean,
++  @get:VisibleForTesting val confirmActionsSetting: Boolean = true,
++  @get:VisibleForTesting val warnOnCellularDownloadSetting: Boolean = true,
+   @get:VisibleForTesting val canStreamHls: Boolean = false,
+   @get:VisibleForTesting val willStreamHls: Boolean = false,
+ ) : ContentSlot {
+@@ -86,6 +88,13 @@ class ExpressiveControlSlot(
        )
      }
  
@@ -882,7 +945,7 @@ index d9d86e2..56f8cb4 100644
      ExpressiveControlBar(
        isQueued = isQueued,
        hasSession = hasSession,
-@@ -100,26 +107,40 @@ class ExpressiveControlSlot(
+@@ -100,26 +109,40 @@ class ExpressiveControlSlot(
          eventSink(LibraryItemUiEvent.PlayClick(method))
        },
        onDownloadClick = {
@@ -927,7 +990,7 @@ index d9d86e2..56f8cb4 100644
        },
        onAddToQueueClick = {
          if (isQueued) {
-@@ -151,5 +172,61 @@ class ExpressiveControlSlot(
+@@ -151,5 +174,61 @@ class ExpressiveControlSlot(
          onDismissRequest = { showConfirmDownloadDialog = false },
        )
      }
@@ -1017,6 +1080,20 @@ index 18dcdad..0e46760 100644
 +  var warnOnCellularDownload: Boolean
 +  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
  }
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
+index ea37e0e..73162d5 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
+@@ -19,6 +19,9 @@ interface SleepSettings {
+   var shakeToResetEnabled: Boolean
+   fun observeShakeToResetEnabled(): StateFlow<Boolean>
+ 
++  var resetTimerOnPause: Boolean
++  fun observeResetTimerOnPause(): StateFlow<Boolean>
++
+   var shakeSensitivity: ShakeSensitivity
+   fun observeShakeSensitivity(): StateFlow<ShakeSensitivity>
+ 
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
 index 4567443..85373e3 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt
@@ -1045,6 +1122,54 @@ index 4567443..85373e3 100644
  
  // Dead keys
  internal const val KEY_USE_DYNAMIC_COLORS = "pref_dynamic_colors"
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
+index ff0fc36..fdf5edf 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
+@@ -36,6 +36,10 @@ class SleepSettingsImpl(
+   override var shakeToResetEnabled: Boolean by shakeToResetEnabledProperty
+   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = shakeToResetEnabledProperty.observe()
+ 
++  private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, DefaultResetTimerOnPause)
++  override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
++  override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
++
+   private val shakeSensitivityProperty = enumSetting(KEY_SHAKE_SENSITIVITY, ShakeSensitivity)
+   override var shakeSensitivity: ShakeSensitivity by shakeSensitivityProperty
+   override fun observeShakeSensitivity(): StateFlow<ShakeSensitivity> = shakeSensitivityProperty.observe()
+@@ -105,6 +109,7 @@ class SleepSettingsImpl(
+ 
+ private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
+ private const val KEY_SHAKE_TO_RESET = "pref_sleep_shake_to_reset"
++private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
+ private const val KEY_SHAKE_SENSITIVITY = "pref_sleep_shake_sensitivity"
+ private const val KEY_AUTO_SLEEP_TIMER_ENABLED = "pref_sleep_auto_timer_enabled"
+ private const val KEY_AUTO_SLEEP_START = "pref_sleep_auto_timer_start"
+@@ -115,6 +120,7 @@ private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
+ private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
+ 
+ private const val DefaultShakeToResetEnabled = false
++private const val DefaultResetTimerOnPause = false
+ private const val DefaultAutoSleepTimerEnabled = false
+ private const val DefaultAutoRewindEnabled = false
+ private val DefaultAutoRewindAmount = 5.minutes
+diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
+index bf6d70d..8427e3b 100644
+--- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
++++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
+@@ -30,6 +30,12 @@ class FakeSleepSettings : SleepSettings {
+     set(value) { _shakeToResetEnabled.value = value }
+   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = _shakeToResetEnabled.asStateFlow()
+ 
++  private val _resetTimerOnPause = MutableStateFlow(false)
++  override var resetTimerOnPause: Boolean
++    get() = _resetTimerOnPause.value
++    set(value) { _resetTimerOnPause.value = value }
++  override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
++
+   private val _shakeSensitivity = MutableStateFlow(ShakeSensitivity.Default)
+   override var shakeSensitivity: ShakeSensitivity
+     get() = _shakeSensitivity.value
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
 index 6cba532..b741277 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestCampfireSettings.kt
@@ -1070,7 +1195,7 @@ index 6cba532..b741277 100644
 +      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
  }
 diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
-index 1d1958a..a60cd85 100644
+index 1d1958a..887ac79 100644
 --- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 +++ b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 @@ -52,6 +52,10 @@
@@ -1084,11 +1209,28 @@ index 1d1958a..a60cd85 100644
    <string name="download_header_downloads">Downloads</string>
    <string name="action_delete_download">Delete</string>
    <string name="action_stop_download">Stop</string>
+@@ -117,6 +121,8 @@
+   <string name="header_shake_to_reset">Reset</string>
+   <string name="setting_playback_sleep_shake_to_reset_title">Shake-to-reset</string>
+   <string name="setting_playback_sleep_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
++  <string name="setting_sleep_reset_timer_on_pause_title">Reset timer on pause</string>
++  <string name="setting_sleep_reset_timer_on_pause_subtitle">Reset the sleep timer to its full duration when audio is paused instead of freezing the countdown</string>
+   <string name="setting_playback_shake_sensitivity_title">Shake sensitivity</string>
+   <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
+   <string name="shake_sensitivity_very_low">Very low</string>
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-index 1bda967..ece6bde 100644
+index 1bda967..5f27c08 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-@@ -177,6 +177,10 @@ class SettingsPresenter(
+@@ -82,6 +82,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
++import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
+ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
+ import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
+@@ -177,6 +178,10 @@ class SettingsPresenter(
      // Downloads Settings
      val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
        .collectAsState()
@@ -1099,7 +1241,15 @@ index 1bda967..ece6bde 100644
  
      val downloads by remember {
        offlineDownloadManager.observeAll()
-@@ -264,6 +268,8 @@ class SettingsPresenter(
+@@ -221,6 +226,7 @@ class SettingsPresenter(
+     val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
+     val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
+     val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
++    val resetTimerOnPause by remember { sleepSettings.observeResetTimerOnPause() }.collectAsState()
+ 
+     // About Settings
+     val crashReportingEnabled by remember { settings.observeCrashReportingEnabled() }
+@@ -264,6 +270,8 @@ class SettingsPresenter(
        ),
        downloadsSettings = DownloadsSettingsInfo(
          showDownloadConfirmation = showDownloadConfirmation,
@@ -1108,7 +1258,15 @@ index 1bda967..ece6bde 100644
          downloads = downloadEntries,
        ),
        playbackSettings = PlaybackSettingsInfo(
-@@ -354,6 +360,8 @@ class SettingsPresenter(
+@@ -290,6 +298,7 @@ class SettingsPresenter(
+         shakeToReset = shakeToResetEnabled,
+         shakeSensitivity = shakeSensitivity,
+         fadeOutDuration = fadeOutDuration,
++        resetTimerOnPause = resetTimerOnPause,
+         autoSleepSetting = if (autoSleepTimerEnabled) {
+           SleepSettingsInfo.AutoSleepSetting(
+             start = autoSleepTimerStart,
+@@ -354,6 +363,8 @@ class SettingsPresenter(
  
          is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
            is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
@@ -1117,8 +1275,16 @@ index 1bda967..ece6bde 100644
            is DownloadClicked -> navigator.goTo(
              LibraryItemScreen(
                libraryItemId = event.entry.libraryItem.id,
+@@ -425,6 +436,7 @@ class SettingsPresenter(
+           is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
+           is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
+           is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
++          is ResetTimerOnPause -> sleepSettings.resetTimerOnPause = event.enabled
+         }
+ 
+         is SettingsUiEvent.AboutSettingEvent -> when (event) {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-index 30a2aea..4f31c19 100644
+index 30a2aea..5f489a8 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 @@ -57,6 +57,8 @@ data class AppearanceSettingsInfo(
@@ -1130,7 +1296,15 @@ index 30a2aea..4f31c19 100644
    val downloads: List<DownloadEntry>,
  )
  
-@@ -190,6 +192,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -104,6 +106,7 @@ data class SleepSettingsInfo(
+   val shakeToReset: Boolean,
+   val shakeSensitivity: ShakeSensitivity,
+   val fadeOutDuration: Duration,
++  val resetTimerOnPause: Boolean,
+   val autoSleepSetting: AutoSleepSetting? = null,
+ ) {
+ 
+@@ -190,6 +193,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
    // Downloads Pane Events
    sealed interface DownloadsSettingEvent : SettingsUiEvent {
      data class ShowDownloadConfirmation(val enabled: Boolean) : DownloadsSettingEvent
@@ -1139,6 +1313,35 @@ index 30a2aea..4f31c19 100644
      data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
      data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
    }
+@@ -230,6 +235,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+     data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
+     data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
+     data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
++    data class ResetTimerOnPause(val enabled: Boolean) : SleepSettingEvent
+   }
+ 
+   sealed interface AboutSettingEvent : SettingsUiEvent {
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+index af002fc..7f0d56a 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+@@ -81,6 +81,8 @@ class SettingsAnalyticUiEventHandler(
+       is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
+       is DeleteDownload -> send("delete_download", Click)
+       is DownloadClicked -> send("download", Click)
++      is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> send("confirm_actions", Updated, event.enabled.toString())
++      is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> send("warn_cellular_download", Updated, event.enabled.toString())
+     }
+ 
+     is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
+@@ -132,6 +134,7 @@ class SettingsAnalyticUiEventHandler(
+       is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
+       is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
+       is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
++      is SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause -> send("reset_timer_on_pause", Updated, event.enabled)
+     }
+ 
+     is SettingsUiEvent.AboutSettingEvent -> when (event) {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
 index a397358..c4743dc 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
@@ -1173,6 +1376,497 @@ index a397358..c4743dc 100644
  
      Header(title = { Text(stringResource(Res.string.download_header_downloads)) })
  
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
+index 16dfd2f..5ac0641 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt
+@@ -58,6 +58,8 @@ import campfire.features.settings.ui.generated.resources.setting_auto_sleep_titl
+ import campfire.features.settings.ui.generated.resources.setting_playback_shake_sensitivity_title
+ import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_subtitle
+ import campfire.features.settings.ui.generated.resources.setting_playback_sleep_shake_to_reset_title
++import campfire.features.settings.ui.generated.resources.setting_sleep_reset_timer_on_pause_subtitle
++import campfire.features.settings.ui.generated.resources.setting_sleep_reset_timer_on_pause_title
+ import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_duration_subtitle
+ import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_duration_title
+ import campfire.features.settings.ui.generated.resources.setting_sleep_fade_out_off
+@@ -104,11 +106,19 @@ internal fun SleepPane(
+       onValueChange = { state.eventSink(SleepSettingEvent.FadeOutDuration(it)) },
+     )
+ 
+-    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
+-      Header(
+-        title = { Text(stringResource(Res.string.header_shake_to_reset)) },
+-      )
++    Header(
++      title = { Text(stringResource(Res.string.header_shake_to_reset)) },
++    )
+ 
++    // Reset Timer on Pause
++    SwitchSetting(
++      value = state.sleepSettings.resetTimerOnPause,
++      onValueChange = { state.eventSink(SleepSettingEvent.ResetTimerOnPause(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_sleep_reset_timer_on_pause_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_sleep_reset_timer_on_pause_subtitle)) },
++    )
++
++    if (currentPlatform != Platform.DESKTOP && state.isShakingAvailable) {
+       // Shake to Reset
+       SwitchSetting(
+         value = state.sleepSettings.shakeToReset,
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+index 2234666..a9f6cd9 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+@@ -44,6 +44,7 @@ import app.campfire.audioplayer.model.PlaybackTimer
+ import app.campfire.audioplayer.model.RunningTimer
+ import app.campfire.audioplayer.model.profileOrNull
+ import app.campfire.core.audio.EqualizerProfile
++import app.campfire.core.extensions.formatHoursAndMinutes
+ import app.campfire.core.extensions.seconds
+ import app.campfire.core.logging.Cork
+ import app.campfire.core.logging.Corked
+@@ -215,6 +216,8 @@ class ExoPlayerAudioPlayer(
+       override fun skipToNextChapter() = skipToNext()
+ 
+       override fun skipToPreviousChapter() = skipToPrevious()
++
++      override fun remainingFormatted(): String = remainingBookTimeFormatted()
+     },
+   )
+ 
+@@ -318,7 +321,7 @@ class ExoPlayerAudioPlayer(
+     _error.value = null
+     state.value = AudioPlayer.State.Initializing
+ 
+-    val mediaItems = MediaItemBuilder.build(session).asPlatformMediaItems(context)
++    val mediaItems = MediaItemBuilder.build(session, playbackSpeed.value).asPlatformMediaItems(context)
+ 
+     ibark {
+       """
+@@ -481,6 +484,7 @@ class ExoPlayerAudioPlayer(
+       // Set when to play, and prepare
+       playWhenReady = playImmediately
+       prepare()
++      updatePlaylistMetadata()
+     }
+   }
+ 
+@@ -645,6 +649,7 @@ class ExoPlayerAudioPlayer(
+     playbackSpeed.value = speed
+     settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
+     player.setPlaybackSpeed(speed)
++    updatePlaylistMetadata()
+   }
+ 
+   override fun setEqualizer(profile: EqualizerProfile) {
+@@ -872,8 +877,11 @@ class ExoPlayerAudioPlayer(
+     // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
+     // stop the playback. Coarse queues (remote per-track, single HLS) transition on tracks
+     // or never, so there the boundary detection in updateProgress owns this signal instead.
+-    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION) && queueShape == QueueShape.CHAPTERS) {
+-      sleepTimerManager.endOfChapter()
++    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION)) {
++      if (queueShape == QueueShape.CHAPTERS) {
++        sleepTimerManager.endOfChapter()
++      }
++      updatePlaylistMetadata()
+     }
+   }
+ 
+@@ -915,6 +923,7 @@ class ExoPlayerAudioPlayer(
+     currentTime.value = player.currentPosition.milliseconds
+     currentDuration.value = player.duration.milliseconds
+     overallTime.value = player.overallPosition.milliseconds
++    updatePlaylistMetadata()
+   }
+ 
+   /**
+@@ -967,6 +976,41 @@ class ExoPlayerAudioPlayer(
+     if (play) {
+       player.play()
+     }
++    updatePlaylistMetadata()
++  }
++
++  internal fun remainingBookTimeFormatted(): String {
++    val session = preparedSession ?: return ""
++    val media = session.libraryItem.media
++    val speed = playbackSpeed.value.takeIf { it > 0f } ?: 1.0f
++
++    val totalDurationMs = session.episode?.durationInMillis ?: media.durationInMillis
++    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
++    val rawRemainingMs = (totalDurationMs - currentPositionMs).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    return effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++  }
++
++  internal fun updatePlaylistMetadata() {
++    val formatted = remainingBookTimeFormatted()
++    if (formatted.isBlank()) return
++
++    val currentItem = exoPlayer.currentMediaItem ?: return
++    val rawChapterTitle = currentItem.mediaMetadata.title?.toString() ?: ""
++    val targetTitle = MediaItemBuilder.formatChapterTitleWithCountdown(rawChapterTitle, formatted)
++
++    if (currentItem.mediaMetadata.title?.toString() != targetTitle) {
++      val newMetadata = currentItem.mediaMetadata.buildUpon()
++        .setTitle(targetTitle)
++        .build()
++      val newItem = currentItem.buildUpon()
++        .setMediaMetadata(newMetadata)
++        .build()
++      val currentIndex = exoPlayer.currentMediaItemIndex
++      if (currentIndex in 0 until exoPlayer.mediaItemCount) {
++        exoPlayer.replaceMediaItem(currentIndex, newItem)
++      }
++    }
+   }
+ }
+ 
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
+index 7cc71fa..8805e79 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
+@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
+ import androidx.media3.common.Player
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.session.MediaSession
++import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
+ import app.campfire.core.extensions.seconds
+ import app.campfire.core.model.Chapter
+ import app.campfire.settings.api.PlaybackSettings
+@@ -52,6 +53,9 @@ class ChapterWindowForwardingPlayer(
+ 
+     /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
+     fun skipToPreviousChapter()
++
++    /** Format speed-adjusted remaining time for the whole book. */
++    fun remainingFormatted(): String = ""
+   }
+ 
+   /** Set after session creation, to identify the controller a command came from. */
+@@ -60,6 +64,7 @@ class ChapterWindowForwardingPlayer(
+   private val wrapped: Player = player
+ 
+   private var cachedChapters: List<Chapter>? = null
++  private var cachedFormatted: String? = null
+   private var cachedPlaylist: List<MediaItemData> = emptyList()
+ 
+   /** Re-derives state; called from the audio player's progress tick while windowing is active. */
+@@ -152,15 +157,19 @@ class ChapterWindowForwardingPlayer(
+   }
+ 
+   private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
+-    cachedPlaylist.takeIf { chapters === cachedChapters }?.let { return it }
++    val formatted = host.remainingFormatted()
++    if (chapters === cachedChapters && formatted == cachedFormatted) {
++      return cachedPlaylist
++    }
+     return chapters.map { chapter ->
++      val title = MediaItemBuilder.formatChapterTitleWithCountdown(chapter.title, formatted)
+       MediaItemData.Builder("chapter_${chapter.id}")
+         .setMediaItem(
+           baseItem.buildUpon()
+             .setMediaId("${baseItem.mediaId}_chapter_${chapter.id}")
+             .setMediaMetadata(
+               baseItem.mediaMetadata.buildUpon()
+-                .setTitle(chapter.title)
++                .setTitle(title)
+                 .setSubtitle(baseItem.mediaMetadata.title)
+                 .setDurationMs(chapter.durationMs)
+                 .build(),
+@@ -172,6 +181,7 @@ class ChapterWindowForwardingPlayer(
+         .build()
+     }.also {
+       cachedChapters = chapters
++      cachedFormatted = formatted
+       cachedPlaylist = it
+     }
+   }
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
+index 0cae334..3228c74 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
+@@ -3,6 +3,7 @@
+ 
+ package app.campfire.audioplayer.impl.mediaitem
+ 
++import app.campfire.core.extensions.formatHoursAndMinutes
+ import app.campfire.core.extensions.seconds
+ import app.campfire.core.logging.Corked
+ import app.campfire.core.model.AudioTrack
+@@ -15,33 +16,65 @@ import app.campfire.crashreporting.CrashReporter
+ import kotlin.math.abs
+ import kotlin.math.max
+ import kotlin.math.min
++import kotlin.time.Duration.Companion.milliseconds
+ import kotlin.time.Duration.Companion.seconds
+ 
+ object MediaItemBuilder : Corked("MediaItemBuilders") {
+ 
+-  fun build(session: Session): List<MediaItem> {
++  private val TrailingDurationRegex = Regex(
++    """\s*[-–—•:]\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+h(?:\s*\d+m)?\s*left|\d+m\s*left)\s*$|\s*[\(\[](?:\d{1,2}:\d{2}(?::\d{2})?|\d+h(?:\s*\d+m)?\s*left|\d+m\s*left)[\)\]]\s*$""",
++    RegexOption.IGNORE_CASE,
++  )
++
++  fun cleanChapterTitle(rawTitle: String?): String {
++    if (rawTitle.isNullOrBlank()) return ""
++    val stripped = rawTitle.replace(TrailingDurationRegex, "").trim()
++    return stripped.ifBlank { rawTitle }
++  }
++
++  fun formatChapterTitleWithCountdown(
++    rawTitle: String?,
++    remainingFormatted: String,
++  ): String {
++    val clean = cleanChapterTitle(rawTitle)
++    return if (remainingFormatted.isNotBlank()) {
++      if (clean.isNotBlank()) "$clean - $remainingFormatted left" else "$remainingFormatted left"
++    } else {
++      clean
++    }
++  }
++
++  fun build(session: Session, playbackSpeed: Float = 1.0f): List<MediaItem> {
+     val episode = session.episode
+     if (episode != null) {
+-      return buildPodcastEpisode(session.libraryItem, episode)
++      return buildPodcastEpisode(session.libraryItem, episode, playbackSpeed)
+     }
+     // A routed HLS session plays as a single stream item: the playlist spans the whole
+     // book, so chapter/track segmentation lives in seek math (ChapterTimeline), not the
+     // queue. Clipping can't apply to a live-window-less VOD playlist anyway.
+     session.hlsStreamUrl?.let { streamUrl ->
+-      return listOf(buildHlsStream(session, streamUrl))
++      return listOf(buildHlsStream(session, streamUrl, playbackSpeed))
+     }
+-    return build(session.libraryItem)
++    return build(session.libraryItem, playbackSpeed)
+   }
+ 
+-  private fun buildHlsStream(session: Session, streamUrl: String): MediaItem {
++  private fun buildHlsStream(
++    session: Session,
++    streamUrl: String,
++    playbackSpeed: Float = 1.0f,
++  ): MediaItem {
+     val media = session.libraryItem.media
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val effectiveRemainingMs = (session.duration.inWholeMilliseconds / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatChapterTitleWithCountdown(media.metadata.title, remainingFormatted)
+     return MediaItem(
+       id = "${media.id}_hls",
+       uri = streamUrl,
+       mimeType = "application/x-mpegURL",
+       metadata = MediaItem.Metadata(
+         id = 0,
+-        title = media.metadata.title,
++        title = titleWithCountdown,
+         artist = media.metadata.authorName,
+         description = media.metadata.description ?: "",
+         subtitle = media.metadata.subtitle,
+@@ -53,11 +86,19 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     )
+   }
+ 
+-  fun buildPodcastEpisode(item: LibraryItem, episode: PodcastEpisode): List<MediaItem> {
++  fun buildPodcastEpisode(
++    item: LibraryItem,
++    episode: PodcastEpisode,
++    playbackSpeed: Float = 1.0f,
++  ): List<MediaItem> {
+     val track = episode.audioTrack ?: run {
+       ebark { "Podcast episode ${episode.id} on ${item.id} has no audio track; cannot build MediaItem" }
+       return emptyList()
+     }
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val effectiveRemainingMs = (episode.durationInMillis / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatChapterTitleWithCountdown(episode.title, remainingFormatted)
+     return listOf(
+       MediaItem(
+         id = "${item.media.id}_${episode.id}",
+@@ -65,7 +106,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+         mimeType = track.mimeType,
+         metadata = MediaItem.Metadata(
+           id = 0,
+-          title = episode.title,
++          title = titleWithCountdown,
+           artist = item.media.metadata.author ?: item.media.metadata.title,
+           description = episode.description ?: "",
+           subtitle = episode.subtitle,
+@@ -84,19 +125,19 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+    * (receivers don't honor clipping), so the remote queue is whole files and chapter semantics
+    * are re-derived from the absolute position.
+    */
+-  fun buildTracks(session: Session): List<MediaItem> {
++  fun buildTracks(session: Session, playbackSpeed: Float = 1.0f): List<MediaItem> {
+     val episode = session.episode
+     if (episode != null) {
+-      return buildPodcastEpisode(session.libraryItem, episode)
++      return buildPodcastEpisode(session.libraryItem, episode, playbackSpeed)
+     }
+-    return buildTracks(session.libraryItem)
++    return buildTracks(session.libraryItem, playbackSpeed)
+   }
+ 
+-  fun buildTracks(item: LibraryItem): List<MediaItem> = with(item) {
+-    media.tracks.map { track -> createMediaItem(track, media, id) }
++  fun buildTracks(item: LibraryItem, playbackSpeed: Float = 1.0f): List<MediaItem> = with(item) {
++    media.tracks.map { track -> createMediaItem(track, media, id, playbackSpeed) }
+   }
+ 
+-  fun build(item: LibraryItem): List<MediaItem> = with(item) {
++  fun build(item: LibraryItem, playbackSpeed: Float = 1.0f): List<MediaItem> = with(item) {
+     val chapters = media.chapters
+     val audioTracks = media.tracks
+ 
+@@ -104,7 +145,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     // items from its audio tracks.
+     if (chapters.isEmpty()) {
+       return audioTracks.map { track ->
+-        createMediaItem(track, media, id)
++        createMediaItem(track, media, id, playbackSpeed)
+       }
+     }
+ 
+@@ -113,7 +154,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     if (chapters.size == audioTracks.size) {
+       return audioTracks.mapIndexed { index, track ->
+         val chapter = chapters[index]
+-        createMediaItem(chapter, track, false, media, id)
++        createMediaItem(chapter, track, false, media, id, playbackSpeed)
+       }
+     }
+ 
+@@ -147,7 +188,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+       // Regardless of state, slice the track to the chapters and let the user
+       // see our error UI to correct the playback of this item
+       return chaptersForTrack.map { chapter ->
+-        createMediaItem(chapter, track, true, media, id)
++        createMediaItem(chapter, track, true, media, id, playbackSpeed)
+       }
+     }
+ 
+@@ -173,18 +214,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+           // If the chapter fail to fully cover the track, then just return the track and let the user fix
+           // their item on the server
+           recordMediaItemException("Remaining track after last chapter is too long", item)
+-          listOf(createMediaItem(track, media, id))
++          listOf(createMediaItem(track, media, id, playbackSpeed))
+         } else {
+           // For each chapter filter to this track, cut a media item for each
+           chaptersForTrack.map { chapter ->
+-            createMediaItem(chapter, track, true, media, id)
++            createMediaItem(chapter, track, true, media, id, playbackSpeed)
+           }
+         }
+       } else {
+         // Otherwise, if we are unable to associate chapter data to this track,
+         // just create a media item of just the track. This way we ensure playback occurs
+         recordMediaItemException("Unable to find any chapters for the track[${track.index}]", item)
+-        listOf(createMediaItem(track, media, id))
++        listOf(createMediaItem(track, media, id, playbackSpeed))
+       }
+     }
+   }
+@@ -206,6 +247,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     clipAudio: Boolean,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem {
+     return MediaItem(
+       id = "${media.id}_${chapter.id}",
+@@ -227,7 +269,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+       } else {
+         null
+       },
+-      metadata = createMediaMetadata(chapter, media, libraryItemId),
++      metadata = createMediaMetadata(chapter, media, libraryItemId, playbackSpeed),
+     )
+   }
+ 
+@@ -235,12 +277,13 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     track: AudioTrack,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem {
+     return MediaItem(
+       id = "${media.id}_${track.index}",
+       uri = track.contentUrl,
+       mimeType = track.mimeType,
+-      metadata = createMediaMetadata(track, media, libraryItemId),
++      metadata = createMediaMetadata(track, media, libraryItemId, playbackSpeed),
+     )
+   }
+ 
+@@ -248,10 +291,17 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     chapter: Chapter,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem.Metadata {
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val rawRemainingMs = (media.durationInMillis - chapter.start.seconds.inWholeMilliseconds).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatChapterTitleWithCountdown(chapter.title, remainingFormatted)
++
+     return MediaItem.Metadata(
+       id = chapter.id,
+-      title = chapter.title,
++      title = titleWithCountdown,
+       artist = media.metadata.authorName,
+       description = media.metadata.description ?: "",
+       subtitle = media.metadata.subtitle,
+@@ -266,10 +316,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+     track: AudioTrack,
+     media: Media,
+     libraryItemId: String,
++    playbackSpeed: Float = 1.0f,
+   ): MediaItem.Metadata {
++    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
++    val rawRemainingMs = (media.durationInMillis - track.startOffset.seconds.inWholeMilliseconds).coerceAtLeast(0L)
++    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
++    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val trackTitle = track.taggedTitle.ifBlank { "Track ${track.index}" }
++    val titleWithCountdown = formatChapterTitleWithCountdown(trackTitle, remainingFormatted)
++
+     return MediaItem.Metadata(
+       id = track.index,
+-      title = track.taggedTitle,
++      title = titleWithCountdown,
+       artist = media.metadata.authorName,
+       description = media.metadata.description ?: "",
+       subtitle = media.metadata.subtitle,
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
+index 7db9616..470e210 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
+@@ -299,11 +299,17 @@ class CoroutineSleepTimerManager(
+     val now = fatherTime.nowInEpochMillis()
+     val resumedAt = countdownResumedAt
+     if (resumedAt != null) {
+-      dbark { "Playback paused, freezing sleep timer" }
+-      remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
+       countdownResumedAt = null
+       countdownJob?.cancel()
+       countdownJob = null
++      cancelFade()
++      if (sleepSettings.resetTimerOnPause) {
++        dbark { "Playback paused with reset-on-pause enabled, resetting sleep timer to ${timer.epochMillis}ms" }
++        remainingMillis = timer.epochMillis
++      } else {
++        dbark { "Playback paused, freezing sleep timer" }
++        remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
++      }
+     }
+     publishRunningTimer(timer, reference = now, pausedAt = now)
+   }
 diff --git a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt b/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
 index f43c61c..0cbf2a2 100644
 --- a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt

@@ -44,6 +44,7 @@ import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.audioplayer.model.RunningTimer
 import app.campfire.audioplayer.model.profileOrNull
 import app.campfire.core.audio.EqualizerProfile
+import app.campfire.core.extensions.formatHoursAndMinutes
 import app.campfire.core.extensions.seconds
 import app.campfire.core.logging.Cork
 import app.campfire.core.logging.Corked
@@ -215,6 +216,8 @@ class ExoPlayerAudioPlayer(
       override fun skipToNextChapter() = skipToNext()
 
       override fun skipToPreviousChapter() = skipToPrevious()
+
+      override fun remainingFormatted(): String = remainingBookTimeFormatted()
     },
   )
 
@@ -318,7 +321,7 @@ class ExoPlayerAudioPlayer(
     _error.value = null
     state.value = AudioPlayer.State.Initializing
 
-    val mediaItems = MediaItemBuilder.build(session).asPlatformMediaItems(context)
+    val mediaItems = MediaItemBuilder.build(session, playbackSpeed.value).asPlatformMediaItems(context)
 
     ibark {
       """
@@ -481,6 +484,7 @@ class ExoPlayerAudioPlayer(
       // Set when to play, and prepare
       playWhenReady = playImmediately
       prepare()
+      updatePlaylistMetadata()
     }
   }
 
@@ -645,6 +649,7 @@ class ExoPlayerAudioPlayer(
     playbackSpeed.value = speed
     settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
     player.setPlaybackSpeed(speed)
+    updatePlaylistMetadata()
   }
 
   override fun setEqualizer(profile: EqualizerProfile) {
@@ -872,8 +877,11 @@ class ExoPlayerAudioPlayer(
     // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
     // stop the playback. Coarse queues (remote per-track, single HLS) transition on tracks
     // or never, so there the boundary detection in updateProgress owns this signal instead.
-    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION) && queueShape == QueueShape.CHAPTERS) {
-      sleepTimerManager.endOfChapter()
+    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION)) {
+      if (queueShape == QueueShape.CHAPTERS) {
+        sleepTimerManager.endOfChapter()
+      }
+      updatePlaylistMetadata()
     }
   }
 
@@ -915,6 +923,7 @@ class ExoPlayerAudioPlayer(
     currentTime.value = player.currentPosition.milliseconds
     currentDuration.value = player.duration.milliseconds
     overallTime.value = player.overallPosition.milliseconds
+    updatePlaylistMetadata()
   }
 
   /**
@@ -966,6 +975,41 @@ class ExoPlayerAudioPlayer(
     lastBoundaryCheckTime = timestamp
     if (play) {
       player.play()
+    }
+    updatePlaylistMetadata()
+  }
+
+  internal fun remainingBookTimeFormatted(): String {
+    val session = preparedSession ?: return ""
+    val media = session.libraryItem.media
+    val speed = playbackSpeed.value.takeIf { it > 0f } ?: 1.0f
+
+    val totalDurationMs = session.episode?.durationInMillis ?: media.durationInMillis
+    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
+    val rawRemainingMs = (totalDurationMs - currentPositionMs).coerceAtLeast(0L)
+    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
+    return effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
+  }
+
+  internal fun updatePlaylistMetadata() {
+    val formatted = remainingBookTimeFormatted()
+    if (formatted.isBlank()) return
+
+    val currentItem = exoPlayer.currentMediaItem ?: return
+    val rawChapterTitle = currentItem.mediaMetadata.title?.toString() ?: ""
+    val targetTitle = MediaItemBuilder.formatChapterTitleWithCountdown(rawChapterTitle, formatted)
+
+    if (currentItem.mediaMetadata.title?.toString() != targetTitle) {
+      val newMetadata = currentItem.mediaMetadata.buildUpon()
+        .setTitle(targetTitle)
+        .build()
+      val newItem = currentItem.buildUpon()
+        .setMediaMetadata(newMetadata)
+        .build()
+      val currentIndex = exoPlayer.currentMediaItemIndex
+      if (currentIndex in 0 until exoPlayer.mediaItemCount) {
+        exoPlayer.replaceMediaItem(currentIndex, newItem)
+      }
     }
   }
 }
