@@ -7,8 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.launch
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
@@ -65,6 +69,9 @@ class HomePresenter(
   @OptIn(ExperimentalCoroutinesApi::class)
   @Composable
   override fun present(): HomeUiState {
+    val coroutineScope = rememberCoroutineScope()
+    var isRefreshing by remember { mutableStateOf(false) }
+
     // Observe just the shelf information. We will use this to compose the remaining elements
     val domainFeed by remember {
       homeRepository.observeHomeFeed()
@@ -184,6 +191,7 @@ class HomePresenter(
       homeFeed = feed,
       offlineStates = offlineDownloads,
       progressStates = userMediaProgress,
+      isRefreshing = isRefreshing,
     ) { event ->
       when (event) {
         is HomeUiEvent.OpenLibraryItem -> {
@@ -204,6 +212,18 @@ class HomePresenter(
         }
         is HomeUiEvent.OpenUpcomingBook -> navigator.goTo(UrlScreen(event.url))
         HomeUiEvent.OpenUpcomingScreen -> navigator.goTo(UpcomingScreen)
+        HomeUiEvent.Refresh -> {
+          if (!isRefreshing) {
+            isRefreshing = true
+            coroutineScope.launch {
+              try {
+                homeRepository.refreshHomeFeed()
+              } finally {
+                isRefreshing = false
+              }
+            }
+          }
+        }
       }
     }
   }

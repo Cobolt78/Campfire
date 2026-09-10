@@ -16,6 +16,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 9. [Perceptual (Logarithmic) Audio Fade Curve](#9-perceptual-logarithmic-audio-fade-curve)
 10. [FOSS Release Build & Deployment Commands](#10-foss-release-build--deployment-commands)
 11. [Modified Files Inventory](#11-modified-files-inventory)
+12. [Home Screen: Pull-to-Refresh](#12-home-screen-pull-to-refresh)
 
 ---
 
@@ -356,3 +357,37 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `infra/shake/.../SeismicShakeDetector.kt` | Default sensor delay updated to SENSOR_DELAY_GAME (50 Hz) |
 | `infra/shake/.../ShakeDetector.android.kt` | Added 100ms haptic feedback vibration pulse & game delay |
 | `infra/shake/.../ShakeSensitivityMagnitudes.android.kt` | Corrected inverted thresholds (VeryHigh=11.0, VeryLow=17.5) |
+| `features/home/api/.../HomeRepository.kt` | Added `refreshHomeFeed(): Result<Unit>` method |
+| `features/home/impl/.../StoreHomeRepository.kt` | Implemented `refreshHomeFeed()` via Store5 `homeStore.fresh(key)` |
+| `features/home/ui/.../HomeUiState.kt` | Added `isRefreshing` state property and `HomeUiEvent.Refresh` |
+| `features/home/ui/.../HomePresenter.kt` | Added refresh coroutine handling and state flow |
+| `features/home/ui/.../HomeUi.kt` | Integrated `PullToRefreshBox` with `CampfireLoadingIndicator` |
+| `features/home/ui/.../FakeHomeRepository.kt` | Implemented `refreshHomeFeed()` in test fake |
+| `features/home/ui/.../HomePresenterTest.kt` | Unit tests for refresh event trigger and state transitions |
+
+---
+
+## 12. Home Screen: Pull-to-Refresh
+
+### Summary
+Added a standard swipe-down Pull-to-Refresh gesture to the main Home feed. This brings the Home screen in line with all other major tabs (Library, Series, Authors, Podcasts) that already support pull-to-refresh, allowing users to effortlessly check for newly added audiobooks, updated podcasts, and refreshed shelves from their Audiobookshelf server without restarting the app.
+
+### Key Details
+- **Non-Destructive Network Refresh**:
+  - `StoreHomeRepository.refreshHomeFeed()` requests fresh personalized shelves from Audiobookshelf via Store5's `homeStore.fresh(key)`.
+  - Wrapped with `runCatching` so that if the device is offline or the server is momentarily unreachable, the refresh simply dismisses the spinner and preserves all existing cached shelves and downloaded books without presenting an error screen.
+- **Animated Flame Indicator**:
+  - Reuses Campfire's custom animated flame loader (`CampfireLoadingIndicator`) in `HomeUi.kt` via Material 3's `PullToRefreshBox`.
+  - Configured with `padding(top = paddingValues.calculateTopPadding())` to seamlessly respect the collapsing search/app bar without nested scroll conflicts.
+- **Spamming Guard**:
+  - `HomePresenter` checks `if (!isRefreshing)` before launching a refresh coroutine, preventing duplicate network requests from rapid subsequent swipes.
+
+### Modified Files:
+* `features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt`
+* `features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt`
+* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt`
+* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+

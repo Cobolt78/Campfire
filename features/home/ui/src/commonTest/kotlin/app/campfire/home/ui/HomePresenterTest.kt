@@ -24,6 +24,7 @@ import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.model.Shelf
 import app.campfire.home.api.model.ShelfIds
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.libraries.test.FakeLibraryItemRepository
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.test.FakeMediaProgressRepository
 import assertk.Assert
@@ -53,6 +54,7 @@ class HomePresenterTest {
   val analytics = FakeAnalytics()
   val offlineDownloadManager = FakeOfflineDownloadManager()
   val mediaProgressRepository = FakeMediaProgressRepository()
+  val libraryItemRepository = FakeLibraryItemRepository()
 
   @Test
   fun present_LoadingState() = runTest {
@@ -66,6 +68,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -96,6 +99,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -134,7 +138,7 @@ class HomePresenterTest {
   fun present_CachedUpcoming_InsertsShelfAfterDiscover() = runTest {
     val shelves = listOf(
       shelf(ShelfIds.Discover, "Discover", 2),
-      shelf(ShelfIds.NewestAuthors, "Newest Authors", 2),
+      shelf("shelf_after", "Shelf After", 2),
     )
     val repository = FakeHomeRepository(
       homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
@@ -162,6 +166,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = registry,
       analytics = analytics,
     )
@@ -190,7 +195,7 @@ class HomePresenterTest {
               )
           },
         )
-        index(2).prop(UiShelf<*>::id).isEqualTo(ShelfIds.NewestAuthors)
+        index(2).prop(UiShelf<*>::id).isEqualTo("shelf_after")
       }
     }
   }
@@ -224,6 +229,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = registry,
       analytics = analytics,
     )
@@ -263,6 +269,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -337,6 +344,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -385,6 +393,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -417,6 +426,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -446,6 +456,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -475,6 +486,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
@@ -489,6 +501,38 @@ class HomePresenterTest {
 
       assertThat(navigator.awaitNextScreen()).isEqualTo(SeriesDetailScreen(seriesId, seriesName))
       assertThat(analytics.events.first()).prop(AnalyticEvent::eventName).isEqualTo("series_selected")
+    }
+  }
+
+  @Test
+  fun eventSink_Refresh_triggersRepositoryRefresh() = runTest {
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { emptyFlow() },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val presenter = HomePresenter(
+      navigator = navigator,
+      homeRepository = repository,
+      mediaProgressRepository = mediaProgressRepository,
+      offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = libraryItemRepository,
+      bookInfoRegistry = FakeBookInfoRegistry(),
+      analytics = analytics,
+    )
+
+    presenter.test {
+      val state = awaitItem()
+      assertThat(state.isRefreshing).isEqualTo(false)
+
+      state.eventSink(HomeUiEvent.Refresh)
+
+      val refreshingState = awaitItem()
+      assertThat(refreshingState.isRefreshing).isEqualTo(true)
+
+      val completedState = awaitItem()
+      assertThat(completedState.isRefreshing).isEqualTo(false)
+      assertThat(repository.refreshCount).isEqualTo(1)
     }
   }
 }

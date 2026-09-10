@@ -25,9 +25,11 @@ import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapNotNull
 import me.tatarka.inject.annotations.Inject
+import org.mobilenativefoundation.store.store5.ExperimentalStoreApi
 import org.mobilenativefoundation.store.store5.StoreReadRequest
 import org.mobilenativefoundation.store.store5.StoreReadResponse
 import org.mobilenativefoundation.store.store5.StoreReadResponseOrigin
+import org.mobilenativefoundation.store.store5.impl.extensions.fresh
 
 @SingleIn(UserScope::class)
 @ContributesBinding(UserScope::class)
@@ -95,4 +97,13 @@ class StoreHomeRepository(
         output
       }
   }
+
+  @OptIn(ExperimentalStoreApi::class)
+  override suspend fun refreshHomeFeed(): Result<Unit> = runCatching {
+    val user = userRepository.getCurrentUser()
+    val key = HomeStore.Key(user.id, user.selectedLibraryId)
+    homeStore.fresh(key)
+    Unit
+  }
 }
+

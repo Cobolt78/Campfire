@@ -27,4 +27,10 @@ interface HomeRepository {
    * Observe the contents of a single [Shelf] by its id.
    */
   fun observeShelf(shelfId: ShelfId, shelfType: ShelfType): Flow<List<ShelfEntity>>
+
+  /**
+   * Request fresh personalized home feed data from the server and update local storage.
+   */
+  suspend fun refreshHomeFeed(): Result<Unit>
 }
+

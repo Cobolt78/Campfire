@@ -33,4 +33,11 @@ class FakeHomeRepository(
   ): Flow<List<ShelfEntity>> {
     return shelfEntityFlowFactory(shelfId, shelfType)
   }
+
+  var refreshCount = 0
+  override suspend fun refreshHomeFeed(): Result<Unit> {
+    refreshCount++
+    return Result.success(Unit)
+  }
 }
+
