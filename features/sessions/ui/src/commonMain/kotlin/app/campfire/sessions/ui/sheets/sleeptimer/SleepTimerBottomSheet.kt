@@ -612,6 +612,15 @@ fun TimerBottomSheetV2Preview() {
               return mutableLastSetSleepTimer
             }
 
+            val mutableResetTimerOnPause = MutableStateFlow(false)
+            override var resetTimerOnPause: Boolean
+              get() = mutableResetTimerOnPause.value
+              set(value) { mutableResetTimerOnPause.value = value }
+              
+            override fun observeResetTimerOnPause(): StateFlow<Boolean> {
+              return mutableResetTimerOnPause
+            }
+
             val mutableShakeToReset = MutableStateFlow(true)
             override var shakeToResetEnabled: Boolean
               get() = mutableShakeToReset.value
