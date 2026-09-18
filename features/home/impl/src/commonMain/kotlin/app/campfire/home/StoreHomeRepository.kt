@@ -113,12 +113,5 @@ class StoreHomeRepository(
       }
   }
 
-  @OptIn(ExperimentalStoreApi::class)
-  override suspend fun refreshHomeFeed(): Result<Unit> = runCatching {
-    val user = userRepository.getCurrentUser()
-    val key = HomeStore.Key(user.id, user.selectedLibraryId)
-    homeStore.fresh(key)
-    Unit
-  }
 }
 
