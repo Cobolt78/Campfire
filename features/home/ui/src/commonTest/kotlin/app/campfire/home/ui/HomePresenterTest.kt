@@ -69,7 +69,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 
@@ -99,7 +99,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 
@@ -165,7 +165,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = registry,
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = registry,
       analytics = analytics,
     )
 
@@ -227,7 +227,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = registry,
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = registry,
       analytics = analytics,
     )
 
@@ -266,7 +266,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 
@@ -340,7 +340,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 
@@ -388,7 +388,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 
@@ -420,7 +420,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
     val libraryItemId = "test_library_item"
@@ -449,7 +449,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
     val authorId = "test_authorId"
@@ -478,7 +478,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
     val seriesId = "test_seriesId"
@@ -509,7 +509,7 @@ class HomePresenterTest {
       homeRepository = repository,
       mediaProgressRepository = mediaProgressRepository,
       offlineDownloadManager = offlineDownloadManager,
-      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
       analytics = analytics,
     )
 

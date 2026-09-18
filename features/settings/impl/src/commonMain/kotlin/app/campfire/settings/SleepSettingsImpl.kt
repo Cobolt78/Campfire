@@ -36,6 +36,10 @@ class SleepSettingsImpl(
   override var shakeToResetEnabled: Boolean by shakeToResetEnabledProperty
   override fun observeShakeToResetEnabled(): StateFlow<Boolean> = shakeToResetEnabledProperty.observe()
 
+  private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, DefaultResetTimerOnPause)
+  override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
+  override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
+
   private val shakeSensitivityProperty = enumSetting(KEY_SHAKE_SENSITIVITY, ShakeSensitivity)
   override var shakeSensitivity: ShakeSensitivity by shakeSensitivityProperty
   override fun observeShakeSensitivity(): StateFlow<ShakeSensitivity> = shakeSensitivityProperty.observe()
@@ -105,6 +109,7 @@ class SleepSettingsImpl(
 
 private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
 private const val KEY_SHAKE_TO_RESET = "pref_sleep_shake_to_reset"
+private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
 private const val KEY_SHAKE_SENSITIVITY = "pref_sleep_shake_sensitivity"
 private const val KEY_AUTO_SLEEP_TIMER_ENABLED = "pref_sleep_auto_timer_enabled"
 private const val KEY_AUTO_SLEEP_START = "pref_sleep_auto_timer_start"
@@ -115,6 +120,7 @@ private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
 private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 
 private const val DefaultShakeToResetEnabled = false
+private const val DefaultResetTimerOnPause = false
 private const val DefaultAutoSleepTimerEnabled = false
 private const val DefaultAutoRewindEnabled = false
 private val DefaultAutoRewindAmount = 5.minutes

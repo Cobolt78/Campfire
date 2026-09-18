@@ -27,3 +27,19 @@ fun Duration.asSeconds(): Float = toDouble(DurationUnit.SECONDS).toFloat()
 infix fun ClosedRange<Duration>.isIn(other: ClosedRange<Duration>): Boolean {
   return start >= other.start && endInclusive <= other.endInclusive
 }
+
+/**
+ * Format duration as human-readable hours and minutes (e.g. "14h 22m", "45m", "1h").
+ */
+fun Duration.formatHoursAndMinutes(): String {
+  val hours = inWholeHours
+  val minutes = inWholeMinutes % 60
+  return buildString {
+    if (hours > 0) {
+      append("${hours}h ")
+    }
+    if (minutes > 0 || hours == 0L) {
+      append("${minutes}m")
+    }
+  }.trim()
+}

@@ -41,6 +41,8 @@ class ExpressiveControlSlot(
   @get:VisibleForTesting val showConfirmDownloadDialogSetting: Boolean,
   /** Whether the user may start a download; existing downloads stay removable either way. */
   @get:VisibleForTesting val canDownload: Boolean = true,
+  @get:VisibleForTesting val confirmActionsSetting: Boolean = true,
+  @get:VisibleForTesting val warnOnCellularDownloadSetting: Boolean = true,
   @get:VisibleForTesting val canStreamHls: Boolean = false,
   @get:VisibleForTesting val willStreamHls: Boolean = false,
 ) : ContentSlot {
@@ -88,6 +90,13 @@ class ExpressiveControlSlot(
       )
     }
 
+    var showConfirmDeleteDialog by remember { mutableStateOf(false) }
+    var showConfirmDiscardDialog by remember { mutableStateOf(false) }
+    var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
+    var showCellularWarningDialog by remember { mutableStateOf(false) }
+
+    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
+
     ExpressiveControlBar(
       isQueued = isQueued,
       hasSession = hasSession,
@@ -103,26 +112,40 @@ class ExpressiveControlSlot(
         eventSink(LibraryItemUiEvent.PlayClick(method))
       },
       onDownloadClick = {
-        if (showConfirmDownloadDialogSetting) {
+        if (warnOnCellularDownloadSetting && isCellularOrMetered) {
+          showCellularWarningDialog = true
+        } else if (showConfirmDownloadDialogSetting) {
           showConfirmDownloadDialog = true
         } else {
           eventSink(LibraryItemUiEvent.DownloadClick())
         }
       },
       onMarkFinished = {
-        eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+        if (confirmActionsSetting && mediaProgress != null && mediaProgress.progress > 0f) {
+          showConfirmMarkFinishedDialog = true
+        } else {
+          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+        }
       },
       onMarkNotFinished = {
         eventSink(LibraryItemUiEvent.MarkNotFinished(libraryItem))
       },
       onDiscardProgress = {
-        eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+        if (confirmActionsSetting) {
+          showConfirmDiscardDialog = true
+        } else {
+          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+        }
       },
       onStopDownloadClick = {
         eventSink(LibraryItemUiEvent.StopDownloadClick)
       },
       onDeleteDownloadClick = {
-        eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+        if (confirmActionsSetting) {
+          showConfirmDeleteDialog = true
+        } else {
+          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+        }
       },
       onAddToQueueClick = {
         if (isQueued) {
@@ -152,6 +175,62 @@ class ExpressiveControlSlot(
           }
         },
         onDismissRequest = { showConfirmDownloadDialog = false },
+      )
+    }
+
+    if (showCellularWarningDialog) {
+      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+        title = "Mobile Data Warning",
+        message = "You are currently on a mobile or metered connection. Downloading may result in extra data charges.",
+        confirmButtonText = "Download anyway",
+        onConfirm = {
+          showCellularWarningDialog = false
+          if (showConfirmDownloadDialogSetting) {
+            showConfirmDownloadDialog = true
+          } else {
+            eventSink(LibraryItemUiEvent.DownloadClick())
+          }
+        },
+        onDismissRequest = { showCellularWarningDialog = false },
+      )
+    }
+
+    if (showConfirmDeleteDialog) {
+      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+        title = "Delete Download",
+        message = "Are you sure you want to delete this download from your device?",
+        confirmButtonText = "Delete",
+        onConfirm = {
+          showConfirmDeleteDialog = false
+          eventSink(LibraryItemUiEvent.RemoveDownloadClick)
+        },
+        onDismissRequest = { showConfirmDeleteDialog = false },
+      )
+    }
+
+    if (showConfirmDiscardDialog) {
+      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+        title = "Discard Progress",
+        message = "Are you sure you want to discard your listening progress for this item?",
+        confirmButtonText = "Discard",
+        onConfirm = {
+          showConfirmDiscardDialog = false
+          eventSink(LibraryItemUiEvent.DiscardProgress(libraryItem))
+        },
+        onDismissRequest = { showConfirmDiscardDialog = false },
+      )
+    }
+
+    if (showConfirmMarkFinishedDialog) {
+      app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+        title = "Mark as Finished",
+        message = "You have not completed listening to this item yet. Are you sure you want to mark it as finished?",
+        confirmButtonText = "Mark finished",
+        onConfirm = {
+          showConfirmMarkFinishedDialog = false
+          eventSink(LibraryItemUiEvent.MarkFinished(libraryItem))
+        },
+        onDismissRequest = { showConfirmMarkFinishedDialog = false },
       )
     }
   }

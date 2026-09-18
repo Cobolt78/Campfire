@@ -220,6 +220,14 @@ class BookPresenter(
       settings.observeShowConfirmDownload()
     }.collectAsState()
 
+    val confirmActionsSetting by remember {
+      settings.observeConfirmActions()
+    }.collectAsState()
+
+    val warnOnCellularDownloadSetting by remember {
+      settings.observeWarnOnCellularDownload()
+    }.collectAsState()
+
     val showTimeInBook by remember {
       settings.observeShowTimeInBook()
     }.collectAsState()
@@ -246,6 +254,8 @@ class BookPresenter(
       showTimeInBook = showTimeInBook,
       showConfirmDownloadDialog = showConfirmDownloadDialog,
       canDownload = canDownload,
+      confirmActionsSetting = confirmActionsSetting,
+      warnOnCellularDownloadSetting = warnOnCellularDownloadSetting,
       hasSession = currentSession != null,
       session = itemSession.sessionOrNull(),
       isQueued = isQueued,
@@ -431,6 +441,8 @@ private fun buildSlots(
   showTimeInBook: Boolean,
   showConfirmDownloadDialog: Boolean,
   canDownload: Boolean,
+  confirmActionsSetting: Boolean,
+  warnOnCellularDownloadSetting: Boolean,
   hasSession: Boolean,
   isQueued: Boolean,
   session: Session?,
@@ -506,6 +518,8 @@ private fun buildSlots(
       isQueued = isQueued,
       showConfirmDownloadDialogSetting = showConfirmDownloadDialog,
       canDownload = canDownload,
+      confirmActionsSetting = confirmActionsSetting,
+      warnOnCellularDownloadSetting = warnOnCellularDownloadSetting,
       addToPlaylistDialog = addToPlaylistDialog,
       canStreamHls = canStreamHls,
       willStreamHls = willStreamHls,

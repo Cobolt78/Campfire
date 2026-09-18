@@ -81,6 +81,8 @@ class SettingsAnalyticUiEventHandler(
       is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
       is DeleteDownload -> send("delete_download", Click)
       is DownloadClicked -> send("download", Click)
+      is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> send("confirm_actions", Updated, event.enabled.toString())
+      is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> send("warn_cellular_download", Updated, event.enabled.toString())
     }
 
     is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
@@ -132,6 +134,7 @@ class SettingsAnalyticUiEventHandler(
       is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
       is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
       is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
+      is SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause -> send("reset_timer_on_pause", Updated, event.enabled)
     }
 
     is SettingsUiEvent.AboutSettingEvent -> when (event) {

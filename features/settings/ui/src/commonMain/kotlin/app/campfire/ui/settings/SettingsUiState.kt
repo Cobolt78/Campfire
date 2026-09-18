@@ -57,6 +57,8 @@ data class AppearanceSettingsInfo(
 @Immutable
 data class DownloadsSettingsInfo(
   val showDownloadConfirmation: Boolean,
+  val confirmActions: Boolean,
+  val warnOnCellularDownload: Boolean,
   val downloads: List<DownloadEntry>,
 )
 
@@ -106,6 +108,7 @@ data class SleepSettingsInfo(
   val shakeToReset: Boolean,
   val shakeSensitivity: ShakeSensitivity,
   val fadeOutDuration: Duration,
+  val resetTimerOnPause: Boolean,
   val autoSleepSetting: AutoSleepSetting? = null,
 ) {
 
@@ -192,6 +195,8 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
   // Downloads Pane Events
   sealed interface DownloadsSettingEvent : SettingsUiEvent {
     data class ShowDownloadConfirmation(val enabled: Boolean) : DownloadsSettingEvent
+    data class ConfirmActions(val enabled: Boolean) : DownloadsSettingEvent
+    data class WarnOnCellularDownload(val enabled: Boolean) : DownloadsSettingEvent
     data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
     data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
   }
@@ -232,6 +237,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
     data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
     data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
+    data class ResetTimerOnPause(val enabled: Boolean) : SleepSettingEvent
   }
 
   sealed interface AboutSettingEvent : SettingsUiEvent {
