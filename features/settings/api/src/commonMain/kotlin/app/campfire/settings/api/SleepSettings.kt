@@ -19,9 +19,6 @@ interface SleepSettings {
   var shakeToResetEnabled: Boolean
   fun observeShakeToResetEnabled(): StateFlow<Boolean>
 
-  var resetTimerOnPause: Boolean
-  fun observeResetTimerOnPause(): StateFlow<Boolean>
-
   var shakeSensitivity: ShakeSensitivity
   fun observeShakeSensitivity(): StateFlow<ShakeSensitivity>
 

@@ -561,13 +561,11 @@ private fun LibraryItemCardEditingScrim(
   }
 }
 
-private val MediaProgressTrackColor = Color(0x80000000)
-
 @Composable
 fun MediaProgressBar(
   mediaProgress: MediaProgress,
   modifier: Modifier = Modifier,
-  trackColor: Color = MediaProgressTrackColor,
+  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
   progressColor: Color = MaterialTheme.colorScheme.primary,
   trackHeight: Dp = LargeProgressBarHeight,
 ) {
@@ -579,21 +577,19 @@ fun MediaProgressBar(
     drawRect(
       color = trackColor,
       size = size,
+      alpha = ProgressBarAlpha,
     )
 
     val cornerRadiusPx = trackHeight.toPx() / 2f
-    val progressFraction = mediaProgress.actualProgress.coerceIn(0f, 1f)
-    if (progressFraction > 0f) {
-      val progressSize = size.copy(
-        width = (size.width * progressFraction) + cornerRadiusPx,
-      )
-      drawRoundRect(
-        color = progressColor,
-        topLeft = Offset(x = -cornerRadiusPx, y = 0f),
-        size = progressSize,
-        cornerRadius = CornerRadius(cornerRadiusPx),
-      )
-    }
+    val progressSize = size.copy(
+      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
+    )
+    drawRoundRect(
+      color = progressColor,
+      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
+      size = progressSize,
+      cornerRadius = CornerRadius(cornerRadiusPx),
+    )
   }
 }
 

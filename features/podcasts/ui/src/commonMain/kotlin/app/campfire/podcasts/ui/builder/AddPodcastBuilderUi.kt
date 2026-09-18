@@ -14,21 +14,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import app.campfire.common.compose.icons.CampfireIcons
-import app.campfire.common.compose.icons.rounded.ArrowBack
 import app.campfire.common.compose.widgets.CampfireTopAppBar
-import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.compose.widgets.NavigationBackButton
+import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 import app.campfire.core.di.UserScope
 import app.campfire.podcasts.api.screen.AddPodcastBuilderScreen
 import app.campfire.podcasts.ui.AddPodcastSharedTransitionKey
@@ -42,7 +38,6 @@ import app.campfire.podcasts.ui.builder.composables.SubmitBar
 import app.campfire.podcasts.ui.builder.composables.episodesSection
 import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 import campfire.features.podcasts.ui.generated.resources.Res
-import campfire.features.podcasts.ui.generated.resources.add_podcast_builder_back
 import campfire.features.podcasts.ui.generated.resources.add_podcast_builder_field_author
 import campfire.features.podcasts.ui.generated.resources.add_podcast_builder_field_description
 import campfire.features.podcasts.ui.generated.resources.add_podcast_builder_field_title
@@ -58,7 +53,7 @@ fun AddPodcastBuilderUi(
   state: AddPodcastBuilderUiState,
   modifier: Modifier = Modifier,
 ) = SharedElementTransitionScope {
-  val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+  val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
   val listState = rememberLazyListState()
 
   Scaffold(
@@ -79,12 +74,7 @@ fun AddPodcastBuilderUi(
       CampfireTopAppBar(
         title = { Text(stringResource(Res.string.add_podcast_builder_title)) },
         navigationIcon = {
-          val backLabel = stringResource(Res.string.add_podcast_builder_back)
-          IconButtonTooltip(text = backLabel) {
-            IconButton(onClick = { state.eventSink(AddPodcastBuilderUiEvent.Back) }) {
-              Icon(CampfireIcons.Rounded.ArrowBack, contentDescription = backLabel)
-            }
-          }
+          NavigationBackButton(onClick = { state.eventSink(AddPodcastBuilderUiEvent.Back) })
         },
         scrollBehavior = scrollBehavior,
       )

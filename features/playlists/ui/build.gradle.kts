@@ -11,12 +11,23 @@ kotlin {
       dependencies {
         implementation(projects.features.playlists.api)
         implementation(projects.features.sessions.api)
+        implementation(projects.features.user.api)
         implementation(projects.infra.audioplayer.api)
         implementation(projects.ui.appbar)
         implementation(projects.ui.navigation.api)
 
         implementation(libs.circuitx.overlays)
         implementation(libs.reorderable)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(projects.common.test)
+        implementation(projects.data.analytics.test)
+        implementation(projects.features.settings.test)
+        implementation(libs.bundles.test.common)
+        implementation(libs.bundles.test.ui)
       }
     }
   }

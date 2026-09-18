@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.core.model.preview.mediaProgress
@@ -137,7 +138,203 @@ class ExpressiveControlSlotTest {
     onNodeWithTag("offline_status_title").assertExists()
     onNodeWithText("Downloading").assertIsDisplayed()
     onNodeWithTag("indeterminate_progress_bar").assertIsDisplayed()
+    onNodeWithTag("button_download").assertDoesNotExist()
   }
+
+  @Test
+  fun hlsShowsPlayOptionsMenuInsteadOfDownloadButton() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      isQueued = false,
+      hasSession = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithTag("button_download").assertExists()
+    onNodeWithContentDescription("More options").assertExists()
+    onNodeWithContentDescription("Download").assertDoesNotExist()
+  }
+
+  @Test
+  fun hlsKeepsPlayOptionsMenuWhileDownloading() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = downloadingOfflineDownload(),
+      mediaProgress = null,
+      isCurrentSession = false,
+      isQueued = false,
+      hasSession = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithContentDescription("More options").assertExists()
+    onNodeWithContentDescription("Download").assertDoesNotExist()
+  }
+
+  @Test
+  fun hlsCurrentSessionWithoutDownloadShowsDownloadButton() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = true,
+      isQueued = false,
+      hasSession = true,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithContentDescription("More options").assertDoesNotExist()
+    onNodeWithContentDescription("Download").assertExists()
+  }
+
+  @Test
+  fun hlsCurrentSessionWhileDownloadingHidesTrailingButton() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = downloadingOfflineDownload(),
+      mediaProgress = null,
+      isCurrentSession = true,
+      isQueued = false,
+      hasSession = true,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithTag("button_download").assertDoesNotExist()
+    onNodeWithContentDescription("More options").assertDoesNotExist()
+    onNodeWithContentDescription("Download").assertDoesNotExist()
+  }
+
+  @Test
+  fun hlsCurrentSessionWithCompletedDownloadHidesTrailingButton() = runComposeUiTest {
+    val contentLength = 10L * 1024L * 1024L
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = TestLibraryItemId,
+        state = OfflineDownload.State.Completed,
+        contentLength = contentLength,
+        progress = OfflineDownload.Progress(contentLength, 1f),
+      ),
+      mediaProgress = null,
+      isCurrentSession = true,
+      isQueued = false,
+      hasSession = true,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithTag("button_download").assertDoesNotExist()
+  }
+
+  @Test
+  fun withoutDownloadPermissionHidesDownloadButton() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      isQueued = false,
+      hasSession = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canDownload = false,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithTag("button_play").assertExists()
+    onNodeWithTag("button_download").assertDoesNotExist()
+  }
+
+  @Test
+  fun withoutDownloadPermissionHidesDownloadOptionInPlayOptionsMenu() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = null,
+      mediaProgress = null,
+      isCurrentSession = false,
+      isQueued = false,
+      hasSession = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canStreamHls = true,
+      canDownload = false,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithContentDescription("More options").performClick()
+    onNodeWithText("Stream").assertExists()
+    onNodeWithText("Download").assertDoesNotExist()
+  }
+
+  @Test
+  fun withoutDownloadPermissionFailedDownloadCanBeDeletedButNotRetried() = runComposeUiTest {
+    val slot = ExpressiveControlSlot(
+      libraryItem = libraryItem(),
+      offlineDownload = OfflineDownload(
+        libraryItemId = TestLibraryItemId,
+        state = OfflineDownload.State.Failed,
+      ),
+      mediaProgress = null,
+      isCurrentSession = false,
+      isQueued = false,
+      hasSession = false,
+      addToPlaylistDialog = AddToPlaylistDialog.NoOp,
+      showConfirmDownloadDialogSetting = false,
+      canDownload = false,
+    )
+
+    setCampfireContent {
+      slot.Content(Modifier) {}
+    }
+
+    onNodeWithText("Download failed").assertIsDisplayed()
+    onNodeWithContentDescription("Delete download").assertIsDisplayed()
+    onNodeWithContentDescription("Retry download").assertDoesNotExist()
+  }
+
+  private fun downloadingOfflineDownload() = OfflineDownload(
+    libraryItemId = TestLibraryItemId,
+    state = OfflineDownload.State.Downloading,
+    progress = OfflineDownload.Progress(0L, 0.1f, indeterminate = true),
+  )
 
   @Test
   fun determinateTest() = runComposeUiTest {

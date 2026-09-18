@@ -44,9 +44,39 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     Result.failure(NotImplementedError("Set libraryStatsResult on the fake"))
   }
 
-  override suspend fun getCurrentUser(): Result<User> {
-    TODO("Not yet implemented")
+  val libraryItemRequests = mutableListOf<String>()
+  var libraryItemResult: suspend (itemId: String) -> Result<LibraryItemExpanded> = {
+    Result.failure(NotImplementedError("Set libraryItemResult on the fake"))
   }
+
+  val libraryItemsMinifiedRequests = mutableListOf<String>()
+  var libraryItemsMinifiedResult: suspend (
+    libraryId: String,
+    page: Int,
+  ) -> Result<PagedResponse<LibraryItemMinified>> = { _, _ ->
+    Result.failure(NotImplementedError("Set libraryItemsMinifiedResult on the fake"))
+  }
+
+  var currentUserResult: suspend () -> Result<User> = {
+    Result.failure(NotImplementedError("Set currentUserResult on the fake"))
+  }
+
+  val personalizedHomeRequests = mutableListOf<String>()
+  var personalizedHomeResult: suspend (libraryId: String) -> Result<List<Shelf>> = {
+    Result.failure(NotImplementedError("Set personalizedHomeResult on the fake"))
+  }
+
+  val collectionsRequests = mutableListOf<String>()
+  var collectionsResult: suspend (libraryId: String) -> Result<List<Collection>> = {
+    Result.failure(NotImplementedError("Set collectionsResult on the fake"))
+  }
+
+  val playlistsRequests = mutableListOf<String>()
+  var playlistsResult: suspend (libraryId: String) -> Result<List<PlaylistExpanded>> = {
+    Result.failure(NotImplementedError("Set playlistsResult on the fake"))
+  }
+
+  override suspend fun getCurrentUser(): Result<User> = currentUserResult()
 
   override suspend fun getAllLibraries(): Result<List<Library>> {
     TODO("Not yet implemented")
@@ -64,11 +94,13 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     page: Int,
     limit: Int,
   ): Result<PagedResponse<LibraryItemMinified>> {
-    TODO("Not yet implemented")
+    libraryItemsMinifiedRequests += libraryId
+    return libraryItemsMinifiedResult(libraryId, page)
   }
 
   override suspend fun getLibraryItem(itemId: String): Result<LibraryItemExpanded> {
-    TODO("Not yet implemented")
+    libraryItemRequests += itemId
+    return libraryItemResult(itemId)
   }
 
   override suspend fun getLibraryStats(libraryId: String): Result<LibraryStats> {
@@ -76,7 +108,8 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
   }
 
   override suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>> {
-    TODO("Not yet implemented")
+    personalizedHomeRequests += libraryId
+    return personalizedHomeResult(libraryId)
   }
 
   override suspend fun getRecentEpisodes(
@@ -119,7 +152,11 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     TODO("Not yet implemented")
   }
 
-  var series: Result<PagedResponse<Series>> = Result.failure(IllegalStateException("missing fake"))
+  val seriesPageRequests = mutableListOf<Int>()
+  var seriesResult: suspend (page: Int) -> Result<PagedResponse<Series>> = {
+    Result.failure(NotImplementedError("Set seriesResult on the fake"))
+  }
+
   override suspend fun getSeries(
     libraryId: String,
     filter: LibraryItemFilter?,
@@ -128,7 +165,8 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     page: Int,
     limit: Int,
   ): Result<PagedResponse<Series>> {
-    return series
+    seriesPageRequests += page
+    return seriesResult(page)
   }
 
   override suspend fun getSeriesById(
@@ -153,7 +191,8 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
   }
 
   override suspend fun getCollections(libraryId: String): Result<List<Collection>> {
-    TODO("Not yet implemented")
+    collectionsRequests += libraryId
+    return collectionsResult(libraryId)
   }
 
   override suspend fun getCollection(collectionId: String): Result<Collection> {
@@ -216,7 +255,8 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
   }
 
   override suspend fun getPlaylists(libraryId: String): Result<List<PlaylistExpanded>> {
-    TODO("Not yet implemented")
+    playlistsRequests += libraryId
+    return playlistsResult(libraryId)
   }
 
   override suspend fun getPlaylist(playlistId: String): Result<PlaylistExpanded> {

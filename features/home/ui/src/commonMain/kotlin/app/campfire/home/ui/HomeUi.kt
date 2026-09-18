@@ -74,15 +74,15 @@ fun HomeScreen(
     modifier = modifier.nestedScroll(appBarBehavior.nestedScrollConnection),
     contentWindowInsets = CampfireWindowInsets,
   ) { paddingValues ->
-    val ptrState = rememberPullToRefreshState()
+    val pullToRefreshState = rememberPullToRefreshState()
     PullToRefreshBox(
-      state = ptrState,
       isRefreshing = state.isRefreshing,
       onRefresh = { state.eventSink(HomeUiEvent.Refresh) },
+      state = pullToRefreshState,
       modifier = Modifier.fillMaxSize(),
       indicator = {
         CampfireLoadingIndicator(
-          state = ptrState,
+          state = pullToRefreshState,
           isRefreshing = state.isRefreshing,
           modifier = Modifier
             .align(Alignment.TopCenter)
@@ -119,6 +119,7 @@ fun HomeScreen(
               state.progressStates[MediaProgressKey(libraryItemId, podcastEpisodeId)]
             },
             contentPadding = paddingValues,
+            modifier = Modifier.fillMaxSize(),
             onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
             onItemClick = { shelf, item ->
               when (item) {

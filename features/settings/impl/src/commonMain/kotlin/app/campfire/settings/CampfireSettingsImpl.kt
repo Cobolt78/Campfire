@@ -120,6 +120,14 @@ class CampfireSettingsImpl(
   override var showTimeInBook: Boolean by showTimeInBookProperty
   override fun observeShowTimeInBook(): StateFlow<Boolean> = showTimeInBookProperty.observe()
 
+  private val wideNavigationRailExpandedProperty = booleanSetting(KEY_WIDE_NAVIGATION_RAIL_EXPANDED, true)
+  override var wideNavigationRailExpanded: Boolean by wideNavigationRailExpandedProperty
+  override fun observeWideNavigationRailExpanded(): StateFlow<Boolean> = wideNavigationRailExpandedProperty.observe()
+
+  private val supportingPaneWidthProperty = floatSetting(KEY_SUPPORTING_PANE_WIDTH, 0f)
+  override var supportingPaneWidth: Float by supportingPaneWidthProperty
+  override fun observeSupportingPaneWidth(): StateFlow<Float> = supportingPaneWidthProperty.observe()
+
   private val lastSeenVersionProperty = stringOrNullSetting(KEY_LAST_SEEN_WHATS_NEW)
   override var lastSeenVersion: String? by lastSeenVersionProperty
   override fun observeLastSeenVersion(): StateFlow<String?> = lastSeenVersionProperty.observe()
@@ -136,14 +144,6 @@ class CampfireSettingsImpl(
   private val socketEnabledProperty = booleanSetting(KEY_SOCKET_ENABLED, true)
   override var socketEnabled: Boolean by socketEnabledProperty
   override fun observeSocketEnabled(): StateFlow<Boolean> = socketEnabledProperty.observe()
-
-  private val confirmActionsProperty = booleanSetting(KEY_CONFIRM_ACTIONS, true)
-  override var confirmActions: Boolean by confirmActionsProperty
-  override fun observeConfirmActions(): StateFlow<Boolean> = confirmActionsProperty.observe()
-
-  private val warnOnCellularDownloadProperty = booleanSetting(KEY_WARN_ON_CELLULAR_DOWNLOAD, true)
-  override var warnOnCellularDownload: Boolean by warnOnCellularDownloadProperty
-  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> = warnOnCellularDownloadProperty.observe()
 }
 
 internal const val KEY_DEVICE_ID = "pref_device_id"
@@ -168,12 +168,12 @@ internal const val KEY_CURRENT_USER_ID = "pref_current_user_id"
 internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
 internal const val KEY_SHOW_WIDGET_PINNING = "pref_show_widget_pinning"
 internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
+internal const val KEY_WIDE_NAVIGATION_RAIL_EXPANDED = "pref_wide_navigation_rail_expanded"
+internal const val KEY_SUPPORTING_PANE_WIDTH = "pref_supporting_pane_width"
 internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"
 internal const val KEY_SOCKET_ENABLED = "pref_socket_enabled"
 internal const val KEY_APP_UPDATE_SIGN_IN_DISMISSED = "pref_app_update_sign_in_dismissed"
 internal const val KEY_APP_UPDATE_DISMISSED_VERSION_CODE = "pref_app_update_dismissed_version_code"
-internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
-internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
 
 // Dead keys
 internal const val KEY_USE_DYNAMIC_COLORS = "pref_dynamic_colors"

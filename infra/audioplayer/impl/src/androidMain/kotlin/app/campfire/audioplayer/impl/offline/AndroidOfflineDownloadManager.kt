@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.audioplayer.offline.OfflineDownloadPayload
+import app.campfire.audioplayer.offline.offlineDownloadUrl
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.SingleIn
 import app.campfire.core.logging.bark
@@ -28,6 +29,12 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.isActive
 import me.tatarka.inject.annotations.Inject
 
+/**
+ * Downloads fetch from the server's download route ([offlineDownloadUrl]), which refuses users
+ * without download permission, but are cached under the track's streaming URL so playback — which
+ * reads the cache by that URL — finds them. Downloads made before this used the streaming URL for
+ * both, so their cache key is the same.
+ */
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 @SingleIn(AppScope::class)
@@ -130,7 +137,8 @@ class AndroidOfflineDownloadManager(
     ).encode()
 
     item.media.tracks.forEach { track ->
-      val request = DownloadRequest.Builder(track.metadata.filename, track.contentUrl.toUri())
+      val request = DownloadRequest.Builder(track.metadata.filename, offlineDownloadUrl(track.contentUrl).toUri())
+        .setCustomCacheKey(track.contentUrl)
         .setData(payload)
         .build()
 
@@ -159,7 +167,11 @@ class AndroidOfflineDownloadManager(
       title = episode.title,
       subtitle = item.media.metadata.title.orEmpty(),
     ).encode()
-    val request = DownloadRequest.Builder(episodeDownloadId(item.id, episode.id), track.contentUrl.toUri())
+    val request = DownloadRequest.Builder(
+      episodeDownloadId(item.id, episode.id),
+      offlineDownloadUrl(track.contentUrl).toUri(),
+    )
+      .setCustomCacheKey(track.contentUrl)
       .setData(payload)
       .build()
 
@@ -189,6 +201,24 @@ class AndroidOfflineDownloadManager(
       episodeDownloadId(item.id, episode.id),
       true,
     )
+  }
+
+  override suspend fun deleteAllForItemId(itemId: LibraryItemId) {
+    downloadTracker.downloadIdsForItem(itemId).forEach { downloadId ->
+      // Cache cleanup can run while the app is in the background, where Android 12+ refuses a
+      // foreground service start. Fall back to a plain start and, failing that, skip — the files
+      // are picked up again the next time this item id is cleaned up.
+      try {
+        DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, true)
+      } catch (e: IllegalStateException) {
+        bark(throwable = e) { "Unable to start download service in the foreground, retrying in background" }
+        try {
+          DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, false)
+        } catch (e: IllegalStateException) {
+          bark(throwable = e) { "Unable to start download service, skipping removal of $downloadId" }
+        }
+      }
+    }
   }
 
   override fun stop(item: LibraryItem) {

@@ -70,6 +70,7 @@ internal fun PlayAndDownloadButtons(
   isEbookOnly: Boolean,
   canStreamHls: Boolean,
   willStreamHls: Boolean,
+  canDownload: Boolean = true,
 ) {
   Row(
     modifier = Modifier.fillMaxWidth(),
@@ -78,12 +79,20 @@ internal fun PlayAndDownloadButtons(
     val hasOfflineDownload = offlineDownload?.state != null &&
       offlineDownload.state != OfflineDownload.State.None
 
+    // The trailing button is either the play-options menu (HLS-capable servers) or a plain
+    // download button. It never shows for ebooks, the menu is pointless while this item is
+    // already playing, and the download button never shows once a download record exists or
+    // when the server doesn't allow this user to download.
+    val showPlayOptionsMenu = canStreamHls && !isCurrentSession && !isEbookOnly
+    val showDownloadButton = !showPlayOptionsMenu && !hasOfflineDownload && !isEbookOnly && canDownload
+    val showTrailingButton = showPlayOptionsMenu || showDownloadButton
+
     val size = ButtonDefaults.MediumContainerHeight
     val splitButtonRadius = 4.dp
     val pressedSplitButtonRadius = 6.dp
-    val pressedCornerRadius = if (hasOfflineDownload) pressedSplitButtonRadius else 12.dp
+    val pressedCornerRadius = if (showTrailingButton) pressedSplitButtonRadius else 12.dp
     val endCornerRadius by animateDpAsState(
-      targetValue = if (hasOfflineDownload || isEbookOnly) size / 2 else splitButtonRadius,
+      targetValue = if (showTrailingButton) splitButtonRadius else size / 2,
     )
 
     Button(
@@ -136,11 +145,11 @@ internal fun PlayAndDownloadButtons(
     Spacer(Modifier.width(2.dp))
 
     AnimatedVisibility(
-      visible = (!hasOfflineDownload && !isEbookOnly) || canStreamHls,
+      visible = showTrailingButton,
       enter = expandHorizontally(),
       exit = shrinkHorizontally(),
     ) {
-      if (canStreamHls && !isCurrentSession) {
+      if (showPlayOptionsMenu) {
         var expanded by remember { mutableStateOf(false) }
         val trailingButtonRadius by animateDpAsState(
           if (expanded) 20.dp else splitButtonRadius,
@@ -198,6 +207,7 @@ internal fun PlayAndDownloadButtons(
           hasProgress = hasProgress,
           hasOfflineDownload = hasOfflineDownload,
           isEbookOnly = isEbookOnly,
+          canDownload = canDownload,
           onPlayClick = onPlayClick,
           onDownloadClick = onDownloadClick,
         )
@@ -276,6 +286,7 @@ private fun PlayOptionsMenu(
   hasProgress: Boolean,
   hasOfflineDownload: Boolean,
   isEbookOnly: Boolean,
+  canDownload: Boolean,
   onPlayClick: (PlayMethod) -> Unit,
   onDownloadClick: () -> Unit,
   modifier: Modifier = Modifier,
@@ -308,7 +319,7 @@ private fun PlayOptionsMenu(
       )
     }
 
-    if (!hasOfflineDownload && !isEbookOnly) {
+    if (!hasOfflineDownload && !isEbookOnly && canDownload) {
       DropdownMenuItem(
         text = { Text(stringResource(Res.string.menu_item_download)) },
         onClick = onDownloadClick,

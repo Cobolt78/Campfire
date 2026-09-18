@@ -32,10 +32,10 @@ fun ShelfHeader(
     Text(
       // The synthetic upcoming shelf is built outside composition, so its
       // label resolves here instead of from the server feed.
-      text = when (shelf.id) {
-        ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
-        "downloads" -> "Downloads"
-        else -> shelf.label
+      text = if (shelf.id == ShelfIds.UpcomingReleases) {
+        stringResource(Res.string.upcoming_shelf_title)
+      } else {
+        shelf.label
       },
       style = MaterialTheme.typography.labelLarge,
     )

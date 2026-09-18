@@ -26,7 +26,8 @@ kotlin {
         api(libs.coil.svg)
         api(libs.coil.networking.ktor3)
         api(libs.compose.material3.expressive)
-        api(libs.compose.material3.windowsizeclass)
+        api(libs.compose.material3.adaptive)
+        api(libs.androidx.window.core)
         api(libs.materialcolorsutilities)
         api(libs.swatchbuckler.compose)
         api(libs.swatchbuckler.coil)
@@ -37,6 +38,12 @@ kotlin {
         api(libs.compose.animation)
         api(libs.compose.components.resources)
         api(libs.compose.ui.tooling.preview)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(libs.bundles.test.common)
       }
     }
 
@@ -55,6 +62,13 @@ kotlin {
     jvmMain {
       dependsOn(skikoMain)
       dependsOn(jvmCommon)
+    }
+
+    jvmTest {
+      dependencies {
+        implementation(compose.desktop.currentOs)
+        implementation(projects.common.test)
+      }
     }
 
     androidMain {

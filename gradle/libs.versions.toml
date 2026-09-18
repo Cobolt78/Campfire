@@ -1,12 +1,12 @@
 [versions]
 agp = "9.4.0"
-about-libraries = "15.1.1"
+about-libraries = "15.2.0"
 accompanist = "0.37.3"
 androidxlifecycle = "2.11.0"
 androidxactivity = "1.13.0"
 androidxfragment = "1.9.0"
-androidxcomposeui = "1.12.0"
-androidxtracing = "2.0.1"
+androidxcomposeui = "1.12.1"
+androidxtracing = "2.0.2"
 androidxtracingperfetto = "1.0.1"
 androidx-test-ext-junit = "1.3.0"
 androidxsecuritycrypto = "1.1.0"
@@ -16,30 +16,33 @@ appdistribution = "16.0.0-beta20"
 burst = "2.13.0"
 cadence = "0.2.0"
 clikt = "5.1.0"
-colorpicker-compose = "1.2.0"
+colorpicker-compose = "1.3.0"
 core-ktx = "1.19.0"
 coroutines = "1.11.0"
-compose-multiplatform = "1.11.1"
-compose-m3 = "1.11.0-alpha07"
+compose-multiplatform = "1.12.0"
+compose-m3 = "1.12.0-alpha03"
+compose-m3-adaptive = "1.3.0-rc01"
+androidx-window-core = "1.5.1"
 connectivity = "2.5.2"
-coil = "3.6.1"
-circuit = "0.37.1"
+coil = "3.6.2"
+circuit = "0.39.0"
 glance = "1.2.0"
 halogen = "0.2.0"
 jb-compose-navigationevent = "1.1.0"
 junit = "4.13.2"
 kimchi = "0.7.0"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 kotlin-inject = "0.9.0"
 kotlinpoet = "2.2.0"
 ksoup = "0.6.0"
-ksp = "2.3.11"
+proguard = "7.10.0"
+ksp = "2.3.12"
 ktlint = "0.49.1"
-ktor = "3.5.2"
+ktor = "3.6.0"
 leakcanary = "3.0-alpha-9"
-livewire = "1.0.5"
-media3 = "1.11.0"
-mixpanel = "8.10.0"
+livewire = "1.0.6"
+media3 = "1.11.1"
+mixpanel = "8.11.1"
 mosaic = "0.18.0"
 molecule = "2.2.0"
 multiplatformsettings = "1.3.0"
@@ -50,14 +53,17 @@ serialization = "1.11.0"
 sqldelight = "2.3.2"
 store = "5.0.0"
 material3 = "1.4.0"
-firebase-bom = "34.18.0"
+firebase-bom = "34.19.0"
 core = "1.19.0"
 vlcj = "4.12.1"
+jna = "5.19.1"
+bytedeco-ffmpeg = "8.1.2-1.5.14"
+bytedeco-javacpp = "1.5.14"
 work = "2.11.2"
 uiautomator = "2.4.0"
-benchmark-macro-junit4 = "1.4.1"
-baselineprofile = "1.5.0-rc02"
-emulatorwtf = "1.7.2"
+benchmark-macro-junit4 = "1.5.0"
+baselineprofile = "1.5.0"
+emulatorwtf = "1.8.0"
 profileinstaller = "1.4.1"
 material = "1.14.0"
 swatchbuckler = "0.1.1"
@@ -70,10 +76,11 @@ android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.
 android-lint = { id = "com.android.lint", version.ref = "agp" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 about-libraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "about-libraries" }
-buildConfig = "com.github.gmazzo.buildconfig:6.0.10"
+buildConfig = "com.github.gmazzo.buildconfig:6.1.0"
 burst = { id = "app.cash.burst", version.ref = "burst" }
 cacheFixPlugin = { id = "org.gradle.android.cache-fix", version = "3.0.3" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+conveyor = "dev.hydraulic.conveyor:2.0"
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-core = { id = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
@@ -86,7 +93,7 @@ firebase-appdistribution = "com.google.firebase.appdistribution:5.3.0"
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
 emulatorwtf = { id = "wtf.emulator.gradle", version.ref = "emulatorwtf" }
-modulegraph = { id = "dev.iurysouza.modulegraph", version = "0.13.0" }
+modulegraph = { id = "dev.iurysouza.modulegraph", version = "0.15.0" }
 
 [libraries]
 swatchbuckler-compose = { module = "com.r0adkll.swatchbuckler:compose", version.ref = "swatchbuckler" }
@@ -122,6 +129,7 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidxsecuritycrypto" }
 androidx-shapes = { module = "androidx.graphics:graphics-shapes", version.ref = "androidxshapes"}
 androidx-work-runtime = { module = "androidx.work:work-runtime", version.ref = "work" }
+androidx-window-core = { module = "org.jetbrains.androidx.window:window-core", version.ref = "androidx-window-core" }
 
 androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
@@ -182,7 +190,7 @@ compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-pre
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
 compose-animation = { module = "org.jetbrains.compose.animation:animation", version.ref = "compose-multiplatform" }
 compose-material = { module = "org.jetbrains.compose.material:material", version.ref = "compose-multiplatform" }
-compose-material3-windowsizeclass = "com.r0adkll.material3:material3-window-size-class-multiplatform:0.1.0"
+compose-material3-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adaptive", version.ref = "compose-m3-adaptive" }
 compose-material3-expressive = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-m3" }
 compose-material3-adaptive-navigation-suite = { module = "org.jetbrains.compose.material3:material3-adaptive-navigation-suite", version.ref = "compose-m3" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
@@ -274,6 +282,9 @@ play-services-cast-framework = "com.google.android.gms:play-services-cast-framew
 # declared explicitly because :infra:audioplayer:cast uses mediarouter APIs directly.
 androidx-mediarouter = "androidx.mediarouter:mediarouter:1.8.1"
 vlcj = { module = "uk.co.caprica:vlcj", version.ref = "vlcj" }
+jna = { module = "net.java.dev.jna:jna-jpms", version.ref = "jna" }
+bytedeco-ffmpeg = { module = "org.bytedeco:ffmpeg", version.ref = "bytedeco-ffmpeg" }
+bytedeco-javacpp = { module = "org.bytedeco:javacpp", version.ref = "bytedeco-javacpp" }
 
 # Analytics
 mixpanel-android = { module = "com.mixpanel.android:mixpanel-android", version.ref = "mixpanel" }
@@ -284,7 +295,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso-core" }
 turbine = "app.cash.turbine:turbine:1.2.1"
 leakCanary = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanary" }
-robolectric = "org.robolectric:robolectric:4.16.1"
+robolectric = "org.robolectric:robolectric:4.17"
 strikt-core = "io.strikt:strikt-core:0.35.1"
 assertk = "com.willowtreeapps.assertk:assertk:0.28.1"
 

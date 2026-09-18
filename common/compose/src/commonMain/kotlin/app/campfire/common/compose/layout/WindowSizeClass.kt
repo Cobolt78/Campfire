@@ -3,34 +3,75 @@
 
 package app.campfire.common.compose.layout
 
-import androidx.compose.material3.windowsizeclass.WindowHeightSizeClass
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.window.core.layout.WindowSizeClass
+import androidx.window.core.layout.WindowSizeClass.Companion.HEIGHT_DP_MEDIUM_LOWER_BOUND
+import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_EXPANDED_LOWER_BOUND
+import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
+import app.campfire.core.Platform
+import app.campfire.core.currentPlatform
+
+/**
+ * Lower bound, in dp, of the Large width size class (desktop and web windows). Mirrors the
+ * value material3-adaptive uses when large and extra-large widths are enabled.
+ */
+const val WIDTH_DP_LARGE_LOWER_BOUND: Int = 1200
+
+/**
+ * Lower bound, in dp, of the Extra-Large width size class (ultra-wide desktop and web windows).
+ */
+const val WIDTH_DP_EXTRA_LARGE_LOWER_BOUND: Int = 1600
+
+/** Width is at least the Medium breakpoint (tablets in portrait, unfolded inner displays). */
+val WindowSizeClass.isWidthAtLeastMedium: Boolean
+  get() = isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
+
+/** Width is at least the Expanded breakpoint (tablets in landscape). */
+val WindowSizeClass.isWidthAtLeastExpanded: Boolean
+  get() = isWidthAtLeastBreakpoint(WIDTH_DP_EXPANDED_LOWER_BOUND)
+
+/** Width is at least the Large breakpoint (desktop and web windows). */
+val WindowSizeClass.isWidthAtLeastLarge: Boolean
+  get() = isWidthAtLeastBreakpoint(WIDTH_DP_LARGE_LOWER_BOUND)
+
+/** Width is at least the Extra-Large breakpoint (ultra-wide desktop and web windows). */
+val WindowSizeClass.isWidthAtLeastExtraLarge: Boolean
+  get() = isWidthAtLeastBreakpoint(WIDTH_DP_EXTRA_LARGE_LOWER_BOUND)
+
+/** Height is below the Medium breakpoint (the majority of phones in landscape). */
+val WindowSizeClass.isHeightCompact: Boolean
+  get() = !isHeightAtLeastBreakpoint(HEIGHT_DP_MEDIUM_LOWER_BOUND)
 
 /**
  * Return if the supporting pane layout is enabled for this size class
  */
 val WindowSizeClass.isSupportingPaneEnabled: Boolean
-  get() = widthSizeClass >= WindowWidthSizeClass.Medium
+  get() = isWidthAtLeastMedium
 
 /**
  * Return if the device is in landscape/phone mode
  */
 val WindowSizeClass.isLandscapePhone: Boolean
-  get() = widthSizeClass >= WindowWidthSizeClass.Expanded &&
-    heightSizeClass == WindowHeightSizeClass.Compact
+  get() = isWidthAtLeastExpanded && isHeightCompact
 
 /**
- * Return the main navigation type for this size class
+ * Return if the full-width bottom playback bar should be used instead of the floating
+ * playback bar. Desktop windows get it from the Expanded breakpoint up; mobile always uses the
+ * floating bar.
+ */
+val WindowSizeClass.usesBottomPlaybackBar: Boolean
+  get() = currentPlatform == Platform.DESKTOP && isWidthAtLeastExpanded
+
+/**
+ * Return the main navigation type for this size class. Desktop windows between the Expanded and
+ * Extra-Large breakpoints get the collapsible wide rail; mobile keeps the compact rail there.
+ * Compact widths (phones in portrait, split-screen panes, narrow desktop windows) get the bottom
+ * navigation bar with the secondary destinations behind a modal drawer, which is the Material 3
+ * adaptive recommendation for that class regardless of platform.
  */
 val WindowSizeClass.navigationType: NavigationType
-  get() = when (widthSizeClass) {
-    WindowWidthSizeClass.Compact -> NavigationType.BottomNavigation
-    // TODO: This is essentially a phone portrait mode, What would be the optimal setup for this
-//      windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact -> BOTTOM_NAVIGATION
-    WindowWidthSizeClass.Medium -> NavigationType.Rail
-    WindowWidthSizeClass.Expanded -> NavigationType.Rail
-    WindowWidthSizeClass.Large -> NavigationType.Rail
-    WindowWidthSizeClass.ExtraLarge -> NavigationType.Drawer
-    else -> NavigationType.Rail
+  get() = when {
+    isWidthAtLeastExtraLarge -> NavigationType.Drawer
+    isWidthAtLeastExpanded && currentPlatform == Platform.DESKTOP -> NavigationType.WideRail
+    isWidthAtLeastMedium -> NavigationType.Rail
+    else -> NavigationType.BottomNavigation
   }

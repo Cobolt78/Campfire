@@ -6,14 +6,13 @@ package app.campfire.ui.appbar
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -27,15 +26,22 @@ import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.campfire.common.compose.LocalWindowChromeInsets
 import app.campfire.common.compose.extensions.plus
 import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.Close
 import app.campfire.common.compose.icons.rounded.Search
 import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.search.api.ui.LocalSearchEventHandler
 import app.campfire.search.api.ui.SearchComponent
+import app.campfire.search.api.ui.SearchResultNavEvent
 import campfire.ui.appbar.generated.resources.Res
 import campfire.ui.appbar.generated.resources.action_clear_search
 import campfire.ui.appbar.generated.resources.search_placeholder_text
@@ -70,6 +76,17 @@ private fun CampfireDockedSearchBar(
 ) {
   val scope = rememberCoroutineScope()
   val searchBarState = rememberSearchBarState()
+
+  // Picking a result navigates somewhere else, so the docked results should get out of the way.
+  // The query is kept so re-expanding the bar brings the same results back.
+  val searchEventHandler by rememberUpdatedState(LocalSearchEventHandler.current)
+  val collapsingSearchEventHandler = remember {
+    { event: SearchResultNavEvent ->
+      searchEventHandler(event)
+      scope.launch { searchBarState.animateToCollapsed() }
+      Unit
+    }
+  }
 
   val inputField = @Composable {
     SearchBarDefaults.InputField(
@@ -108,25 +125,27 @@ private fun CampfireDockedSearchBar(
     )
   }
 
-  BoxWithConstraints(
+  AppBarWithSearch(
+    state = searchBarState,
+    inputField = inputField,
+    scrollBehavior = scrollBehavior,
     modifier = modifier.fillMaxWidth(),
-  ) {
-    AppBarWithSearch(
-      state = searchBarState,
-      inputField = inputField,
-      scrollBehavior = scrollBehavior,
-      modifier = Modifier.fillMaxWidth(),
-      windowInsets = WindowInsets(),
-      contentPadding = SearchBarDefaults.windowInsets
-        .only(WindowInsetsSides.Top)
-        .asPaddingValues() + PaddingValues(horizontal = 8.dp),
-    )
+    windowInsets = WindowInsets(),
+    contentPadding = SearchBarDefaults.windowInsets
+      .add(LocalWindowChromeInsets.current)
+      .only(WindowInsetsSides.Top)
+      .asPaddingValues() + PaddingValues(horizontal = 8.dp),
+  )
 
-    ExpandedDockedSearchBar(
-      state = searchBarState,
-      inputField = inputField,
-      modifier = Modifier
-        .width(maxWidth - 32.dp),
+  // The expanded sheet is a popup anchored to the collapsed pill's top-left corner and sized
+  // to the pill's width. Forcing a wider size here makes it grow past the pill's right edge,
+  // so leave the width to the search bar state.
+  ExpandedDockedSearchBar(
+    state = searchBarState,
+    inputField = inputField,
+  ) {
+    CompositionLocalProvider(
+      LocalSearchEventHandler provides collapsingSearchEventHandler,
     ) {
       resultContent()
     }

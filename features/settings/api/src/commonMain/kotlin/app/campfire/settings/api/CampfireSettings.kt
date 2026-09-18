@@ -74,6 +74,17 @@ interface CampfireSettings {
   var showTimeInBook: Boolean
   fun observeShowTimeInBook(): StateFlow<Boolean>
 
+  /** Whether the desktop wide navigation rail shows labels beside its icons (expanded) or only icons. */
+  var wideNavigationRailExpanded: Boolean
+  fun observeWideNavigationRailExpanded(): StateFlow<Boolean>
+
+  /**
+   * Width in dp the user dragged the desktop supporting (detail) pane to, or `0` when it has
+   * never been resized and the layout's size-class default applies.
+   */
+  var supportingPaneWidth: Float
+  fun observeSupportingPaneWidth(): StateFlow<Float>
+
   var lastSeenVersion: String?
   fun observeLastSeenVersion(): StateFlow<String?>
 
@@ -102,23 +113,4 @@ interface CampfireSettings {
    */
   var socketEnabled: Boolean
   fun observeSocketEnabled(): StateFlow<Boolean>
-
-  /**
-   * When `true`, the app shows a confirmation dialog before executing destructive actions such as
-   * deleting a download, discarding listening progress, or marking a book with active progress as finished.
-   * When `false`, those actions execute immediately without prompting.
-   *
-   * Defaults to `true`.
-   */
-  var confirmActions: Boolean
-  fun observeConfirmActions(): StateFlow<Boolean>
-
-  /**
-   * When `true`, the app warns the user before downloading media over a metered (cellular / hotspot)
-   * connection. When `false`, downloads proceed without a cellular data warning.
-   *
-   * Defaults to `true`.
-   */
-  var warnOnCellularDownload: Boolean
-  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
 }

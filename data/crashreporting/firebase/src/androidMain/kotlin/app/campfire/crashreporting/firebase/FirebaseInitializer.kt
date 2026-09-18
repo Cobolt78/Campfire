@@ -45,18 +45,8 @@ class FirebaseInitializer(
   override val priority: Int = AppInitializer.FIREBASE_INIT_PRIORITY
 
   override suspend fun onInitialize() {
-    // ONLY initialize firebase on release builds if google-services config is available
-    val app = try {
-      FirebaseApp.initializeApp(application)
-    } catch (t: Throwable) {
-      bark("Firebase", WARN, throwable = t) { "Failed to initialize FirebaseApp" }
-      null
-    }
-
-    if (app == null) {
-      bark("Firebase", WARN) { "FirebaseApp is not initialized (no google-services.json?); skipping Crashlytics setup." }
-      return
-    }
+    // ONLY initialize firebase on release builds
+    FirebaseApp.initializeApp(application)
 
     // Setup logging
     Heartwood.grow(FirebaseBark)
@@ -115,12 +105,8 @@ class FirebaseInitializer(
 
 object FirebaseBark : Heartwood.Bark {
 
-  private val crashlytics: FirebaseCrashlytics? by lazy {
-    try {
-      FirebaseCrashlytics.getInstance()
-    } catch (e: Throwable) {
-      null
-    }
+  private val crashlytics by lazy {
+    FirebaseCrashlytics.getInstance()
   }
 
   override fun log(
@@ -131,7 +117,7 @@ object FirebaseBark : Heartwood.Bark {
   ) {
     if (priority == VERBOSE) return
 
-    crashlytics?.log(
+    crashlytics.log(
       buildString {
         // Tag
         if (tag != null) {

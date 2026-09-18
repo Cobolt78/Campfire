@@ -6,12 +6,10 @@ package app.campfire.playlists.ui.list
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -24,21 +22,26 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.CampfireWindowInsets
+import app.campfire.common.compose.OverlappedNavigationBarInsets
 import app.campfire.common.compose.extensions.plus
 import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.PlaylistAdd
 import app.campfire.common.compose.layout.DefaultAdaptiveColumnSize
 import app.campfire.common.compose.layout.LargeAdaptiveColumnSize
 import app.campfire.common.compose.layout.LazyCampfireGrid
+import app.campfire.common.compose.widgets.CampfireLoadingIndicator
 import app.campfire.common.compose.widgets.EmptyState
 import app.campfire.common.compose.widgets.ErrorListState
 import app.campfire.common.compose.widgets.FilterBar
@@ -114,24 +117,41 @@ fun Playlists(
     },
     modifier = modifier.nestedScroll(appBarBehavior.nestedScrollConnection),
     contentWindowInsets = CampfireWindowInsets
-      .exclude(WindowInsets.navigationBars)
+      .exclude(OverlappedNavigationBarInsets)
       .add(CampfireNavigationBarWindowInsets),
   ) { paddingValues ->
-    when (state.playlistContentState) {
-      LoadState.Loading -> LoadingListState(Modifier.padding(paddingValues))
-      LoadState.Error -> ErrorListState(
-        message = stringResource(Res.string.error_playlists_message),
-        modifier = Modifier.padding(paddingValues),
-      )
+    val pullToRefreshState = rememberPullToRefreshState()
+    PullToRefreshBox(
+      isRefreshing = state.isRefreshing,
+      onRefresh = { state.eventSink(PlaylistsUiEvent.Refresh) },
+      state = pullToRefreshState,
+      modifier = Modifier.fillMaxSize(),
+      indicator = {
+        CampfireLoadingIndicator(
+          state = pullToRefreshState,
+          isRefreshing = state.isRefreshing,
+          modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = paddingValues.calculateTopPadding()),
+        )
+      },
+    ) {
+      when (state.playlistContentState) {
+        LoadState.Loading -> LoadingListState(Modifier.padding(paddingValues))
+        LoadState.Error -> ErrorListState(
+          message = stringResource(Res.string.error_playlists_message),
+          modifier = Modifier.padding(paddingValues),
+        )
 
-      is LoadState.Loaded -> LoadedState(
-        items = state.playlistContentState.data,
-        displayState = state.displayState,
-        onPlaylistClick = { state.eventSink(PlaylistsUiEvent.PlaylistClick(it)) },
-        onToggleDisplayState = { state.eventSink(PlaylistsUiEvent.ToggleDisplayState) },
-        contentPadding = paddingValues,
-        state = gridState,
-      )
+        is LoadState.Loaded -> LoadedState(
+          items = state.playlistContentState.data,
+          displayState = state.displayState,
+          onPlaylistClick = { state.eventSink(PlaylistsUiEvent.PlaylistClick(it)) },
+          onToggleDisplayState = { state.eventSink(PlaylistsUiEvent.ToggleDisplayState) },
+          contentPadding = paddingValues,
+          state = gridState,
+        )
+      }
     }
   }
 }

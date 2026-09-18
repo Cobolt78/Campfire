@@ -3,21 +3,21 @@
 
 package app.campfire.audioplayer.impl.offline
 
-import android.net.Uri
 import androidx.annotation.OptIn
-import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.audioplayer.offline.OfflineDownloadKey
+import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.SingleIn
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
 import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.PodcastEpisode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.tatarka.inject.annotations.Inject
 
 /**
@@ -38,6 +39,7 @@ import me.tatarka.inject.annotations.Inject
 @Inject
 class DownloadTracker(
   private val downloadManager: DownloadManager,
+  private val dispatcherProvider: DispatcherProvider,
   @ForScope(AppScope::class) private val scope: CoroutineScope,
 ) : DownloadManager.Listener {
 
@@ -47,7 +49,8 @@ class DownloadTracker(
     data class Removed(val download: Download) : Event
   }
 
-  private val downloads = mutableMapOf<Uri, Download>()
+  /** Keyed by [cacheKey]: the track's streaming URL, whichever URL the bytes were fetched from. */
+  private val downloads = mutableMapOf<String, Download>()
 
   private val events = MutableSharedFlow<Event>(
     replay = 1,
@@ -74,10 +77,32 @@ class DownloadTracker(
       }
     }
 
+  /**
+   * The ids of every download request tagged with [itemId], book tracks and podcast episodes
+   * alike, read from the download index rather than the in-memory map.
+   *
+   * Book download ids are the track filename, which a re-added copy of the same files on the
+   * server shares. Re-downloading under the new item replaces that request (and its payload)
+   * in the index, but leaves the old item's entry behind in [downloads] because it's keyed by
+   * content uri. Reading the index guarantees we never match — and remove — the new download.
+   */
+  suspend fun downloadIdsForItem(itemId: LibraryItemId): List<String> = withContext(dispatcherProvider.io) {
+    downloadManager.downloadIndex.getDownloads().use { cursor ->
+      buildList {
+        while (cursor.moveToNext()) {
+          val request = cursor.download.request
+          if (OfflineDownloadKey.decode(request.data).libraryItemId == itemId) {
+            add(request.id)
+          }
+        }
+      }
+    }
+  }
+
   fun getOfflineDownload(item: LibraryItem): OfflineDownload {
     val itemDownloads = if (item.media.tracks.isNotEmpty()) {
       item.media.tracks.mapNotNull {
-        downloads[it.contentUrl.toUri()]
+        downloads[it.contentUrl]
       }
     } else {
       // Find all the downloads by the items associated metadata id. Restrict to
@@ -181,12 +206,12 @@ class DownloadTracker(
   }
 
   override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
-    downloads[download.request.uri] = download
+    downloads[download.cacheKey] = download
     scope.launch { events.emit(Event.Changed(download)) }
   }
 
   override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
-    downloads.remove(download.request.uri)
+    downloads.remove(download.cacheKey)
     scope.launch { events.emit(Event.Removed(download)) }
   }
 
@@ -195,7 +220,7 @@ class DownloadTracker(
       downloadManager.downloadIndex.getDownloads().use { cursor ->
         while (cursor.moveToNext()) {
           val download = cursor.download
-          downloads[download.request.uri] = download
+          downloads[download.cacheKey] = download
         }
       }
     } catch (e: Exception) {
@@ -205,6 +230,9 @@ class DownloadTracker(
     }
   }
 }
+
+private val Download.cacheKey: String
+  get() = request.customCacheKey ?: request.uri.toString()
 
 /**
  * A [Download.State] that represents a null download for a given media item uri

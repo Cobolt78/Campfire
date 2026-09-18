@@ -11,6 +11,7 @@
   <string name="chapters_loading_error">Uh-oh! Unable to load the chapters for this item.</string>
   <string name="misaligned_chapters_error_message">This item has misaligned chapter metadata and may not play back as expected</string>
   <string name="playback_error_message">Unable to play this file. The audio format may not be supported on this device.</string>
+  <string name="playback_engine_unavailable_message">Playback requires VLC media player. Install VLC 3 from videolan.org, then try again.</string>
 
   <string name="speed_bottomsheet_title">Playback speed</string>
   <string name="speed_custom_open">Enter custom speed</string>
@@ -104,4 +105,19 @@
   <!-- Content Descriptions -->
   <string name="cd_forward_time">Forward %1$s seconds</string>
   <string name="cd_rewind_time">Rewind %1$s seconds</string>
+  <string name="bottom_bar_nothing_playing">Nothing playing</string>
+  <string name="bottom_bar_nothing_playing_hint">Pick something from your library to start listening</string>
+  <string name="bottom_bar_chapter_remaining">%1$s left in chapter</string>
+  <string name="timeline_content_description">Book progress</string>
+  <string name="timeline_time_placeholder">--:--</string>
+  <string name="action_volume">Volume</string>
+  <string name="action_more">More</string>
+  <string name="action_output_device">Output device</string>
+  <string name="action_open_mini_player">Open mini player</string>
+  <string name="action_return_to_window">Return player to main window</string>
+  <string name="output_device_system_default">System Default</string>
+  <string name="output_device_unavailable">Unavailable</string>
+  <string name="action_mute">Mute</string>
+  <string name="action_unmute">Unmute</string>
+  <string name="volume_content_description">Volume</string>
 </resources>

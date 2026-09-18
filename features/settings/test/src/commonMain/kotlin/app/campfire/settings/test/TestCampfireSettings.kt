@@ -125,6 +125,16 @@ class TestCampfireSettings(
     observeBoolean(::showTimeInBook)
       .stateIn(testScope, SharingStarted.Lazily, showTimeInBook)
 
+  override var wideNavigationRailExpanded: Boolean by boolean()
+  override fun observeWideNavigationRailExpanded(): StateFlow<Boolean> =
+    observeBoolean(::wideNavigationRailExpanded)
+      .stateIn(testScope, SharingStarted.Lazily, wideNavigationRailExpanded)
+
+  override var supportingPaneWidth: Float by float()
+  override fun observeSupportingPaneWidth(): StateFlow<Float> =
+    observeFloat(::supportingPaneWidth)
+      .stateIn(testScope, SharingStarted.Lazily, supportingPaneWidth)
+
   override var lastSeenVersion: String? by stringOrNull()
   override fun observeLastSeenVersion(): StateFlow<String?> =
     observeStringOrNull(::lastSeenVersion)
@@ -139,19 +149,4 @@ class TestCampfireSettings(
   override fun observeAppUpdateDismissedVersionCode(): StateFlow<Long> =
     observeLong(::appUpdateDismissedVersionCode)
       .stateIn(testScope, SharingStarted.Lazily, appUpdateDismissedVersionCode)
-
-  override var socketEnabled: Boolean by boolean()
-  override fun observeSocketEnabled(): StateFlow<Boolean> =
-    observeBoolean(::socketEnabled)
-      .stateIn(testScope, SharingStarted.Lazily, socketEnabled)
-
-  override var confirmActions: Boolean by boolean()
-  override fun observeConfirmActions(): StateFlow<Boolean> =
-    observeBoolean(::confirmActions)
-      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
-
-  override var warnOnCellularDownload: Boolean by boolean()
-  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
-    observeBoolean(::warnOnCellularDownload)
-      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
 }

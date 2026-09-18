@@ -12,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.launch
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
@@ -49,7 +48,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
 
@@ -60,7 +59,6 @@ class HomePresenter(
   private val homeRepository: HomeRepository,
   private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
-  private val libraryItemRepository: app.campfire.libraries.api.LibraryItemRepository,
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
 ) : NonPausablePresenter<HomeUiState> {
@@ -69,7 +67,7 @@ class HomePresenter(
   @OptIn(ExperimentalCoroutinesApi::class)
   @Composable
   override fun present(): HomeUiState {
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
 
     // Observe just the shelf information. We will use this to compose the remaining elements
@@ -107,54 +105,19 @@ class HomePresenter(
       bookInfoRegistry.observeCachedUpcoming()
     }.collectAsState(emptyList())
 
-    val completedDownloads by remember {
-      offlineDownloadManager.observeAll()
-        .map { downloads ->
-          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
-        }
-        .distinctUntilChanged()
-        .mapLatest { downloadIds ->
-          downloadIds.mapNotNull { id ->
-            try {
-              libraryItemRepository.getLibraryItem(id)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-              throw e
-            } catch (e: Exception) {
-              null
-            }
-          }
-        }
-    }.collectAsState(emptyList())
-
     // Now combine both the shelves and entities into the final set of UiShelf to render
     // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
     val feed by remember {
       derivedStateOf {
         domainFeed.map { shelves ->
-          val uiShelves = shelves
-            .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.core.model.ShelfType.AUTHOR }
-            .map { shelf ->
-              UiShelf(
-                shelf,
-                shelfEntities[shelf.id]
-                  ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
-              )
-            }
-          
-          val withUpcoming = insertUpcomingShelf(uiShelves, upcomingReleases).toMutableList()
-
-          if (completedDownloads.isNotEmpty()) {
-            withUpcoming.add(
-              UiShelf(
-                id = "downloads",
-                label = "Downloads",
-                total = completedDownloads.size,
-                entities = LoadState.Loaded(completedDownloads)
-              )
+          val uiShelves = shelves.map { shelf ->
+            UiShelf(
+              shelf,
+              shelfEntities[shelf.id]
+                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
             )
           }
-
-          withUpcoming.toPersistentList()
+          insertUpcomingShelf(uiShelves, upcomingReleases).toPersistentList()
         }
       }
     }
@@ -169,22 +132,17 @@ class HomePresenter(
     }.collectAsState(persistentMapOf())
 
     val offlineDownloads by remember {
-      combine(
-        snapshotFlow { shelfEntities.values }
-          .map { responses ->
-            responses
-              .mapNotNull { it.dataOrNull }
-              .flatten()
-              .filterIsInstance<LibraryItem>()
-          },
-        snapshotFlow { completedDownloads }
-      ) { fromShelves, fromDownloads ->
-        (fromShelves + fromDownloads).distinctBy { it.id }
-      }
-      .flatMapLatest { libraryItems ->
-        offlineDownloadManager.observeForItems(libraryItems)
-          .map { it.toPersistentMap() }
-      }
+      snapshotFlow { shelfEntities.values }
+        .map { responses ->
+          responses
+            .mapNotNull { it.dataOrNull }
+            .flatten()
+            .filterIsInstance<LibraryItem>()
+        }
+        .flatMapLatest { libraryItems ->
+          offlineDownloadManager.observeForItems(libraryItems)
+            .map { it.toPersistentMap() }
+        }
     }.collectAsState(persistentMapOf())
 
     return HomeUiState(
@@ -212,15 +170,13 @@ class HomePresenter(
         }
         is HomeUiEvent.OpenUpcomingBook -> navigator.goTo(UrlScreen(event.url))
         HomeUiEvent.OpenUpcomingScreen -> navigator.goTo(UpcomingScreen)
-        HomeUiEvent.Refresh -> {
-          if (!isRefreshing) {
-            isRefreshing = true
-            coroutineScope.launch {
-              try {
-                homeRepository.refreshHomeFeed()
-              } finally {
-                isRefreshing = false
-              }
+        HomeUiEvent.Refresh -> if (!isRefreshing) {
+          isRefreshing = true
+          scope.launch {
+            try {
+              homeRepository.refreshHomeFeed()
+            } finally {
+              isRefreshing = false
             }
           }
         }

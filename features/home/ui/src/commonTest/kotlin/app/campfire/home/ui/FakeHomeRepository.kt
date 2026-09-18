@@ -17,10 +17,19 @@ class FakeHomeRepository(
   private val homeFeedFlowFactory: () -> Flow<FeedResponse<List<Shelf>>>,
   private val mediaProgressFlowFactory: (Set<LibraryItemId>) -> Flow<Map<LibraryItemId, MediaProgress>>,
   private val shelfEntityFlowFactory: (ShelfId, ShelfType) -> Flow<List<ShelfEntity>>,
+  private val onRefreshHomeFeed: suspend () -> Unit = {},
 ) : HomeRepository {
+
+  var refreshCount = 0
+    private set
 
   override fun observeHomeFeed(): Flow<FeedResponse<List<Shelf>>> {
     return homeFeedFlowFactory()
+  }
+
+  override suspend fun refreshHomeFeed() {
+    refreshCount++
+    onRefreshHomeFeed()
   }
 
   override fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>> {
@@ -33,11 +42,4 @@ class FakeHomeRepository(
   ): Flow<List<ShelfEntity>> {
     return shelfEntityFlowFactory(shelfId, shelfType)
   }
-
-  var refreshCount = 0
-  override suspend fun refreshHomeFeed(): Result<Unit> {
-    refreshCount++
-    return Result.success(Unit)
-  }
 }
-

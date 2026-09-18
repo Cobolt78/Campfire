@@ -10,18 +10,10 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 object FirebaseCrashReporter : CrashReporter {
 
   override fun tag(key: String, tag: String) {
-    try {
-      FirebaseCrashlytics.getInstance().setCustomKey(key, tag)
-    } catch (e: Throwable) {
-      // Firebase not initialized
-    }
+    FirebaseCrashlytics.getInstance().setCustomKey(key, tag)
   }
 
   override fun record(t: Throwable) {
-    try {
-      FirebaseCrashlytics.getInstance().recordException(t.redactedCopyOrSelf())
-    } catch (e: Throwable) {
-      // Firebase not initialized
-    }
+    FirebaseCrashlytics.getInstance().recordException(t.redactedCopyOrSelf())
   }
 }

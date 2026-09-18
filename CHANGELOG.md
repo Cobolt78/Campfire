@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- "Reset timer on pause" option in Settings → Sleep to reset the sleep timer back to its full original duration whenever playback is paused (e.g. from earbuds, Bluetooth, notification, or in-app) instead of freezing the countdown
-- Speed-adjusted total book remaining countdown next to the chapter title in Android Auto and system media notifications (e.g. "Chapter 134 - 18h 45m left"), updating dynamically every minute while preserving the book title on line 2 and chapter progress on the scrubber
-- Pull-to-refresh on the Home screen to fetch and refresh personalized shelves and new audiobooks/podcasts directly from your server with animated campfire flame loading indicator
-
 ### Changed
 
 ### Deprecated
@@ -22,6 +18,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Other Notes & Contributions
+
+## [1.2.0]
+
+### Added
+
+- [Desktop] Now Playing on macOS shows the current chapter and cover art, and media keys, AirPods taps, and Control Center controls work
+- [Desktop] Plays through a built-in audio engine, so VLC no longer needs to be installed
+- [Desktop] Ton of Desktop centered UI improvements
+- [Desktop] Send playback to a specific audio output device instead of always following the system default (macOS and Windows)
+- [Desktop] Resizable and compact mini-player that stays always on-top
+- [Android] Foldable phones opened halfway on a table split the screen while something is playing: the app above the hinge, the full player below it
+- Pull down on the Home, Playlists and Collections screens to refresh them
+
+### Changed
+
+- [Desktop] Window can no longer be resized below a phone-sized layout
+- [Desktop] Playback bar is shorter and shows progress through the whole book, with chapter and bookmark markers you can hover and click
+- [Desktop] Playback bar docks along the bottom of any tablet-width or wider window instead of only ultra-wide ones
+- [Android, Desktop] Search results on tablet and desktop layouts close once you pick one
+- [Desktop] Built-in themes render on neutral cool-grey surfaces with a bolder version of the theme's colour as the accent, instead of tinting every surface
+- Download options now respect server-side permission for the user
+- Improved Pull-to-refresh indicator and animation
+
+### Fixed
+
+- Titles removed from the server lingering in the app, including their downloads, or showing up twice after being re-added
+- [Desktop] App freezing while opening a chapter, bookmark, or track, and while starting playback
+- Expanded search results on wide layouts spilling past the search bar's edge instead of lining up under it
+- Navigation drawer always highlighting Home instead of the section being viewed
+- Item detail showing a stray download button while the item is playing or already downloading, and a mismatched play button shape while a download is in progress
+- Cover art on the playing screen flickering and reloading while dragging the player up or down
+- Book covers flashing a loading spinner when opening an item from home, a library, or a series
+- [Android] Cast device picker opening away from button in foldable/tablet layouts
+- [Android] App crashing when a Cast device appears on the network
+- App crashing when a request finishes after logging out or while signing in
+- [Android] Briefly going silent between chapters of single-file audiobooks encoded with xHE-AAC
+- Sleep timer's Time and End of Chapter buttons having mismatched sizes when a label wraps onto two lines
+
+### Other Notes & Contributions
+
+- [Android] Beta builds are published to Firebase App Distribution again with every release, reaching testers without waiting on Google Play review
 
 ## [1.1.0]
 
@@ -519,6 +556,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.2.0]: https://github.com/r0adkll/Campfire/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/r0adkll/Campfire/compare/1.0.5...1.1.0
 [1.0.5]: https://github.com/r0adkll/Campfire/compare/1.0.4...1.0.5
 [1.0.4]: https://github.com/r0adkll/Campfire/compare/1.0.3...1.0.4

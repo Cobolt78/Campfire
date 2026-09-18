@@ -4,6 +4,7 @@
 package app.campfire.discover.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
@@ -24,16 +25,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
@@ -49,8 +46,8 @@ import app.campfire.bookinfo.api.ProviderSeriesEntry
 import app.campfire.bookinfo.api.UpcomingRelease
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.LocalWindowSizeClass
+import app.campfire.common.compose.currentWindowSizeClass
 import app.campfire.common.compose.icons.CampfireIcons
-import app.campfire.common.compose.icons.rounded.ArrowBack
 import app.campfire.common.compose.icons.rounded.Radar
 import app.campfire.common.compose.layout.ContentLayout
 import app.campfire.common.compose.layout.LocalContentLayout
@@ -60,16 +57,17 @@ import app.campfire.common.compose.theme.CampfireTheme
 import app.campfire.common.compose.util.withDensity
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.EmptyState
-import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.compose.widgets.NavigationBackButton
+import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
 import app.campfire.core.di.UserScope
 import app.campfire.discover.api.DiscoverScanState
 import app.campfire.discover.api.screen.UpcomingScreen
 import app.campfire.discover.ui.composables.UpcomingTimeline
 import campfire.features.discover.ui.generated.resources.Res
-import campfire.features.discover.ui.generated.resources.action_back
 import campfire.features.discover.ui.generated.resources.discover_cancel_scan
 import campfire.features.discover.ui.generated.resources.discover_empty_upcoming
 import campfire.features.discover.ui.generated.resources.discover_scan_action
+import campfire.features.discover.ui.generated.resources.discover_scan_loading_series
 import campfire.features.discover.ui.generated.resources.discover_scan_progress
 import campfire.features.discover.ui.generated.resources.discover_scan_rate_limited
 import campfire.features.discover.ui.generated.resources.discover_scanning_title
@@ -87,19 +85,14 @@ fun UpcomingUi(
   state: UpcomingUiState,
   modifier: Modifier = Modifier,
 ) {
-  val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+  val scrollBehavior = adaptiveExitUntilCollapsedScrollBehavior()
   val listState = rememberLazyListState()
   Scaffold(
     topBar = {
       CampfireTopAppBar(
         title = { Text(stringResource(Res.string.upcoming_title)) },
         navigationIcon = {
-          val backLabel = stringResource(Res.string.action_back)
-          IconButtonTooltip(text = backLabel) {
-            IconButton(onClick = { state.eventSink(UpcomingUiEvent.Back) }) {
-              Icon(CampfireIcons.Rounded.ArrowBack, contentDescription = backLabel)
-            }
-          }
+          NavigationBackButton(onClick = { state.eventSink(UpcomingUiEvent.Back) })
         },
         windowInsets = WindowInsets(),
         contentPadding = WindowInsets.statusBars.asPaddingValues(),
@@ -199,11 +192,15 @@ fun UpcomingUi(
   }
 }
 
+/**
+ * A null [total] means the series listing is still loading, so there's nothing
+ * to measure progress against yet.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ScanProgressHeader(
+internal fun ScanProgressHeader(
   done: Int,
-  total: Int,
+  total: Int?,
   onCancel: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -217,19 +214,32 @@ private fun ScanProgressHeader(
       style = MaterialTheme.typography.titleSmall,
     )
     Spacer(Modifier.height(4.dp))
-    LinearProgressIndicator(
-      progress = { if (total == 0) 0f else done.toFloat() / total },
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(6.dp),
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-        text = stringResource(Res.string.discover_scan_progress, done, total),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val indicatorModifier = Modifier
+      .fillMaxWidth()
+      .height(6.dp)
+    if (total == null) {
+      LinearProgressIndicator(modifier = indicatorModifier)
+    } else {
+      LinearProgressIndicator(
+        progress = { if (total == 0) 0f else done.toFloat() / total },
+        modifier = indicatorModifier,
       )
-      Spacer(Modifier.weight(1f))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Crossfade(
+        targetState = total,
+        modifier = Modifier.weight(1f),
+      ) { targetTotal ->
+        Text(
+          text = if (targetTotal == null) {
+            stringResource(Res.string.discover_scan_loading_series)
+          } else {
+            stringResource(Res.string.discover_scan_progress, done, targetTotal)
+          },
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
       val buttonSize = ButtonDefaults.ExtraSmallContainerHeight
       TextButton(
         onClick = onCancel,
@@ -247,14 +257,13 @@ private fun ScanProgressHeader(
 
 // region — Previews —
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 private fun PreviewWrapper(
   content: @Composable () -> Unit,
 ) {
   CampfireTheme {
     CompositionLocalProvider(
-      LocalWindowSizeClass provides calculateWindowSizeClass(),
+      LocalWindowSizeClass provides currentWindowSizeClass(),
       LocalContentLayout provides ContentLayout.Root,
     ) {
       content()
@@ -266,6 +275,17 @@ private fun PreviewWrapper(
 @Composable
 private fun UpcomingUiPreview_Idle() = PreviewWrapper {
   UpcomingUi(state = previewState(DiscoverScanState.Idle))
+}
+
+@Preview
+@Composable
+private fun UpcomingUiPreview_LoadingSeries() = PreviewWrapper {
+  UpcomingUi(
+    state = previewState(
+      DiscoverScanState.Running(done = 0, total = null),
+      upcoming = previewUpcoming(),
+    ),
+  )
 }
 
 @Preview

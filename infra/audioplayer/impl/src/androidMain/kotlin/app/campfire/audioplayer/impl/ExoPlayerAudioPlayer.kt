@@ -44,7 +44,6 @@ import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.audioplayer.model.RunningTimer
 import app.campfire.audioplayer.model.profileOrNull
 import app.campfire.core.audio.EqualizerProfile
-import app.campfire.core.extensions.formatHoursAndMinutes
 import app.campfire.core.extensions.seconds
 import app.campfire.core.logging.Cork
 import app.campfire.core.logging.Corked
@@ -196,7 +195,7 @@ class ExoPlayerAudioPlayer(
 
   /**
    * The player handed to the MediaSession. On top of the forwarding chain it projects
-   * coarse single-item (HLS) playback as a virtual chapter playlist, so controller
+   * coarse single-item (HLS or single-file) playback as a virtual chapter playlist, so controller
    * consumers (media notification, Android Auto, external controllers) get the same
    * chapter-granular scrubber, titles, and next/prev semantics as the in-app UI.
    * Transparent for every other queue shape. In-app code keeps using [player] — its
@@ -216,8 +215,6 @@ class ExoPlayerAudioPlayer(
       override fun skipToNextChapter() = skipToNext()
 
       override fun skipToPreviousChapter() = skipToPrevious()
-
-      override fun remainingFormatted(): String = remainingBookTimeFormatted()
     },
   )
 
@@ -234,11 +231,11 @@ class ExoPlayerAudioPlayer(
 
   private var progressJob: Job? = null
   private var fadeJob: Job? = null
-  private var previousVolumeLevel: Float = 0f
   private var isRemotePlayback = false
   private var castWatchdogJob: Job? = null
   private var chapterTimeline: ChapterTimeline? = null
   private var lastBoundaryCheckTime: Duration? = null
+  private var singleItemQueue = false
   private var hlsQueueActive = false
   private var hlsFallbackAttempted = false
 
@@ -248,14 +245,15 @@ class ExoPlayerAudioPlayer(
    *   chapter boundaries, so player-native transitions/seeks carry chapter semantics.
    * - [QueueShape.TRACKS] — one item per whole file (remote/Cast: receivers don't honor
    *   clipping); chapter semantics are re-derived from the absolute position.
-   * - [QueueShape.SINGLE] — one HLS stream item spanning the whole book; every position is
+   * - [QueueShape.SINGLE] — one item spanning the whole book (an HLS stream, or a single audio
+   *   file segmented by chapters, played unclipped to keep chapter transitions gapless); every position is
    *   already absolute.
    * Cast takes precedence: handing off mid-HLS rebuilds the queue per-track.
    */
   private val queueShape: QueueShape
     get() = when {
       isRemotePlayback -> QueueShape.TRACKS
-      hlsQueueActive -> QueueShape.SINGLE
+      singleItemQueue -> QueueShape.SINGLE
       else -> QueueShape.CHAPTERS
     }
 
@@ -313,6 +311,7 @@ class ExoPlayerAudioPlayer(
     preparedSession = session
     chapterTimeline = ChapterTimeline(session)
     lastBoundaryCheckTime = null
+    singleItemQueue = MediaItemBuilder.isSingleItemQueue(session)
     hlsQueueActive = session.episode == null && session.hlsStreamUrl != null
     hlsFallbackAttempted = false
     finishedListener = onFinished
@@ -321,7 +320,7 @@ class ExoPlayerAudioPlayer(
     _error.value = null
     state.value = AudioPlayer.State.Initializing
 
-    val mediaItems = MediaItemBuilder.build(session, playbackSpeed.value).asPlatformMediaItems(context)
+    val mediaItems = MediaItemBuilder.build(session).asPlatformMediaItems(context)
 
     ibark {
       """
@@ -361,7 +360,7 @@ class ExoPlayerAudioPlayer(
           artworkUri = session.libraryItem.media.coverImageUrl,
         )
         overallTime.value = resumeMs.milliseconds
-      } else if (hlsQueueActive) {
+      } else if (singleItemQueue) {
         // Single stream item: every position is absolute, so both an explicit chapter and
         // a resume point reduce to one absolute seek on item 0.
         val resume = when {
@@ -484,7 +483,6 @@ class ExoPlayerAudioPlayer(
       // Set when to play, and prepare
       playWhenReady = playImmediately
       prepare()
-      updatePlaylistMetadata()
     }
   }
 
@@ -500,15 +498,15 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun fadeToPause(duration: Duration, tickRate: Long): Job {
-    previousVolumeLevel = player.volume
     fadeJob?.cancel()
 
+    // Nothing else attenuates output here — there is no app-level volume on this platform, so
+    // the fade's multiplier is the whole gain and it releases back to unity on its own.
     return VolumeFadeController.fade(
       scope = scope,
       duration = duration,
       tickRate = tickRate,
-      getVolume = { player.volume },
-      setVolume = { player.volume = it },
+      setFade = { player.volume = it },
       onPause = { player.pause() },
     ).also { fadeJob = it }
   }
@@ -520,13 +518,6 @@ class ExoPlayerAudioPlayer(
       // Potentially trigger the auto sleep timer
       sleepTimerManager.onSessionStart()
 
-      // Reset volume if stored
-      if (player.volume == 0f && previousVolumeLevel > 0f) {
-        player.volume = previousVolumeLevel
-      } else if (player.volume == 0f) {
-        player.volume = 1f
-      }
-
       player.play()
     }
   }
@@ -535,6 +526,7 @@ class ExoPlayerAudioPlayer(
     preparedSession = null
     chapterTimeline = null
     lastBoundaryCheckTime = null
+    singleItemQueue = false
     hlsQueueActive = false
     hlsFallbackAttempted = false
     finishedListener = null
@@ -597,7 +589,7 @@ class ExoPlayerAudioPlayer(
 
   override fun skipToNext() {
     if (queueShape != QueueShape.CHAPTERS) {
-      // Coarse queues (per-track, single HLS stream) don't transition on chapters; skip by
+      // Coarse queues (per-track, single stream/file) don't transition on chapters; skip by
       // chapter on the absolute timeline instead
       val target = chapterTimeline?.nextChapterStart(overallTime.value)
       if (target != null) {
@@ -649,7 +641,6 @@ class ExoPlayerAudioPlayer(
     playbackSpeed.value = speed
     settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
     player.setPlaybackSpeed(speed)
-    updatePlaylistMetadata()
   }
 
   override fun setEqualizer(profile: EqualizerProfile) {
@@ -752,7 +743,7 @@ class ExoPlayerAudioPlayer(
     // the same session can always direct-play its tracks. One attempt only — if the rebuilt
     // direct queue also fails, the error surfaces normally.
     val session = preparedSession
-    if (queueShape == QueueShape.SINGLE && !hlsFallbackAttempted && session != null) {
+    if (hlsQueueActive && !isRemotePlayback && !hlsFallbackAttempted && session != null) {
       hlsFallbackAttempted = true
       wbark { "HLS stream failed (errorCode=${error.errorCode}); rebuilding as direct play" }
       val resumeTime = overallTime.value
@@ -875,13 +866,10 @@ class ExoPlayerAudioPlayer(
     }
 
     // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
-    // stop the playback. Coarse queues (remote per-track, single HLS) transition on tracks
+    // stop the playback. Coarse queues (remote per-track, single item) transition on tracks
     // or never, so there the boundary detection in updateProgress owns this signal instead.
-    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION)) {
-      if (queueShape == QueueShape.CHAPTERS) {
-        sleepTimerManager.endOfChapter()
-      }
-      updatePlaylistMetadata()
+    if (events.containsAny(EVENT_MEDIA_ITEM_TRANSITION) && queueShape == QueueShape.CHAPTERS) {
+      sleepTimerManager.endOfChapter()
     }
   }
 
@@ -904,7 +892,7 @@ class ExoPlayerAudioPlayer(
     val shape = queueShape
     if (shape != QueueShape.CHAPTERS && timeline != null) {
       val overall = when (shape) {
-        // A single HLS item spans the whole book, so the player position IS absolute
+        // A single item spans the whole book, so the player position IS absolute
         QueueShape.SINGLE -> player.currentPosition.milliseconds
         else -> timeline.timeAtTrackPosition(player.currentMediaItemIndex, player.currentPosition.milliseconds)
       }
@@ -923,7 +911,6 @@ class ExoPlayerAudioPlayer(
     currentTime.value = player.currentPosition.milliseconds
     currentDuration.value = player.duration.milliseconds
     overallTime.value = player.overallPosition.milliseconds
-    updatePlaylistMetadata()
   }
 
   /**
@@ -939,7 +926,7 @@ class ExoPlayerAudioPlayer(
   }
 
   /**
-   * Coarse queues (per-track remote, single-item HLS) don't match the UI's chapter language:
+   * Coarse queues (per-track remote, single-item HLS or file) don't match the UI's chapter language:
    * re-derive chapter-relative time, duration, and title from the absolute position so the
    * playback UI matches chapter-granular queues exactly.
    */
@@ -975,41 +962,6 @@ class ExoPlayerAudioPlayer(
     lastBoundaryCheckTime = timestamp
     if (play) {
       player.play()
-    }
-    updatePlaylistMetadata()
-  }
-
-  internal fun remainingBookTimeFormatted(): String {
-    val session = preparedSession ?: return ""
-    val media = session.libraryItem.media
-    val speed = playbackSpeed.value.takeIf { it > 0f } ?: 1.0f
-
-    val totalDurationMs = session.episode?.durationInMillis ?: media.durationInMillis
-    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
-    val rawRemainingMs = (totalDurationMs - currentPositionMs).coerceAtLeast(0L)
-    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
-    return effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-  }
-
-  internal fun updatePlaylistMetadata() {
-    val formatted = remainingBookTimeFormatted()
-    if (formatted.isBlank()) return
-
-    val currentItem = exoPlayer.currentMediaItem ?: return
-    val rawChapterTitle = currentItem.mediaMetadata.title?.toString() ?: ""
-    val targetTitle = MediaItemBuilder.formatChapterTitleWithCountdown(rawChapterTitle, formatted)
-
-    if (currentItem.mediaMetadata.title?.toString() != targetTitle) {
-      val newMetadata = currentItem.mediaMetadata.buildUpon()
-        .setTitle(targetTitle)
-        .build()
-      val newItem = currentItem.buildUpon()
-        .setMediaMetadata(newMetadata)
-        .build()
-      val currentIndex = exoPlayer.currentMediaItemIndex
-      if (currentIndex in 0 until exoPlayer.mediaItemCount) {
-        exoPlayer.replaceMediaItem(currentIndex, newItem)
-      }
     }
   }
 }

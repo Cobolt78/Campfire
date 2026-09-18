@@ -9,13 +9,13 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +29,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastRoundToInt
@@ -36,6 +38,7 @@ import app.campfire.account.ui.picker.AccountPickerResult
 import app.campfire.account.ui.picker.showAccountPicker
 import app.campfire.account.ui.switcher.AccountSwitcher
 import app.campfire.account.ui.switcher.AccountSwitcherUiEvent
+import app.campfire.account.ui.switcher.RailAccountSwitcher
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ScreenType
@@ -46,7 +49,9 @@ import app.campfire.common.compose.extensions.shouldUseDarkColors
 import app.campfire.common.compose.layout.AdaptiveCampfireLayout
 import app.campfire.common.compose.layout.isLandscapePhone
 import app.campfire.common.compose.layout.isSupportingPaneEnabled
+import app.campfire.common.compose.layout.usesBottomPlaybackBar
 import app.campfire.common.compose.session.LocalPlaybackSession
+import app.campfire.common.compose.session.LocalPlayerDocked
 import app.campfire.common.compose.theme.CampfireTheme
 import app.campfire.common.compose.util.LocalThemeDispatcher
 import app.campfire.common.compose.util.ThemeDispatcher
@@ -70,12 +75,14 @@ import app.campfire.search.api.ui.SearchResultNavEvent
 import app.campfire.search.api.ui.goToSearchEvent
 import app.campfire.sessions.ui.PlaybackBottomBar
 import app.campfire.sessions.ui.playback.CampfirePlaybackBar
+import app.campfire.sessions.ui.player.DedicatedPlayer
 import app.campfire.settings.api.CampfireSettings
 import app.campfire.ui.navigation.bar.CampfireNavigationBar
 import app.campfire.ui.navigation.bar.LocalNavigationBarState
 import app.campfire.ui.navigation.bar.rememberCampfireNavigationBarState
 import app.campfire.ui.navigation.drawer.CampfireDrawer
 import app.campfire.ui.navigation.rail.CampfireNavigationRail
+import app.campfire.ui.navigation.rail.CampfireWideNavigationRail
 import app.campfire.ui.theming.api.AppThemeRepository
 import app.campfire.ui.theming.api.ThemeManager
 import app.campfire.ui.theming.api.colorScheme
@@ -86,6 +93,7 @@ import com.slack.circuit.backstack.rememberSaveableBackStack
 import com.slack.circuit.foundation.CircuitCompositionLocals
 import com.slack.circuit.foundation.NavigableCircuitContent
 import com.slack.circuit.foundation.rememberCircuitNavigator
+import com.slack.circuit.foundation.rememberDefaultCircuitSaver
 import com.slack.circuit.overlay.rememberOverlayHost
 import com.slack.circuit.retained.rememberRetainedSaveable
 import com.slack.circuit.runtime.Navigator
@@ -102,8 +110,6 @@ import org.jetbrains.compose.resources.stringResource
 internal fun LoggedInWindow(
   userComponent: UserComponent,
   onRootPop: () -> Unit,
-  onOpenUrl: (String) -> Unit,
-  windowInsets: WindowInsets,
   deepLink: DeepLink,
   settings: CampfireSettings,
   themeManager: ThemeManager,
@@ -111,7 +117,7 @@ internal fun LoggedInWindow(
   modifier: Modifier = Modifier,
 ) {
   val backStack = key(userComponent.currentUserSession) {
-    rememberSaveableBackStack(userComponent.rootScreen())
+    rememberSaveableBackStack(userComponent.rootScreen(), circuitSaver = rememberDefaultCircuitSaver())
   }
 
   val baseNavigator = key(userComponent.currentUserSession) { rememberCircuitNavigator(backStack) { onRootPop() } }
@@ -136,8 +142,9 @@ internal fun LoggedInWindow(
     userComponent.sessionsRepository.observeCurrentSession()
   }.collectAsState(null)
 
-  val urlNavigator: Navigator = remember(navigator) {
-    OpenUrlNavigator(navigator, onOpenUrl)
+  val uriHandler = LocalUriHandler.current
+  val urlNavigator: Navigator = remember(navigator, uriHandler) {
+    OpenUrlNavigator(navigator, uriHandler)
   }
 
   // Remember an instance of the theme dispatcher
@@ -165,22 +172,39 @@ internal fun LoggedInWindow(
         settings.observeLibraryItemMarqueeEnabled()
       }.collectAsState()
 
+      val supportingPaneWidth by remember {
+        settings.observeSupportingPaneWidth()
+      }.collectAsState()
+
       CompositionLocalProvider(
         LocalPlaybackSession provides currentSession,
         LocalThemeDispatcher provides themeManagerDispatcher,
         LocalItemCardMarquee provides itemCardMarqueeEnabled,
       ) {
+        // A half-open foldable on a table gives the app only the region above the hinge, and
+        // the player the region below. Everything under here — navigation type, pane routing,
+        // the adaptive layout — is sized to that upper region alone. With nothing playing there
+        // is no player to dock, so the app keeps the whole screen.
+        val tabletopSplit = rememberTabletopSplit()?.takeIf { currentSession != null }
+
         // The entire Compose hierarchy under this should be keyed and
         // unique per-user.
         key(userComponent.currentUserSession.requiredUserId) {
-          LoggedInUi(
-            backstack = backStack,
-            navigator = urlNavigator,
-            windowInsets = windowInsets,
-            navigationEventListeners = userComponent.navigationEventListeners,
-            deepLink = deepLink,
-            modifier = modifier,
-          )
+          CompositionLocalProvider(
+            LocalWindowSizeClass provides (tabletopSplit?.topSizeClass ?: LocalWindowSizeClass.current),
+            LocalPlayerDocked provides (tabletopSplit != null),
+          ) {
+            LoggedInUi(
+              backstack = backStack,
+              navigator = urlNavigator,
+              navigationEventListeners = userComponent.navigationEventListeners,
+              deepLink = deepLink,
+              supportingPaneWidth = supportingPaneWidth.takeIf { it > 0f }?.dp,
+              onSupportingPaneWidthChange = { settings.supportingPaneWidth = it.value },
+              tabletopSplit = tabletopSplit,
+              modifier = modifier,
+            )
+          }
         }
       }
     }
@@ -193,16 +217,19 @@ private fun LoggedInUi(
   backstack: SaveableBackStack,
   navigator: Navigator,
   navigationEventListeners: ImmutableList<NavigationEventListener>,
-  windowInsets: WindowInsets,
   deepLink: DeepLink,
+  supportingPaneWidth: Dp?,
+  onSupportingPaneWidthChange: (Dp) -> Unit,
   modifier: Modifier = Modifier,
+  /** Non-null while the device is half-open on a table; the player then docks below the hinge. */
+  tabletopSplit: TabletopSplit? = null,
 ) {
   val coroutineScope = rememberCoroutineScope()
   val windowSizeClass = LocalWindowSizeClass.current
 
   LaunchedEffect(windowSizeClass) {
     bark {
-      "WindowSizeClass[${windowSizeClass.widthSizeClass}, ${windowSizeClass.heightSizeClass}]"
+      "$windowSizeClass"
     }
   }
 
@@ -213,6 +240,15 @@ private fun LoggedInUi(
   val currentPresentation by remember(backstack) {
     derivedStateOf {
       (backstack.topRecord?.screen as? BaseScreen)?.presentation
+    }
+  }
+
+  // The section the drawer should highlight: the top-most screen that isn't a detail
+  // screen. Drawer destinations are pushed on phones and reset on desktop, so the root
+  // of the back stack alone doesn't describe where the user is.
+  val currentSectionScreen by remember(backstack) {
+    derivedStateOf {
+      backstack.firstOrNull { it.screen !is DetailScreen }?.screen ?: backstack.last().screen
     }
   }
 
@@ -236,8 +272,13 @@ private fun LoggedInUi(
       }
 
       when (deepLink) {
+        // Guarded because the mini-player hands the same item over with a fresh nonce on every
+        // tap, and a repeat tap should surface that screen rather than stack a second copy.
         is DeepLink.ItemDetail -> {
-          detailBackStack.push(LibraryItemScreen(deepLink.libraryItemId))
+          val screen = detailBackStack.topRecord?.screen as? LibraryItemScreen
+          if (screen?.libraryItemId != deepLink.libraryItemId) {
+            detailBackStack.push(LibraryItemScreen(deepLink.libraryItemId))
+          }
         }
         else -> Unit
       }
@@ -249,7 +290,10 @@ private fun LoggedInUi(
 
       when (deepLink) {
         is DeepLink.ItemDetail -> {
-          backstack.push(LibraryItemScreen(deepLink.libraryItemId))
+          val screen = backstack.topRecord?.screen as? LibraryItemScreen
+          if (screen?.libraryItemId != deepLink.libraryItemId) {
+            backstack.push(LibraryItemScreen(deepLink.libraryItemId))
+          }
         }
         else -> Unit
       }
@@ -278,6 +322,13 @@ private fun LoggedInUi(
   }
 
   var playbackBarExpanded by rememberRetainedSaveable { mutableStateOf(false) }
+
+  // The docked player supersedes the sheet: folding the device with the sheet open collapses it,
+  // and nothing can expand it again until the device is opened flat or closed.
+  val isPlayerDocked = tabletopSplit != null
+  LaunchedEffect(isPlayerDocked) {
+    if (isPlayerDocked) playbackBarExpanded = false
+  }
 
   // Scan notification tap-through: bring the Upcoming screen to the top of
   // whichever pane the root stack lives in (guarded so repeat taps don't pile
@@ -333,149 +384,188 @@ private fun LoggedInUi(
     },
   )
 
+  // Shows the account picker and applies whatever the user chose to the switcher
+  val pickAccount: suspend (eventSink: (AccountSwitcherUiEvent) -> Unit) -> Unit = { eventSink ->
+    when (val result = overlayHost.showAccountPicker()) {
+      AccountPickerResult.AddAccount -> homeNavigator.goTo(LoginScreen.Additional)
+      is AccountPickerResult.SwitchAccount -> eventSink(AccountSwitcherUiEvent.SwitchAccount(result.server))
+      is AccountPickerResult.ReauthenticateAccount -> homeNavigator.goTo(LoginScreen.ReAuthentication(result.server))
+      else -> Unit
+    }
+  }
+
   // Search View wiring
   val navigationBarState = rememberCampfireNavigationBarState()
-  AdaptiveCampfireLayout(
-    overlayHost = overlayHost,
-    drawerState = drawerState,
-    drawerEnabled = !playbackBarExpanded,
-    windowInsets = windowInsets,
-    hideBottomNav = currentPresentation?.hideBottomNav == true || playbackBarExpanded,
+  val adaptiveLayout: @Composable (Modifier) -> Unit = { layoutModifier ->
+    AdaptiveCampfireLayout(
+      overlayHost = overlayHost,
+      drawerState = drawerState,
+      drawerEnabled = !playbackBarExpanded,
 
-    drawerContent = {
-      CampfireDrawer(
-        rootScreen = rootScreen,
-        drawerState = drawerState,
-        navigator = homeNavigator,
-        accountSwitcher = {
-          AccountSwitcher(
-            onClick = { eventSink ->
-              coroutineScope.launch {
-                launch {
+      drawerContent = {
+        CampfireDrawer(
+          currentScreen = currentSectionScreen,
+          drawerState = drawerState,
+          navigator = homeNavigator,
+          accountSwitcher = {
+            AccountSwitcher(
+              onClick = { eventSink ->
+                coroutineScope.launch {
+                  launch {
+                    drawerState.close()
+                  }
+                  pickAccount(eventSink)
                   drawerState.close()
                 }
-                when (val result = overlayHost.showAccountPicker()) {
-                  AccountPickerResult.AddAccount -> {
-                    homeNavigator.goTo(LoginScreen.Additional)
-                    drawerState.close()
-                  }
-
-                  is AccountPickerResult.SwitchAccount -> {
-                    eventSink(AccountSwitcherUiEvent.SwitchAccount(result.server))
-                    drawerState.close()
-                  }
-
-                  is AccountPickerResult.ReauthenticateAccount -> {
-                    homeNavigator.goTo(LoginScreen.ReAuthentication(result.server))
-                    drawerState.close()
-                  }
-
-                  else -> Unit
-                }
-              }
-            },
-          )
-        },
-      )
-    },
-    bottomBarNavigation = {
-      val shouldHideNavBar = currentPresentation?.hideBottomNav == true || playbackBarExpanded
-
-      LaunchedEffect(shouldHideNavBar) {
-        with(navigationBarState) {
-          updateShouldHide(shouldHideNavBar)
-        }
-      }
-
-      CampfireNavigationBar(
-        state = navigationBarState,
-        selectedNavigation = rootScreen,
-        onNavigationSelected = { homeNavigator.resetRoot(it) },
-        modifier = Modifier.fillMaxWidth(),
-      )
-    },
-    railNavigation = {
-      CampfireNavigationRail(
-        selectedNavigation = rootScreen,
-        onNavigationSelected = { homeNavigator.resetRoot(it) },
-        onMenuSelected = {
-          coroutineScope.launch {
-            drawerState.open()
-          }
-        },
-        modifier = Modifier.fillMaxHeight(),
-      )
-    },
-
-    content = {
-      val searchEventHandler: (SearchResultNavEvent) -> Unit = remember(homeNavigator) {
-        { event -> homeNavigator.goToSearchEvent(event) }
-      }
-
-      SharedElementTransitionLayout {
-        CompositionLocalProvider(
-          LocalSearchEventHandler provides searchEventHandler,
-          LocalNavigationBarState provides navigationBarState,
-        ) {
-          NavigableCircuitContent(
-            navigator = homeNavigator,
-            backStack = backstack,
-            decoratorFactory = remember {
-              GestureNavigationDecorationFactory()
-            },
-          )
-        }
-      }
-    },
-    playbackBarContent = {
-      if (windowSizeClass.widthSizeClass != WindowWidthSizeClass.ExtraLarge) {
-        val bottomSystemInset = withDensity {
-          WindowInsets.navigationBars.asPaddingValues()
-            .calculateBottomPadding().toPx()
-        }
-
-        CampfirePlaybackBar(
-          enabled = currentPresentation?.hidePlaybackBar != true,
-          expanded = playbackBarExpanded,
-          onExpansionChange = {
-            Analytics.send(ActionEvent("playback_bar", if (it) "expanded" else "collapsed"))
-            playbackBarExpanded = it
-          },
-          navigator = homeNavigator,
-          offset = {
-            if (!windowSizeClass.isSupportingPaneEnabled) {
-              val dy = navigationBarState.playbackBarOffset().roundToInt()
-              IntOffset(0, -dy)
-            } else {
-              IntOffset(0, -bottomSystemInset.fastRoundToInt())
-            }
-          },
-          modifier = Modifier
-            .align(Alignment.BottomStart)
-            .widthIn(
-              max = if (windowSizeClass.isLandscapePhone) {
-                700.dp
-              } else {
-                500.dp
               },
             )
-            .fillMaxWidth(),
+          },
         )
-      } else {
-        PlaybackBottomBar(
+      },
+      bottomBarNavigation = {
+        val shouldHideNavBar = currentPresentation?.hideBottomNav == true || playbackBarExpanded
+
+        LaunchedEffect(shouldHideNavBar) {
+          with(navigationBarState) {
+            updateShouldHide(shouldHideNavBar)
+          }
+        }
+
+        CampfireNavigationBar(
+          state = navigationBarState,
+          selectedNavigation = rootScreen,
+          onNavigationSelected = { homeNavigator.resetRoot(it) },
           modifier = Modifier.fillMaxWidth(),
         )
-      }
-    },
-    showSupportingContent = detailRootScreen !is EmptyScreen,
-    supportingContent = {
-      SharedElementTransitionLayout {
-        NavigableCircuitContent(
-          navigator = detailNavigator,
-          backStack = detailBackStack,
+      },
+      railNavigation = {
+        CampfireNavigationRail(
+          selectedNavigation = rootScreen,
+          onNavigationSelected = { homeNavigator.resetRoot(it) },
+          onMenuSelected = {
+            coroutineScope.launch {
+              drawerState.open()
+            }
+          },
+          modifier = Modifier.fillMaxHeight(),
         )
-      }
-    },
-    modifier = modifier,
-  )
+      },
+      wideRailNavigation = {
+        CampfireWideNavigationRail(
+          selectedNavigation = rootScreen,
+          onNavigationSelected = { homeNavigator.resetRoot(it) },
+          accountContent = {
+            RailAccountSwitcher(
+              expanded = expanded,
+              toggleLabel = toggleLabel,
+              onToggle = onToggle,
+              onSwitchAccount = { eventSink ->
+                coroutineScope.launch {
+                  pickAccount(eventSink)
+                }
+              },
+            )
+          },
+          modifier = Modifier.fillMaxHeight(),
+        )
+      },
+
+      content = {
+        val searchEventHandler: (SearchResultNavEvent) -> Unit = remember(homeNavigator) {
+          { event -> homeNavigator.goToSearchEvent(event) }
+        }
+
+        SharedElementTransitionLayout {
+          CompositionLocalProvider(
+            LocalSearchEventHandler provides searchEventHandler,
+            LocalNavigationBarState provides navigationBarState,
+          ) {
+            NavigableCircuitContent(
+              navigator = homeNavigator,
+              backStack = backstack,
+              decoratorFactory = remember {
+                GestureNavigationDecorationFactory()
+              },
+            )
+          }
+        }
+      },
+      playbackBarContent = {
+        if (!windowSizeClass.usesBottomPlaybackBar) {
+          val bottomSystemInset = withDensity {
+            WindowInsets.navigationBars.asPaddingValues()
+              .calculateBottomPadding().toPx()
+          }
+
+          CampfirePlaybackBar(
+            enabled = currentPresentation?.hidePlaybackBar != true && !isPlayerDocked,
+            expanded = playbackBarExpanded,
+            onExpansionChange = {
+              Analytics.send(ActionEvent("playback_bar", if (it) "expanded" else "collapsed"))
+              playbackBarExpanded = it
+            },
+            navigator = homeNavigator,
+            offset = {
+              if (!windowSizeClass.isSupportingPaneEnabled) {
+                val dy = navigationBarState.playbackBarOffset().roundToInt()
+                IntOffset(0, -dy)
+              } else {
+                IntOffset(0, -bottomSystemInset.fastRoundToInt())
+              }
+            },
+            modifier = Modifier
+              .align(Alignment.BottomStart)
+              .widthIn(
+                max = if (windowSizeClass.isLandscapePhone) {
+                  700.dp
+                } else {
+                  500.dp
+                },
+              )
+              .fillMaxWidth(),
+          )
+        } else {
+          PlaybackBottomBar(
+            modifier = Modifier.fillMaxWidth(),
+          )
+        }
+      },
+      showSupportingContent = detailRootScreen !is EmptyScreen,
+      supportingContentWidth = supportingPaneWidth,
+      onSupportingContentWidthChange = onSupportingPaneWidthChange,
+      supportingContent = {
+        SharedElementTransitionLayout {
+          NavigableCircuitContent(
+            navigator = detailNavigator,
+            backStack = detailBackStack,
+          )
+        }
+      },
+      modifier = layoutModifier,
+    )
+  }
+
+  if (tabletopSplit != null) {
+    TabletopSplitLayout(
+      split = tabletopSplit,
+      bottomContent = {
+        DedicatedPlayer(
+          onItemClick = { session ->
+            homeNavigator.goTo(
+              LibraryItemScreen(
+                libraryItemId = session.libraryItem.id,
+                episodeId = session.episodeId,
+              ),
+            )
+          },
+          modifier = Modifier.fillMaxSize(),
+        )
+      },
+      modifier = modifier,
+    ) {
+      adaptiveLayout(Modifier.fillMaxSize())
+    }
+  } else {
+    adaptiveLayout(modifier)
+  }
 }

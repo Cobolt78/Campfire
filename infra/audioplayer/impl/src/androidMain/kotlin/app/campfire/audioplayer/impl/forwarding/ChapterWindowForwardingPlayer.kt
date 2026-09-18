@@ -9,7 +9,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
-import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
 import app.campfire.core.extensions.seconds
 import app.campfire.core.model.Chapter
 import app.campfire.settings.api.PlaybackSettings
@@ -19,7 +18,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Presents coarse single-item (HLS) playback to MediaController consumers — the system media
+ * Presents coarse single-item (HLS stream or single audio file) playback to MediaController consumers — the system media
  * notification, Android Auto, Bluetooth/car controllers — as a virtual playlist of chapter
  * windows, so their scrubbers, time labels, titles, and next/previous buttons carry chapter
  * semantics identical to the chapter-granular local queue. The in-app UI derives the same
@@ -53,9 +52,6 @@ class ChapterWindowForwardingPlayer(
 
     /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
     fun skipToPreviousChapter()
-
-    /** Format speed-adjusted remaining time for the whole book. */
-    fun remainingFormatted(): String = ""
   }
 
   /** Set after session creation, to identify the controller a command came from. */
@@ -64,7 +60,6 @@ class ChapterWindowForwardingPlayer(
   private val wrapped: Player = player
 
   private var cachedChapters: List<Chapter>? = null
-  private var cachedFormatted: String? = null
   private var cachedPlaylist: List<MediaItemData> = emptyList()
 
   /** Re-derives state; called from the audio player's progress tick while windowing is active. */
@@ -157,19 +152,15 @@ class ChapterWindowForwardingPlayer(
   }
 
   private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
-    val formatted = host.remainingFormatted()
-    if (chapters === cachedChapters && formatted == cachedFormatted) {
-      return cachedPlaylist
-    }
+    cachedPlaylist.takeIf { chapters === cachedChapters }?.let { return it }
     return chapters.map { chapter ->
-      val title = MediaItemBuilder.formatChapterTitleWithCountdown(chapter.title, formatted)
       MediaItemData.Builder("chapter_${chapter.id}")
         .setMediaItem(
           baseItem.buildUpon()
             .setMediaId("${baseItem.mediaId}_chapter_${chapter.id}")
             .setMediaMetadata(
               baseItem.mediaMetadata.buildUpon()
-                .setTitle(title)
+                .setTitle(chapter.title)
                 .setSubtitle(baseItem.mediaMetadata.title)
                 .setDurationMs(chapter.durationMs)
                 .build(),
@@ -181,7 +172,6 @@ class ChapterWindowForwardingPlayer(
         .build()
     }.also {
       cachedChapters = chapters
-      cachedFormatted = formatted
       cachedPlaylist = it
     }
   }

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,13 +22,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FabPosition
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,17 +44,17 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
+import app.campfire.common.compose.OverlappedNavigationBarInsets
 import app.campfire.common.compose.extensions.plus
-import app.campfire.common.compose.icons.CampfireIcons
-import app.campfire.common.compose.icons.rounded.ArrowBack
 import app.campfire.common.compose.permission.PermissionState
 import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.EmptyState
 import app.campfire.common.compose.widgets.ErrorListState
-import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.common.compose.widgets.ItemCollectionSharedTransitionKey
 import app.campfire.common.compose.widgets.LoadingListState
+import app.campfire.common.compose.widgets.NavigationBackButton
+import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
@@ -72,7 +68,6 @@ import app.campfire.playlists.ui.detail.composables.PlaylistListItem
 import app.campfire.playlists.ui.sheets.EditPlaylistModel
 import app.campfire.playlists.ui.sheets.showEditPlaylistBottomSheet
 import campfire.features.playlists.ui.generated.resources.Res
-import campfire.features.playlists.ui.generated.resources.action_back
 import campfire.features.playlists.ui.generated.resources.dialog_confirm_delete_action_cancel
 import campfire.features.playlists.ui.generated.resources.dialog_confirm_delete_action_delete
 import campfire.features.playlists.ui.generated.resources.dialog_confirm_delete_message
@@ -96,7 +91,7 @@ fun PlaylistDetail(
   modifier: Modifier = Modifier,
 ) = SharedElementTransitionScope {
   val scope = rememberCoroutineScope()
-  val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+  val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
 
   var showDeleteConfirmation by remember { mutableStateOf(false) }
   if (showDeleteConfirmation) {
@@ -168,7 +163,7 @@ fun PlaylistDetail(
           } else {
             state.eventSink(PlaylistDetailUiEvent.DownloadAll())
           }
-        },
+        }.takeIf { state.canDownload },
         isReordering = isReordering,
         onReorderChange = { isReordering = it },
         onDeleteClick = { showDeleteConfirmation = true },
@@ -187,7 +182,7 @@ fun PlaylistDetail(
         animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
         zIndexInOverlay = 0f,
       ),
-    contentWindowInsets = CampfireWindowInsets.exclude(WindowInsets.navigationBars),
+    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
   ) { paddingValues ->
     when (state.playlistContentState) {
       LoadState.Loading -> LoadingListState(Modifier.padding(paddingValues))
@@ -250,17 +245,7 @@ private fun PlaylistTopBar(
     windowInsets = WindowInsets(),
     contentPadding = WindowInsets.statusBars.asPaddingValues(),
     navigationIcon = {
-      val backLabel = stringResource(Res.string.action_back)
-      IconButtonTooltip(text = backLabel) {
-        IconButton(
-          onClick = onBack,
-        ) {
-          Icon(
-            CampfireIcons.Rounded.ArrowBack,
-            contentDescription = backLabel,
-          )
-        }
-      }
+      NavigationBackButton(onClick = onBack)
     },
   )
 }

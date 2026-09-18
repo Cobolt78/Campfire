@@ -34,6 +34,7 @@ import app.campfire.core.session.UserSession
 import app.campfire.core.session.requiredUser
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.sessions.api.HlsPlaybackSupport
 import app.campfire.settings.api.AndroidAutoSettings
 import app.campfire.settings.api.CampfireSettings
 import app.campfire.settings.api.DevSettings
@@ -82,7 +83,6 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
-import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
 import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
@@ -118,6 +118,7 @@ class SettingsPresenter(
   private val themeSettings: ThemeSettings,
   private val themeRepository: AppThemeRepository,
   private val playbackSettings: PlaybackSettings,
+  private val hlsPlaybackSupport: HlsPlaybackSupport,
   private val sleepSettings: SleepSettings,
   private val androidAutoSettings: AndroidAutoSettings,
   private val devSettings: DevSettings,
@@ -178,10 +179,6 @@ class SettingsPresenter(
     // Downloads Settings
     val showDownloadConfirmation by remember { settings.observeShowConfirmDownload() }
       .collectAsState()
-    val confirmActions by remember { settings.observeConfirmActions() }
-      .collectAsState()
-    val warnOnCellularDownload by remember { settings.observeWarnOnCellularDownload() }
-      .collectAsState()
 
     val downloads by remember {
       offlineDownloadManager.observeAll()
@@ -226,7 +223,6 @@ class SettingsPresenter(
     val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
     val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
     val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
-    val resetTimerOnPause by remember { sleepSettings.observeResetTimerOnPause() }.collectAsState()
 
     // About Settings
     val crashReportingEnabled by remember { settings.observeCrashReportingEnabled() }
@@ -270,8 +266,6 @@ class SettingsPresenter(
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
-        confirmActions = confirmActions,
-        warnOnCellularDownload = warnOnCellularDownload,
         downloads = downloadEntries,
       ),
       playbackSettings = PlaybackSettingsInfo(
@@ -283,6 +277,7 @@ class SettingsPresenter(
         remoteNextPrevSkipsChapters = remoteNextPrevSkipsChapters,
         syncEnabled = syncEnabled,
         streamingMethod = streamingMethod,
+        hlsAvailable = hlsPlaybackSupport.supportsHls,
         syncIntervalUnmetered = syncIntervalUnmetered,
         syncIntervalMetered = syncIntervalMetered,
         autoSyncEnabled = syncEnabled && autoSyncEnabled,
@@ -298,7 +293,6 @@ class SettingsPresenter(
         shakeToReset = shakeToResetEnabled,
         shakeSensitivity = shakeSensitivity,
         fadeOutDuration = fadeOutDuration,
-        resetTimerOnPause = resetTimerOnPause,
         autoSleepSetting = if (autoSleepTimerEnabled) {
           SleepSettingsInfo.AutoSleepSetting(
             start = autoSleepTimerStart,
@@ -363,8 +357,6 @@ class SettingsPresenter(
 
         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
           is ShowDownloadConfirmation -> settings.showConfirmDownload = event.enabled
-          is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> settings.confirmActions = event.enabled
-          is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> settings.warnOnCellularDownload = event.enabled
           is DownloadClicked -> navigator.goTo(
             LibraryItemScreen(
               libraryItemId = event.entry.libraryItem.id,
@@ -436,7 +428,6 @@ class SettingsPresenter(
           is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
           is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
           is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
-          is ResetTimerOnPause -> sleepSettings.resetTimerOnPause = event.enabled
         }
 
         is SettingsUiEvent.AboutSettingEvent -> when (event) {

@@ -34,8 +34,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
@@ -52,8 +50,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.LocalWindowSizeClass
+import app.campfire.common.compose.currentWindowSizeClass
 import app.campfire.common.compose.icons.CampfireIcons
-import app.campfire.common.compose.icons.rounded.ArrowBack
 import app.campfire.common.compose.icons.rounded.DarkMode
 import app.campfire.common.compose.icons.rounded.Delete
 import app.campfire.common.compose.icons.rounded.LightMode
@@ -64,6 +62,7 @@ import app.campfire.common.compose.theme.LocalUseDarkColors
 import app.campfire.common.compose.theme.alt.AltRedColorPalette
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.core.di.UserScope
 import app.campfire.ui.theming.api.AppTheme
 import app.campfire.ui.theming.api.colorScheme
@@ -75,7 +74,6 @@ import app.campfire.ui.theming.ui.builder.composables.ContrastPicker
 import app.campfire.ui.theming.ui.builder.composables.Header
 import app.campfire.ui.theming.ui.builder.composables.IconPicker
 import campfire.ui.theming.ui.generated.resources.Res
-import campfire.ui.theming.ui.generated.resources.action_back
 import campfire.ui.theming.ui.generated.resources.action_delete_theme
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.r0adkll.swatchbuckler.color.dynamiccolor.ColorSpec.SpecVersion
@@ -102,14 +100,7 @@ fun ThemeBuilder(
             Text("Theme Builder")
           },
           navigationIcon = {
-            val backLabel = stringResource(Res.string.action_back)
-            IconButtonTooltip(text = backLabel) {
-              IconButton(
-                onClick = { state.eventSink(ThemeBuilderUiEvent.Back) },
-              ) {
-                Icon(CampfireIcons.Rounded.ArrowBack, contentDescription = backLabel)
-              }
-            }
+            NavigationBackButton(onClick = { state.eventSink(ThemeBuilderUiEvent.Back) })
           },
           actions = {
             var showDeleteConfirmation by remember { mutableStateOf(false) }
@@ -422,12 +413,11 @@ fun ThemeBuilder(
   }
 }
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Preview
 @Composable
 fun ThemeBuilderPreview() {
   CompositionLocalProvider(
-    LocalWindowSizeClass provides calculateWindowSizeClass(),
+    LocalWindowSizeClass provides currentWindowSizeClass(),
     LocalContentLayout provides ContentLayout.Root,
   ) {
     var seedColor by remember { mutableStateOf(Color.Red) }

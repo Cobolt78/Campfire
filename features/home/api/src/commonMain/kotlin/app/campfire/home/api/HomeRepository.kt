@@ -19,6 +19,12 @@ interface HomeRepository {
   fun observeHomeFeed(): Flow<FeedResponse<List<Shelf>>>
 
   /**
+   * Re-fetch the current user's home feed from the server, suspending until it lands. The fresh
+   * shelves reach [observeHomeFeed] and [observeShelf]; a failed fetch leaves the cached feed as is.
+   */
+  suspend fun refreshHomeFeed()
+
+  /**
    * Observe the [MediaProgress] for each libraryItemId passed to the function
    */
   fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>>
@@ -27,10 +33,4 @@ interface HomeRepository {
    * Observe the contents of a single [Shelf] by its id.
    */
   fun observeShelf(shelfId: ShelfId, shelfType: ShelfType): Flow<List<ShelfEntity>>
-
-  /**
-   * Request fresh personalized home feed data from the server and update local storage.
-   */
-  suspend fun refreshHomeFeed(): Result<Unit>
 }
-

@@ -3,7 +3,6 @@
 
 package app.campfire.audioplayer.impl.mediaitem
 
-import app.campfire.core.extensions.formatHoursAndMinutes
 import app.campfire.core.extensions.seconds
 import app.campfire.core.logging.Corked
 import app.campfire.core.model.AudioTrack
@@ -16,89 +15,53 @@ import app.campfire.crashreporting.CrashReporter
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 object MediaItemBuilder : Corked("MediaItemBuilders") {
 
-  private val TrailingDurationRegex = Regex(
-    """\s*[-–—•:]\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+h(?:\s*\d+m)?\s*left|\d+m\s*left)\s*$|\s*[\(\[](?:\d{1,2}:\d{2}(?::\d{2})?|\d+h(?:\s*\d+m)?\s*left|\d+m\s*left)[\)\]]\s*$""",
-    RegexOption.IGNORE_CASE,
-  )
-
-  fun cleanChapterTitle(rawTitle: String?): String {
-    if (rawTitle.isNullOrBlank()) return ""
-    val stripped = rawTitle.replace(TrailingDurationRegex, "").trim()
-    return stripped.ifBlank { rawTitle }
-  }
-
-  fun formatChapterTitleWithCountdown(
-    rawTitle: String?,
-    remainingFormatted: String,
-  ): String {
-    val clean = cleanChapterTitle(rawTitle)
-    return if (remainingFormatted.isNotBlank()) {
-      if (clean.isNotBlank()) "$clean - $remainingFormatted left" else "$remainingFormatted left"
-    } else {
-      clean
-    }
-  }
-
-  fun build(session: Session, playbackSpeed: Float = 1.0f): List<MediaItem> {
+  fun build(session: Session): List<MediaItem> {
     val episode = session.episode
     if (episode != null) {
-      return buildPodcastEpisode(session.libraryItem, episode, playbackSpeed)
+      return buildPodcastEpisode(session.libraryItem, episode)
     }
     // A routed HLS session plays as a single stream item: the playlist spans the whole
     // book, so chapter/track segmentation lives in seek math (ChapterTimeline), not the
     // queue. Clipping can't apply to a live-window-less VOD playlist anyway.
     session.hlsStreamUrl?.let { streamUrl ->
-      return listOf(buildHlsStream(session, streamUrl, playbackSpeed))
+      return listOf(buildHlsStream(session, streamUrl))
     }
-    return build(session.libraryItem, playbackSpeed)
+    return build(session.libraryItem)
   }
 
-  private fun buildHlsStream(
-    session: Session,
-    streamUrl: String,
-    playbackSpeed: Float = 1.0f,
-  ): MediaItem {
+  /**
+   * True when [session] plays as one media item spanning the whole book: a routed HLS stream,
+   * or a single audio file segmented by multiple chapters. Chapter semantics for these queues
+   * are derived from the absolute position rather than media-item boundaries.
+   */
+  fun isSingleItemQueue(session: Session): Boolean {
+    if (session.episode != null) return false
+    return session.hlsStreamUrl != null || isSingleFileWithChapters(session.libraryItem)
+  }
+
+  private fun isSingleFileWithChapters(item: LibraryItem): Boolean {
+    return item.media.tracks.size == 1 && item.media.chapters.size > 1
+  }
+
+  private fun buildHlsStream(session: Session, streamUrl: String): MediaItem {
     val media = session.libraryItem.media
-    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
-    val effectiveRemainingMs = (session.duration.inWholeMilliseconds / speed).toLong()
-    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-    val titleWithCountdown = formatChapterTitleWithCountdown(media.metadata.title, remainingFormatted)
     return MediaItem(
       id = "${media.id}_hls",
       uri = streamUrl,
       mimeType = "application/x-mpegURL",
-      metadata = MediaItem.Metadata(
-        id = 0,
-        title = titleWithCountdown,
-        artist = media.metadata.authorName,
-        description = media.metadata.description ?: "",
-        subtitle = media.metadata.subtitle,
-        albumTitle = media.metadata.title,
-        artworkUri = media.coverImageUrl,
-        durationMs = session.duration.inWholeMilliseconds,
-        libraryItemId = session.libraryItem.id,
-      ),
+      metadata = createBookMetadata(media, session.libraryItem.id, session.duration.inWholeMilliseconds),
     )
   }
 
-  fun buildPodcastEpisode(
-    item: LibraryItem,
-    episode: PodcastEpisode,
-    playbackSpeed: Float = 1.0f,
-  ): List<MediaItem> {
+  fun buildPodcastEpisode(item: LibraryItem, episode: PodcastEpisode): List<MediaItem> {
     val track = episode.audioTrack ?: run {
       ebark { "Podcast episode ${episode.id} on ${item.id} has no audio track; cannot build MediaItem" }
       return emptyList()
     }
-    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
-    val effectiveRemainingMs = (episode.durationInMillis / speed).toLong()
-    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-    val titleWithCountdown = formatChapterTitleWithCountdown(episode.title, remainingFormatted)
     return listOf(
       MediaItem(
         id = "${item.media.id}_${episode.id}",
@@ -106,7 +69,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
         mimeType = track.mimeType,
         metadata = MediaItem.Metadata(
           id = 0,
-          title = titleWithCountdown,
+          title = episode.title,
           artist = item.media.metadata.author ?: item.media.metadata.title,
           description = episode.description ?: "",
           subtitle = episode.subtitle,
@@ -125,19 +88,19 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
    * (receivers don't honor clipping), so the remote queue is whole files and chapter semantics
    * are re-derived from the absolute position.
    */
-  fun buildTracks(session: Session, playbackSpeed: Float = 1.0f): List<MediaItem> {
+  fun buildTracks(session: Session): List<MediaItem> {
     val episode = session.episode
     if (episode != null) {
-      return buildPodcastEpisode(session.libraryItem, episode, playbackSpeed)
+      return buildPodcastEpisode(session.libraryItem, episode)
     }
-    return buildTracks(session.libraryItem, playbackSpeed)
+    return buildTracks(session.libraryItem)
   }
 
-  fun buildTracks(item: LibraryItem, playbackSpeed: Float = 1.0f): List<MediaItem> = with(item) {
-    media.tracks.map { track -> createMediaItem(track, media, id, playbackSpeed) }
+  fun buildTracks(item: LibraryItem): List<MediaItem> = with(item) {
+    media.tracks.map { track -> createMediaItem(track, media, id) }
   }
 
-  fun build(item: LibraryItem, playbackSpeed: Float = 1.0f): List<MediaItem> = with(item) {
+  fun build(item: LibraryItem): List<MediaItem> = with(item) {
     val chapters = media.chapters
     val audioTracks = media.tracks
 
@@ -145,7 +108,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     // items from its audio tracks.
     if (chapters.isEmpty()) {
       return audioTracks.map { track ->
-        createMediaItem(track, media, id, playbackSpeed)
+        createMediaItem(track, media, id)
       }
     }
 
@@ -154,42 +117,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     if (chapters.size == audioTracks.size) {
       return audioTracks.mapIndexed { index, track ->
         val chapter = chapters[index]
-        createMediaItem(chapter, track, false, media, id, playbackSpeed)
+        createMediaItem(chapter, track, false, media, id)
       }
     }
 
-    // If there is only one track, then this is likely the other common setup where one track (i.e File)
-    // is segmented by N-Chapters. Here we can make the assumption to just
-    if (audioTracks.size == 1) {
+    // If there is only one track, then this is the other common setup where one track (i.e. file)
+    // is segmented by N-Chapters. Play the whole file as a single item: clipping it per chapter
+    // restarts the audio pipeline at every chapter boundary for codecs whose samples aren't all
+    // sync samples (e.g. xHE-AAC), which breaks gapless playback. Chapter semantics are derived
+    // from the absolute position instead (see ChapterTimeline).
+    if (isSingleFileWithChapters(item)) {
       val track = audioTracks.first()
-      val trackStart = track.startOffset.seconds
-      val trackEnd = (track.startOffset + track.duration).seconds
-
-      // Filter Chapter to just those that "fit" in the track
-      val chaptersForTrack = chapters.filter { chapter ->
-        val chapterStart = chapter.start.seconds
-        chapterStart in trackStart.rangeTo(trackEnd)
-      }
-
-      // If there are fewer chapters to slice by then in the item, then the chapter meta
-      // is busted. Record an exception and then slice only the ones that matter
-      if (chaptersForTrack.size != chapters.size) {
-        recordMediaItemException("Chapters are mis-aligned and not all fit onto the track", item)
-      } else {
-        // We can assume all chapters cover this track,
-        // but let's validate that all the chapters provide full track coverage
-        val lastChapter = chapters.last()
-        val remainingTrackDuration = (track.startOffset + track.duration).seconds - lastChapter.end.seconds
-        if (remainingTrackDuration > RemainingTrackDurationThreshold) {
-          recordMediaItemException("Remaining track after last chapter is too long", item)
-        }
-      }
-
-      // Regardless of state, slice the track to the chapters and let the user
-      // see our error UI to correct the playback of this item
-      return chaptersForTrack.map { chapter ->
-        createMediaItem(chapter, track, true, media, id, playbackSpeed)
-      }
+      return listOf(
+        MediaItem(
+          id = "${media.id}_${track.index}",
+          uri = track.contentUrl,
+          mimeType = track.mimeType,
+          metadata = createBookMetadata(media, id, track.duration.seconds.inWholeMilliseconds),
+        ),
+      )
     }
 
     // If we have multiple tracks that are not the same # of chapters, then lets do our best
@@ -214,18 +160,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
           // If the chapter fail to fully cover the track, then just return the track and let the user fix
           // their item on the server
           recordMediaItemException("Remaining track after last chapter is too long", item)
-          listOf(createMediaItem(track, media, id, playbackSpeed))
+          listOf(createMediaItem(track, media, id))
         } else {
           // For each chapter filter to this track, cut a media item for each
           chaptersForTrack.map { chapter ->
-            createMediaItem(chapter, track, true, media, id, playbackSpeed)
+            createMediaItem(chapter, track, true, media, id)
           }
         }
       } else {
         // Otherwise, if we are unable to associate chapter data to this track,
         // just create a media item of just the track. This way we ensure playback occurs
         recordMediaItemException("Unable to find any chapters for the track[${track.index}]", item)
-        listOf(createMediaItem(track, media, id, playbackSpeed))
+        listOf(createMediaItem(track, media, id))
       }
     }
   }
@@ -247,7 +193,6 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     clipAudio: Boolean,
     media: Media,
     libraryItemId: String,
-    playbackSpeed: Float = 1.0f,
   ): MediaItem {
     return MediaItem(
       id = "${media.id}_${chapter.id}",
@@ -269,7 +214,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
       } else {
         null
       },
-      metadata = createMediaMetadata(chapter, media, libraryItemId, playbackSpeed),
+      metadata = createMediaMetadata(chapter, media, libraryItemId),
     )
   }
 
@@ -277,13 +222,30 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     track: AudioTrack,
     media: Media,
     libraryItemId: String,
-    playbackSpeed: Float = 1.0f,
   ): MediaItem {
     return MediaItem(
       id = "${media.id}_${track.index}",
       uri = track.contentUrl,
       mimeType = track.mimeType,
-      metadata = createMediaMetadata(track, media, libraryItemId, playbackSpeed),
+      metadata = createMediaMetadata(track, media, libraryItemId),
+    )
+  }
+
+  private fun createBookMetadata(
+    media: Media,
+    libraryItemId: String,
+    durationMs: Long,
+  ): MediaItem.Metadata {
+    return MediaItem.Metadata(
+      id = 0,
+      title = media.metadata.title,
+      artist = media.metadata.authorName,
+      description = media.metadata.description ?: "",
+      subtitle = media.metadata.subtitle,
+      albumTitle = media.metadata.title,
+      artworkUri = media.coverImageUrl,
+      durationMs = durationMs,
+      libraryItemId = libraryItemId,
     )
   }
 
@@ -291,17 +253,10 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     chapter: Chapter,
     media: Media,
     libraryItemId: String,
-    playbackSpeed: Float = 1.0f,
   ): MediaItem.Metadata {
-    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
-    val rawRemainingMs = (media.durationInMillis - chapter.start.seconds.inWholeMilliseconds).coerceAtLeast(0L)
-    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
-    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-    val titleWithCountdown = formatChapterTitleWithCountdown(chapter.title, remainingFormatted)
-
     return MediaItem.Metadata(
       id = chapter.id,
-      title = titleWithCountdown,
+      title = chapter.title,
       artist = media.metadata.authorName,
       description = media.metadata.description ?: "",
       subtitle = media.metadata.subtitle,
@@ -316,18 +271,10 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     track: AudioTrack,
     media: Media,
     libraryItemId: String,
-    playbackSpeed: Float = 1.0f,
   ): MediaItem.Metadata {
-    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
-    val rawRemainingMs = (media.durationInMillis - track.startOffset.seconds.inWholeMilliseconds).coerceAtLeast(0L)
-    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
-    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-    val trackTitle = track.taggedTitle.ifBlank { "Track ${track.index}" }
-    val titleWithCountdown = formatChapterTitleWithCountdown(trackTitle, remainingFormatted)
-
     return MediaItem.Metadata(
       id = track.index,
-      title = titleWithCountdown,
+      title = track.taggedTitle,
       artist = media.metadata.authorName,
       description = media.metadata.description ?: "",
       subtitle = media.metadata.subtitle,

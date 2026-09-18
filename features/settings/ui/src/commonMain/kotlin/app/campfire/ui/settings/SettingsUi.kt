@@ -20,12 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -41,7 +39,6 @@ import app.campfire.common.compose.extensions.thenIf
 import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.outline.Library
 import app.campfire.common.compose.icons.rounded.AccountCircle
-import app.campfire.common.compose.icons.rounded.ArrowBack
 import app.campfire.common.compose.icons.rounded.DeveloperMode
 import app.campfire.common.compose.icons.rounded.DirectionsCar
 import app.campfire.common.compose.icons.rounded.Download
@@ -52,8 +49,9 @@ import app.campfire.common.compose.icons.rounded.VolumeUp
 import app.campfire.common.compose.layout.LocalSupportingContentState
 import app.campfire.common.compose.layout.SupportingContentState
 import app.campfire.common.compose.layout.isSupportingPaneEnabled
+import app.campfire.common.compose.layout.isWidthAtLeastExtraLarge
 import app.campfire.common.compose.widgets.CampfireTopAppBar
-import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.screens.SettingsScreen
 import app.campfire.core.di.UserScope
 import app.campfire.ui.settings.composables.SettingPaneListItem
@@ -69,7 +67,6 @@ import app.campfire.ui.settings.panes.PaneState
 import app.campfire.ui.settings.panes.PlaybackPane
 import app.campfire.ui.settings.panes.SleepPane
 import campfire.features.settings.ui.generated.resources.Res
-import campfire.features.settings.ui.generated.resources.action_back
 import campfire.features.settings.ui.generated.resources.setting_about_subtitle
 import campfire.features.settings.ui.generated.resources.setting_about_title
 import campfire.features.settings.ui.generated.resources.setting_account_subtitle
@@ -105,7 +102,7 @@ fun SettingsUi(
     windowSizeClass.isSupportingPaneEnabled &&
       supportingContentState == SupportingContentState.Closed
     ) ||
-    windowSizeClass.widthSizeClass >= WindowWidthSizeClass.ExtraLarge
+    windowSizeClass.isWidthAtLeastExtraLarge
 
   var currentSettingsPane by rememberSaveable {
     mutableStateOf(
@@ -268,17 +265,7 @@ private fun SettingsRootPane(
           navigationIcon = {
             val windowSizeClass = LocalWindowSizeClass.current
             if (!windowSizeClass.isSupportingPaneEnabled) {
-              val backLabel = stringResource(Res.string.action_back)
-              IconButtonTooltip(text = backLabel) {
-                IconButton(
-                  onClick = onBackClick,
-                ) {
-                  Icon(
-                    CampfireIcons.Rounded.ArrowBack,
-                    contentDescription = backLabel,
-                  )
-                }
-              }
+              NavigationBackButton(onClick = onBackClick)
             }
           },
         )

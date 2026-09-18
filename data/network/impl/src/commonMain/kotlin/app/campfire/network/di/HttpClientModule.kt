@@ -10,9 +10,7 @@ import app.campfire.core.di.AppScope
 import app.campfire.core.di.SingleIn
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
-import app.campfire.core.session.requireServerUrl
-import app.campfire.core.session.requiredUser
-import app.campfire.core.session.requiredUserId
+import app.campfire.core.session.user
 import app.campfire.core.session.userId
 import app.campfire.network.RefreshResponse
 import app.campfire.network.asBearerTokens
@@ -136,6 +134,13 @@ interface HttpClientModule {
     }
   }
 
+  @DownloadClient
+  @SingleIn(AppScope::class)
+  @Provides
+  fun provideDownloadHttpClient(
+    applicationInfo: ApplicationInfo,
+  ): HttpClient = createDownloadHttpClient(applicationInfo)
+
   @UserClient
   @SingleIn(AppScope::class)
   @Provides
@@ -151,13 +156,41 @@ interface HttpClientModule {
       }
 
       installUserAuth(userSessionManager, accountManager)
+      installUserExtraHeaders(userSessionManager, accountManager)
+    }
+  }
+}
 
-      suspendingDefaultHeaders {
-        val extraHeaders = accountManager.getExtraHeaders(userSessionManager.current.requiredUserId)
-        extraHeaders?.forEach { (name, value) ->
-          header(name, value)
-        }
-      }
+/**
+ * Builds the [DownloadClient]: deliberately not derived from the base client, whose `HttpCache`
+ * (and, in debug builds, Livewire inspection) reads whole responses into memory. There's no
+ * request timeout, since a download legitimately takes minutes; the socket timeout instead
+ * abandons a transfer that stops receiving data.
+ */
+internal fun createDownloadHttpClient(applicationInfo: ApplicationInfo): HttpClient = HttpClient {
+  install(HttpTimeout) {
+    connectTimeoutMillis = 15_000
+    socketTimeoutMillis = 60_000
+  }
+
+  defaultRequest {
+    header(HttpHeaders.UserAgent, applicationInfo.userAgent)
+  }
+}
+
+/**
+ * Applies the current session user's extra headers (e.g. reverse proxy auth) to every request.
+ * Requests can outlive the session that issued them (logout, account switch), so a request made
+ * without a logged-in user goes out without extra headers rather than failing the pipeline.
+ */
+internal fun HttpClientConfig<*>.installUserExtraHeaders(
+  userSessionManager: UserSessionManager,
+  accountManager: AccountManager,
+) {
+  suspendingDefaultHeaders {
+    val userId = userSessionManager.current.userId ?: return@suspendingDefaultHeaders
+    accountManager.getExtraHeaders(userId)?.forEach { (name, value) ->
+      header(name, value)
     }
   }
 }
@@ -183,10 +216,12 @@ internal fun HttpClientConfig<*>.installUserAuth(
       }
 
       refreshTokens {
-        val tokens = accountManager.getToken(userSessionManager.current.requiredUserId)
+        // Pin the user for the whole refresh: the session can end or switch while the refresh
+        // request is in flight, and the rotated token belongs to the user it was issued for.
+        val user = userSessionManager.current.user ?: return@refreshTokens null
+        val tokens = accountManager.getToken(user.id)
         val newTokenResponse = client.post {
-          val currentServerUrl = userSessionManager.current.requireServerUrl
-          url("${cleanServerUrl(currentServerUrl)}/auth/refresh")
+          url("${cleanServerUrl(user.serverUrl)}/auth/refresh")
           tokens?.refreshToken?.let {
             header(HttpHeaders.RefreshToken, it)
           }
@@ -197,11 +232,11 @@ internal fun HttpClientConfig<*>.installUserAuth(
           try {
             val newToken = newTokenResponse.body<RefreshResponse>().asAbsToken()
             if (newToken != null) {
-              accountManager.updateToken(userSessionManager.current.requiredUserId, newToken)
+              accountManager.updateToken(user.id, newToken)
               newToken.asBearerTokens()
             } else {
               bark("KtorClient", LogPriority.ERROR) { "No valid tokens in response, requiring authentication…" }
-              accountManager.invalidateAccount(userSessionManager.current.requiredUser)
+              accountManager.invalidateAccount(user)
               null
             }
           } catch (e: Exception) {
@@ -214,7 +249,7 @@ internal fun HttpClientConfig<*>.installUserAuth(
             newTokenResponse.status == HttpStatusCode.Unauthorized ||
             newTokenResponse.status == HttpStatusCode.Forbidden
           ) {
-            accountManager.invalidateAccount(userSessionManager.current.requiredUser)
+            accountManager.invalidateAccount(user)
           }
           null
         }
