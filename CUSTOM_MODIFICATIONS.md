@@ -130,19 +130,12 @@ In Campfire 1.1.0, Android Auto formats the media screen with the Chapter Title 
 
 ---
 
-## 6. Search Cache Invalidation & Duplicate Purge
+## 6. Search Cache Invalidation (SUPERSEDED by 1.2.0 upstream)
 
 ### Summary
-Fixed the search database cache junction retention bug where old/deleted books persisted in search results alongside replaced versions.
+## 6. Search Cache Invalidation (SUPERSEDED by 1.2.0 upstream) (SUPERSEDED)
 
-### Key Details
-- In `SearchSourceOfTruthFactory.kt`:
-  - Added `db.searchQueries.delete(query.databaseKey)` before inserting new search keys and junctions. Through CASCADE deletion, this wipes old `search_books` mappings for the query so that search results always strictly reflect the live server response.
-  - Added `db.seriesBookJoinQueries.deleteForSeries(series.id)` so that series search matches do not retain references to deleted book IDs.
-- Fully isolated to Search—zero impact on player playback, library item caching, or Compose UI rendering.
-
-### Modified Files:
-* `features/search/impl/src/commonMain/kotlin/app/campfire/search/store/SearchSourceOfTruthFactory.kt`
+**Status in 1.2.0:** Dropped. Upstream natively fixed this issue ("Titles removed from the server lingering in the app..."). We now use the upstream implementation.
 
 ---
 
@@ -367,7 +360,7 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 
 ---
 
-## 12. Home Screen: Pull-to-Refresh
+## 12. Home Screen: Pull-to-Refresh (SUPERSEDED by 1.2.0 upstream)
 
 ### Summary
 Added a standard swipe-down Pull-to-Refresh gesture to the main Home feed. This brings the Home screen in line with all other major tabs (Library, Series, Authors, Podcasts) that already support pull-to-refresh, allowing users to effortlessly check for newly added audiobooks, updated podcasts, and refreshed shelves from their Audiobookshelf server without restarting the app.
