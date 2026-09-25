@@ -3,7 +3,7 @@ Rebased onto official **Campfire v1.2.0** while preserving, refining, and extend
 *Note: Upstream 1.2.0 natively adopted our custom Pull-to-Refresh, Search Cache Invalidation, Sleep Timer Fade-Out curves, and Shake-to-Reset sensitivity! We have seamlessly transitioned to the official implementations for these features while maintaining the rest of our custom suite.*
 
 #### 🎧 Dynamic Continue Listening & Offline Downloads
-- **Dynamic Last-Played Sorting**: The Continue Listening shelf now automatically sorts in realtime by most recently played (lastUpdate descending). Whichever book you're currently listening to or just paused smoothly glides straight to the **#1 spot** at the front of the shelf using Compose item animations.
+- **Dynamic Last-Played Sorting**: The Continue Listening shelf now automatically sorts in realtime by most recently played (lastUpdate descending). Whichever book you're currently listening to or just paused smoothly glides straight to the #&#8203;1 spot at the front of the shelf using Compose item animations.
 - **Downloaded Books Integration**: In-progress downloaded books now seamlessly appear on the Continue Listening shelf, even when listening completely offline or before server synchronization.
 - **Finished Book Pruning**: Completed books automatically drop off the shelf as soon as they are finished.
 
