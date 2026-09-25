@@ -17,9 +17,9 @@ import app.campfire.settings.api.PlaybackSettings
  * When [remoteNextPrevSkipsChapters] is true (default), external next/prev commands skip chapters.
  * When false, they seek forward/backward by the configured time instead.
  *
- * Note: Bluetooth is handled separately via onMediaButtonEvent in MediaSessionCallback since Media3
- * routes Bluetooth key events through the app's own package. Media notification and Android Auto
- * always use chapter skip because they have dedicated custom seek buttons in their layout.
+ * Note: Headsets (Bluetooth and wired) and media button key events are handled via onMediaButtonEvent
+ * in MediaSessionCallback since Media3 routes hardware key events through the callback. Media notification
+ * and Android Auto always use chapter skip because they have dedicated custom seek buttons in their layout.
  */
 @UnstableApi
 class RemoteControlForwardingPlayer(

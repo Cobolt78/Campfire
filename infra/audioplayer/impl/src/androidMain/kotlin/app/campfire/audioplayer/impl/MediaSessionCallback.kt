@@ -172,21 +172,43 @@ internal class MediaSessionCallback(
       component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
     }
 
-    // Handle Bluetooth next/prev based on user settings.
-    // Media3 routes Bluetooth key events through this callback before processing them,
+    // Handle Bluetooth, wired headset, and external remote next/prev based on user settings.
+    // Media3 routes media button key events through this callback before processing them,
     // allowing us to intercept and redirect next/prev to seek when the setting is disabled.
-    if (controllerInfo.packageName in BLUETOOTH_PACKAGE_NAMES &&
-      !component.playbackSettings.remoteNextPrevSkipsChapters
-    ) {
-      if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
+    val isNotificationOrAuto = session.isMediaNotificationController(controllerInfo) ||
+      session.isAutoCompanionController(controllerInfo)
+
+    if (!isNotificationOrAuto) {
+      if (keyEvent != null) {
         when (keyEvent.keyCode) {
-          KeyEvent.KEYCODE_MEDIA_NEXT -> {
-            player.seekForward()
+          KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+          KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
+          KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+              player.seekForward()
+            }
             return true
           }
-          KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-            player.seekBackward()
+          KeyEvent.KEYCODE_MEDIA_REWIND,
+          KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
+          KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+              player.seekBackward()
+            }
             return true
+          }
+          KeyEvent.KEYCODE_MEDIA_NEXT,
+          KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+            if (!component.playbackSettings.remoteNextPrevSkipsChapters) {
+              if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+                if (keyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
+                  player.seekForward()
+                } else {
+                  player.seekBackward()
+                }
+              }
+              return true
+            }
           }
         }
       }
@@ -347,19 +369,4 @@ internal class MediaSessionCallback(
     )
   }
 
-  private companion object {
-    /**
-     * List of known package names used by bluetooth devices
-     */
-    private val BLUETOOTH_PACKAGE_NAMES = arrayOf(
-      "com.android.bluetooth",
-      "com.google.android.bluetooth",
-      // Google Bluetooth APEX services (renamed package in newer Android versions)
-      "com.google.android.btservices",
-      // Pixel Buds use this package name when triggering next/previous actions
-      "com.google.android.googlequicksearchbox",
-      // Android Auto sometimes sends the media events to the device.
-      "com.google.android.projection.gearhead",
-    )
-  }
 }
