@@ -134,7 +134,7 @@ fun LibraryItemListItem(
           )
         }
 
-        if (mediaProgress?.isFinished == true) {
+        if (mediaProgress?.isFinished == true || mediaProgress?.isCompleted == true) {
           MediaFinishedIndicator(
             size = 18.dp,
             modifier = Modifier
@@ -144,7 +144,7 @@ fun LibraryItemListItem(
         }
 
         mediaProgress
-          ?.takeUnless { it.isFinished }
+          ?.takeUnless { it.isFinished || it.isCompleted }
           ?.let { progress ->
             MediaProgressBar(
               mediaProgress = progress,

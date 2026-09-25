@@ -72,13 +72,20 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
 
     // Inversely, if the player finishes or loses state then we want to remove
     // the playback mark to avoid erroneous progress syncs.
-    if (state == AudioPlayer.State.Finished || state == AudioPlayer.State.Disabled) {
+    if (state == AudioPlayer.State.Finished) {
+      userPlayCache.remove(libraryItemId)
+      component.mediaProgressRepository.markFinished(libraryItemId)
+    } else if (state == AudioPlayer.State.Disabled) {
       userPlayCache.remove(libraryItemId)
     }
   }
 
   private suspend fun syncProgress(libraryItemId: LibraryItemId, force: Boolean = false) {
     val session = component.sessionsRepository.getSession(libraryItemId) ?: return
+
+    val isCompleted = session.isFinished ||
+      session.progress >= 0.99f ||
+      (session.duration.asSeconds() > 0f && session.currentTime.asSeconds() >= session.duration.asSeconds() - 2f)
 
     val updatedProgress = MediaProgress(
       id = MediaProgress.UNKNOWN_ID,
@@ -92,13 +99,13 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
       // session.duration is episode-aware (falls back to the parent item's duration only
       // when episodeId is null), so podcast episodes report the correct per-episode total.
       duration = session.duration.asSeconds(),
-      progress = session.progress,
-      currentTime = session.currentTime.asSeconds(),
-      isFinished = session.isFinished,
-      hideFromContinueListening = false,
+      progress = if (isCompleted) 1f else session.progress,
+      currentTime = if (isCompleted) 0f else session.currentTime.asSeconds(),
+      isFinished = isCompleted,
+      hideFromContinueListening = isCompleted,
       ebookLocation = null,
       ebookProgress = null,
-      finishedAt = if (session.isFinished) {
+      finishedAt = if (isCompleted) {
         session.updatedAt.epochMilliseconds
       } else {
         null

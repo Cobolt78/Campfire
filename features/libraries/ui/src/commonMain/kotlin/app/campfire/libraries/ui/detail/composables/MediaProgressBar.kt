@@ -66,7 +66,7 @@ internal fun MediaProgressBar(
         .fillMaxWidth()
         .testTag("progress_indicator"),
       trackColor = MaterialTheme.colorScheme.secondaryContainer,
-      color = if (progress.isFinished) {
+      color = if (progress.isFinished || progress.isCompleted) {
         MaterialTheme.colorScheme.inversePrimary
       } else {
         MaterialTheme.colorScheme.primary
@@ -91,7 +91,7 @@ internal fun MediaProgressBar(
     Row(
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      if (progress.isFinished) {
+      if (progress.isFinished || progress.isCompleted) {
         Icon(
           CampfireIcons.Rounded.Check,
           contentDescription = null,
@@ -104,10 +104,17 @@ internal fun MediaProgressBar(
       }
 
       val remainingText = when {
-        progress.isFinished -> stringResource(
-          Res.string.remaining_duration_finished,
-          progress.finishedAt!!.asDate().readableFormat,
-        )
+        progress.isFinished || progress.isCompleted -> {
+          val finishedDate = progress.finishedAt?.asDate()?.readableFormat
+          if (finishedDate != null) {
+            stringResource(
+              Res.string.remaining_duration_finished,
+              finishedDate,
+            )
+          } else {
+            "Finished"
+          }
+        }
         else -> {
           val duration = progress.duration ?: totalDuration.asSeconds()
           val remainingDurationMillis = (duration - (duration * progress.actualProgress)).div(playbackSpeed) * 1000f
@@ -122,7 +129,7 @@ internal fun MediaProgressBar(
       Row(
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        val isAccelerated = playbackSpeed != 1f && !progress.isFinished
+        val isAccelerated = playbackSpeed != 1f && !progress.isFinished && !progress.isCompleted
         AnimatedVisibility(
           visible = isAccelerated,
         ) {

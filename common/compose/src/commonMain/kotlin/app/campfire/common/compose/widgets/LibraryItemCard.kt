@@ -264,7 +264,7 @@ private fun BoxScope.ProgressDecorator(
   large: Boolean = true,
 ) {
   progress?.let { mediaProgress ->
-    if (mediaProgress.isFinished) {
+    if (mediaProgress.isFinished || mediaProgress.isCompleted) {
       AnimatedVisibility(
         visible = isTransitioning,
         enter = fadeIn(),

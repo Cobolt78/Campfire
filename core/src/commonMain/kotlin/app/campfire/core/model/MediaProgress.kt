@@ -47,14 +47,24 @@ data class MediaProgress(
     get() = progress > 0f || (duration ?: 0f) > 0f
 
   /**
-   * Get the [currentTime] in [Duration] units, accounting for [isFinished],
+   * True if this progress represents a completed item: either marked finished,
+   * progress >= 1.0f, currentTime reached within 2 seconds of duration, or finishedAt is set.
+   */
+  val isCompleted: Boolean
+    get() = isFinished ||
+      progress >= 0.99f ||
+      (finishedAt != null && (finishedAt ?: 0L) > 0L) ||
+      ((duration ?: 0f) > 0f && currentTime >= ((duration ?: 0f) - 2f))
+
+  /**
+   * Get the [currentTime] in [Duration] units, accounting for [isFinished] or [isCompleted],
    * where if true, it returns 0 duration.
    */
   val actualTime: Duration
-    get() = if (isFinished) Duration.ZERO else currentTime.seconds
+    get() = if (isFinished || isCompleted) Duration.ZERO else currentTime.seconds
 
   val actualProgress: Float
-    get() = if (isFinished) {
+    get() = if (isFinished || isCompleted) {
       1f
     } else duration?.let {
       currentTime / duration
