@@ -278,12 +278,52 @@ private fun insertUpcomingShelf(
 }
 
 /**
+ * Helper to determine if media progress represents a completed/finished book or episode.
+ * A media item is considered completed if:
+ * 1. [MediaProgress.isFinished] is true.
+ * 2. [MediaProgress.hideFromContinueListening] is true.
+ * 3. [MediaProgress.finishedAt] is set.
+ * 4. [MediaProgress.progress] >= 1.0f or [MediaProgress.actualProgress] >= 0.99f (rounds to 100% in UI).
+ * 5. [MediaProgress.currentTime] has reached or exceeded the duration (within 2s tolerance).
+ */
+private fun isMediaProgressCompleted(prog: MediaProgress?): Boolean {
+  if (prog == null) return false
+  if (prog.isFinished || prog.hideFromContinueListening) return true
+  if (prog.finishedAt != null && (prog.finishedAt ?: 0L) > 0L) return true
+  if (prog.progress >= 1f || prog.actualProgress >= 0.99f) return true
+  val dur = prog.duration
+  if (dur != null && dur > 0f && prog.currentTime >= (dur - 2f)) return true
+  return false
+}
+
+private fun findUserMediaProgress(
+  entity: ShelfEntity,
+  userMediaProgress: Map<MediaProgressKey, MediaProgress>,
+): MediaProgress? {
+  return when (entity) {
+    is LibraryItem -> {
+      userMediaProgress[MediaProgressKey(entity.id, null)]
+        ?: userMediaProgress.entries.firstOrNull { it.key.libraryItemId == entity.id }?.value
+        ?: entity.userMediaProgress
+    }
+    is ShelfEntity.EpisodeShelfEntry -> {
+      userMediaProgress[MediaProgressKey(entity.libraryItem.id, entity.recentEpisode.id)]
+        ?: userMediaProgress[MediaProgressKey(entity.libraryItem.id, null)]
+        ?: userMediaProgress.entries.firstOrNull { it.key.libraryItemId == entity.libraryItem.id }?.value
+        ?: entity.libraryItem.userMediaProgress
+    }
+    else -> null
+  }
+}
+
+/**
  * Enhances the Continue Listening shelf by:
  * 1. Injecting in-progress downloaded books so they are never missing when listening locally/offline.
  * 2. Sorting all entries in Continue Listening by [MediaProgress.lastUpdate] descending,
  *    ensuring the most recently listened-to book dynamically moves to the #1 position.
  * 3. Synthesizing a Continue Listening shelf at the top if none exists from the server
  *    and there are in-progress downloaded books.
+ * 4. Filtering out completed/finished books (e.g. 100% progress, marked finished, or currentTime >= duration).
  */
 private fun enhanceContinueListeningShelf(
   shelves: List<UiShelf<ShelfEntity>>,
@@ -301,32 +341,24 @@ private fun enhanceContinueListeningShelf(
   }
 
   fun getEntityLastUpdate(entity: ShelfEntity): Long {
-    val prog = when (entity) {
-      is LibraryItem -> userMediaProgress[MediaProgressKey(entity.id, null)] ?: entity.userMediaProgress
-      is ShelfEntity.EpisodeShelfEntry -> userMediaProgress[MediaProgressKey(entity.libraryItem.id, entity.recentEpisode.id)] ?: entity.libraryItem.userMediaProgress
-      else -> null
-    }
+    val prog = findUserMediaProgress(entity, userMediaProgress)
     return prog?.lastUpdate ?: 0L
   }
 
   fun isEntityActive(entity: ShelfEntity): Boolean {
-    val prog = when (entity) {
-      is LibraryItem -> userMediaProgress[MediaProgressKey(entity.id, null)] ?: entity.userMediaProgress
-      is ShelfEntity.EpisodeShelfEntry -> userMediaProgress[MediaProgressKey(entity.libraryItem.id, entity.recentEpisode.id)] ?: entity.libraryItem.userMediaProgress
-      else -> null
-    }
-    if (prog != null && (prog.isFinished || prog.hideFromContinueListening)) {
-      return false
+    val prog = findUserMediaProgress(entity, userMediaProgress)
+    if (prog != null) {
+      if (isMediaProgressCompleted(prog)) return false
+      if (prog.progress <= 0f && prog.currentTime <= 0f) return false
     }
     return true
   }
 
-  // Find downloaded items that are actively in progress (started, not finished, not hidden)
+  // Find downloaded items that are actively in progress (started, not finished, not hidden, not completed)
   val activeDownloadedItems = completedDownloads.filter { item ->
-    val prog = userMediaProgress[MediaProgressKey(item.id, null)] ?: item.userMediaProgress
+    val prog = findUserMediaProgress(item, userMediaProgress)
     prog != null &&
-      !prog.isFinished &&
-      !prog.hideFromContinueListening &&
+      !isMediaProgressCompleted(prog) &&
       (prog.progress > 0f || prog.currentTime > 0f)
   }
 
