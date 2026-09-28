@@ -32,7 +32,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
 
 @SuppressLint("UnsafeOptInUsageError")
 internal class MediaSessionCallback(
@@ -46,6 +48,67 @@ internal class MediaSessionCallback(
   private val cycleSpeedCommand = SessionCommand(WidgetSessionCommand.CYCLE_SPEED, Bundle.EMPTY)
   private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
   private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
+
+  fun bindSession(mediaSession: MediaSession) {
+    serviceScope.launch {
+      combine(
+        component.playbackSettings.observeRemoteNextPrevSkipsChapters(),
+        component.playbackSettings.observeBackwardTimeMs(),
+        component.playbackSettings.observeForwardTimeMs(),
+      ) { _, _, _ -> }
+        .collect {
+          mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
+        }
+    }
+  }
+
+  internal fun createMediaButtonPreferences(): List<CommandButton> {
+    val skipsChapters = component.playbackSettings.remoteNextPrevSkipsChapters
+    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
+      5_000L -> CommandButton.ICON_SKIP_BACK_5
+      10_000L -> CommandButton.ICON_SKIP_BACK_10
+      15_000L -> CommandButton.ICON_SKIP_BACK_15
+      30_000L -> CommandButton.ICON_SKIP_BACK_30
+      else -> CommandButton.ICON_SKIP_BACK
+    }
+    val skipForwardIcon = when (component.playbackSettings.forwardTimeMs) {
+      5_000L -> CommandButton.ICON_SKIP_FORWARD_5
+      10_000L -> CommandButton.ICON_SKIP_FORWARD_10
+      15_000L -> CommandButton.ICON_SKIP_FORWARD_15
+      30_000L -> CommandButton.ICON_SKIP_FORWARD_30
+      else -> CommandButton.ICON_SKIP_FORWARD
+    }
+
+    val prevChapterButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_previous))
+      .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+      .setSlots(if (skipsChapters) CommandButton.SLOT_BACK else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val nextChapterButton = CommandButton.Builder(CommandButton.ICON_NEXT)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_next))
+      .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+      .setSlots(if (skipsChapters) CommandButton.SLOT_FORWARD else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val rewindButton = CommandButton.Builder(skipBackIcon)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_backward))
+      .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+      .setSlots(if (!skipsChapters) CommandButton.SLOT_BACK else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val fastForwardButton = CommandButton.Builder(skipForwardIcon)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_forward))
+      .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+      .setSlots(if (!skipsChapters) CommandButton.SLOT_FORWARD else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    return if (skipsChapters) {
+      listOf(prevChapterButton, nextChapterButton, rewindButton, fastForwardButton)
+    } else {
+      listOf(rewindButton, fastForwardButton, prevChapterButton, nextChapterButton)
+    }
+  }
 
   override fun onConnect(
     session: MediaSession,
@@ -63,23 +126,9 @@ internal class MediaSessionCallback(
       session.isMediaNotificationController(controller) ||
       session.isAutoCompanionController(controller)
     ) {
-      val mediaButtonPreferences = listOf(
-        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
-          .setDisplayName(context.getString(R.string.exo_controls_skip_previous))
-          .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-          .setSlots(CommandButton.SLOT_BACK)
-          .build(),
-        CommandButton.Builder(CommandButton.ICON_NEXT)
-          .setDisplayName(context.getString(R.string.exo_controls_skip_next))
-          .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-          .setSlots(CommandButton.SLOT_FORWARD)
-          .build(),
-        *createCustomLayoutCommandButtons().toTypedArray(),
-      )
-
       return AcceptedResultBuilder(session)
         .setAvailableSessionCommands(availableCommands)
-        .setMediaButtonPreferences(mediaButtonPreferences)
+        .setMediaButtonPreferences(createMediaButtonPreferences())
         .build()
     } else {
       return AcceptedResultBuilder(session)
@@ -336,35 +385,4 @@ internal class MediaSessionCallback(
       error("Media items contain an unplayable item!")
     }
   }
-
-  private fun createCustomLayoutCommandButtons(): List<CommandButton> {
-    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
-      5_000L -> CommandButton.ICON_SKIP_BACK_5
-      10_000L -> CommandButton.ICON_SKIP_BACK_10
-      15_000L -> CommandButton.ICON_SKIP_BACK_15
-      30_000L -> CommandButton.ICON_SKIP_BACK_30
-      else -> CommandButton.ICON_SKIP_BACK
-    }
-    val skipForwardIcon = when (component.playbackSettings.forwardTimeMs) {
-      5_000L -> CommandButton.ICON_SKIP_FORWARD_5
-      10_000L -> CommandButton.ICON_SKIP_FORWARD_10
-      15_000L -> CommandButton.ICON_SKIP_FORWARD_15
-      30_000L -> CommandButton.ICON_SKIP_FORWARD_30
-      else -> CommandButton.ICON_SKIP_FORWARD
-    }
-
-    return listOf(
-      CommandButton.Builder(skipBackIcon)
-        .setDisplayName(context.getString(R.string.exo_controls_skip_backward))
-        .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-        .setSlots(CommandButton.SLOT_OVERFLOW)
-        .build(),
-      CommandButton.Builder(skipForwardIcon)
-        .setDisplayName(context.getString(R.string.exo_controls_skip_forward))
-        .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-        .setSlots(CommandButton.SLOT_OVERFLOW)
-        .build(),
-    )
-  }
-
 }

@@ -105,6 +105,8 @@ class ChapterWindowForwardingPlayer(
             Player.COMMAND_SEEK_TO_PREVIOUS,
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
             Player.COMMAND_SEEK_TO_MEDIA_ITEM,
+            Player.COMMAND_SEEK_BACK,
+            Player.COMMAND_SEEK_FORWARD,
           )
           .build(),
       )
@@ -135,6 +137,18 @@ class ChapterWindowForwardingPlayer(
           invalidateState()
           return Futures.immediateVoidFuture()
         }
+      }
+
+      Player.COMMAND_SEEK_FORWARD -> {
+        host.seekForward()
+        invalidateState()
+        return Futures.immediateVoidFuture()
+      }
+
+      Player.COMMAND_SEEK_BACK -> {
+        host.seekBackward()
+        invalidateState()
+        return Futures.immediateVoidFuture()
       }
     }
 

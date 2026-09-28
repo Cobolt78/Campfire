@@ -94,16 +94,17 @@ class AudioPlayerService : MediaLibraryService() {
     // (Bluetooth, car stereo) are intercepted per user settings, and coarse single-item (HLS)
     // playback is presented as a virtual chapter playlist so notification/Auto scrubbers and
     // titles stay chapter-granular. In-app UI uses the direct player.
-    session = MediaLibrarySession.Builder(
+    val sessionCallback = MediaSessionCallback(
+      context = this,
+      serviceScope = serviceScope,
+      player = player,
+      component = component,
+      userComponent = userComponent,
+    )
+    val mediaSession = MediaLibrarySession.Builder(
       this,
       player.sessionPlayer,
-      MediaSessionCallback(
-        context = this,
-        serviceScope = serviceScope,
-        player = player,
-        component = component,
-        userComponent = userComponent,
-      ),
+      sessionCallback,
     )
       .setSessionActivity(
         PendingIntent.getActivity(
@@ -114,10 +115,13 @@ class AudioPlayerService : MediaLibraryService() {
         ),
       )
       .build()
+    session = mediaSession
+
+    sessionCallback.bindSession(mediaSession)
 
     // Bind the session to the player so it can identify the source of remote control commands
     // and apply user settings only for external controllers (Bluetooth, car stereo, etc.)
-    player.bindSession(session!!)
+    player.bindSession(mediaSession)
 
     AudioPlayerDebugHooks.Holder.hooks.onSessionCreated(session!!)
 
