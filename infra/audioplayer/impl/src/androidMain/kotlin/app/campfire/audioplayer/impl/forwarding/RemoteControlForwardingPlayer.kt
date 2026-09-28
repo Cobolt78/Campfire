@@ -30,29 +30,15 @@ class RemoteControlForwardingPlayer(
 
   /**
    * Reference to the MediaSession, set after session creation.
-   * Used to identify the source of commands via [androidx.media3.session.MediaSession.controllerForCurrentRequest].
    */
   var session: MediaSession? = null
 
   /**
-   * Determines if the current command is from a remote controller.
-   *
-   * A command is considered "remote" if it comes from a different package (e.g., car stereo).
-   *
-   * Note: Bluetooth controllers are handled separately via onMediaButtonEvent in
-   * MediaSessionCallback, since Media3 routes their events through the app's own package.
-   * Media notification and Android Auto are NOT remote because they have custom seek buttons.
-   */
-  private fun isRemoteController(): Boolean {
-    return session.isRemoteControllerRequest(appPackageName)
-  }
-
-  /**
-   * Applies the setting-based behavior for remote controllers.
+   * Applies the setting-based behavior for next/prev commands.
    * Returns true if we handled the command (seek forward/back), false if default behavior should be used.
    */
   private inline fun handleRemoteNextPrevCommand(seekAction: () -> Unit): Boolean {
-    if (isRemoteController() && !settings.remoteNextPrevSkipsChapters) {
+    if (!settings.remoteNextPrevSkipsChapters) {
       seekAction()
       return true
     }
@@ -82,25 +68,4 @@ class RemoteControlForwardingPlayer(
       super.seekToPrevious()
     }
   }
-}
-
-/**
- * Whether the session command currently being dispatched came from a *remote* controller —
- * a different package (e.g. car stereo). The media notification and Android Auto are NOT
- * remote: they have dedicated custom seek buttons, so their next/prev are always chapter
- * skips. Bluetooth is handled separately via onMediaButtonEvent in MediaSessionCallback,
- * since Media3 routes those key events through the app's own package.
- */
-@UnstableApi
-internal fun MediaSession?.isRemoteControllerRequest(appPackageName: String): Boolean {
-  val currentSession = this ?: return false
-  val controller = currentSession.controllerForCurrentRequest ?: return false
-
-  if (currentSession.isMediaNotificationController(controller) ||
-    currentSession.isAutoCompanionController(controller)
-  ) {
-    return false
-  }
-
-  return controller.packageName != appPackageName
 }

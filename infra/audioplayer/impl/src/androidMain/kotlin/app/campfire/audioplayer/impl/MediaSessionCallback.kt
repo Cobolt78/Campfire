@@ -175,40 +175,38 @@ internal class MediaSessionCallback(
     // Handle Bluetooth, wired headset, and external remote next/prev based on user settings.
     // Media3 routes media button key events through this callback before processing them,
     // allowing us to intercept and redirect next/prev to seek when the setting is disabled.
-    val isNotificationOrAuto = session.isMediaNotificationController(controllerInfo) ||
-      session.isAutoCompanionController(controllerInfo)
-
-    if (!isNotificationOrAuto) {
-      if (keyEvent != null) {
-        when (keyEvent.keyCode) {
-          KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
-          KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
-          KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
+    if (keyEvent != null) {
+      when (keyEvent.keyCode) {
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
+          if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+            player.seekForward()
+          }
+          return true
+        }
+        KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
+        KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
+          if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+            player.seekBackward()
+          }
+          return true
+        }
+        KeyEvent.KEYCODE_MEDIA_NEXT -> {
+          if (!component.playbackSettings.remoteNextPrevSkipsChapters) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
               player.seekForward()
             }
             return true
           }
-          KeyEvent.KEYCODE_MEDIA_REWIND,
-          KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
-          KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
+        }
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+          if (!component.playbackSettings.remoteNextPrevSkipsChapters) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
               player.seekBackward()
             }
             return true
-          }
-          KeyEvent.KEYCODE_MEDIA_NEXT,
-          KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-            if (!component.playbackSettings.remoteNextPrevSkipsChapters) {
-              if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-                if (keyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
-                  player.seekForward()
-                } else {
-                  player.seekBackward()
-                }
-              }
-              return true
-            }
           }
         }
       }

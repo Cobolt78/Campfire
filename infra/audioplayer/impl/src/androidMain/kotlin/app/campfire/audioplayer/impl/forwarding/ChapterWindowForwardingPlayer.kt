@@ -54,6 +54,12 @@ class ChapterWindowForwardingPlayer(
     /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
     fun skipToPreviousChapter()
 
+    /** Seeks forward by the configured interval. */
+    fun seekForward()
+
+    /** Seeks backward by the configured interval. */
+    fun seekBackward()
+
     /** Format speed-adjusted remaining time for the whole book. */
     fun remainingFormatted(): String = ""
   }
@@ -110,6 +116,28 @@ class ChapterWindowForwardingPlayer(
     positionMs: Long,
     seekCommand: Int,
   ): ListenableFuture<*> {
+    when (seekCommand) {
+      Player.COMMAND_SEEK_TO_NEXT,
+      Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+      -> {
+        if (!settings.remoteNextPrevSkipsChapters) {
+          host.seekForward()
+          invalidateState()
+          return Futures.immediateVoidFuture()
+        }
+      }
+
+      Player.COMMAND_SEEK_TO_PREVIOUS,
+      Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+      -> {
+        if (!settings.remoteNextPrevSkipsChapters) {
+          host.seekBackward()
+          invalidateState()
+          return Futures.immediateVoidFuture()
+        }
+      }
+    }
+
     val chapters = host.activeChapters()
       ?: return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
     if (chapters.isEmpty()) return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
@@ -128,15 +156,13 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_NEXT,
       Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
       -> {
-        // Remote controllers can prefer time jumps over chapter skips — the same behavior
-        // RemoteControlForwardingPlayer applies on chapter-granular queues
-        if (remoteJumpPreferred()) wrapped.seekForward() else host.skipToNextChapter()
+        host.skipToNextChapter()
       }
 
       Player.COMMAND_SEEK_TO_PREVIOUS,
       Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
       -> {
-        if (remoteJumpPreferred()) wrapped.seekBack() else host.skipToPreviousChapter()
+        host.skipToPreviousChapter()
       }
 
       else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
@@ -150,10 +176,6 @@ class ChapterWindowForwardingPlayer(
     if (mediaItemIndex != C.INDEX_UNSET) return mediaItemIndex
     val positionMs = wrapped.currentPosition
     return chapters.indexOfLast { positionMs >= it.startMs }.coerceAtLeast(0)
-  }
-
-  private fun remoteJumpPreferred(): Boolean {
-    return session.isRemoteControllerRequest(appPackageName) && !settings.remoteNextPrevSkipsChapters
   }
 
   private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
