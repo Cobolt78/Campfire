@@ -35,8 +35,9 @@ import me.tatarka.inject.annotations.Inject
  * (via [PlayUpdateFlowLauncher]), the update downloads in the background while the app
  * stays usable, and installation hands off to the platform installer once downloaded.
  */
-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
-@Inject
+// Disabled in favor of GitHubAppUpdateSource for custom GitHub releases
+// @ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+// @Inject
 class GooglePlayAppUpdateSource(
   private val application: Application,
   private val updateFlowLauncher: PlayUpdateFlowLauncher,

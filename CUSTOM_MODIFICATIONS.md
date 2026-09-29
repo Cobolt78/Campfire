@@ -17,6 +17,11 @@ This document captures all custom features, bug fixes, and UI improvements added
 10. [FOSS Release Build & Deployment Commands](#10-foss-release-build--deployment-commands)
 11. [Modified Files Inventory](#11-modified-files-inventory)
 12. [Home Screen: Pull-to-Refresh](#12-home-screen-pull-to-refresh)
+13. [Reset Sleep Timer on Pause (User Configurable)](#13-reset-sleep-timer-on-pause-user-configurable)
+14. [Dynamic Continue Listening Sorting, Download Integration & Finished Book Pruning](#14-dynamic-continue-listening-sorting-download-integration--finished-book-pruning)
+15. [Headset & Remote Control Forward/Rewind Time Skips & Dynamic Lock Screen Notification Icons](#15-headset--remote-control-forwardrewind-time-skips--dynamic-lock-screen-notification-icons)
+16. [Equalizer Bottom Sheet Layout Polish](#16-equalizer-bottom-sheet-layout-polish)
+17. [Native GitHub In-App Updates & Versioning Strategy](#17-native-github-in-app-updates--versioning-strategy)
 
 ---
 
@@ -383,4 +388,76 @@ Added a standard swipe-down Pull-to-Refresh gesture to the main Home feed. This 
 * `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt`
 * `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt`
 * `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+
+---
+
+## 13. Reset Sleep Timer on Pause (User Configurable)
+
+### Summary
+Added a user-configurable toggle in **Settings → Sleep** ("Reset timer on pause"). When enabled, pausing audio playback (via headset button, lockscreen widget, notification, or in-app button) automatically resets the active sleep timer back to its initial configured duration. Playback can then be resumed with the full timer ready.
+
+### Key Details
+- **Toggle Setting**: Added `resetTimerOnPause` to `SleepSettings` and `CampfireSettings`.
+- **Playback State Hook**: Observed player state in `CoroutineSleepTimerManager`. When the player transitions to paused/idle, the countdown resets to the initial duration rather than running down while paused.
+
+---
+
+## 14. Dynamic Continue Listening Sorting, Download Integration & Finished Book Pruning
+
+### Summary
+Enhanced the Continue Listening and Listen Again shelves to provide a responsive, Audiobookshelf-like listening experience even offline.
+
+### Key Details
+- **Dynamic Last-Played Sorting**: The Continue Listening shelf sorts items in realtime by `lastUpdate` descending. Pausing or playing a book smoothly moves it to the front of the shelf (the #&#8203;1 spot) using Compose item animations (`Modifier.animateItem()`).
+- **Downloaded Books Integration**: Downloaded in-progress books appear on the Continue Listening shelf even without server synchronization.
+- **Finished Book Pruning & Listen Again**: When an audiobook or podcast episode reaches 100% or is marked finished, it immediately drops off the Continue Listening shelf and is dynamically placed on the **Listen Again** shelf (synthesized client-side if missing from server feed), ordered by most recently finished.
+- **Universal Green Checkmark**: Ensures the green completed badge reliably displays on cover cards, detail screens, and library list items for completed books (whether downloaded or streaming).
+
+---
+
+## 15. Headset & Remote Control Forward/Rewind Time Skips & Dynamic Lock Screen Notification Icons
+
+### Summary
+Fixed headset/earphone button behavior so that double-clicking (forward) and triple-clicking (back) skips by the configured time interval (e.g. 30s) instead of jumping entire chapters. Added dynamic lock screen and notification action icons that switch between chapter skip icons (`|<` / `>|`) and time jump icons (`↺` / `↻`) in real time based on the user's setting.
+
+### Key Details
+- **Settings Toggle**: "Headset & remote next/prev skips chapters" in **Settings → Playback** (`skipChaptersWithHeadset`).
+- **ExoPlayer Forwarding Player**: Intercepts `seekToNextMediaItem()` and `seekToPreviousMediaItem()` from wired headsets, Bluetooth remotes, and Android Auto, delegating to `seekForward()` or `seekBack()` when chapter skipping is disabled.
+- **System Media Notification**: Updated `AudioPlayerService` and `MediaSessionCallback` to advertise `COMMAND_SEEK_FORWARD` / `COMMAND_SEEK_BACK` as primary actions instead of chapter skips when disabled, updating Android lockscreen icons in real time.
+
+---
+
+## 16. Equalizer Bottom Sheet Layout Polish
+
+### Summary
+Widened the control label column in `EqualizerBottomSheet.kt` from `72.dp` to `90.dp`. This prevents words like "Loudness" from wrapping mid-word ("Loudnes-s") onto a second line on devices with large display scalings or accessibility font sizes.
+
+---
+
+## 17. Native GitHub In-App Updates & Versioning Strategy
+
+### Summary
+Integrated a fully native in-app updater backed directly by GitHub Releases (`Cobolt78/Campfire`). Replaces Google Play In-App Updates for standard release builds and adds update support to FOSS builds. Users receive visual notifications in the navigation drawer when a new APK is released on GitHub, can read release notes, and install updates with a single tap.
+
+### Architecture & Key Components
+- **`GitHubAppUpdateSource.kt`**: Implements `AppUpdateSource` in `app/android/src/main/java/app/campfire/android/updates/`. Replaces `NoOpUpdateSource` via `@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])`.
+- **GitHub API Integration**: Queries `https://api.github.com/repos/Cobolt78/Campfire/releases/latest`, parses tag name/release name for SemVer versioning, compares against installed `applicationInfo.versionCode`, extracts release notes from the release body, and matches the APK asset based on flavor (`standard` vs `foss`).
+- **In-App Download & Stream**: Uses `OkHttpClient` to stream the APK download directly to `cacheDir/updates/campfire-update.apk` while reporting live progress (`AppUpdateProgress`) to `AppUpdateWidgetImpl` in the navigation drawer.
+- **Android Package Installer Hand-off**: Declares `REQUEST_INSTALL_PACKAGES` permission in `AndroidManifest.xml` and uses `androidx.core.content.FileProvider` (`${applicationId}.update_provider` with `update_file_paths.xml`) to launch `Intent.ACTION_VIEW` targeting Android's native package installer.
+- **Drawer Integration**: Integrated directly into `AppUpdateWidgetCard` and `AppUpdateSheet` in `CampfireDrawer`.
+
+### Versioning Strategy & Rules for Future AI Instances
+1. **Semantic Versioning Format**: Always use standard SemVer `major.minor.patch` (e.g. `1.2.1`, `1.2.2`, `1.2.3`). Do NOT use 4-part numbers (like `1.2.1.1`) or skip numbers (like `1.2.11`), as standard tools, CI guards, and Campfire's internal SemVer regex expect 3-segment versions.
+2. **Version Code Formula**:
+   $$\text{versionCode} = \text{major} \times 1,000,000 + \text{minor} \times 10,000 + \text{patch} \times 100 + 99$$
+   - `1.2.0` = `1020099`
+   - `1.2.1` = `1020199`
+   - `1.2.2` = `1020299`
+   - `1.2.3` = `1020399`
+3. **Strict Monotonic Increase**: Android OS requires incoming APKs to have a strictly higher `versionCode` than the installed version (`incoming > installed`). With every bug fix, patch, or feature release:
+   - Increment `campfire.version` and `campfire.versionCode` in `gradle.properties`.
+   - Run `gradlew.bat :app:android:verifyVersionCode` to confirm they match.
+   - Tag the release on GitHub as `v<version>-custom` (e.g., `v1.2.1-custom`).
+   - Include both APK assets: `cobolt-campfire-standard-release_<version>.apk` and `cobolt-campfire-foss-release_<version>.apk`.
+
 

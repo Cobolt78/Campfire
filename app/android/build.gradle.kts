@@ -227,6 +227,7 @@ dependencies {
   implementation(libs.androidx.fragment)
   implementation(libs.androidx.browser)
   implementation(libs.androidx.compose.ui)
+  implementation(libs.okhttp.okhttp)
 
   implementation(libs.circuit.runtime)
   implementation(libs.circuit.foundation)
