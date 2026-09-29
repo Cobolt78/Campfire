@@ -38,6 +38,7 @@ import app.campfire.series.paging.SeriesPagerFactory
 import app.campfire.series.paging.SeriesPagingInput
 import app.campfire.series.store.SeriesStore
 import app.campfire.user.api.UserRepository
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -300,4 +301,38 @@ class StoreSeriesRepository(
           }
       }
   }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  override fun observeContinueSeries(): Flow<List<Series>> {
+    return userRepository.observeCurrentUser()
+      .flatMapLatest { user ->
+        db.seriesQueries
+          .selectContinueSeries(
+            libraryId = user.selectedLibraryId,
+            userId = user.id,
+          )
+          .asFlow()
+          .mapToList(dispatcherProvider.databaseRead)
+          .mapLatest { seriesList ->
+            val seriesWithBooks = seriesList.associateWith { s ->
+              db.libraryItemsQueries
+                .selectForSeries(
+                  userId = user.id,
+                  seriesId = s.id,
+                  mapper = ::mapToLibraryItemWithProgress,
+                )
+                .awaitAsList()
+            }
+
+            seriesWithBooks.entries.map { (s, books) ->
+              val sortedBooks = books
+                .map { it.asDomainModel(urlHydrator) }
+                .sortedBy { it.media.metadata.seriesSequence?.sequence }
+
+              s.asDomainModel(sortedBooks)
+            }
+          }
+      }
+  }
 }
+

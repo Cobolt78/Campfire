@@ -22,6 +22,9 @@ This document captures all custom features, bug fixes, and UI improvements added
 15. [Headset & Remote Control Forward/Rewind Time Skips & Dynamic Lock Screen Notification Icons](#15-headset--remote-control-forwardrewind-time-skips--dynamic-lock-screen-notification-icons)
 16. [Equalizer Bottom Sheet Layout Polish](#16-equalizer-bottom-sheet-layout-polish)
 17. [Native GitHub In-App Updates & Versioning Strategy](#17-native-github-in-app-updates--versioning-strategy)
+18. [Clickable Home Shelf Headings, Dedicated Continue Series & Offline Downloads Screens](#18-clickable-home-shelf-headings-dedicated-continue-series--offline-downloads-screens)
+19. [In-App "What's New" Changelog Synchronization Rule](#19-in-app-whats-new-changelog-synchronization-rule)
+20. [Continue Series Query Optimization & Freeze Fix](#20-continue-series-query-optimization--freeze-fix)
 
 ---
 
@@ -459,6 +462,7 @@ Integrated a fully native in-app updater backed directly by GitHub Releases (`Co
    - Run `gradlew.bat :app:android:verifyVersionCode` to confirm they match.
    - Tag the release on GitHub as `v<version>-custom` (e.g., `v1.2.1-custom`).
    - Include both APK assets: `cobolt-campfire-standard-release_<version>.apk` and `cobolt-campfire-foss-release_<version>.apk`.
+4. **Always Update `CHANGELOG.md` with Every Release**: The in-app "What's New" feature (`infra/whats-new/`) is driven at build time by `CHANGELOG.md`. With every release or patch, add a `## [<version>]` section to `CHANGELOG.md` with `### Added`, `### Changed`, or `### Fixed` bullet points describing the changes. This ensures the What's New drawer item and update notification accurately reflect the custom build's enhancements.
 
 
 
@@ -499,3 +503,57 @@ Added interactive shelf headers with chevron indicators (Heading ›) on the Hom
   - Top app bar displays a real-time storage summary: total offline book count and formatted storage footprint (e.g. "12 books • 3.8 GB").
   - List items render book covers, titles, authors, file sizes (e.g. "740 MB"), listening progress indicators, and offline checkmarks.
   - Interactive sort menu: Recently Played, Date Added/Downloaded, Title A–Z, Author A–Z, File Size, with ascending/descending toggle.
+
+
+---
+
+## 19. In-App "What's New" Changelog Synchronization Rule
+
+### Summary
+Established a permanent development rule ensuring that all custom enhancements, fixes, and version releases are systematically documented in `CHANGELOG.md`.
+
+### Mechanism & Build Architecture
+- `infra/whats-new/` generates `changelog.json` at build time from `CHANGELOG.md` via `GenerateChangelogTask`.
+- `WhatsNewRepositoryImpl` checks `settings.observeLastSeenVersion()` against `applicationInfo.versionName`. When the version increases and contains changes for the platform, the app automatically surfaces the What's New dialog to the user.
+- The "What's New" option in the navigation drawer also reads this JSON to display the full version history.
+- Starting from `1.2.1`, `1.2.2`, and `1.2.3`, all custom additions are maintained in `CHANGELOG.md`.
+
+---
+
+## 20. Continue Series Query Optimization & Freeze Fix
+
+### Summary
+Diagnosed and fixed an Application Not Responding (ANR) freeze when tapping the Continue Series chevron (`›`) on the Home screen. Replaced an expensive, blocking full-library network and database traversal with a high-performance indexed SQLite query executed off the UI thread.
+
+### Root Cause
+- `ContinueSeriesPresenter` previously invoked `seriesRepository.observeAllSeries(refresh = true)`.
+- In `StoreSeriesRepository`, `observeAllSeries(refresh = true)` triggered `fetchAllPages`, walking all series in the user's library and writing them to SQLite.
+- SqlDelight's `SeriesSourceOfTruthFactory` then ran `db.seriesQueries.selectByLibraryId(key.libraryId)` and iterated through every series in the library, executing `db.libraryItemsQueries.selectForSeries(seriesId).awaitAsList()` in an iterative blocking loop on the database.
+- For libraries with hundreds of series, this produced hundreds of sequential queries and heavy object mapping. Because this flow was collected with `collectAsState()` and mapped inside the Composable on the Android main thread, it locked the UI thread for multiple seconds, triggering an immediate app freeze and crash.
+
+### Resolution & Architecture
+1. **Targeted SQL Query (`series.sq`)**:
+   - Added `selectContinueSeries` to `series.sq`:
+     ```sql
+     selectContinueSeries:
+     SELECT series.* FROM series
+     LEFT JOIN shelfJoin ON shelfJoin.entityId = series.id AND shelfJoin.shelfId LIKE 'continue-series_%'
+     LEFT JOIN seriesBookJoin ON seriesBookJoin.seriesId = series.id
+     LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = seriesBookJoin.libraryItemId AND mediaProgress.userId = :userId AND (mediaProgress.progress > 0 OR mediaProgress.isFinished = 1)
+     WHERE series.libraryId = :libraryId
+       AND (
+         series.inProgress = 1
+         OR shelfJoin.entityId IS NOT NULL
+         OR mediaProgress.libraryItemId IS NOT NULL
+       )
+     GROUP BY series.id
+     ORDER BY COALESCE(series.bookInProgressLastUpdate, series.updatedAt) DESC;
+     ```
+   - Filters directly in SQLite to the 5–20 series actually in progress (either marked in-progress, present on the personalized continue series shelf, or having listening progress on a book in `mediaProgress`).
+2. **Repository Flow (`SeriesRepository.kt` & `StoreSeriesRepository.kt`)**:
+   - Added `fun observeContinueSeries(): Flow<List<Series>>`.
+   - Hydrates books only for the filtered in-progress series on `dispatcherProvider.databaseRead`, completing in milliseconds.
+3. **Presenter Non-Blocking Offload (`ContinueSeriesPresenter.kt`)**:
+   - Switched from `observeAllSeries` to `observeContinueSeries()`.
+   - Applied `.flowOn(Dispatchers.Default)` to ensure sorting and filtering execute completely off the UI thread.
+   - Preserves reading progress metadata (`inProgress`, `bookInProgressLastUpdate`, `firstBookUnreadId`) across mapping layers.

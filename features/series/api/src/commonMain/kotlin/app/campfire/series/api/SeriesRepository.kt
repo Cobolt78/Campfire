@@ -44,4 +44,10 @@ interface SeriesRepository {
   ): Flow<Int?>
 
   fun observeSeriesLibraryItems(seriesId: String): Flow<List<LibraryItem>>
+
+  /**
+   * Observe all series that are currently in progress or on the continue-series shelf,
+   * hydrated with their books. Emits from local database off the UI thread.
+   */
+  fun observeContinueSeries(): Flow<List<Series>>
 }

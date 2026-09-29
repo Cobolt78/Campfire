@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- "Reset timer on pause" option in Settings → Sleep to reset the sleep timer back to its full original duration whenever playback is paused (e.g. from earbuds, Bluetooth, notification, or in-app) instead of freezing the countdown
-- Speed-adjusted total book remaining countdown next to the chapter title in Android Auto and system media notifications (e.g. "Chapter 134 - 18h 45m left"), updating dynamically every minute while preserving the book title on line 2 and chapter progress on the scrubber
-- Pull-to-refresh on the Home screen to fetch and refresh personalized shelves and new audiobooks/podcasts directly from your server with animated campfire flame loading indicator
-
 ### Changed
 
 ### Deprecated
@@ -22,6 +18,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Other Notes & Contributions
+
+## [1.2.3]
+
+### Fixed
+
+- App freeze when tapping the Continue Series shelf header on the Home screen by replacing the full-library scan with an indexed query of in-progress series and active listening progress
+
+## [1.2.2]
+
+### Added
+
+- Interactive shelf headers with chevron indicators (`›`) on the Home screen to view full listings beyond the 5/10-item cap
+- Dedicated Continue Series screen displaying all in-progress series with reading progress bars, sequence indicators, Next Up book cards, and sorting by Recent, Name, Progress, or Date Added
+- Dedicated Offline Downloads screen showing all downloaded audiobooks with real-time storage footprint (e.g. "12 books • 3.8 GB") and multi-mode sorting
+
+### Changed
+
+- Tapping Recently Added or Recent Series headers on Home opens full Library/Series screens pre-sorted from newest to oldest
+- Tapping Continue Listening or Listen Again headers opens full Library filtered by In-Progress or Finished
+
+## [1.2.1]
+
+### Added
+
+- Native GitHub in-app updates in navigation drawer: automatically checks for releases, displays release notes, and downloads/installs APK updates directly with one tap
+- "Headset & remote next/prev skips chapters" toggle in Settings → Playback, allowing wired and Bluetooth headset forward/back buttons to skip by 30 seconds instead of jumping whole chapters
+- Dynamic lock screen and notification action icons that switch between chapter skip icons (`|<` / `>|`) and time jump icons (`↺` / `↻`) in real time based on your playback settings
+- "Reset timer on pause" option in Settings → Sleep to reset the sleep timer back to its full original duration whenever playback is paused (e.g. from earbuds, Bluetooth, notification, or in-app) instead of freezing the countdown
+- Speed-adjusted total book remaining countdown next to the chapter title in Android Auto and system media notifications (e.g. "Chapter 134 - 18h 45m left"), updating dynamically every minute while preserving the book title on line 2 and chapter progress on the scrubber
+- Pull-to-refresh on the Home screen to fetch and refresh personalized shelves and new audiobooks/podcasts directly from your server with animated campfire flame loading indicator
+
+### Changed
+
+- Equalizer layout widened to prevent "Loudness" label from breaking onto two lines on larger system display scaling
+
 
 ## [1.2.0]
 
@@ -560,6 +591,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.2.3]: https://github.com/Cobolt78/Campfire/compare/v1.2.2-custom...v1.2.3-custom
+[1.2.2]: https://github.com/Cobolt78/Campfire/compare/v1.2.1-custom...v1.2.2-custom
+[1.2.1]: https://github.com/Cobolt78/Campfire/compare/v1.2.0-custom...v1.2.1-custom
 [1.2.0]: https://github.com/r0adkll/Campfire/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/r0adkll/Campfire/compare/1.0.5...1.1.0
 [1.0.5]: https://github.com/r0adkll/Campfire/compare/1.0.4...1.0.5

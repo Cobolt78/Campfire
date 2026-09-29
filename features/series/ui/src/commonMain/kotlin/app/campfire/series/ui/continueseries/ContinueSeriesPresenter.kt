@@ -23,7 +23,9 @@ import com.r0adkll.kimchi.circuit.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.retained.rememberRetainedSaveable
 import com.slack.circuit.runtime.Navigator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
@@ -48,7 +50,8 @@ class ContinueSeriesPresenter(
     }
 
     val allSeries by remember {
-      seriesRepository.observeAllSeries(refresh = true)
+      seriesRepository.observeContinueSeries()
+        .flowOn(Dispatchers.Default)
         .catch { emit(emptyList()) }
     }.collectAsState(null)
 
@@ -57,6 +60,7 @@ class ContinueSeriesPresenter(
         .map { progressList ->
           progressList.associateBy { it.libraryItemId }
         }
+        .flowOn(Dispatchers.Default)
         .catch { emit(emptyMap()) }
     }.collectAsState(null)
 

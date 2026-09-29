@@ -69,3 +69,18 @@ deleteById:
 DELETE FROM series
 WHERE id = ?
   AND libraryId = ?;
+
+selectContinueSeries:
+SELECT series.* FROM series
+LEFT JOIN shelfJoin ON shelfJoin.entityId = series.id AND shelfJoin.shelfId LIKE 'continue-series_%'
+LEFT JOIN seriesBookJoin ON seriesBookJoin.seriesId = series.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = seriesBookJoin.libraryItemId AND mediaProgress.userId = :userId AND (mediaProgress.progress > 0 OR mediaProgress.isFinished = 1)
+WHERE series.libraryId = :libraryId
+  AND (
+    series.inProgress = 1
+    OR shelfJoin.entityId IS NOT NULL
+    OR mediaProgress.libraryItemId IS NOT NULL
+  )
+GROUP BY series.id
+ORDER BY COALESCE(series.bookInProgressLastUpdate, series.updatedAt) DESC;
+
