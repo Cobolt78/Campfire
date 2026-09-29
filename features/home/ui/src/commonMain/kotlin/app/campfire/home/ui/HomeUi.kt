@@ -120,6 +120,7 @@ fun HomeScreen(
             },
             contentPadding = paddingValues,
             onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
+            onHeaderClick = { shelfId -> state.eventSink(HomeUiEvent.OpenShelf(shelfId)) },
             onItemClick = { shelf, item ->
               when (item) {
                 is LibraryItem -> state.eventSink(
@@ -157,6 +158,7 @@ private fun LoadedState(
   progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
   onItemClick: (UiShelf<*>, Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
+  onHeaderClick: (String) -> Unit,
   modifier: Modifier = Modifier,
   contentPadding: PaddingValues = PaddingValues(),
   state: LazyListState = rememberLazyListState(),
@@ -172,6 +174,7 @@ private fun LoadedState(
         shelf = shelf,
         onItemClick = { onItemClick(shelf, it) },
         onViewAllUpcomingClick = onViewAllUpcomingClick,
+        onHeaderClick = onHeaderClick,
         offlineStatus = offlineStatus,
         progressStatus = progressStatus,
       )

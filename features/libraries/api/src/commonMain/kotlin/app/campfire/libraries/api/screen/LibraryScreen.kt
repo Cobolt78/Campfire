@@ -7,7 +7,12 @@ import app.campfire.common.screens.BaseScreen
 import app.campfire.core.filter.ContentFilter
 import app.campfire.core.parcelize.Parcelize
 
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.SortDirection
+
 @Parcelize
 data class LibraryScreen(
   val filter: ContentFilter? = null,
+  val sortMode: ContentSortMode? = null,
+  val sortDirection: SortDirection? = null,
 ) : BaseScreen(name = "Library")

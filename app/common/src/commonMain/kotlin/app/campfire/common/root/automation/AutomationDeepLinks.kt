@@ -124,7 +124,7 @@ object AutomationScreens {
   fun resolve(navigate: DeepLink.Navigate): Screen? = when (navigate.screen) {
     "home" -> HomeScreen
     "library" -> LibraryScreen()
-    "series" -> SeriesScreen
+    "series" -> SeriesScreen()
     "authors" -> AuthorsScreen
     "collections" -> CollectionsScreen
     "playlists" -> PlaylistsScreen

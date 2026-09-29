@@ -9,6 +9,8 @@ import app.campfire.core.model.SeriesId
 import app.campfire.core.model.Server
 import app.campfire.core.model.UserId
 import app.campfire.core.parcelize.Parcelize
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.SortDirection
 import com.slack.circuit.runtime.screen.ParcelableScreen
 import com.slack.circuit.runtime.screen.StaticScreen
 
@@ -77,7 +79,16 @@ sealed class LoginScreen : BaseScreen(name = "Login") {
 data object HomeScreen : BaseScreen(name = "Home")
 
 @Parcelize
-data object SeriesScreen : BaseScreen(name = "Series")
+data class SeriesScreen(
+  val sortMode: ContentSortMode? = null,
+  val sortDirection: SortDirection? = null,
+) : BaseScreen(name = "Series")
+
+@Parcelize
+data object ContinueSeriesScreen : BaseScreen(name = "ContinueSeries")
+
+@Parcelize
+data object DownloadsScreen : BaseScreen(name = "Downloads")
 
 @Parcelize
 data class SeriesDetailScreen(

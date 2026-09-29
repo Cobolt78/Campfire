@@ -461,3 +461,41 @@ Integrated a fully native in-app updater backed directly by GitHub Releases (`Co
    - Include both APK assets: `cobolt-campfire-standard-release_<version>.apk` and `cobolt-campfire-foss-release_<version>.apk`.
 
 
+
+---
+
+## 18. Clickable Home Shelf Headings, Dedicated Continue Series & Offline Downloads Screens
+
+### Summary
+Added interactive shelf headers with chevron indicators (Heading ›) on the Home screen to bypass the Audiobookshelf server's 5/10-item cap. Users can tap any supported shelf header to view all items with full custom sorting. Built dedicated, beautifully crafted **Continue Series** and **Offline Downloads** screens.
+
+### Key Components & Architecture
+- **Interactive Shelf Headers (ShelfHeader.kt, ShelfListItem.kt)**:
+  - ShelfHeader.kt: Displays a subtle CampfireIcons.Rounded.ChevronRight icon next to shelf titles when clickable, with a rounded ripple click target.
+  - ShelfListItem.kt: Selectively enables header clicks for supported shelves (ContinueListening, ListenAgain, RecentlyAdded, RecentSeries, ContinueSeries, Downloads, UpcomingReleases, NewestAuthors).
+- **Home Navigation Routing (HomePresenter.kt)**:
+  - RecentlyAdded › -> LibraryScreen(sortMode = AddedAt, sortDirection = Descending).
+  - RecentSeries › -> SeriesScreen(sortMode = AddedAt, sortDirection = Descending).
+  - ContinueListening › -> LibraryScreen(filter = ContentFilter.Progress(InProgress)).
+  - ListenAgain › -> LibraryScreen(filter = ContentFilter.Progress(Finished)).
+  - UpcomingReleases › -> UpcomingScreen.
+  - NewestAuthors › -> AuthorsScreen.
+  - ContinueSeries › -> ContinueSeriesScreen.
+  - Downloads › -> DownloadsScreen.
+- **Dynamic Sorting Support on Destination Screens**:
+  - LibraryScreen.kt & LibraryPresenter.kt: Extended LibraryScreen to accept optional sortMode and sortDirection parameters so navigation can specify an initial sort order without permanently overriding global preferences unless changed by user.
+  - SeriesScreen in Screens.kt & SeriesPresenter.kt: Converted SeriesScreen to a data class accepting optional sortMode and sortDirection parameters.
+- **Dedicated Continue Series Screen (features/series/ui/continueseries/)**:
+  - Reactive ContinueSeriesPresenter streams all user series via seriesRepository.observeAllSeries() and cross-references mediaProgressRepository.observeAllProgress().
+  - Accurately filters for series currently in progress (where at least one book is finished or started, and not all books are completed).
+  - Identifies the exact **Next Up** book in sequence (preferring an in-progress book, or the next unread book).
+  - Rich UI (ContinueSeriesUi.kt):
+    - Series card header with series name, progress readout ("X of Y books completed"), and chevron link to the full series detail view.
+    - Series progress indicator bar.
+    - Prominent **Next Up** book card with cover art, "NEXT UP" badge, book sequence number ("Book #&#8203;3"), title, author, and listening progress bar.
+    - Interactive sort menu: Recently Played (last read), Series Name A–Z, Progress %, Date Added, with ascending/descending toggle.
+- **Dedicated Offline Downloads Screen (features/libraries/ui/downloads/)**:
+  - Reactive DownloadsPresenter monitors offlineDownloadManager.observeAll() for completed downloads and hydrates full LibraryItem and MediaProgress models.
+  - Top app bar displays a real-time storage summary: total offline book count and formatted storage footprint (e.g. "12 books • 3.8 GB").
+  - List items render book covers, titles, authors, file sizes (e.g. "740 MB"), listening progress indicators, and offline checkmarks.
+  - Interactive sort menu: Recently Played, Date Added/Downloaded, Title A–Z, Author A–Z, File Size, with ascending/descending toggle.

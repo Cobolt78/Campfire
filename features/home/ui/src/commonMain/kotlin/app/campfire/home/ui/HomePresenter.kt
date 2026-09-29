@@ -17,14 +17,22 @@ import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
+import app.campfire.analytics.events.ActionEvent
 import app.campfire.bookinfo.api.BookInfoRegistry
 import app.campfire.bookinfo.api.UpcomingRelease
 import app.campfire.common.screens.AuthorDetailScreen
+import app.campfire.common.screens.AuthorsScreen
+import app.campfire.common.screens.ContinueSeriesScreen
+import app.campfire.common.screens.DownloadsScreen
 import app.campfire.common.screens.HomeScreen
 import app.campfire.common.screens.SeriesDetailScreen
+import app.campfire.common.screens.SeriesScreen
 import app.campfire.common.screens.UrlScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
+import app.campfire.core.filter.ContentFilter
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.SortDirection
 import app.campfire.core.model.Author
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.MediaProgress
@@ -36,6 +44,7 @@ import app.campfire.home.api.HomeRepository
 import app.campfire.home.api.map
 import app.campfire.home.api.model.ShelfIds
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.libraries.api.screen.LibraryScreen
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
@@ -226,6 +235,42 @@ class HomePresenter(
         }
         is HomeUiEvent.OpenUpcomingBook -> navigator.goTo(UrlScreen(event.url))
         HomeUiEvent.OpenUpcomingScreen -> navigator.goTo(UpcomingScreen)
+        is HomeUiEvent.OpenShelf -> {
+          when {
+            event.shelfId.startsWith(ShelfIds.ContinueListening) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ContinueListening))
+              navigator.goTo(LibraryScreen(filter = ContentFilter.Progress(ContentFilter.Progress.Type.InProgress)))
+            }
+            event.shelfId.startsWith(ShelfIds.ListenAgain) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ListenAgain))
+              navigator.goTo(LibraryScreen(filter = ContentFilter.Progress(ContentFilter.Progress.Type.Finished)))
+            }
+            event.shelfId.startsWith(ShelfIds.RecentlyAdded) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.RecentlyAdded))
+              navigator.goTo(LibraryScreen(sortMode = ContentSortMode.AddedAt, sortDirection = SortDirection.Descending))
+            }
+            event.shelfId.startsWith(ShelfIds.RecentSeries) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.RecentSeries))
+              navigator.goTo(SeriesScreen(sortMode = ContentSortMode.AddedAt, sortDirection = SortDirection.Descending))
+            }
+            event.shelfId.startsWith(ShelfIds.ContinueSeries) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ContinueSeries))
+              navigator.goTo(ContinueSeriesScreen)
+            }
+            event.shelfId == "downloads" -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", "downloads"))
+              navigator.goTo(DownloadsScreen)
+            }
+            event.shelfId.startsWith(ShelfIds.UpcomingReleases) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.UpcomingReleases))
+              navigator.goTo(UpcomingScreen)
+            }
+            event.shelfId.startsWith(ShelfIds.NewestAuthors) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.NewestAuthors))
+              navigator.goTo(AuthorsScreen)
+            }
+          }
+        }
         HomeUiEvent.Refresh -> {
           if (!isRefreshing) {
             isRefreshing = true

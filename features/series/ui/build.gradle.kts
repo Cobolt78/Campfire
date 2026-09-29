@@ -11,6 +11,7 @@ kotlin {
       dependencies {
         implementation(projects.data.bookinfo.api)
         implementation(projects.features.series.api)
+        implementation(projects.features.libraries.api)
         implementation(projects.features.filters.api)
         implementation(projects.features.user.api)
         implementation(projects.infra.audioplayer.api)
