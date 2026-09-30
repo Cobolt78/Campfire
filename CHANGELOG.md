@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.5]
+
+### Added
+
+- Dismissible in-app update banner at the top of the Home feed when a newer GitHub release is available, with instant download and dismiss actions
+- Marquee text scrolling and prominent book sequence formatting (`Book #X • Series Name`) on the Continue Series alternate grid cards
+- Larger, prominent cover art layout for Next Up books in the Continue Series default list view
+
+### Fixed
+
+- Eliminated the 20-30 second reload delay when returning from book details back to Continue Series by retaining in-memory state and parallelizing database book queries
+
 ## [1.2.4]
 
 ### Added

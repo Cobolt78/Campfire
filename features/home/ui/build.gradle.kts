@@ -18,6 +18,7 @@ kotlin {
 
         implementation(projects.data.bookinfo.api)
         implementation(projects.features.discover.api)
+        implementation(projects.infra.updates.api)
 
         implementation(libs.compose.components.resources)
         implementation(libs.kotlinx.datetime)

@@ -44,6 +44,7 @@ import app.campfire.home.ui.composables.ShelfListItem
 import app.campfire.ui.appbar.CampfireAppBar
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 import app.campfire.user.api.MediaProgressKey
+import app.campfire.updates.AppUpdateWidget
 import campfire.features.home.ui.generated.resources.Res
 import campfire.features.home.ui.generated.resources.home_feed_load_error
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
@@ -55,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 fun HomeScreen(
   state: HomeUiState,
   campfireAppbar: CampfireAppBar,
+  appUpdateWidget: AppUpdateWidget,
   modifier: Modifier = Modifier,
 ) {
   val appBarBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
@@ -112,6 +114,7 @@ fun HomeScreen(
         } else {
           LoadedState(
             shelves = state.homeFeed.data,
+            appUpdateWidget = appUpdateWidget,
             offlineStatus = { libraryItemId ->
               state.offlineStates[libraryItemId].asWidgetStatus()
             },
@@ -154,6 +157,7 @@ fun HomeScreen(
 @Composable
 private fun LoadedState(
   shelves: List<UiShelf<ShelfEntity>>,
+  appUpdateWidget: AppUpdateWidget,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
   progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
   onItemClick: (UiShelf<*>, Any) -> Unit,
@@ -169,6 +173,12 @@ private fun LoadedState(
     contentPadding = contentPadding,
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
+    item(key = "app_update_banner") {
+      appUpdateWidget.Content(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+      )
+    }
+
     items(shelves) { shelf ->
       ShelfListItem(
         shelf = shelf,

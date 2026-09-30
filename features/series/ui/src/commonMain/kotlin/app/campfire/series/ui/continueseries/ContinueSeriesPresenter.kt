@@ -20,7 +20,9 @@ import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.series.api.SeriesRepository
 import app.campfire.user.api.MediaProgressRepository
 import com.r0adkll.kimchi.circuit.annotations.CircuitInject
+import androidx.compose.runtime.LaunchedEffect
 import com.slack.circuit.foundation.NonPausablePresenter
+import com.slack.circuit.retained.rememberRetained
 import com.slack.circuit.retained.rememberRetainedSaveable
 import com.slack.circuit.runtime.Navigator
 import kotlinx.coroutines.Dispatchers
@@ -51,10 +53,14 @@ class ContinueSeriesPresenter(
       mutableStateOf(false)
     }
 
-    val items by remember(sortMode, sortAscending) {
+    var cachedItems by rememberRetained {
+      mutableStateOf<List<ContinueSeriesItem>?>(null)
+    }
+
+    LaunchedEffect(sortMode, sortAscending) {
       kotlinx.coroutines.flow.combine(
         seriesRepository.observeContinueSeries(),
-        mediaProgressRepository.observeAllProgress().map { it.associateBy { p -> p.libraryItemId } }
+        mediaProgressRepository.observeAllProgress().map { it.associateBy { p -> p.libraryItemId } },
       ) { seriesList, progressMap ->
         seriesList.mapNotNull { series ->
           val books = series.books?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
@@ -110,12 +116,15 @@ class ContinueSeriesPresenter(
         }
       }
       .flowOn(Dispatchers.Default)
-    }.collectAsState(null)
-    
-    val isLoading = items == null
+      .collect {
+        cachedItems = it
+      }
+    }
+
+    val isLoading = cachedItems == null
 
     return ContinueSeriesUiState(
-      items = items ?: emptyList(),
+      items = cachedItems ?: emptyList(),
       isLoading = isLoading,
       sortMode = sortMode,
       sortAscending = sortAscending,

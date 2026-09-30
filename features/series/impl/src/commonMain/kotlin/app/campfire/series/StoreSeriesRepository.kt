@@ -48,6 +48,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
@@ -314,22 +315,23 @@ class StoreSeriesRepository(
           .asFlow()
           .mapToList(dispatcherProvider.databaseRead)
           .mapLatest { seriesList ->
-            val seriesWithBooks = seriesList.associateWith { s ->
-              db.libraryItemsQueries
-                .selectForSeries(
-                  userId = user.id,
-                  seriesId = s.id,
-                  mapper = ::mapToLibraryItemWithProgress,
-                )
-                .awaitAsList()
-            }
+            withContext(dispatcherProvider.databaseRead) {
+              seriesList.map { s ->
+                async {
+                  val books = db.libraryItemsQueries
+                    .selectForSeries(
+                      userId = user.id,
+                      seriesId = s.id,
+                      mapper = ::mapToLibraryItemWithProgress,
+                    )
+                    .awaitAsList()
+                  val sortedBooks = books
+                    .map { it.asDomainModel(urlHydrator) }
+                    .sortedBy { it.media.metadata.seriesSequence?.sequence }
 
-            seriesWithBooks.entries.map { (s, books) ->
-              val sortedBooks = books
-                .map { it.asDomainModel(urlHydrator) }
-                .sortedBy { it.media.metadata.seriesSequence?.sequence }
-
-              s.asDomainModel(sortedBooks)
+                  s.asDomainModel(sortedBooks)
+                }
+              }.awaitAll()
             }
           }
       }

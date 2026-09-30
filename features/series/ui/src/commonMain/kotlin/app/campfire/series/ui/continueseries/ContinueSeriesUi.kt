@@ -23,7 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -284,11 +286,11 @@ private fun ContinueSeriesCard(
           modifier = Modifier.padding(12.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          // Book Cover
+          // Book Cover (enlarged left poster)
           Box(
             modifier = Modifier
-              .size(width = 56.dp, height = 56.dp)
-              .clip(RoundedCornerShape(8.dp))
+              .size(width = 80.dp, height = 108.dp)
+              .clip(RoundedCornerShape(10.dp))
               .background(MaterialTheme.colorScheme.primaryContainer),
           ) {
             item.nextUpBook.media.coverImageUrl.takeIf { it.isNotBlank() }?.let { coverUrl ->
@@ -301,10 +303,15 @@ private fun ContinueSeriesCard(
             }
           }
 
-          Spacer(modifier = Modifier.width(12.dp))
+          Spacer(modifier = Modifier.width(14.dp))
 
           // Next Up Book Details
-          Column(modifier = Modifier.weight(1f)) {
+          Column(
+            modifier = Modifier
+              .weight(1f)
+              .heightIn(min = 108.dp),
+            verticalArrangement = Arrangement.Center,
+          ) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -327,22 +334,24 @@ private fun ContinueSeriesCard(
                     text = "Book ${seq.formattedSequence}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium,
                   )
                 }
               }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
               text = item.nextUpBook.media.metadata.title ?: "Untitled",
-              style = MaterialTheme.typography.bodyMedium,
-              fontWeight = FontWeight.SemiBold,
-              maxLines = 1,
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              maxLines = 2,
               overflow = TextOverflow.Ellipsis,
             )
 
             item.nextUpBook.media.metadata.authorName?.let { author ->
+              Spacer(modifier = Modifier.height(4.dp))
               Text(
                 text = author,
                 style = MaterialTheme.typography.bodySmall,
@@ -350,19 +359,6 @@ private fun ContinueSeriesCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
               )
-            }
-
-            item.nextUpBookProgress?.let { prog ->
-              if (!prog.isFinished && prog.progress > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
-                val pct = (prog.progress * 100).toInt()
-                Text(
-                  text = "$pct% listened",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.primary,
-                  fontWeight = FontWeight.Medium,
-                )
-              }
             }
           }
         }
@@ -389,40 +385,32 @@ private fun ContinueSeriesGridCard(
           modifier = Modifier.fillMaxSize(),
           contentScale = ContentScale.Crop,
         )
-        // Add progress indicator if any
-        item.nextUpBookProgress?.let { prog ->
-          if (!prog.isFinished && prog.progress > 0) {
-            LinearProgressIndicator(
-              progress = { prog.progress },
-              modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
-              color = MaterialTheme.colorScheme.primary,
-              trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-          }
-        }
       }
       
-      Column(modifier = Modifier.padding(16.dp)) {
+      Column(modifier = Modifier.padding(12.dp)) {
         Text(
           text = item.nextUpBook.media.metadata.title ?: "Untitled",
           style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
           maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.basicMarquee(),
         )
         
+        Spacer(modifier = Modifier.height(2.dp))
+
         val sequence = item.nextUpBook.media.metadata.seriesSequence?.formattedSequence
         val subtitle = buildString {
-          append(item.series.name)
           if (!sequence.isNullOrBlank()) {
-            append(" - Book $sequence")
+            append("Book $sequence • ")
           }
+          append(item.series.name)
         }
         
         Text(
           text = subtitle,
           style = MaterialTheme.typography.bodySmall,
           maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.basicMarquee(),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
