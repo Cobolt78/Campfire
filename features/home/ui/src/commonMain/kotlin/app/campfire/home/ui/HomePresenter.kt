@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.mapLatest
@@ -159,37 +160,43 @@ class HomePresenter(
     // Now combine both the shelves and entities into the final set of UiShelf to render
     // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
     val feed by remember {
-      derivedStateOf {
-        domainFeed.map { shelves ->
+      combine(
+        snapshotFlow { domainFeed },
+        snapshotFlow { shelfEntities },
+        snapshotFlow { completedDownloads },
+        snapshotFlow { userMediaProgress },
+        snapshotFlow { upcomingReleases },
+      ) { domainFeedState, currentShelfEntities, currentCompletedDownloads, currentUserMediaProgress, currentUpcomingReleases ->
+        domainFeedState.map { shelves ->
           val uiShelves = shelves
             .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.core.model.ShelfType.AUTHOR }
             .map { shelf ->
               UiShelf(
                 shelf,
-                shelfEntities[shelf.id]
+                currentShelfEntities[shelf.id]
                   ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
               )
             }
           
-          val withEnhancedContinue = enhanceContinueListeningShelf(uiShelves, completedDownloads, userMediaProgress)
-          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, completedDownloads, userMediaProgress)
-          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, upcomingReleases).toMutableList()
+          val withEnhancedContinue = enhanceContinueListeningShelf(uiShelves, currentCompletedDownloads, currentUserMediaProgress)
+          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, currentCompletedDownloads, currentUserMediaProgress)
+          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, currentUpcomingReleases).toMutableList()
 
-          if (completedDownloads.isNotEmpty()) {
+          if (currentCompletedDownloads.isNotEmpty()) {
             withUpcoming.add(
               UiShelf(
                 id = "downloads",
                 label = "Downloads",
-                total = completedDownloads.size,
-                entities = LoadState.Loaded(completedDownloads)
+                total = currentCompletedDownloads.size,
+                entities = LoadState.Loaded(currentCompletedDownloads)
               )
             )
           }
 
           withUpcoming.toPersistentList()
         }
-      }
-    }
+      }.flowOn(kotlinx.coroutines.Dispatchers.Default)
+    }.collectAsState(FeedResponse.Loading)
 
     val offlineDownloads by remember {
       combine(

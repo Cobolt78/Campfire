@@ -36,11 +36,13 @@ class ContinueSeriesPresenter(
   @Assisted private val navigator: Navigator,
   private val seriesRepository: SeriesRepository,
   private val mediaProgressRepository: MediaProgressRepository,
+  private val settings: app.campfire.settings.api.CampfireSettings,
   private val analytics: Analytics,
 ) : NonPausablePresenter<ContinueSeriesUiState> {
 
   @Composable
   override fun present(): ContinueSeriesUiState {
+    val alternateView by remember { settings.observeContinueSeriesAlternateView() }.collectAsState(false)
     var sortMode by rememberRetainedSaveable {
       mutableStateOf(ContinueSeriesSort.Recent)
     }
@@ -49,94 +51,75 @@ class ContinueSeriesPresenter(
       mutableStateOf(false)
     }
 
-    val allSeries by remember {
-      seriesRepository.observeContinueSeries()
-        .flowOn(Dispatchers.Default)
-        .catch { emit(emptyList()) }
-    }.collectAsState(null)
+    val items by remember(sortMode, sortAscending) {
+      kotlinx.coroutines.flow.combine(
+        seriesRepository.observeContinueSeries(),
+        mediaProgressRepository.observeAllProgress().map { it.associateBy { p -> p.libraryItemId } }
+      ) { seriesList, progressMap ->
+        seriesList.mapNotNull { series ->
+          val books = series.books?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+          val total = books.size
+          val completedCount = books.count { book -> progressMap[book.id]?.isFinished == true }
 
-    val allProgress by remember {
-      mediaProgressRepository.observeAllProgress()
-        .map { progressList ->
-          progressList.associateBy { it.libraryItemId }
-        }
-        .flowOn(Dispatchers.Default)
-        .catch { emit(emptyMap()) }
-    }.collectAsState(null)
-
-    val isLoading = allSeries == null || allProgress == null
-
-    val items = remember(allSeries, allProgress, sortMode, sortAscending) {
-      val seriesList = allSeries ?: return@remember emptyList()
-      val progressMap = allProgress ?: return@remember emptyList()
-
-      seriesList.mapNotNull { series ->
-        val books = series.books?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-        val total = books.size
-
-        val completedCount = books.count { book ->
-          progressMap[book.id]?.isFinished == true
-        }
-
-        // A series belongs in Continue Series if at least one book is started/finished
-        // and not all books are completed (or series.inProgress is true)
-        val hasStartedAny = series.inProgress || books.any { book ->
-          val p = progressMap[book.id]
-          p != null && (p.isFinished || p.progress > 0)
-        }
-
-        if (!hasStartedAny || completedCount >= total) {
-          return@mapNotNull null
-        }
-
-        // Find Next Up Book:
-        // Prefer book currently in progress, else first unread book
-        val nextUp = books.firstOrNull { book ->
-          val p = progressMap[book.id]
-          p != null && !p.isFinished && p.progress > 0
-        } ?: books.firstOrNull { book ->
-          val p = progressMap[book.id]
-          p == null || !p.isFinished
-        } ?: books.first()
-
-        val nextUpProgress = progressMap[nextUp.id]
-
-        val lastReadTime = maxOf(
-          series.bookInProgressLastUpdate ?: 0L,
-          books.maxOfOrNull { progressMap[it.id]?.lastUpdate ?: 0L } ?: 0L,
-          series.updatedAt,
-        )
-
-        ContinueSeriesItem(
-          series = series,
-          nextUpBook = nextUp,
-          nextUpBookProgress = nextUpProgress,
-          totalBooks = total,
-          completedBooks = completedCount,
-          lastReadTimestamp = lastReadTime,
-        )
-      }.let { list ->
-        val comparator = when (sortMode) {
-          ContinueSeriesSort.Recent -> compareBy<ContinueSeriesItem> { it.lastReadTimestamp }
-          ContinueSeriesSort.Name -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.series.name }
-          ContinueSeriesSort.Progress -> compareBy<ContinueSeriesItem> {
-            it.completedBooks.toFloat() / it.totalBooks.toFloat()
+          val hasStartedAny = series.inProgress || books.any { book ->
+            val p = progressMap[book.id]
+            p != null && (p.isFinished || p.progress > 0)
           }
-          ContinueSeriesSort.DateAdded -> compareBy<ContinueSeriesItem> { it.series.addedAt }
-        }
-        if (sortAscending) {
-          list.sortedWith(comparator)
-        } else {
-          list.sortedWith(comparator.reversed())
+          val hasActiveBook = books.any { book ->
+            val p = progressMap[book.id]
+            p != null && !p.isFinished && p.progress > 0
+          }
+
+          if (!hasStartedAny || completedCount >= total || hasActiveBook) {
+            return@mapNotNull null
+          }
+
+          val nextUp = books.firstOrNull { book ->
+            val p = progressMap[book.id]
+            p != null && !p.isFinished && p.progress > 0
+          } ?: books.firstOrNull { book ->
+            val p = progressMap[book.id]
+            p == null || !p.isFinished
+          } ?: books.first()
+
+          val nextUpProgress = progressMap[nextUp.id]
+          val lastReadTime = maxOf(
+            series.bookInProgressLastUpdate ?: 0L,
+            books.maxOfOrNull { progressMap[it.id]?.lastUpdate ?: 0L } ?: 0L,
+            series.updatedAt,
+          )
+
+          ContinueSeriesItem(
+            series = series,
+            nextUpBook = nextUp,
+            nextUpBookProgress = nextUpProgress,
+            totalBooks = total,
+            completedBooks = completedCount,
+            lastReadTimestamp = lastReadTime,
+          )
+        }.let { list ->
+          val comparator = when (sortMode) {
+            ContinueSeriesSort.Recent -> compareBy<ContinueSeriesItem> { it.lastReadTimestamp }
+            ContinueSeriesSort.Name -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.series.name }
+            ContinueSeriesSort.Progress -> compareBy<ContinueSeriesItem> {
+              it.completedBooks.toFloat() / it.totalBooks.toFloat()
+            }
+            ContinueSeriesSort.DateAdded -> compareBy<ContinueSeriesItem> { it.series.addedAt }
+          }
+          if (sortAscending) list.sortedWith(comparator) else list.sortedWith(comparator.reversed())
         }
       }
-    }
+      .flowOn(Dispatchers.Default)
+    }.collectAsState(null)
+    
+    val isLoading = items == null
 
     return ContinueSeriesUiState(
-      items = items,
+      items = items ?: emptyList(),
       isLoading = isLoading,
       sortMode = sortMode,
       sortAscending = sortAscending,
+      alternateView = alternateView,
     ) { event ->
       when (event) {
         ContinueSeriesUiEvent.Back -> navigator.pop()

@@ -152,6 +152,9 @@ class SettingsPresenter(
     val itemCardMarqueeEnabled by remember {
       settings.observeLibraryItemMarqueeEnabled()
     }.collectAsState()
+    val continueSeriesAlternateView by remember {
+      settings.observeContinueSeriesAlternateView()
+    }.collectAsState(false)
 
     // Playback Settings
     val playbackRates by remember { playbackSettings.observePlaybackRates() }.collectAsState()
@@ -269,6 +272,7 @@ class SettingsPresenter(
         dynamicItemDetailTheming = dynamicItemDetailTheming,
         dynamicPlaybackTheming = dynamicPlaybackTheming,
         itemCardMarqueeEnabled = itemCardMarqueeEnabled,
+        continueSeriesAlternateView = continueSeriesAlternateView,
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
@@ -361,6 +365,7 @@ class SettingsPresenter(
           is DynamicItemDetailTheming -> themeSettings.dynamicallyThemeItemDetail = event.enabled
           is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
           is ItemCardMarqueeEnabled -> settings.libraryItemMarqueeEnabled = event.enabled
+          is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView -> settings.continueSeriesAlternateView = event.enabled
           SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> navigator.goTo(ThemePickerScreen)
         }
 

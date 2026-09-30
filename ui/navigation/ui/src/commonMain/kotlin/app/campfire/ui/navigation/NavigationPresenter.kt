@@ -46,6 +46,11 @@ import campfire.ui.navigation.ui.generated.resources.nav_statistics_content_desc
 import campfire.ui.navigation.ui.generated.resources.nav_statistics_label
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_content_description
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_label
+import campfire.ui.navigation.ui.generated.resources.nav_whats_new_content_description
+import campfire.ui.navigation.ui.generated.resources.nav_whats_new_label
+import app.campfire.common.compose.icons.rounded.NewReleases
+import app.campfire.whatsnew.api.screen.ChangelogScreen
+import app.campfire.common.screens.DownloadsScreen
 import com.r0adkll.kimchi.annotations.ContributesTo
 import me.tatarka.inject.annotations.Inject
 import org.jetbrains.compose.resources.stringResource
@@ -62,6 +67,7 @@ class NavigationPresenter(
   private val libraryRepository: LibraryRepository,
   private val remoteEpisodeDownloadTracker: RemoteEpisodeDownloadTracker,
   private val settings: CampfireSettings,
+  private val applicationInfo: app.campfire.core.app.ApplicationInfo,
 ) {
 
   /**
@@ -110,6 +116,7 @@ class NavigationPresenter(
 
     return DrawerUiState(
       themeMode = themeMode,
+      appVersion = applicationInfo.versionName,
       navigationItems = items,
     ) { event ->
       when (event) {
@@ -193,6 +200,16 @@ class NavigationPresenter(
           contentDescription = stringResource(Res.string.nav_settings_content_description),
           iconImageVector = CampfireIcons.Rounded.Settings,
           selectedImageVector = CampfireIcons.Filled.Settings,
+        ),
+      )
+
+      add(
+        HomeNavigationItem(
+          screen = app.campfire.whatsnew.api.screen.ChangelogScreen,
+          label = stringResource(Res.string.nav_whats_new_label),
+          contentDescription = stringResource(Res.string.nav_whats_new_content_description),
+          iconImageVector = app.campfire.common.compose.icons.CampfireIcons.Rounded.NewReleases,
+          selectedImageVector = app.campfire.common.compose.icons.CampfireIcons.Rounded.NewReleases,
         ),
       )
     }

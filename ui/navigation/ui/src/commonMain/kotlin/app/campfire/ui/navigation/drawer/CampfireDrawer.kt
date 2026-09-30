@@ -171,9 +171,18 @@ fun CampfireDrawer(
           horizontal = 16.dp,
           vertical = 8.dp,
         ),
-      horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      val changeThemeModeLabel = stringResource(Res.string.action_change_theme_mode)
+      Text(
+        text = "v${state.appVersion}",
+        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 12.dp)
+      )
+
+      Row(horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End)) {
+        val changeThemeModeLabel = stringResource(Res.string.action_change_theme_mode)
       IconButtonTooltip(
         text = changeThemeModeLabel,
       ) {
@@ -255,6 +264,7 @@ fun CampfireDrawer(
         ) {
           Icon(CampfireIcons.Rounded.Palette, contentDescription = changeThemeLabel)
         }
+      }
       }
     }
   }

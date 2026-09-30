@@ -13,7 +13,7 @@ import me.tatarka.inject.annotations.Inject
  * Debug builds use the developer-settings driven [FakeAppUpdateSource] so the app
  * update widget and flows can be tested from the Developer settings pane.
  */
-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class, GitHubAppUpdateSource::class])
 @Inject
 class DebugAppUpdateSource(
   private val fake: FakeAppUpdateSource,

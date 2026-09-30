@@ -52,6 +52,7 @@ data class AppearanceSettingsInfo(
   val dynamicItemDetailTheming: Boolean,
   val dynamicPlaybackTheming: Boolean,
   val itemCardMarqueeEnabled: Boolean,
+  val continueSeriesAlternateView: Boolean,
 )
 
 @Immutable
@@ -189,6 +190,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class DynamicItemDetailTheming(val enabled: Boolean) : AppearanceSettingEvent
     data class DynamicPlaybackTheming(val enabled: Boolean) : AppearanceSettingEvent
     data class ItemCardMarqueeEnabled(val enabled: Boolean) : AppearanceSettingEvent
+    data class ContinueSeriesAlternateView(val enabled: Boolean) : AppearanceSettingEvent
     data object OpenThemeBuilder : AppearanceSettingEvent
   }
 

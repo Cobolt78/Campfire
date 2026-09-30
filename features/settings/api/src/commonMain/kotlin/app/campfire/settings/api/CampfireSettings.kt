@@ -59,6 +59,9 @@ interface CampfireSettings {
   var collectionsDisplayState: GroupDisplayState
   fun observeCollectionsDisplayState(): StateFlow<GroupDisplayState>
 
+  var continueSeriesAlternateView: Boolean
+  fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
+
   var playlistsDisplayState: GroupDisplayState
   fun observePlaylistsDisplayState(): StateFlow<GroupDisplayState>
 

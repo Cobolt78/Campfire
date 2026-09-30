@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -151,25 +155,50 @@ fun ContinueSeries(
       }
 
       else -> {
-        LazyColumn(
-          modifier = Modifier.fillMaxSize(),
-          contentPadding = PaddingValues(
-            top = paddingValues.calculateTopPadding() + 8.dp,
-            bottom = paddingValues.calculateBottomPadding() + 16.dp,
-            start = 16.dp,
-            end = 16.dp,
-          ),
-          verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          items(
-            items = state.items,
-            key = { it.series.id },
-          ) { item ->
-            ContinueSeriesCard(
-              item = item,
-              onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
-              onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
-            )
+        if (state.alternateView) {
+          LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 160.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+              top = paddingValues.calculateTopPadding() + 8.dp,
+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
+              start = 16.dp,
+              end = 16.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            items(
+              items = state.items,
+              key = { it.series.id },
+            ) { item ->
+              ContinueSeriesGridCard(
+                item = item,
+                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
+              )
+            }
+          }
+        } else {
+          LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+              top = paddingValues.calculateTopPadding() + 8.dp,
+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
+              start = 16.dp,
+              end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            items(
+              items = state.items,
+              key = { it.series.id },
+            ) { item ->
+              ContinueSeriesCard(
+                item = item,
+                onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
+                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
+              )
+            }
           }
         }
       }
@@ -341,3 +370,63 @@ private fun ContinueSeriesCard(
     }
   }
 }
+
+@Composable
+private fun ContinueSeriesGridCard(
+  item: ContinueSeriesItem,
+  onBookClick: (app.campfire.core.model.LibraryItem) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  app.campfire.common.compose.widgets.ElevatedContentCard(
+    modifier = modifier,
+    onClick = { onBookClick(item.nextUpBook) },
+  ) {
+    Column {
+      Box(modifier = Modifier.aspectRatio(1f).fillMaxWidth()) {
+        ItemImage(
+          imageUrl = item.nextUpBook.media.coverImageUrl,
+          contentDescription = item.nextUpBook.media.metadata.title,
+          modifier = Modifier.fillMaxSize(),
+          contentScale = ContentScale.Crop,
+        )
+        // Add progress indicator if any
+        item.nextUpBookProgress?.let { prog ->
+          if (!prog.isFinished && prog.progress > 0) {
+            LinearProgressIndicator(
+              progress = { prog.progress },
+              modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
+              color = MaterialTheme.colorScheme.primary,
+              trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+          }
+        }
+      }
+      
+      Column(modifier = Modifier.padding(16.dp)) {
+        Text(
+          text = item.nextUpBook.media.metadata.title ?: "Untitled",
+          style = MaterialTheme.typography.titleSmall,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        
+        val sequence = item.nextUpBook.media.metadata.seriesSequence?.formattedSequence
+        val subtitle = buildString {
+          append(item.series.name)
+          if (!sequence.isNullOrBlank()) {
+            append(" - Book $sequence")
+          }
+        }
+        
+        Text(
+          text = subtitle,
+          style = MaterialTheme.typography.bodySmall,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+    }
+  }
+}
+

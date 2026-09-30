@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.4]
+
+### Added
+
+- "Continue Series Alternate View" toggle in Appearance Settings to optionally display in-progress series as a grid with series names and book sequence numbers instead of a list
+
+### Fixed
+
+- Eliminated main thread freezing and multiple-second delays when swiping back from the Continue Series screen or Library screens by offloading complex shelf sorting and library pagination state mapping to background threads
+
 ## [1.2.3]
 
 ### Fixed

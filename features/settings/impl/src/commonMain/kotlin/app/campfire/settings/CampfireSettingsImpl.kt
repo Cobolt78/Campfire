@@ -99,6 +99,10 @@ class CampfireSettingsImpl(
   override fun observeCollectionsDisplayState(): StateFlow<GroupDisplayState> =
     collectionsDisplayStateProperty.observe()
 
+  private val continueSeriesAlternateViewProperty = booleanSetting(KEY_CONTINUE_SERIES_ALTERNATE_VIEW, false)
+  override var continueSeriesAlternateView: Boolean by continueSeriesAlternateViewProperty
+  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> = continueSeriesAlternateViewProperty.observe()
+
   private val playlistsDisplayStateProperty = enumSetting(KEY_PLAYLISTS_DISPLAY_STATE, GroupDisplayState)
   override var playlistsDisplayState: GroupDisplayState by playlistsDisplayStateProperty
   override fun observePlaylistsDisplayState(): StateFlow<GroupDisplayState> =
@@ -171,6 +175,7 @@ internal const val KEY_SERIES_SORT_MODE = "pref_series_sort_mode"
 internal const val KEY_SERIES_SORT_DIRECTION = "pref_series_sort_direction"
 internal const val KEY_SERIES_DISPLAY_STATE = "pref_series_display_state"
 internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_state"
+internal const val KEY_CONTINUE_SERIES_ALTERNATE_VIEW = "pref_continue_series_alternate_view"
 internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
 internal const val KEY_CURRENT_USER_ID = "pref_current_user_id"
 internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"

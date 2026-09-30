@@ -33,6 +33,7 @@ data class ContinueSeriesUiState(
   val isLoading: Boolean,
   val sortMode: ContinueSeriesSort,
   val sortAscending: Boolean,
+  val alternateView: Boolean,
   val eventSink: (ContinueSeriesUiEvent) -> Unit,
 ) : CircuitUiState
 
