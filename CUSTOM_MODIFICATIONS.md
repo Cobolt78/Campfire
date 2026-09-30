@@ -557,3 +557,24 @@ Diagnosed and fixed an Application Not Responding (ANR) freeze when tapping the 
    - Switched from `observeAllSeries` to `observeContinueSeries()`.
    - Applied `.flowOn(Dispatchers.Default)` to ensure sorting and filtering execute completely off the UI thread.
    - Preserves reading progress metadata (`inProgress`, `bookInProgressLastUpdate`, `firstBookUnreadId`) across mapping layers.
+
+---
+
+## 21. Continue Series Alternate View, Drawer Version Display & Main Thread Performance Optimization (v1.2.4)
+
+### Summary
+Added a user-configurable alternate view for Continue Series in Appearance settings, placed the current app version prominently in the main navigation drawer, and eliminated all UI sluggishness / swipe-back stutter across the app by moving heavy Compose state derivation off the main thread onto background coroutines.
+
+### Key Changes
+1. **Continue Series Alternate Grid View (`ContinueSeriesUi.kt`, `AppearancePane.kt`)**:
+   - Added `continueSeriesAlternateView` boolean toggle to `CampfireSettings` and `AppearancePane.kt`.
+   - When enabled, renders a `LazyVerticalGrid` that mirrors the visual layout of "Continue Listening" using `ContinueSeriesGridCard` / `ElevatedContentCard`.
+   - Displays the series title and sequence indicator (`#X in [Series Name]`) underneath the book title.
+   - Active books currently in progress are cleanly excluded from the grid so the user only sees subsequent unread books in their series.
+2. **Main Navigation Drawer App Version Display (`CampfireDrawer.kt`)**:
+   - Integrated the application version string (`v1.2.4`) into the bottom row of `CampfireDrawer.kt`, positioned alongside the theme toggle controls.
+   - Powered by `ApplicationInfo.versionName` fed into `NavigationPresenter.kt` and `DrawerUiState.kt`.
+3. **UI Snappiness & Main Thread Offload (`HomePresenter.kt`, `ContinueSeriesPresenter.kt`)**:
+   - Heavy data transformations (shelf item enrichment, progress map lookups, and list sorting) previously executing synchronously inside Composable `remember { derivedStateOf { ... } }` blocks have been transitioned to Kotlin `Flow.combine()` pipelines offloaded to `Dispatchers.Default`.
+   - Eliminates UI freezes and multi-second stutters when swiping back to the Home screen or returning from detail views.
+
