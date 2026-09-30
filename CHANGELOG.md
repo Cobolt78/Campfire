@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - "Continue Series Alternate View" toggle in Appearance Settings to optionally display in-progress series as a grid with series names and book sequence numbers instead of a list
+- App version number display at the bottom of the main navigation drawer menu
 
 ### Fixed
 
