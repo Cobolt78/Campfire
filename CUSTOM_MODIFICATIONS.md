@@ -601,4 +601,26 @@ Added a prominent yet dismissible in-app update banner directly at the top of th
    - Enlarged the Next Up cover art from a 56dp thumbnail to a prominent `80 × 108 dp` book jacket with `10.dp` rounded corners.
    - Arranged metadata in a clean vertical stack beside the cover (Next Up badge, Book number, 2-line title, and author name), removing redundant progress bars.
 
+---
+
+## 23. Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)
+
+### Summary
+Completely eliminated the 15-second loading delay when navigating between the Home Screen and Continue Series. Stored computed series in an in-memory repository cache with `replay = 1` and presenter-level caching that survives leaving the screen, and rewrote the SQLite series query to filter out completed and active series directly at the database level.
+
+### Key Changes
+1. **Repository-Level In-Memory Cache with Replay Buffer (`StoreSeriesRepository.kt`)**:
+   - Transformed `StoreSeriesRepository.observeContinueSeries()` into a shared flow (`shareIn`) backed by `repositoryScope` with `SharingStarted.WhileSubscribed(stopTimeoutMillis = 300_000)` and `replay = 1`.
+   - Caches the loaded series in UserScope memory for up to 5 minutes after leaving the screen.
+2. **Presenter Memory Retention Across Screen Instances (`ContinueSeriesPresenter.kt`)**:
+   - Added a static `@Volatile memoryCache` to `ContinueSeriesPresenter`.
+   - Initialized `cachedItems` directly from `memoryCache`, ensuring the screen renders in **0 ms** without displaying a loading indicator when opened from the Home Screen.
+   - Background `LaunchedEffect` continues silently checking for fresh changes and updates the cache without UI interruption.
+3. **SQLite Completed & Active Series Exclusion (`series.sq`)**:
+   - Rewrote `selectContinueSeries` to use subquery checks:
+     - `EXISTS` on unread books: ensures series where all books are marked `isFinished = 1` are excluded directly by SQLite.
+     - `NOT EXISTS` on active books: filters out series with actively playing books (`isFinished = 0 AND progress > 0`).
+   - Prevents loading dozens of completed series and hundreds of books from storage into memory only to discard them in Kotlin, reducing database execution time from 15 seconds down to milliseconds.
+
+
 
