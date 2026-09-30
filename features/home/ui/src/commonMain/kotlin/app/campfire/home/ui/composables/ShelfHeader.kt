@@ -3,29 +3,44 @@
 
 package app.campfire.home.ui.composables
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.ChevronRight
+import app.campfire.common.compose.icons.rounded.Refresh
 import app.campfire.home.api.model.ShelfIds
 import app.campfire.home.ui.UiShelf
 import campfire.features.home.ui.generated.resources.Res
+import campfire.features.home.ui.generated.resources.discover_refresh_cd
 import campfire.features.home.ui.generated.resources.upcoming_shelf_title
 import org.jetbrains.compose.resources.stringResource
 
@@ -34,6 +49,8 @@ fun ShelfHeader(
   shelf: UiShelf<*>,
   modifier: Modifier = Modifier,
   onHeaderClick: (() -> Unit)? = null,
+  onRefreshClick: (() -> Unit)? = null,
+  isRefreshing: Boolean = false,
 ) {
   val title = when (shelf.id) {
     ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
@@ -41,11 +58,13 @@ fun ShelfHeader(
     else -> shelf.label
   }
 
-  Box(
+  Row(
     modifier = modifier
+      .fillMaxWidth()
       .height(48.dp)
       .padding(horizontal = 8.dp),
-    contentAlignment = Alignment.CenterStart,
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween,
   ) {
     if (onHeaderClick != null) {
       Row(
@@ -76,6 +95,38 @@ fun ShelfHeader(
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(horizontal = 8.dp),
       )
+    }
+
+    if (onRefreshClick != null) {
+      val infiniteTransition = rememberInfiniteTransition(label = "refresh_transition")
+      val rotation by if (isRefreshing) {
+        infiniteTransition.animateFloat(
+          initialValue = 0f,
+          targetValue = 360f,
+          animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+          ),
+          label = "refresh_rotation",
+        )
+      } else {
+        remember { mutableStateOf(0f) }
+      }
+
+      IconButton(
+        onClick = onRefreshClick,
+        enabled = !isRefreshing,
+        modifier = Modifier.size(36.dp),
+      ) {
+        Icon(
+          imageVector = CampfireIcons.Rounded.Refresh,
+          contentDescription = stringResource(Res.string.discover_refresh_cd),
+          modifier = Modifier
+            .size(20.dp)
+            .graphicsLayer { rotationZ = rotation },
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
     }
   }
 }

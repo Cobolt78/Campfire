@@ -27,6 +27,7 @@ data class HomeUiState(
   val offlineStates: ImmutableMap<LibraryItemId, OfflineDownload>,
   val progressStates: ImmutableMap<MediaProgressKey, MediaProgress>,
   val isRefreshing: Boolean = false,
+  val isRefreshingDiscoveries: Boolean = false,
   val eventSink: (HomeUiEvent) -> Unit,
 ) : CircuitUiState
 
@@ -64,5 +65,6 @@ sealed interface HomeUiEvent : CircuitUiEvent {
   data object OpenUpcomingScreen : HomeUiEvent
   data class OpenShelf(val shelfId: String) : HomeUiEvent
   data object Refresh : HomeUiEvent
+  data object RefreshDiscoveries : HomeUiEvent
 }
 

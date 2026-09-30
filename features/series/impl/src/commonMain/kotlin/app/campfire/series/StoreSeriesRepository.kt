@@ -312,43 +312,41 @@ class StoreSeriesRepository(
   )
 
   @OptIn(ExperimentalCoroutinesApi::class)
-  private val continueSeriesFlow: Flow<List<Series>> by lazy {
-    userRepository.observeCurrentUser()
-      .flatMapLatest { user ->
-        db.seriesQueries
-          .selectContinueSeries(
-            libraryId = user.selectedLibraryId,
-            userId = user.id,
-          )
-          .asFlow()
-          .mapToList(dispatcherProvider.databaseRead)
-          .mapLatest { seriesList ->
-            withContext(dispatcherProvider.databaseRead) {
-              seriesList.map { s ->
-                async {
-                  val books = db.libraryItemsQueries
-                    .selectForSeries(
-                      userId = user.id,
-                      seriesId = s.id,
-                      mapper = ::mapToLibraryItemWithProgress,
-                    )
-                    .awaitAsList()
-                  val sortedBooks = books
-                    .map { it.asDomainModel(urlHydrator) }
-                    .sortedBy { it.media.metadata.seriesSequence?.sequence }
+  private val continueSeriesFlow: Flow<List<Series>> = userRepository.observeCurrentUser()
+    .flatMapLatest { user ->
+      db.seriesQueries
+        .selectContinueSeries(
+          libraryId = user.selectedLibraryId,
+          userId = user.id,
+        )
+        .asFlow()
+        .mapToList(dispatcherProvider.databaseRead)
+        .mapLatest { seriesList ->
+          withContext(dispatcherProvider.databaseRead) {
+            seriesList.map { s ->
+              async {
+                val books = db.libraryItemsQueries
+                  .selectForSeries(
+                    userId = user.id,
+                    seriesId = s.id,
+                    mapper = ::mapToLibraryItemWithProgress,
+                  )
+                  .awaitAsList()
+                val sortedBooks = books
+                  .map { it.asDomainModel(urlHydrator) }
+                  .sortedBy { it.media.metadata.seriesSequence?.sequence }
 
-                  s.asDomainModel(sortedBooks)
-                }
-              }.awaitAll()
-            }
+                s.asDomainModel(sortedBooks)
+              }
+            }.awaitAll()
           }
-      }
-      .shareIn(
-        scope = repositoryScope,
-        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 300_000, replayExpirationMillis = 300_000),
-        replay = 1,
-      )
-  }
+        }
+    }
+    .shareIn(
+      scope = repositoryScope,
+      started = SharingStarted.Eagerly,
+      replay = 1,
+    )
 
   override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
 }

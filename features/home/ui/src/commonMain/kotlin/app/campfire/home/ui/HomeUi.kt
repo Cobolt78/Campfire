@@ -56,7 +56,10 @@ import org.jetbrains.compose.resources.stringResource
 fun HomeScreen(
   state: HomeUiState,
   campfireAppbar: CampfireAppBar,
-  appUpdateWidget: AppUpdateWidget,
+  appUpdateWidget: AppUpdateWidget = object : AppUpdateWidget {
+    @Composable
+    override fun Content(modifier: Modifier) {}
+  },
   modifier: Modifier = Modifier,
 ) {
   val appBarBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
@@ -124,6 +127,8 @@ fun HomeScreen(
             contentPadding = paddingValues,
             onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
             onHeaderClick = { shelfId -> state.eventSink(HomeUiEvent.OpenShelf(shelfId)) },
+            onRefreshDiscoveriesClick = { state.eventSink(HomeUiEvent.RefreshDiscoveries) },
+            isRefreshingDiscoveries = state.isRefreshingDiscoveries,
             onItemClick = { shelf, item ->
               when (item) {
                 is LibraryItem -> state.eventSink(
@@ -163,6 +168,8 @@ private fun LoadedState(
   onItemClick: (UiShelf<*>, Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
   onHeaderClick: (String) -> Unit,
+  onRefreshDiscoveriesClick: () -> Unit,
+  isRefreshingDiscoveries: Boolean,
   modifier: Modifier = Modifier,
   contentPadding: PaddingValues = PaddingValues(),
   state: LazyListState = rememberLazyListState(),
@@ -179,12 +186,17 @@ private fun LoadedState(
       )
     }
 
-    items(shelves) { shelf ->
+    items(
+      items = shelves,
+      key = { it.id },
+    ) { shelf ->
       ShelfListItem(
         shelf = shelf,
         onItemClick = { onItemClick(shelf, it) },
         onViewAllUpcomingClick = onViewAllUpcomingClick,
         onHeaderClick = onHeaderClick,
+        onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
+        isRefreshingDiscoveries = isRefreshingDiscoveries,
         offlineStatus = offlineStatus,
         progressStatus = progressStatus,
       )

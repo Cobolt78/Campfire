@@ -25,6 +25,10 @@ This document captures all custom features, bug fixes, and UI improvements added
 18. [Clickable Home Shelf Headings, Dedicated Continue Series & Offline Downloads Screens](#18-clickable-home-shelf-headings-dedicated-continue-series--offline-downloads-screens)
 19. [In-App "What's New" Changelog Synchronization Rule](#19-in-app-whats-new-changelog-synchronization-rule)
 20. [Continue Series Query Optimization & Freeze Fix](#20-continue-series-query-optimization--freeze-fix)
+21. [Continue Series Alternate View, Drawer Version Display & Main Thread Performance Optimization (v1.2.4)](#21-continue-series-alternate-view-drawer-version-display--main-thread-performance-optimization-v124)
+22. [Home Screen Update Banner, Fast Retained Continue Series & Layout Polish (v1.2.5)](#22-home-screen-update-banner-fast-retained-continue-series--layout-polish-v125)
+23. [Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)](#23-instant-continue-series-in-memory-repository-cache--sql-query-optimization-v126)
+24. [Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)](#24-home-continue-series-background-pre-warming-discover-shelf-stabilization--dedicated-refresh-button-v127)
 
 ---
 
@@ -621,6 +625,28 @@ Completely eliminated the 15-second loading delay when navigating between the Ho
      - `EXISTS` on unread books: ensures series where all books are marked `isFinished = 1` are excluded directly by SQLite.
      - `NOT EXISTS` on active books: filters out series with actively playing books (`isFinished = 0 AND progress > 0`).
    - Prevents loading dozens of completed series and hundreds of books from storage into memory only to discard them in Kotlin, reducing database execution time from 15 seconds down to milliseconds.
+
+---
+
+## 24. Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)
+
+### Summary
+Enabled active eager background pre-warming of Continue Series directly while viewing the Home feed so tapping Continue Series is always instantaneous (0ms). Stabilized the Discover shelf so random reshuffling never occurs during the session (on scroll or navigating back from books), and added a dedicated animated Refresh button to the Discover shelf header that fetches fresh recommendations on demand and resets horizontal scroll back to the start.
+
+### Key Changes
+1. **Home Screen Continue Series Background Pre-Warming (`StoreSeriesRepository.kt`, `HomePresenter.kt`, `features/home/ui/build.gradle.kts`)**:
+   - In `StoreSeriesRepository.kt`, configured `continueSeriesFlow` with `SharingStarted.Eagerly` so it initializes immediately.
+   - Injected `SeriesRepository` into `HomePresenter.kt` and added a background `LaunchedEffect(Unit)` collecting `seriesRepository.observeContinueSeries()` in `Dispatchers.Default`.
+   - Pre-warms the in-memory cache silently while the user browses the Home feed, ensuring tapping "Continue Series" renders immediately with 0ms delay.
+2. **Discoveries Shelf Stability (`StoreHomeRepository.kt`, `HomePresenter.kt`)**:
+   - Audiobookshelf's `/personalized` endpoint randomizes the Discover shelf on every API call. Store5 was previously requested with `refresh = true` on every user/session emission, wiping and re-inserting `ShelfJoin` rows in SQLite and reshuffling books whenever the user scrolled or navigated back from a book.
+   - Changed `StoreHomeRepository.observeHomeFeed()` to default to `refresh = false`, serving deterministic cached shelves across session navigations.
+   - In `HomePresenter.kt`, used `rememberRetained` to track `lastRefreshedLibraryId`, performing the API refresh only once upon cold start / initial library load or library switch.
+3. **Dedicated Discoveries Refresh Button (`ShelfHeader.kt`, `ShelfListItem.kt`, `HomeUi.kt`, `HomePresenter.kt`, `HomeUiState.kt`)**:
+   - Added an animated Refresh icon button (`CampfireIcons.Rounded.Refresh`) to the "Discover" shelf header.
+   - When tapped, triggers `HomeUiEvent.RefreshDiscoveries`, causing the icon to smoothly spin indefinitely while `homeRepository.refreshHomeFeed()` runs.
+   - When fresh discoveries are received, `ShelfListItem` automatically resets horizontal scroll position back to the first item (`listState.scrollToItem(0)`).
+
 
 
 

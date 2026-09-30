@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.7]
+
+### Added
+
+- Dedicated animated Refresh button on the Discover shelf header to fetch fresh recommendations on demand and reset shelf scroll position to the beginning
+
+### Fixed
+
+- **Home Continue Series Background Pre-Warming**: Eagerly pre-warms the Continue Series cache in the background while browsing the Home screen, guaranteeing instantaneous (0ms) opening without delay
+- **Discover Shelf Stabilization**: Prevented the Discover shelf from randomly reshuffling and losing books when scrolling or navigating back from book details, keeping recommendations consistent throughout the session
+
 ## [1.2.6]
 
 ### Fixed

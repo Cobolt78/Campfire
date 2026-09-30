@@ -53,7 +53,7 @@ class StoreHomeRepository(
     return userRepository.observeCurrentUser()
       .flatMapLatest { user ->
         val key = HomeStore.Key(user.id, user.selectedLibraryId)
-        val request = StoreReadRequest.cached(key, refresh = true)
+        val request = StoreReadRequest.cached(key, refresh = false)
         homeStore.stream(request)
           .debugLogging(HomeStore.tag, enabled = HomeStore.enabled)
           .filterNot { it is StoreReadResponse.NoNewData || it is StoreReadResponse.Loading }

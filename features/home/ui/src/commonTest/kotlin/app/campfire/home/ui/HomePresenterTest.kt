@@ -40,6 +40,11 @@ import assertk.assertions.isNotNull
 import assertk.assertions.isTrue
 import assertk.assertions.key
 import assertk.assertions.prop
+import app.campfire.bookinfo.api.BookInfoRegistry
+import app.campfire.home.api.HomeRepository
+import app.campfire.libraries.test.FakeLibraryItemRepository
+import app.campfire.series.test.FakeSeriesRepository
+import app.campfire.user.test.FakeUserRepository
 import com.slack.circuit.test.FakeNavigator
 import com.slack.circuit.test.test
 import kotlin.test.Test
@@ -56,6 +61,25 @@ class HomePresenterTest {
   val analytics = FakeAnalytics()
   val offlineDownloadManager = FakeOfflineDownloadManager()
   val mediaProgressRepository = FakeMediaProgressRepository()
+  val seriesRepository = FakeSeriesRepository()
+  val userRepository = FakeUserRepository()
+
+  private fun createPresenter(
+    repository: HomeRepository,
+    registry: BookInfoRegistry = FakeBookInfoRegistry(),
+  ): HomePresenter {
+    return HomePresenter(
+      navigator = navigator,
+      homeRepository = repository,
+      mediaProgressRepository = mediaProgressRepository,
+      offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = FakeLibraryItemRepository(),
+      seriesRepository = seriesRepository,
+      userRepository = userRepository,
+      bookInfoRegistry = registry,
+      analytics = analytics,
+    )
+  }
 
   @Test
   fun present_LoadingState() = runTest {
@@ -64,14 +88,7 @@ class HomePresenterTest {
       mediaProgressFlowFactory = { emptyFlow() },
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       val state = awaitItem()
@@ -94,14 +111,7 @@ class HomePresenterTest {
       mediaProgressFlowFactory = { emptyFlow() },
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       // First item is always loading state
@@ -137,7 +147,7 @@ class HomePresenterTest {
   fun present_CachedUpcoming_InsertsShelfAfterDiscover() = runTest {
     val shelves = listOf(
       shelf(ShelfIds.Discover, "Discover", 2),
-      shelf(ShelfIds.NewestAuthors, "Newest Authors", 2),
+      shelf(ShelfIds.RecentlyAdded, "Recently Added", 2),
     )
     val repository = FakeHomeRepository(
       homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
@@ -160,14 +170,7 @@ class HomePresenterTest {
         providerId = ProviderId.Audible,
       ),
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = registry,
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository, registry)
 
     presenter.test {
       awaitItem() // loading
@@ -193,7 +196,7 @@ class HomePresenterTest {
               )
           },
         )
-        index(2).prop(UiShelf<*>::id).isEqualTo(ShelfIds.NewestAuthors)
+        index(2).prop(UiShelf<*>::id).isEqualTo(ShelfIds.RecentlyAdded)
       }
     }
   }
@@ -222,14 +225,7 @@ class HomePresenterTest {
         providerId = ProviderId.Audible,
       ),
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = registry,
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository, registry)
 
     presenter.test {
       awaitItem() // loading
@@ -261,14 +257,7 @@ class HomePresenterTest {
         }
       },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       // First item is always loading state
@@ -335,14 +324,7 @@ class HomePresenterTest {
         }
       },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       // Pull Loading State
@@ -383,14 +365,7 @@ class HomePresenterTest {
         }
       },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       // Pull Loading State
@@ -415,14 +390,7 @@ class HomePresenterTest {
       mediaProgressFlowFactory = { emptyFlow() },
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
     val libraryItemId = "test_library_item"
     val sharedTransitionKey = "shared_key"
     val libraryItem = libraryItem(libraryItemId)
@@ -444,14 +412,7 @@ class HomePresenterTest {
       mediaProgressFlowFactory = { emptyFlow() },
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
     val authorId = "test_authorId"
     val authorName = "test_author_name"
     val author = author(authorId, authorName)
@@ -473,14 +434,7 @@ class HomePresenterTest {
       mediaProgressFlowFactory = { emptyFlow() },
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
     val seriesId = "test_seriesId"
     val seriesName = "test_series_name"
     val series = series(seriesId, seriesName)
@@ -504,14 +458,7 @@ class HomePresenterTest {
       shelfEntityFlowFactory = { _, _ -> emptyFlow() },
       onRefreshHomeFeed = { refreshGate.await() },
     )
-    val presenter = HomePresenter(
-      navigator = navigator,
-      homeRepository = repository,
-      mediaProgressRepository = mediaProgressRepository,
-      offlineDownloadManager = offlineDownloadManager,
-      libraryItemRepository = app.campfire.libraries.api.test.FakeLibraryItemRepository(), bookInfoRegistry = FakeBookInfoRegistry(),
-      analytics = analytics,
-    )
+    val presenter = createPresenter(repository)
 
     presenter.test {
       val idle = awaitItem()
@@ -526,6 +473,34 @@ class HomePresenterTest {
       refreshGate.complete(Unit)
 
       assertThat(awaitItem().isRefreshing).isFalse()
+      assertThat(repository.refreshCount).isEqualTo(1)
+    }
+  }
+
+  @Test
+  fun eventSink_RefreshDiscoveries_refreshesFeedOnceWhileShowingDiscoveriesProgress() = runTest {
+    val refreshGate = CompletableDeferred<Unit>()
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { emptyFlow() },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+      onRefreshHomeFeed = { refreshGate.await() },
+    )
+    val presenter = createPresenter(repository)
+
+    presenter.test {
+      val idle = awaitItem()
+      assertThat(idle.isRefreshingDiscoveries).isFalse()
+
+      idle.eventSink(HomeUiEvent.RefreshDiscoveries)
+      val refreshing = awaitItem()
+      assertThat(refreshing.isRefreshingDiscoveries).isTrue()
+
+      // Tapping again while the first refresh is in flight doesn't start a second one
+      refreshing.eventSink(HomeUiEvent.RefreshDiscoveries)
+      refreshGate.complete(Unit)
+
+      assertThat(awaitItem().isRefreshingDiscoveries).isFalse()
       assertThat(repository.refreshCount).isEqualTo(1)
     }
   }

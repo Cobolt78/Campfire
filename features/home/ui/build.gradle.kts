@@ -18,6 +18,7 @@ kotlin {
 
         implementation(projects.data.bookinfo.api)
         implementation(projects.features.discover.api)
+        implementation(projects.features.series.api)
         implementation(projects.infra.updates.api)
 
         implementation(libs.compose.components.resources)
@@ -31,6 +32,7 @@ kotlin {
         implementation(projects.data.analytics.test)
         implementation(projects.data.bookinfo.test)
         implementation(projects.features.libraries.test)
+        implementation(projects.features.series.test)
         implementation(projects.features.user.test)
         implementation(projects.infra.audioplayer.test)
         implementation(libs.bundles.test.common)

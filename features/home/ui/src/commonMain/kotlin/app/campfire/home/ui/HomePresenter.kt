@@ -62,10 +62,15 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.mapLatest
 import me.tatarka.inject.annotations.Assisted
 import me.tatarka.inject.annotations.Inject
+import app.campfire.series.api.SeriesRepository
+import app.campfire.user.api.UserRepository
+
+import com.slack.circuit.retained.rememberRetained
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @CircuitInject(HomeScreen::class, UserScope::class)
 @Inject
@@ -75,6 +80,8 @@ class HomePresenter(
   private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryItemRepository: app.campfire.libraries.api.LibraryItemRepository,
+  private val seriesRepository: SeriesRepository,
+  private val userRepository: UserRepository,
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
 ) : NonPausablePresenter<HomeUiState> {
@@ -85,6 +92,28 @@ class HomePresenter(
   override fun present(): HomeUiState {
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    var isRefreshingDiscoveries by remember { mutableStateOf(false) }
+    var lastRefreshedLibraryId by rememberRetained { mutableStateOf<String?>(null) }
+
+    // Pre-warm Continue Series in the background as soon as the user is on the Home screen
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+      seriesRepository.observeContinueSeries().collect { }
+    }
+
+    // Refresh feed once on app launch or when the selected library changes
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+      userRepository.observeCurrentUser()
+        .map { it.selectedLibraryId }
+        .distinctUntilChanged()
+        .collect { libraryId ->
+          if (lastRefreshedLibraryId != libraryId) {
+            lastRefreshedLibraryId = libraryId
+            try {
+              homeRepository.refreshHomeFeed()
+            } catch (_: Exception) {}
+          }
+        }
+    }
 
     // Observe just the shelf information. We will use this to compose the remaining elements
     val domainFeed by remember {
@@ -222,6 +251,7 @@ class HomePresenter(
       offlineStates = offlineDownloads,
       progressStates = userMediaProgress,
       isRefreshing = isRefreshing,
+      isRefreshingDiscoveries = isRefreshingDiscoveries,
     ) { event ->
       when (event) {
         is HomeUiEvent.OpenLibraryItem -> {
@@ -286,6 +316,18 @@ class HomePresenter(
                 homeRepository.refreshHomeFeed()
               } finally {
                 isRefreshing = false
+              }
+            }
+          }
+        }
+        HomeUiEvent.RefreshDiscoveries -> {
+          if (!isRefreshingDiscoveries) {
+            isRefreshingDiscoveries = true
+            coroutineScope.launch {
+              try {
+                homeRepository.refreshHomeFeed()
+              } finally {
+                isRefreshingDiscoveries = false
               }
             }
           }

@@ -4,8 +4,12 @@
 package app.campfire.home.ui.composables
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import app.campfire.core.coroutines.LoadState
+import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.PodcastEpisodeId
@@ -22,8 +26,11 @@ fun ShelfListItem(
   onItemClick: (Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
   onHeaderClick: ((String) -> Unit)? = null,
+  onRefreshDiscoveriesClick: (() -> Unit)? = null,
+  isRefreshingDiscoveries: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
+  val isDiscover = shelf.id.startsWith(ShelfIds.Discover)
   val isSupportedClickableShelf = when {
     shelf.id.startsWith(ShelfIds.ContinueListening) -> true
     shelf.id.startsWith(ShelfIds.ListenAgain) -> true
@@ -36,6 +43,22 @@ fun ShelfListItem(
     else -> false
   }
 
+  val listState = rememberLazyListState()
+
+  if (isDiscover) {
+    val entityIds = shelf.entities.dataOrNull?.map { entity ->
+      when (entity) {
+        is LibraryItem -> entity.id
+        else -> entity.toString()
+      }
+    }
+    LaunchedEffect(entityIds) {
+      if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+        listState.scrollToItem(0)
+      }
+    }
+  }
+
   Column(
     modifier = modifier,
   ) {
@@ -46,6 +69,8 @@ fun ShelfListItem(
       } else {
         null
       },
+      onRefreshClick = if (isDiscover && onRefreshDiscoveriesClick != null) onRefreshDiscoveriesClick else null,
+      isRefreshing = isDiscover && isRefreshingDiscoveries,
     )
     ShelfContent(
       shelf = shelf,
@@ -53,6 +78,7 @@ fun ShelfListItem(
       progressStatus = progressStatus,
       onItemClick = onItemClick,
       onViewAllUpcomingClick = onViewAllUpcomingClick,
+      state = listState,
     )
   }
 }
