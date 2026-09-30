@@ -73,13 +73,25 @@ WHERE id = ?
 selectContinueSeries:
 SELECT series.* FROM series
 LEFT JOIN shelfJoin ON shelfJoin.entityId = series.id AND shelfJoin.shelfId LIKE 'continue-series_%'
-LEFT JOIN seriesBookJoin ON seriesBookJoin.seriesId = series.id
-LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = seriesBookJoin.libraryItemId AND mediaProgress.userId = :userId AND (mediaProgress.progress > 0 OR mediaProgress.isFinished = 1)
 WHERE series.libraryId = :libraryId
   AND (
     series.inProgress = 1
     OR shelfJoin.entityId IS NOT NULL
-    OR mediaProgress.libraryItemId IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM seriesBookJoin sbj_start
+      JOIN mediaProgress mp_start ON mp_start.libraryItemId = sbj_start.libraryItemId AND mp_start.userId = :userId
+      WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.isFinished = 1)
+    )
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM seriesBookJoin sbj_active
+    JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
+    WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND mp_active.progress > 0
+  )
+  AND EXISTS (
+    SELECT 1 FROM seriesBookJoin sbj_unread
+    LEFT JOIN mediaProgress mp_done ON mp_done.libraryItemId = sbj_unread.libraryItemId AND mp_done.userId = :userId AND mp_done.isFinished = 1
+    WHERE sbj_unread.seriesId = series.id AND mp_done.libraryItemId IS NULL
   )
 GROUP BY series.id
 ORDER BY COALESCE(series.bookInProgressLastUpdate, series.updatedAt) DESC;

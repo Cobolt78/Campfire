@@ -46,12 +46,16 @@ import com.r0adkll.kimchi.annotations.ContributesBinding
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.mapNotNull
@@ -303,9 +307,13 @@ class StoreSeriesRepository(
       }
   }
 
+  private val repositoryScope = CoroutineScope(
+    SupervisorJob() + dispatcherProvider.databaseRead,
+  )
+
   @OptIn(ExperimentalCoroutinesApi::class)
-  override fun observeContinueSeries(): Flow<List<Series>> {
-    return userRepository.observeCurrentUser()
+  private val continueSeriesFlow: Flow<List<Series>> by lazy {
+    userRepository.observeCurrentUser()
       .flatMapLatest { user ->
         db.seriesQueries
           .selectContinueSeries(
@@ -335,6 +343,13 @@ class StoreSeriesRepository(
             }
           }
       }
+      .shareIn(
+        scope = repositoryScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 300_000, replayExpirationMillis = 300_000),
+        replay = 1,
+      )
   }
+
+  override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
 }
 

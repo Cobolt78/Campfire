@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.6]
+
+### Fixed
+
+- **Instant Continue Series Loading**: Replaced the 15-second loading delay with instant (0ms) rendering via a UserScope repository in-memory cache that survives returning to the Home screen
+- **Completed & Active Series SQL Filtering**: Optimized the database query to exclude 100% finished series and active series at the SQLite level, cutting initial load times from 15 seconds down to milliseconds
+
 ## [1.2.5]
 
 ### Added

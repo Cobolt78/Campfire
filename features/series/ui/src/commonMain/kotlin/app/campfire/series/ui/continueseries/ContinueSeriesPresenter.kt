@@ -54,7 +54,7 @@ class ContinueSeriesPresenter(
     }
 
     var cachedItems by rememberRetained {
-      mutableStateOf<List<ContinueSeriesItem>?>(null)
+      mutableStateOf(memoryCache)
     }
 
     LaunchedEffect(sortMode, sortAscending) {
@@ -117,6 +117,7 @@ class ContinueSeriesPresenter(
       }
       .flowOn(Dispatchers.Default)
       .collect {
+        memoryCache = it
         cachedItems = it
       }
     }
@@ -161,5 +162,10 @@ class ContinueSeriesPresenter(
         }
       }
     }
+  }
+
+  companion object {
+    @kotlin.concurrent.Volatile
+    private var memoryCache: List<ContinueSeriesItem>? = null
   }
 }
