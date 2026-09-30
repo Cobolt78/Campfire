@@ -578,3 +578,27 @@ Added a user-configurable alternate view for Continue Series in Appearance setti
    - Heavy data transformations (shelf item enrichment, progress map lookups, and list sorting) previously executing synchronously inside Composable `remember { derivedStateOf { ... } }` blocks have been transitioned to Kotlin `Flow.combine()` pipelines offloaded to `Dispatchers.Default`.
    - Eliminates UI freezes and multi-second stutters when swiping back to the Home screen or returning from detail views.
 
+---
+
+## 22. Home Screen Update Banner, Fast Retained Continue Series & Layout Polish (v1.2.5)
+
+### Summary
+Added a prominent yet dismissible in-app update banner directly at the top of the Home feed, eliminated the 20–30s reload delay on Continue Series by retaining in-memory state and parallelizing database book queries, formatted alternate grid cards to prioritize the book number with automatic marquee scrolling, and upgraded the default list view with an enlarged left poster cover art layout.
+
+### Key Changes
+1. **Home Screen Dismissible Update Banner (`HomeUi.kt`, `features/home/ui/build.gradle.kts`)**:
+   - Injected `AppUpdateWidget` directly into `@CircuitInject HomeScreen`.
+   - Rendered as the top item of the main Home `LazyColumn` directly beneath the top search bar.
+   - Fully dismissible via "✕" (persists dismissed version code in `CampfireSettings` to prevent nagging until next release) with animated expand/collapse transitions.
+2. **Instant Continue Series Back Navigation & Concurrent Database Loading (`ContinueSeriesPresenter.kt`, `StoreSeriesRepository.kt`)**:
+   - Retained `cachedItems` in memory via Slack Circuit's `rememberRetained` so navigating to a book detail and clicking Back renders instantly (0ms latency) without showing a loading spinner or re-querying disk.
+   - Refactored `StoreSeriesRepository.observeContinueSeries()` to load series books concurrently using coroutine `async`/`awaitAll()` on `dispatcherProvider.databaseRead`, slashing query execution times.
+3. **Alternate Grid: Book Number First & Marquee (`ContinueSeriesUi.kt`)**:
+   - Formatted alternate view subtitle to lead with the book number: `Book #X • Series Name`.
+   - Applied `Modifier.basicMarquee()` to both book title and series subtitle so long text smoothly scrolls horizontally without truncating.
+   - Stripped redundant progress bars from unread next-up books.
+4. **Default View: Enlarged Left Poster Cover Layout (`ContinueSeriesUi.kt`)**:
+   - Enlarged the Next Up cover art from a 56dp thumbnail to a prominent `80 × 108 dp` book jacket with `10.dp` rounded corners.
+   - Arranged metadata in a clean vertical stack beside the cover (Next Up badge, Book number, 2-line title, and author name), removing redundant progress bars.
+
+
