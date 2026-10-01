@@ -704,3 +704,17 @@ Fixed Discoveries refresh persistence across screen transitions, added dedicated
 4. **Series Book Ingestion & Endpoint Fallback (`StoreSeriesRepository.kt`, `KtorAudioBookShelfApi.kt`)**:
    - Fallback to series endpoint book data when minified filtering fails, and fallback from `/api/libraries/$libraryId/series/$seriesId` to `/api/series/$seriesId`.
 
+---
+
+## 28. Version Code Ordering & In-App Upgrade Delivery (v1.2.12)
+
+### Summary
+Normalized version code derivation in build-logic to eliminate artificial test build offsets that inverted release ordering. Bumped release to v1.2.12 (versionCode 1021299) to ensure users running pre-release test builds (`v1.2.11-test2`, versionCode 1021202) seamlessly receive the in-app update prompt and can upgrade cleanly.
+
+### Key Changes
+1. **Normalized Version Code Derivation (`Versioning.kt`)**:
+   - Removed artificial `+100` offset from test build semver parsing so version codes remain monotonically ordered: `rc/test < final release`.
+2. **Version Bump to v1.2.12 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.12` and `campfire.versionCode` to `1021299`, which strictly exceeds `1021202` (test2).
+
+

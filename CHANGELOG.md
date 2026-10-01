@@ -17,7 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-### Other Notes & Contributions
+## [1.2.12]
+
+### Fixed
+
+- **Version Code Ordering & In-App Upgrade Delivery**: Fixed an issue where pre-release test builds had an artificial version code offset that prevented official releases from triggering an in-app update prompt. Normalized version code derivation to guarantee monotonic ordering, allowing seamless in-app upgrades from test builds.
+- Includes all features and fixes from v1.2.11: Book Detail Series navigation, Discoveries refresh persistence, SQLite series junction consistency, and Audiobookshelf series API fallbacks.
 
 ## [1.2.11]
 
