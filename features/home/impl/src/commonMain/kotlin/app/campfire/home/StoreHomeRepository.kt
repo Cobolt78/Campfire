@@ -87,6 +87,7 @@ class StoreHomeRepository(
     val user = userRepository.getCurrentUser()
     try {
       homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
+      shelfStore.clear()
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {

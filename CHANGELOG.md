@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.8]
+
+### Fixed
+
+- **Discoveries Refresh & Server Cache Bypass**: Resolved an issue where tapping the Discoveries refresh button returned the same books due to Audiobookshelf server-side API caching (`ApiCacheManager`) and client store caching. Refreshing now passes a timestamp parameter and invalidates local shelf cache to immediately load fresh recommendations.
+- **Refresh Discoveries Visual Feedback**: Enhanced the rotation animation and ensured a minimum smooth spin duration so refresh operations give clear tactile visual feedback even over instant network responses.
+
 ## [1.2.7]
 
 ### Added
@@ -632,6 +639,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial Alpha Release.
 
+[1.2.8]: https://github.com/Cobolt78/Campfire/compare/v1.2.7-custom...v1.2.8-custom
+[1.2.7]: https://github.com/Cobolt78/Campfire/compare/v1.2.6-custom...v1.2.7-custom
+[1.2.6]: https://github.com/Cobolt78/Campfire/compare/v1.2.5-custom...v1.2.6-custom
+[1.2.5]: https://github.com/Cobolt78/Campfire/compare/v1.2.4-custom...v1.2.5-custom
+[1.2.4]: https://github.com/Cobolt78/Campfire/compare/v1.2.3-custom...v1.2.4-custom
 [1.2.3]: https://github.com/Cobolt78/Campfire/compare/v1.2.2-custom...v1.2.3-custom
 [1.2.2]: https://github.com/Cobolt78/Campfire/compare/v1.2.1-custom...v1.2.2-custom
 [1.2.1]: https://github.com/Cobolt78/Campfire/compare/v1.2.0-custom...v1.2.1-custom

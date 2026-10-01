@@ -326,6 +326,7 @@ class HomePresenter(
             coroutineScope.launch {
               try {
                 homeRepository.refreshHomeFeed()
+                kotlinx.coroutines.delay(400)
               } finally {
                 isRefreshingDiscoveries = false
               }

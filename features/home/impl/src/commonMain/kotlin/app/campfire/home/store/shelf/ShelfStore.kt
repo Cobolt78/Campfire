@@ -12,11 +12,9 @@ import app.campfire.core.model.ShelfType
 import app.campfire.core.session.UserSession
 import app.campfire.data.mapping.dao.LibraryItemDao
 import app.campfire.home.api.model.ShelfId
-import kotlin.time.Duration.Companion.minutes
 import me.tatarka.inject.annotations.Inject
 import org.mobilenativefoundation.store.store5.Fetcher
 import org.mobilenativefoundation.store.store5.FetcherResult
-import org.mobilenativefoundation.store.store5.MemoryPolicy
 import org.mobilenativefoundation.store.store5.Store
 import org.mobilenativefoundation.store.store5.StoreBuilder
 
@@ -47,11 +45,6 @@ object ShelfStore : Cork {
         .from(
           fetcher = Fetcher.ofResult { FetcherResult.Error.Message("No network for this store") },
           sourceOfTruth = sourceOfTruthFactory.create(),
-        )
-        .cachePolicy(
-          MemoryPolicy.builder<Key, List<ShelfEntity>>()
-            .setExpireAfterAccess(5.minutes)
-            .build(),
         )
         .build()
     }

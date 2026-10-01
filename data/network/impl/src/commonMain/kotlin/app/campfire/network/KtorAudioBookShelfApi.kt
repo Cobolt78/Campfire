@@ -60,6 +60,7 @@ import app.campfire.network.models.Series
 import app.campfire.network.models.Shelf
 import app.campfire.network.models.User
 import com.r0adkll.kimchi.annotations.ContributesBinding
+import kotlin.time.Clock
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
@@ -147,7 +148,12 @@ class KtorAudioBookShelfApi(
 
   override suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>> {
     return trySendRequest<List<Shelf>> {
-      hydratedClientRequest("/api/libraries/$libraryId/personalized")
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "personalized")
+          parameters.append("t", Clock.System.now().toEpochMilliseconds().toString())
+        },
+      )
     }
   }
 

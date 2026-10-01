@@ -99,19 +99,15 @@ fun ShelfHeader(
 
     if (onRefreshClick != null) {
       val infiniteTransition = rememberInfiniteTransition(label = "refresh_transition")
-      val rotation by if (isRefreshing) {
-        infiniteTransition.animateFloat(
-          initialValue = 0f,
-          targetValue = 360f,
-          animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-          ),
-          label = "refresh_rotation",
-        )
-      } else {
-        remember { mutableStateOf(0f) }
-      }
+      val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+          animation = tween(1000, easing = LinearEasing),
+          repeatMode = RepeatMode.Restart,
+        ),
+        label = "refresh_rotation",
+      )
 
       IconButton(
         onClick = onRefreshClick,
@@ -123,7 +119,7 @@ fun ShelfHeader(
           contentDescription = stringResource(Res.string.discover_refresh_cd),
           modifier = Modifier
             .size(20.dp)
-            .graphicsLayer { rotationZ = rotation },
+            .graphicsLayer { rotationZ = if (isRefreshing) rotation else 0f },
           tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }

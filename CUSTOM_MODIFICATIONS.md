@@ -29,6 +29,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 22. [Home Screen Update Banner, Fast Retained Continue Series & Layout Polish (v1.2.5)](#22-home-screen-update-banner-fast-retained-continue-series--layout-polish-v125)
 23. [Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)](#23-instant-continue-series-in-memory-repository-cache--sql-query-optimization-v126)
 24. [Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)](#24-home-continue-series-background-pre-warming-discover-shelf-stabilization--dedicated-refresh-button-v127)
+25. [Discoveries Refresh Server Cache Bypass & Reactive Pipeline Fix (v1.2.8)](#25-discoveries-refresh-server-cache-bypass--reactive-pipeline-fix-v128)
 
 ---
 
@@ -647,6 +648,22 @@ Enabled active eager background pre-warming of Continue Series directly while vi
    - When tapped, triggers `HomeUiEvent.RefreshDiscoveries`, causing the icon to smoothly spin indefinitely while `homeRepository.refreshHomeFeed()` runs.
    - When fresh discoveries are received, `ShelfListItem` automatically resets horizontal scroll position back to the first item (`listState.scrollToItem(0)`).
 
+---
 
+## 25. Discoveries Refresh Server Cache Bypass & Reactive Pipeline Fix (v1.2.8)
 
+### Summary
+Fixed the Discoveries refresh button on the Home feed so tapping it reliably fetches brand new random recommendations from Audiobookshelf and immediately updates the shelf on screen. In v1.2.7, tapping refresh appeared to do nothing because the Audiobookshelf server caches `/api/libraries/:id/personalized` responses in its internal `ApiCacheManager` without a query timestamp parameter, and Store5's `ShelfStore` wrapped SQLite reads in an unnecessary 5-minute memory cache.
 
+### Key Changes
+1. **Audiobookshelf API Server Cache Bypass (`KtorAudioBookShelfApi.kt`)**:
+   - Audiobookshelf's server-side `ApiCacheManager` caches personalized endpoints by full URL string (`req.originalUrl`). Consecutive requests to `/api/libraries/:libraryId/personalized` without parameters hit the server's cache and return identical Discover shelf books.
+   - Updated `KtorAudioBookShelfApi.getPersonalizedHome` to append a millisecond timestamp parameter (`parameters.append("t", Clock.System.now().toEpochMilliseconds().toString())`).
+   - Every refresh request now produces an `ApiCacheManager` cache miss on the Audiobookshelf server, forcing it to generate a fresh, randomized selection of books.
+2. **Store5 Reactive SQLite Pipeline Fix (`ShelfStore.kt`, `StoreHomeRepository.kt`)**:
+   - `ShelfStore` previously defined a 5-minute memory cache (`MemoryPolicy.builder<Key, List<ShelfEntity>>().setExpireAfterAccess(5.minutes).build()`). Since `ShelfStore` has no network fetcher and reads purely from SQLite (`shelfJoin`), the 5-minute memory cache prevented SQLite database updates from reaching Compose.
+   - Removed `cachePolicy` from `ShelfStore.kt` so SQLDelight query flows stream database updates directly.
+   - In `StoreHomeRepository.refreshHomeFeed()`, explicitly called `shelfStore.clear()` after `homeStore.fresh()` to guarantee any in-memory store states are evicted.
+3. **Smooth Visual Rotation Feedback (`HomePresenter.kt`, `ShelfHeader.kt`)**:
+   - Added a minimum 400ms delay in `HomePresenter.kt` during `HomeUiEvent.RefreshDiscoveries` so fast local network responses still produce smooth, satisfying spin feedback.
+   - Simplified rotation graphics layer in `ShelfHeader.kt` using `rotationZ = if (isRefreshing) rotation else 0f`.
