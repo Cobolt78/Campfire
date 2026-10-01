@@ -14,7 +14,7 @@ class HomeFetcherFactory(
 
   fun create(): Fetcher<HomeStore.Key, List<Shelf>> {
     return Fetcher.ofResult { key ->
-      api.getPersonalizedHome(key.libraryId).asFetcherResult()
+      api.getPersonalizedHome(key.libraryId, bustCache = key.bustCache).asFetcherResult()
     }
   }
 }

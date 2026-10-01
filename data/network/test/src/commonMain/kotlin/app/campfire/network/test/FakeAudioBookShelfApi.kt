@@ -107,7 +107,7 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     return libraryStatsResult(libraryId)
   }
 
-  override suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>> {
+  override suspend fun getPersonalizedHome(libraryId: String, bustCache: Boolean): Result<List<Shelf>> {
     personalizedHomeRequests += libraryId
     return personalizedHomeResult(libraryId)
   }

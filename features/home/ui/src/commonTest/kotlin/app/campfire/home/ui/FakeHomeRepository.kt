@@ -27,7 +27,7 @@ class FakeHomeRepository(
     return homeFeedFlowFactory()
   }
 
-  override suspend fun refreshHomeFeed() {
+  override suspend fun refreshHomeFeed(bustServerCache: Boolean) {
     refreshCount++
     onRefreshHomeFeed()
   }

@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.10]
+
+### Fixed
+
+- **App Startup Freeze**: Fixed a critical issue where the app would hang on a black screen for 10-15 seconds during cold startup. This was caused by eager background database pre-warming that saturated the SQLite connection pool before the UI could render.
+- **Continue Series N+1 Query Delay**: Completely eliminated the 10-15 second delay when opening the Continue Series screen. Replaced dozens of simultaneous N+1 database queries with a single highly-optimized SQL `JOIN` query using an `IN` clause to load all unfinished series and their books instantly.
+- **Home Screen Scrolling Micro-Stutters**: Resolved UI frame drops and micro-stutters when scrolling the Home Screen. Shifted the heavy computation for the Continue Listening and Listen Again shelves (sorting, filtering completed books, merging offline downloads) off the main Compose thread and into a background Coroutine `Dispatchers.Default` processor.
+- **Test Build Versioning (`INSTALL_FAILED_VERSION_DOWNGRADE`)**: Upgraded Gradle SemVer parsing rules to automatically assign a +100 version code offset to `-testN` pre-release builds, allowing seamless local testing and overriding over official F-Droid standard releases.
+
+### Other Notes & Contributions
+
 ## [1.2.8]
 
 ### Fixed

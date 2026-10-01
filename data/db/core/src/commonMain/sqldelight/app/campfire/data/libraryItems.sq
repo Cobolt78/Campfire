@@ -190,3 +190,13 @@ SELECT count(*) FROM libraryItem
 INNER JOIN media ON media.libraryItemId = libraryItem.id
 WHERE libraryItem.libraryId = ?;
 
+
+selectForMultipleSeries:
+SELECT libraryItem.*,media.*,mediaProgress.*,seriesBookJoin.seriesId AS joinSeriesId FROM libraryItem
+INNER JOIN media ON media.libraryItemId = libraryItem.id
+INNER JOIN seriesBookJoin ON seriesBookJoin.libraryItemId = libraryItem.id
+LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = libraryItem.id
+  AND mediaProgress.episodeId = ''
+  AND mediaProgress.userId = :userId
+WHERE seriesBookJoin.seriesId IN :seriesIds
+ORDER BY media.metadata_series_sequence ASC;

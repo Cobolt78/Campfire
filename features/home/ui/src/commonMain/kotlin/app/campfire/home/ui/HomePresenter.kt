@@ -93,27 +93,7 @@ class HomePresenter(
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
     var isRefreshingDiscoveries by remember { mutableStateOf(false) }
-    var lastRefreshedLibraryId by rememberRetained { mutableStateOf<String?>(null) }
 
-    // Pre-warm Continue Series in the background as soon as the user is on the Home screen
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-      seriesRepository.observeContinueSeries().collect { }
-    }
-
-    // Refresh feed once on app launch or when the selected library changes
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-      userRepository.observeCurrentUser()
-        .map { it.selectedLibraryId }
-        .distinctUntilChanged()
-        .collect { libraryId ->
-          if (lastRefreshedLibraryId != libraryId) {
-            lastRefreshedLibraryId = libraryId
-            try {
-              homeRepository.refreshHomeFeed()
-            } catch (_: Exception) {}
-          }
-        }
-    }
 
     // Observe just the shelf information. We will use this to compose the remaining elements
     val domainFeed by remember {
@@ -178,54 +158,43 @@ class HomePresenter(
         }
     }.collectAsState(persistentMapOf())
 
-    androidx.compose.runtime.LaunchedEffect(userMediaProgress) {
-      userMediaProgress.values.forEach { prog ->
-        if (prog.isCompleted && !prog.isFinished) {
-          mediaProgressRepository.markFinished(prog.libraryItemId, prog.episodeId)
-        }
-      }
-    }
 
-    // Now combine both the shelves and entities into the final set of UiShelf to render
-    // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
-    val feed by remember {
-      combine(
-        snapshotFlow { domainFeed },
-        snapshotFlow { shelfEntities },
-        snapshotFlow { completedDownloads },
-        snapshotFlow { userMediaProgress },
-        snapshotFlow { upcomingReleases },
-      ) { domainFeedState, currentShelfEntities, currentCompletedDownloads, currentUserMediaProgress, currentUpcomingReleases ->
-        domainFeedState.map { shelves ->
+
+    val feed by androidx.compose.runtime.produceState<FeedResponse<kotlinx.collections.immutable.PersistentList<UiShelf<ShelfEntity>>>>(
+      initialValue = domainFeed.map { kotlinx.collections.immutable.persistentListOf() },
+      domainFeed, shelfEntities, completedDownloads, userMediaProgress, upcomingReleases
+    ) {
+      kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        value = domainFeed.map { shelves ->
           val uiShelves = shelves
             .filter { it.id != ShelfIds.NewestAuthors && it.type != app.campfire.core.model.ShelfType.AUTHOR }
             .map { shelf ->
               UiShelf(
                 shelf,
-                currentShelfEntities[shelf.id]
+                shelfEntities[shelf.id]
                   ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
               )
             }
           
-          val withEnhancedContinue = enhanceContinueListeningShelf(uiShelves, currentCompletedDownloads, currentUserMediaProgress)
-          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, currentCompletedDownloads, currentUserMediaProgress)
-          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, currentUpcomingReleases).toMutableList()
+          val withEnhancedContinue = enhanceContinueListeningShelf(uiShelves, completedDownloads, userMediaProgress)
+          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, completedDownloads, userMediaProgress)
+          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, upcomingReleases).toMutableList()
 
-          if (currentCompletedDownloads.isNotEmpty()) {
+          if (completedDownloads.isNotEmpty()) {
             withUpcoming.add(
               UiShelf(
                 id = "downloads",
                 label = "Downloads",
-                total = currentCompletedDownloads.size,
-                entities = LoadState.Loaded(currentCompletedDownloads)
+                total = completedDownloads.size,
+                entities = LoadState.Loaded(completedDownloads),
               )
             )
           }
 
           withUpcoming.toPersistentList()
         }
-      }.flowOn(kotlinx.coroutines.Dispatchers.Default)
-    }.collectAsState(FeedResponse.Loading)
+      }
+    }
 
     val offlineDownloads by remember {
       combine(
@@ -313,7 +282,7 @@ class HomePresenter(
             isRefreshing = true
             coroutineScope.launch {
               try {
-                homeRepository.refreshHomeFeed()
+                homeRepository.refreshHomeFeed(bustServerCache = false)
               } finally {
                 isRefreshing = false
               }
@@ -325,7 +294,7 @@ class HomePresenter(
             isRefreshingDiscoveries = true
             coroutineScope.launch {
               try {
-                homeRepository.refreshHomeFeed()
+                homeRepository.refreshHomeFeed(bustServerCache = true)
                 kotlinx.coroutines.delay(400)
               } finally {
                 isRefreshingDiscoveries = false

@@ -22,7 +22,7 @@ interface HomeRepository {
    * Re-fetch the current user's home feed from the server, suspending until it lands. The fresh
    * shelves reach [observeHomeFeed] and [observeShelf]; a failed fetch leaves the cached feed as is.
    */
-  suspend fun refreshHomeFeed()
+  suspend fun refreshHomeFeed(bustServerCache: Boolean = false)
 
   /**
    * Observe the [MediaProgress] for each libraryItemId passed to the function
