@@ -53,7 +53,7 @@ class StoreHomeRepository(
     return userRepository.observeCurrentUser()
       .flatMapLatest { user ->
         val key = HomeStore.Key(user.id, user.selectedLibraryId)
-        val request = StoreReadRequest.cached(key, refresh = true)
+        val request = StoreReadRequest.cached(key, refresh = false)
         homeStore.stream(request)
           .debugLogging(HomeStore.tag, enabled = HomeStore.enabled)
           .filterNot { it is StoreReadResponse.NoNewData || it is StoreReadResponse.Loading }
@@ -83,11 +83,13 @@ class StoreHomeRepository(
       }
   }
 
+  @OptIn(ExperimentalStoreApi::class)
   override suspend fun refreshHomeFeed(bustServerCache: Boolean) {
     val user = userRepository.getCurrentUser()
     try {
-      homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId, bustCache = bustServerCache))
+      homeStore.clear()
       shelfStore.clear()
+      homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {

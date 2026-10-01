@@ -111,24 +111,26 @@ class StoreSeriesRepository(
       withContext(dispatcherProvider.io) {
         val series = async { api.getSeriesById(s.libraryId, s.seriesId) }
         val books = async {
-          api.getLibraryItemsMinified(
-            libraryId = s.libraryId,
-            filter = LibraryItemFilter(
-              group = "series",
-              value = s.seriesId,
-            ),
-          )
+          runCatching {
+            api.getLibraryItemsMinified(
+              libraryId = s.libraryId,
+              filter = LibraryItemFilter(
+                group = "series",
+                value = s.seriesId,
+              ),
+            ).getOrNull()
+          }.getOrNull()
         }
 
         val seriesResult = series.await()
-        val seriesBooksResult = books.await()
+        val minifiedResponse = books.await()
 
-        seriesResult.with(seriesBooksResult) { series, books ->
+        seriesResult.map { seriesObj ->
+          val minifiedBooks = minifiedResponse?.data?.filterIsInstance<LibraryItemMinified.Book>()
+          val resolvedBooks = minifiedBooks?.takeIf { it.isNotEmpty() } ?: seriesObj.books.orEmpty()
           SeriesNetworkResult(
-            series = series,
-            // Series is a book-only concept on the server, so the polymorphic response will only
-            // contain Book variants. Filter to the Book subtype to keep downstream code typed.
-            books = books.data.filterIsInstance<LibraryItemMinified.Book>(),
+            series = seriesObj,
+            books = resolvedBooks,
           )
         }.asFetcherResult()
       }
@@ -163,7 +165,9 @@ class StoreSeriesRepository(
 
             // This is the series' full book list, so replace its links rather than adding to
             // them — books removed from the series (or the server) would otherwise linger.
-            db.seriesBookJoinQueries.deleteForSeries(s.seriesId)
+            if (networkResult.books.isNotEmpty()) {
+              db.seriesBookJoinQueries.deleteForSeries(s.seriesId)
+            }
 
             // Insert the books
             networkResult.books.forEach { item ->

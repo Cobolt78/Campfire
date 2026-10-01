@@ -304,8 +304,12 @@ class KtorAudioBookShelfApi(
   }
 
   override suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series> {
-    return trySendRequest {
+    val result = trySendRequest<Series> {
       hydratedClientRequest("/api/libraries/$libraryId/series/$seriesId")
+    }
+    if (result.isSuccess) return result
+    return trySendRequest {
+      hydratedClientRequest("/api/series/$seriesId")
     }
   }
 

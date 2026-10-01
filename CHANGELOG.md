@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.11]
+
+### Added
+
+- **Book Detail Series Navigation**: Added a dedicated "Series" section directly beneath Ratings & Reviews on the Book Detail screen for any book belonging to a series. Tapping the series navigates directly to the full Series Detail view to browse all books in that series.
+
+### Fixed
+
+- **Discoveries Shelf Refresh Persistence**: Fixed an issue where refreshing the Discoveries shelf on the Home screen would revert back to the previous recommendations after opening a book and returning to Home.
+- **SQLite Series & Junction Consistency**: Fixed an issue where opening a book detail screen outside of Continue Series omitted writing series linkages into the SQLite database (`series` and `seriesBookJoin`), disconnecting books from their series locally.
+- **Series Book Ingestion & Audiobookshelf API Fallback**: Fixed an issue in `StoreSeriesRepository` where minified series item filtering failed against Audiobookshelf servers. Campfire now ingests books directly from the series endpoint and falls back to `/api/series/$seriesId` if the library-scoped endpoint fails.
+- **Series Sequence Null Safety**: Preserved primary series sequences in `LibraryItemMapping` even when the sequence number is null or unparsed, preventing series links from being discarded.
+
 ## [1.2.10]
 
 ### Fixed

@@ -54,6 +54,5 @@ object HomeStore : Cork {
   data class Key(
     val userId: UserId,
     val libraryId: LibraryId,
-    val bustCache: Boolean = false,
   )
 }

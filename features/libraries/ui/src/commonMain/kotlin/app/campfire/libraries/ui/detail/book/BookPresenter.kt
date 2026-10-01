@@ -35,6 +35,7 @@ import app.campfire.core.coroutines.onLoaded
 import app.campfire.core.filter.ContentFilter
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.MediaProgress
+import app.campfire.core.model.SeriesSequence
 import app.campfire.core.model.Session
 import app.campfire.libraries.api.LibraryItemValidation
 import app.campfire.libraries.api.LibraryItemValidator
@@ -144,18 +145,50 @@ class BookPresenter(
     // Keyed on the series list so the flow rebuilds when the expanded metadata
     // (with the full series list) loads in after the initial minified item.
     val allSeries = libraryItem.media.metadata.series
-    val seriesContentState by remember(allSeries) {
-      if (allSeries.isEmpty()) {
-        flowOf(LoadState.Loaded(emptyList<SeriesWithBooks>()) as LoadState<List<SeriesWithBooks>>)
+    val resolvedSeriesFlow: kotlinx.coroutines.flow.Flow<List<SeriesSequence>> = remember(allSeries, libraryItem.media.metadata.seriesName) {
+      if (allSeries.isNotEmpty()) {
+        flowOf(allSeries)
       } else {
-        combine(
-          allSeries.map { series ->
-            seriesRepository.observeSeriesLibraryItems(series.id)
-              .map { SeriesWithBooks(series, it) }
-          },
-        ) { it.toList() }
-          .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
-          .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
+        val rawName = libraryItem.media.metadata.seriesName
+        if (!rawName.isNullOrBlank()) {
+          val cleanName = rawName.substringBeforeLast('#').trim()
+          seriesRepository.observeAllSeries(refresh = false).map { seriesList ->
+            val matched = seriesList.firstOrNull {
+              it.name.equals(cleanName, ignoreCase = true) || it.name.equals(rawName, ignoreCase = true)
+            }
+            if (matched != null) {
+              val seq = libraryItem.media.metadata.seriesSequence?.sequence ?: SeriesSequence.UNKNOWN_SEQUENCE
+              listOf(SeriesSequence(id = matched.id, name = matched.name, sequence = seq))
+            } else {
+              emptyList()
+            }
+          }
+        } else {
+          flowOf(emptyList())
+        }
+      }
+    }
+    val seriesContentState by remember(resolvedSeriesFlow, libraryItem.id) {
+      resolvedSeriesFlow.flatMapLatest { seriesList ->
+        if (seriesList.isEmpty()) {
+          flowOf(LoadState.Loaded(emptyList<SeriesWithBooks>()) as LoadState<List<SeriesWithBooks>>)
+        } else {
+          combine(
+            seriesList.map { series ->
+              seriesRepository.observeSeriesLibraryItems(series.id)
+                .map { books ->
+                  val booksWithSelf = if (books.isEmpty() || books.none { it.id == libraryItem.id }) {
+                    (listOf(libraryItem) + books).distinctBy { it.id }
+                  } else {
+                    books
+                  }
+                  SeriesWithBooks(series, booksWithSelf)
+                }
+            },
+          ) { it.toList() }
+            .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
+            .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
+        }
       }
     }.collectAsState(LoadState.Loading)
 

@@ -21,6 +21,8 @@ import app.campfire.data.MediaAudioFiles
 import app.campfire.data.MediaAudioTracks
 import app.campfire.data.MediaChapters
 import app.campfire.data.MetadataAuthor
+import app.campfire.data.Series as DbSeries
+import app.campfire.data.SeriesBookJoin
 import app.campfire.data.mapping.asDbModel
 import app.campfire.data.mapping.asDomainModel
 import app.campfire.data.mapping.asEpisodeDbModel
@@ -360,6 +362,31 @@ class SqlDelightLibraryItemDao(
         db.metadataAuthorQueries.insert(authorMeta.asDbModel(media.mediaId))
       }
 
+      item.media.metadata.series?.forEach { s ->
+        db.seriesQueries.insertOrIgnore(
+          DbSeries(
+            id = s.id,
+            name = s.name,
+            description = null,
+            addedAt = libraryItem.addedAt,
+            updatedAt = libraryItem.updatedAt,
+            userId = userSession.requiredUserId,
+            libraryId = libraryItem.libraryId,
+            inProgress = false,
+            hasActiveBook = false,
+            hideFromContinueListening = false,
+            bookInProgressLastUpdate = null,
+            firstBookUnreadId = null,
+          ),
+        )
+        db.seriesBookJoinQueries.insert(
+          SeriesBookJoin(
+            seriesId = s.id,
+            libraryItemId = libraryItem.id,
+          ),
+        )
+      }
+
       afterCommit {
         bark("LibraryItemDao", LogPriority.VERBOSE) {
           "LibraryItemExpanded[${item.id.loggableId}] inserted"
@@ -430,6 +457,31 @@ class SqlDelightLibraryItemDao(
 
       book.metadata.authors.forEach { authorMeta ->
         db.metadataAuthorQueries.insert(authorMeta.asDbModel(media.mediaId))
+      }
+
+      book.metadata.series.forEach { s ->
+        db.seriesQueries.insertOrIgnore(
+          DbSeries(
+            id = s.id,
+            name = s.name,
+            description = null,
+            addedAt = libraryItem.addedAt,
+            updatedAt = libraryItem.updatedAt,
+            userId = userSession.requiredUserId,
+            libraryId = libraryItem.libraryId,
+            inProgress = false,
+            hasActiveBook = false,
+            hideFromContinueListening = false,
+            bookInProgressLastUpdate = null,
+            firstBookUnreadId = null,
+          ),
+        )
+        db.seriesBookJoinQueries.insert(
+          SeriesBookJoin(
+            seriesId = s.id,
+            libraryItemId = libraryItem.id,
+          ),
+        )
       }
 
       afterCommit {

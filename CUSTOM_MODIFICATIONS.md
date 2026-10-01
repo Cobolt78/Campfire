@@ -667,3 +667,40 @@ Fixed the Discoveries refresh button on the Home feed so tapping it reliably fet
 3. **Smooth Visual Rotation Feedback (`HomePresenter.kt`, `ShelfHeader.kt`)**:
    - Added a minimum 400ms delay in `HomePresenter.kt` during `HomeUiEvent.RefreshDiscoveries` so fast local network responses still produce smooth, satisfying spin feedback.
    - Simplified rotation graphics layer in `ShelfHeader.kt` using `rotationZ = if (isRefreshing) rotation else 0f`.
+
+---
+
+## 26. Performance Overhaul for Startup, Continue Series, and Home Feed (v1.2.10)
+
+### Summary
+Fixed cold startup freezes where the app was stuck on a black screen for 10-15 seconds, eliminated the 10-15s delay opening Continue Series via single-pass SQL batch queries, and resolved micro-stutter when scrolling the Home Screen.
+
+### Key Changes
+1. **Startup Connection Pool Saturation Fix (`HomePresenter.kt`, `StoreSeriesRepository.kt`)**:
+   - Replaced aggressive background database pre-warming on cold launch with lazy on-demand initialization.
+2. **Continue Series N+1 Query Elimination (`series.sq`, `StoreSeriesRepository.kt`)**:
+   - Replaced dozens of per-series database queries with an optimized batch SQL `IN` query.
+3. **Home Feed Background Thread Offload (`HomePresenter.kt`)**:
+   - Offloaded shelf sorting and filtering transformations from the Compose main thread to `Dispatchers.Default`.
+4. **Pre-release SemVer Offset (`Versioning.kt`)**:
+   - Introduced deterministic +100 version code offset for test builds (`-testN`) to prevent `INSTALL_FAILED_VERSION_DOWNGRADE`.
+
+---
+
+## 27. Discoveries Refresh Persistence & Book Detail Series Navigation (v1.2.11)
+
+### Summary
+Fixed Discoveries refresh persistence across screen transitions, added dedicated Series navigation beneath Ratings & Reviews on the Book Detail screen for any series book, and resolved SQLite series junction consistency and API fallbacks across the app.
+
+### Key Changes
+1. **Discoveries Shelf Refresh Persistence (`StoreHomeRepository.kt`, `HomeFetcherFactory.kt`)**:
+   - Cleared `homeStore` and `shelfStore` synchronously on manual refresh so newly randomized recommendations persist when navigating between book detail and home screens.
+2. **Book Detail Series Navigation (`BookPresenter.kt`, `SeriesSlot.kt`)**:
+   - Added a dedicated "Series" section directly beneath Ratings & Reviews for any book belonging to a series.
+   - Guaranteed immediate display of the current book in `SeriesSlot` and seamless navigation to `SeriesDetailScreen` to browse the full series.
+3. **Persistent SQLite Series Linkages (`LibraryItemDao.kt`, `LibraryItemMapping.kt`)**:
+   - Ingested series and `seriesBookJoin` rows whenever expanded books are saved to SQLite, ensuring series associations persist locally across all screens (Search, Library, Recently Added, Discoveries).
+   - Preserved series metadata even when series sequence is unparsed or null.
+4. **Series Book Ingestion & Endpoint Fallback (`StoreSeriesRepository.kt`, `KtorAudioBookShelfApi.kt`)**:
+   - Fallback to series endpoint book data when minified filtering fails, and fallback from `/api/libraries/$libraryId/series/$seriesId` to `/api/series/$seriesId`.
+
