@@ -299,7 +299,7 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `common/compose/.../dialog/ConfirmActionDialog.kt` | Reusable confirmation alert dialog |
 | `core/.../Duration.kt` | Added `formatHoursAndMinutes()` extension |
 | `features/libraries/ui/.../CoverImageSlot.kt` | Detail page cover art progress bar overlay |
-| `features/libraries/ui/.../BookPresenter.kt` | Pass media progress and confirmation settings to slots |
+| `features/libraries/ui/.../BookPresenter.kt` | Delay series fetching to fix Compose freeze |
 | `features/libraries/ui/.../ExpressiveControlSlot.kt` | Confirmation dialogs for delete, discard, finish, cellular download |
 | `features/libraries/ui/.../PodcastPresenter.kt` | Pass media progress to CoverImageSlot |
 | `features/libraries/ui/.../PodcastEpisodeBottomSheet.kt` | Confirmation dialogs for episode actions & cellular download |
