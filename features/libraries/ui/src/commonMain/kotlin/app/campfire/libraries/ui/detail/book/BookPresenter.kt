@@ -77,6 +77,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Inject
 import org.jetbrains.compose.resources.stringResource
@@ -141,6 +143,7 @@ class BookPresenter(
               .map { SeriesWithBooks(series, it) }
           },
         ) { it.toList() }
+          .onStart { delay(500) } // Workaround: Wait for Compose sharedBounds transition to finish
           .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
           .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
       }
