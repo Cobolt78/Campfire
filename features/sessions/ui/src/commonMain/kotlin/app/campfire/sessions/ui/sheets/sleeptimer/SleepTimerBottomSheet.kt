@@ -641,6 +641,14 @@ fun TimerBottomSheetV2Preview() {
               TODO("Not yet implemented")
             }
 
+            override var fadeOutDuration: Duration
+              get() = 30.seconds
+              set(value) {}
+
+            override fun observeFadeOutDuration(): StateFlow<Duration> {
+              return MutableStateFlow(30.seconds)
+            }
+
             override var autoSleepStart: LocalTime
               get() = TODO("Not yet implemented")
               set(value) {}
