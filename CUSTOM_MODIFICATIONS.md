@@ -30,6 +30,11 @@ This document captures all custom features, bug fixes, and UI improvements added
 23. [Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)](#23-instant-continue-series-in-memory-repository-cache--sql-query-optimization-v126)
 24. [Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)](#24-home-continue-series-background-pre-warming-discover-shelf-stabilization--dedicated-refresh-button-v127)
 25. [Discoveries Refresh Server Cache Bypass & Reactive Pipeline Fix (v1.2.8)](#25-discoveries-refresh-server-cache-bypass--reactive-pipeline-fix-v128)
+26. [Dynamic In-App Update Alert (v1.2.9)](#26-dynamic-in-app-update-alert-v129)
+27. [Discoveries Refresh Persistence & Book Detail Series Navigation (v1.2.11)](#27-discoveries-refresh-persistence--book-detail-series-navigation-v1211)
+28. [Version Code Ordering & In-App Upgrade Delivery (v1.2.12)](#28-version-code-ordering--in-app-upgrade-delivery-v1212)
+29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
+30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
 
 ---
 
@@ -370,6 +375,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/home/ui/.../HomeUi.kt` | Integrated `PullToRefreshBox` with `CampfireLoadingIndicator` |
 | `features/home/ui/.../FakeHomeRepository.kt` | Implemented `refreshHomeFeed()` in test fake |
 | `features/home/ui/.../HomePresenterTest.kt` | Unit tests for refresh event trigger and state transitions |
+| `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
+| `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
+| `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
 
 ---
 
@@ -730,6 +738,35 @@ Fixed an app freeze / deadlock that occurred when opening series books from the 
    - Prevents abrupt insertion of `SeriesSlot` (and its image collages) during Jetpack Compose's active `sharedBounds` measurement pass.
 2. **Version Bump to v1.2.13 (`gradle.properties`)**:
    - Bumped `campfire.version` to `1.2.13` and `campfire.versionCode` to `1021399`.
+
+---
+
+## 30. ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)
+
+### Summary
+Diagnosed and permanently resolved the Application Not Responding (ANR) crash that occurred when opening series books from the Discover shelf on the Home screen. From live Android device stack traces (`SIGQUIT` Signal 3 / tombstone dump), thread `main` was discovered completely blocked in `SQLiteConnection.nativeExecuteForCursorWindow` inside `SeriesSourceOfTruthFactory`. The root cause was synchronous database traversal and N+1 query loops executed on the Android UI thread (`AndroidUiDispatcher`) while competing with background write transactions.
+
+### Root Cause
+1. In `BookPresenter.kt`, a fallback flow (`resolvedSeriesFlow`) previously invoked `seriesRepository.observeAllSeries(refresh = false)` whenever `allSeries` was empty.
+2. In `StoreSeriesRepository.kt` & `SeriesSourceOfTruthFactory.kt`, `observeAllSeries` queried all series in the user's library and iterated through each one sequentially executing `db.libraryItemsQueries.selectForSeries(...).awaitAsList()`.
+3. Because the Flow had no `flowOn(dispatcherProvider.databaseRead)` and was collected by `collectAsState()` in Compose, all queries ran on the main UI thread.
+4. Concurrently, the expanded item network fetch opened an exclusive write transaction in SQLite (`db.transaction`).
+5. The main UI thread deadlocked on `art::ConditionVariable::WaitHoldingLocks` waiting for the SQLite lock, causing Android to declare an ANR after 10,000ms (`Input dispatching timed out`).
+
+### Key Changes
+1. **Batch Series Query & Dispatcher Offloading (`SeriesSourceOfTruthFactory.kt`)**:
+   - Replaced iterative N+1 SQLite queries with a single batch query: `db.libraryItemsQueries.selectForMultipleSeries(userId, seriesIds).awaitAsList()`.
+   - Enclosed all query execution and mapping within `withContext(dispatcherProvider.databaseRead)`.
+   - Attached `.flowOn(dispatcherProvider.databaseRead)` to the returned Flow to guarantee it never executes on the UI thread.
+2. **Repository Flow Offloading (`StoreSeriesRepository.kt`)**:
+   - Appended `.flowOn(dispatcherProvider.databaseRead)` to `observeSeriesLibraryItems` so all sorting, deduplication, and database streaming execute off the main thread.
+3. **Clean Series Observation & Removed Fragile Delays (`BookPresenter.kt`)**:
+   - Reverted `seriesContentState` to cleanly observe `allSeries` directly, eliminating the dangerous `observeAllSeries` fallback.
+   - Removed the artificial `.onStart { delay(500) }` workaround that caused inconsistent UI delays and failed to prevent the ANR.
+   - Attached `.flowOn(dispatcherProvider.databaseRead)` to `combine` to ensure background computation.
+4. **Version Bump to v1.2.14 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.14` and `campfire.versionCode` to `1021499`.
+
 
 
 

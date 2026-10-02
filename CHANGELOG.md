@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.14]
+
+### Fixed
+
+- **ANR Freeze When Opening Series Books**: Resolved an Application Not Responding (ANR) crash caused by `SeriesSourceOfTruthFactory` executing synchronous SQLite database queries across all series in the library on the main UI thread. Replaced iterative N+1 queries with a high-performance single batch query (`selectForMultipleSeries`), strictly bound all database reading and Flow transformations to the background `databaseRead` dispatcher with `.flowOn()`, and eliminated fragile delays and main-thread series resolution in `BookPresenter`.
+
 ## [1.2.13]
 
 ### Fixed

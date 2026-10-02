@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -310,6 +311,7 @@ class StoreSeriesRepository(
             items
           }
       }
+      .flowOn(dispatcherProvider.databaseRead)
   }
 
   private val repositoryScope = CoroutineScope(

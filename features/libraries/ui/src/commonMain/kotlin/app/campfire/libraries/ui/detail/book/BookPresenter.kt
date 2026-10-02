@@ -35,7 +35,6 @@ import app.campfire.core.coroutines.onLoaded
 import app.campfire.core.filter.ContentFilter
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.MediaProgress
-import app.campfire.core.model.SeriesSequence
 import app.campfire.core.model.Session
 import app.campfire.libraries.api.LibraryItemValidation
 import app.campfire.libraries.api.LibraryItemValidator
@@ -80,16 +79,15 @@ import campfire.features.libraries.ui.generated.resources.genres_title
 import campfire.features.libraries.ui.generated.resources.tags_title
 import com.slack.circuit.runtime.Navigator
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Inject
 import org.jetbrains.compose.resources.stringResource
@@ -147,51 +145,26 @@ class BookPresenter(
     // Keyed on the series list so the flow rebuilds when the expanded metadata
     // (with the full series list) loads in after the initial minified item.
     val allSeries = libraryItem.media.metadata.series
-    val resolvedSeriesFlow: kotlinx.coroutines.flow.Flow<List<SeriesSequence>> = remember(allSeries, libraryItem.media.metadata.seriesName) {
-      if (allSeries.isNotEmpty()) {
-        flowOf(allSeries)
+    val seriesContentState by remember(allSeries, libraryItem.id) {
+      if (allSeries.isEmpty()) {
+        flowOf(LoadState.Loaded(emptyList<SeriesWithBooks>()) as LoadState<List<SeriesWithBooks>>)
       } else {
-        val rawName = libraryItem.media.metadata.seriesName
-        if (!rawName.isNullOrBlank()) {
-          val cleanName = rawName.substringBeforeLast('#').trim()
-          seriesRepository.observeAllSeries(refresh = false).map { seriesList ->
-            val matched = seriesList.firstOrNull {
-              it.name.equals(cleanName, ignoreCase = true) || it.name.equals(rawName, ignoreCase = true)
-            }
-            if (matched != null) {
-              val seq = libraryItem.media.metadata.seriesSequence?.sequence ?: SeriesSequence.UNKNOWN_SEQUENCE
-              listOf(SeriesSequence(id = matched.id, name = matched.name, sequence = seq))
-            } else {
-              emptyList()
-            }
-          }
-        } else {
-          flowOf(emptyList())
-        }
-      }
-    }
-    val seriesContentState by remember(resolvedSeriesFlow, libraryItem.id) {
-      resolvedSeriesFlow.flatMapLatest { seriesList ->
-        if (seriesList.isEmpty()) {
-          flowOf(LoadState.Loaded(emptyList<SeriesWithBooks>()) as LoadState<List<SeriesWithBooks>>)
-        } else {
-          combine(
-            seriesList.map { series ->
-              seriesRepository.observeSeriesLibraryItems(series.id)
-                .map { books ->
-                  val booksWithSelf = if (books.isEmpty() || books.none { it.id == libraryItem.id }) {
-                    (listOf(libraryItem) + books).distinctBy { it.id }
-                  } else {
-                    books
-                  }
-                  SeriesWithBooks(series, booksWithSelf)
+        combine(
+          allSeries.map { series ->
+            seriesRepository.observeSeriesLibraryItems(series.id)
+              .map { books ->
+                val booksWithSelf = if (books.isEmpty() || books.none { it.id == libraryItem.id }) {
+                  (listOf(libraryItem) + books).distinctBy { it.id }
+                } else {
+                  books
                 }
-            },
-          ) { it.toList() }
-            .onStart { delay(500) } // Workaround: Allow Compose sharedBounds transition to settle before inserting slot
-            .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
-            .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
-        }
+                SeriesWithBooks(series, booksWithSelf)
+              }
+          },
+        ) { it.toList() }
+          .flowOn(dispatcherProvider.databaseRead)
+          .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
+          .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
       }
     }.collectAsState(LoadState.Loading)
 
