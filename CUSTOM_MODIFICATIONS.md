@@ -717,4 +717,19 @@ Normalized version code derivation in build-logic to eliminate artificial test b
 2. **Version Bump to v1.2.12 (`gradle.properties`)**:
    - Bumped `campfire.version` to `1.2.12` and `campfire.versionCode` to `1021299`, which strictly exceeds `1021202` (test2).
 
+---
+
+## 29. Shared Element Transition Layout Lockup Fix (v1.2.13)
+
+### Summary
+Fixed an app freeze / deadlock that occurred when opening series books from the Discover shelf on the Home screen. When navigating with a shared element transition (`sharedBounds`), injecting the series slot into the `LazyColumn` mid-transition caused Compose's layout engine to lock up. Added a 500ms delay to allow the shared bounds transition to settle cleanly before slot insertion.
+
+### Key Changes
+1. **Transition Settling Delay for Series Slot (`BookPresenter.kt`)**:
+   - Attached `.onStart { delay(500) }` to the `combine` flow in `seriesContentState`.
+   - Prevents abrupt insertion of `SeriesSlot` (and its image collages) during Jetpack Compose's active `sharedBounds` measurement pass.
+2. **Version Bump to v1.2.13 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.13` and `campfire.versionCode` to `1021399`.
+
+
 

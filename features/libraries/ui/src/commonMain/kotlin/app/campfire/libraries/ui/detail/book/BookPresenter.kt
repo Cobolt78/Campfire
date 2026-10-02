@@ -80,6 +80,7 @@ import campfire.features.libraries.ui.generated.resources.genres_title
 import campfire.features.libraries.ui.generated.resources.tags_title
 import com.slack.circuit.runtime.Navigator
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -88,6 +89,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import me.tatarka.inject.annotations.Inject
 import org.jetbrains.compose.resources.stringResource
@@ -186,6 +188,7 @@ class BookPresenter(
                 }
             },
           ) { it.toList() }
+            .onStart { delay(500) } // Workaround: Allow Compose sharedBounds transition to settle before inserting slot
             .map { LoadState.Loaded(it) as LoadState<List<SeriesWithBooks>> }
             .catch { emit(LoadState.Error as LoadState<List<SeriesWithBooks>>) }
         }
