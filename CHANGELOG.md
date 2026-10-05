@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.15]
+
+### Changed
+
+- **Book Detail Layout**: Moved the "Series" section up between "Summary" and "Ratings & Reviews" on the Book Detail screen for more immediate visibility of series information and faster navigation across books in a series.
+
 ## [1.2.14]
 
 ### Fixed

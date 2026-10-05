@@ -35,6 +35,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 28. [Version Code Ordering & In-App Upgrade Delivery (v1.2.12)](#28-version-code-ordering--in-app-upgrade-delivery-v1212)
 29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
 30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
+31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
 
 ---
 
@@ -766,6 +767,20 @@ Diagnosed and permanently resolved the Application Not Responding (ANR) crash th
    - Attached `.flowOn(dispatcherProvider.databaseRead)` to `combine` to ensure background computation.
 4. **Version Bump to v1.2.14 (`gradle.properties`)**:
    - Bumped `campfire.version` to `1.2.14` and `campfire.versionCode` to `1021499`.
+
+---
+
+## 31. Book Detail Series Slot Repositioning (v1.2.15)
+
+### Summary
+Repositioned the "Series" section on the Book Detail view (`BookPresenter.kt`). Previously, the Series slot was rendered beneath the "Ratings & Reviews" section (`CommunitySlot`). Moved the Series section directly above "Ratings & Reviews", placing it between the "Summary" section (`SummarySlot`) and "Ratings & Reviews". This provides immediate, natural context for series books and quicker access to other books in the series without having to scroll past community reviews.
+
+### Key Changes
+1. **Slot Reordering (`BookPresenter.kt`)**:
+   - Placed `seriesContentState.onLoaded { ... }` immediately following `SummarySlot` and ahead of `communityInfoState?.let { ... }`.
+2. **Version Bump to v1.2.15 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.15` and `campfire.versionCode` to `1021599`.
+
 
 
 

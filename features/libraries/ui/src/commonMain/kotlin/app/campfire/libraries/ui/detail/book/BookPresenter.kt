@@ -543,13 +543,6 @@ private fun buildSlots(
       )
     }
 
-    // Present whenever any provider can serve — the slot renders its own
-    // loading and empty phases so the section never blinks between them.
-    communityInfoState?.let { communityInfo ->
-      this += SpacerSlot.medium("community_spacer")
-      this += CommunitySlot(communityInfo)
-    }
-
     seriesContentState.onLoaded { seriesWithBooks ->
       val populatedSeries = seriesWithBooks.filter { it.books.isNotEmpty() }
       if (populatedSeries.isNotEmpty()) {
@@ -559,6 +552,13 @@ private fun buildSlots(
           series = populatedSeries,
         )
       }
+    }
+
+    // Present whenever any provider can serve — the slot renders its own
+    // loading and empty phases so the section never blinks between them.
+    communityInfoState?.let { communityInfo ->
+      this += SpacerSlot.medium("community_spacer")
+      this += CommunitySlot(communityInfo)
     }
 
     libraryItem.media.metadata.genres.takeIf { it.isNotEmpty() }?.let { genres ->

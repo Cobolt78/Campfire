@@ -150,10 +150,10 @@ class TestCampfireSettings(
     observeLong(::appUpdateDismissedVersionCode)
       .stateIn(testScope, SharingStarted.Lazily, appUpdateDismissedVersionCode)
 
-  override var socketEnabled: Boolean by boolean()
-  override fun observeSocketEnabled(): StateFlow<Boolean> =
-    observeBoolean(::socketEnabled)
-      .stateIn(testScope, SharingStarted.Lazily, socketEnabled)
+  override var continueSeriesAlternateView: Boolean by boolean()
+  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> =
+    observeBoolean(::continueSeriesAlternateView)
+      .stateIn(testScope, SharingStarted.Lazily, continueSeriesAlternateView)
 
   override var confirmActions: Boolean by boolean()
   override fun observeConfirmActions(): StateFlow<Boolean> =
