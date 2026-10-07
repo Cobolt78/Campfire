@@ -38,7 +38,7 @@ class RemoteControlForwardingPlayer(
    * Returns true if we handled the command (seek forward/back), false if default behavior should be used.
    */
   private inline fun handleRemoteNextPrevCommand(seekAction: () -> Unit): Boolean {
-    if (!settings.remoteNextPrevSkipsChapters) {
+    if (session.isRemoteControllerRequest(appPackageName) && !settings.remoteNextPrevSkipsChapters) {
       seekAction()
       return true
     }
@@ -68,4 +68,25 @@ class RemoteControlForwardingPlayer(
       super.seekToPrevious()
     }
   }
+}
+
+/**
+ * Whether the session command currently being dispatched came from a *remote* controller —
+ * a different package (e.g. car stereo). The media notification and Android Auto are NOT
+ * remote: they have dedicated custom seek buttons, so their next/prev are always chapter
+ * skips. Bluetooth is handled separately via onMediaButtonEvent in MediaSessionCallback,
+ * since Media3 routes those key events through the app's own package.
+ */
+@UnstableApi
+internal fun MediaSession?.isRemoteControllerRequest(appPackageName: String): Boolean {
+  val currentSession = this ?: return false
+  val controller = currentSession.controllerForCurrentRequest ?: return false
+
+  if (currentSession.isMediaNotificationController(controller) ||
+    currentSession.isAutoCompanionController(controller)
+  ) {
+    return false
+  }
+
+  return controller.packageName != appPackageName
 }

@@ -781,6 +781,50 @@ Repositioned the "Series" section on the Book Detail view (`BookPresenter.kt`). 
 2. **Version Bump to v1.2.15 (`gradle.properties`)**:
    - Bumped `campfire.version` to `1.2.15` and `campfire.versionCode` to `1021599`.
 
+---
+
+## 32. Playback Database Throttling & High CPU / Battery Drain Resolution (v1.2.16)
+
+### Summary
+Diagnosed and resolved a major performance regression causing 39%–46% CPU utilization and rapid battery drain during audiobook playback on modern multi-core devices (tested on Samsung Galaxy S24 Ultra). Thread inspection using live ADB profiling revealed four coroutine worker threads (`DefaultDispatcher-worker-1` through `worker-4`) pinned at 75%–91% CPU each during active playback, dropping immediately to 0% when playback was paused.
+
+### Root Cause
+1. In `ExoPlayerAudioPlayer.kt`, an unthrottled 500ms ticker continuously dispatched position updates to `PlaybackSynchronizer`s.
+2. In `MediaProgressPlaybackSynchronizer.kt`, every 500ms tick invoked `mediaProgressRepository.updateProgress(..., skipUpload = true)` with a SQLite write transaction.
+3. In `LocalSessionUpdateSynchronizer.kt`, every 500ms tick invoked `sessionsRepository.updateCurrentTime(libraryItemId, overallTime)` with another SQLite write transaction.
+4. Each SQLite write transaction invalidated SQLDelight table queries (including `selectContinueSeries` which performs 3 subqueries across all series in the library, and `HomePresenter` shelf sorting). As a result, all four background worker threads were constantly re-evaluating heavy database queries twice per second.
+
+### Key Changes
+1. **Throttled Progress Synchronization (`MediaProgressPlaybackSynchronizer.kt`)**:
+   - Injected `FatherTime` from `AppScope`.
+   - Throttled `onOverallTimeChanged` progress database writes to once every 15 seconds (`PROGRESS_UPDATE_INTERVAL_MS = 15_000L`) during active playback.
+   - Guaranteed immediate synchronous flush (`force = true`) on pause, stop, and completion.
+2. **Throttled Local Session Current Time Updates (`LocalSessionUpdateSynchronizer.kt`)**:
+   - Throttled `onOverallTimeChanged` session time updates to once every 5 seconds (`CURRENT_TIME_UPDATE_INTERVAL_MS = 5_000L`).
+   - Cached `lastKnownOverallTime` and immediately persisted it when state changes to `Paused`, `Disabled`, or `Finished`.
+   - Limited `remoteSessionsUpdater.update()` calls to the 5-second interval instead of every 500ms.
+
+---
+
+## 33. Android Auto & Dedicated Controller Chapter Skip Restoration (v1.2.16)
+
+### Summary
+Fixed an issue where Android Auto next and previous track buttons only jumped forward or back 30 seconds instead of skipping chapters, despite Android Auto already having dedicated 30-second fast-forward and rewind buttons on its interface.
+
+### Root Cause
+In commit `2e65be6`, `isRemoteControllerRequest` logic was omitted, causing `!settings.remoteNextPrevSkipsChapters` to unconditionally hijack `COMMAND_SEEK_TO_NEXT` and `COMMAND_SEEK_TO_PREVIOUS` into interval seeks for all controllers indiscriminately (including Android Auto and the media notification).
+
+### Key Changes
+1. **Remote Controller Identification (`RemoteControlForwardingPlayer.kt`)**:
+   - Restored and centralized `MediaSession?.isRemoteControllerRequest(appPackageName: String): Boolean`.
+   - Exempts Android Auto (`isAutoCompanionController`) and media notifications (`isMediaNotificationController`) since both provide dedicated fast-forward and rewind buttons.
+2. **Chapter Forwarding Integration (`ChapterWindowForwardingPlayer.kt`)**:
+   - Updated `handleSeek` for `COMMAND_SEEK_TO_NEXT` and `COMMAND_SEEK_TO_PREVIOUS` to check `remoteJumpPreferred()`.
+   - Added `private fun remoteJumpPreferred(): Boolean = session.isRemoteControllerRequest(appPackageName) && !settings.remoteNextPrevSkipsChapters`.
+   - Ensures Android Auto next/previous track controls always skip chapters while Bluetooth car stereos without seek buttons respect the user preference.
+3. **Version Bump to v1.2.16 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.16` and `campfire.versionCode` to `1021699`.
+
 
 
 

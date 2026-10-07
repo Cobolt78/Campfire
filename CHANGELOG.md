@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.16]
+
+### Fixed
+
+- **High CPU Utilization & Rapid Battery Drain During Playback**: Fixed an issue where active audiobook playback caused continuous 39%–46% CPU utilization and severe battery drain (pinning multiple `DefaultDispatcher` background worker threads at 75%–91% CPU each on modern multi-core devices). The audio player's unthrottled 500ms progress ticker was triggering SQLite write transactions (`updateProgress` and `updateCurrentTime`) twice every second, continually invalidating SQLDelight table queries and forcing heavy series/shelf subqueries and sorting logic to re-evaluate on background workers. Progress updates are now throttled to 15 seconds in `MediaProgressPlaybackSynchronizer` and 5 seconds in `LocalSessionUpdateSynchronizer` while actively playing, while preserving immediate synchronous saves on pause, stop, and completion.
+- **Android Auto Chapter Next/Previous Navigation**: Fixed an issue where Android Auto next and previous track buttons only jumped forward or back 30 seconds instead of skipping chapters. In earlier changes, `session.isRemoteControllerRequest` was removed from `RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer`, causing the `remoteNextPrevSkipsChapters` setting to hijack chapter skips for all controllers. Controllers with dedicated fast-forward and rewind buttons (Android Auto and the system media notification) are now correctly exempted from seek hijacking so that next/previous buttons always skip chapters as intended.
+
 ## [1.2.15]
 
 ### Changed

@@ -122,7 +122,7 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_NEXT,
       Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
       -> {
-        if (!settings.remoteNextPrevSkipsChapters) {
+        if (remoteJumpPreferred()) {
           host.seekForward()
           invalidateState()
           return Futures.immediateVoidFuture()
@@ -132,7 +132,7 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_PREVIOUS,
       Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
       -> {
-        if (!settings.remoteNextPrevSkipsChapters) {
+        if (remoteJumpPreferred()) {
           host.seekBackward()
           invalidateState()
           return Futures.immediateVoidFuture()
@@ -221,6 +221,9 @@ class ChapterWindowForwardingPlayer(
       cachedPlaylist = it
     }
   }
+
+  private fun remoteJumpPreferred(): Boolean =
+    session.isRemoteControllerRequest(appPackageName) && !settings.remoteNextPrevSkipsChapters
 
   private val Chapter.startMs: Long get() = start.seconds.inWholeMilliseconds
   private val Chapter.durationMs: Long get() = duration.inWholeMilliseconds
