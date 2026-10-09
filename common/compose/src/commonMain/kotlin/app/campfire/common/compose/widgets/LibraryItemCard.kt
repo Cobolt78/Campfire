@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -111,6 +112,7 @@ fun LibraryItemCard(
   colors: CardColors = CardDefaults.elevatedCardColors(
     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
   ),
+  seriesBadge: String? = null,
 ) = SharedElementTransitionScope {
   val animationScope = findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)
 
@@ -144,6 +146,7 @@ fun LibraryItemCard(
               progress = progress,
               isTransitioning = isTransitioning,
               large = showInformation,
+              seriesBadge = seriesBadge,
             )
 
             if (!episode?.episode.isNullOrBlank()) {
@@ -262,47 +265,78 @@ private fun BoxScope.ProgressDecorator(
   progress: MediaProgress?,
   isTransitioning: Boolean,
   large: Boolean = true,
+  seriesBadge: String? = null,
 ) {
-  progress?.let { mediaProgress ->
-    if (mediaProgress.isFinished || mediaProgress.isCompleted) {
-      AnimatedVisibility(
-        visible = isTransitioning,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-          .align(Alignment.TopStart),
+  val isFinished = progress != null && (progress.isFinished || progress.isCompleted)
+  val hasBadge = !seriesBadge.isNullOrBlank()
+
+  if (isFinished || hasBadge) {
+    AnimatedVisibility(
+      visible = isTransitioning,
+      enter = fadeIn(),
+      exit = fadeOut(),
+      modifier = Modifier
+        .align(Alignment.TopStart)
+        .padding(if (large) 8.dp else 4.dp),
+    ) {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        MediaFinishedIndicator(
-          size = if (large) 24.dp else 18.dp,
-          modifier = Modifier
-            .thenIf(
-              condition = large,
-              whenTrue = {
-                Modifier.padding(8.dp)
-              },
-              whenFalse = {
-                Modifier.padding(4.dp)
-              },
-            ),
-        )
-      }
-    } else {
-      AnimatedVisibility(
-        visible = isTransitioning,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-          .align(Alignment.BottomCenter),
-      ) {
-        MediaProgressBar(
-          mediaProgress = mediaProgress,
-          trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
-          modifier = Modifier
-            .fillMaxWidth(),
-        )
+        if (isFinished) {
+          MediaFinishedIndicator(
+            size = if (large) 24.dp else 18.dp,
+          )
+        }
+        if (!seriesBadge.isNullOrBlank()) {
+          SeriesBadge(
+            badge = seriesBadge,
+            large = large,
+          )
+        }
       }
     }
   }
+
+  if (progress != null && !isFinished) {
+    AnimatedVisibility(
+      visible = isTransitioning,
+      enter = fadeIn(),
+      exit = fadeOut(),
+      modifier = Modifier
+        .align(Alignment.BottomCenter),
+    ) {
+      MediaProgressBar(
+        mediaProgress = progress,
+        trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
+        modifier = Modifier
+          .fillMaxWidth(),
+      )
+    }
+  }
+}
+
+@Composable
+fun SeriesBadge(
+  badge: String,
+  modifier: Modifier = Modifier,
+  large: Boolean = true,
+) {
+  Text(
+    text = badge,
+    style = MaterialTheme.typography.labelSmall,
+    fontWeight = FontWeight.Bold,
+    color = Color.White,
+    modifier = modifier
+      .clip(CircleShape)
+      .background(
+        color = MaterialTheme.colorScheme.scrim.copy(0.68f),
+      )
+      .padding(
+        horizontal = if (large) 8.dp else 6.dp,
+        vertical = if (large) 4.dp else 2.dp,
+      ),
+  )
 }
 
 @Composable

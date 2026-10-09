@@ -3,6 +3,7 @@
 
 package app.campfire.series.ui.detail.composables
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -19,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import app.campfire.bookinfo.api.ProviderSeriesEntry
 import app.campfire.common.compose.widgets.CoverImage
 import app.campfire.common.compose.widgets.ElevatedContentCard
+import app.campfire.common.compose.widgets.SeriesBadge
 import app.campfire.common.compose.widgets.placeholderBookPainter
 import campfire.features.series.ui.generated.resources.Res
 import campfire.features.series.ui.generated.resources.cd_book_cover
@@ -42,20 +45,30 @@ internal fun MissingSeriesBookCard(
     modifier = modifier,
   ) {
     val scrim = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)
-    CoverImage(
-      imageUrl = entry.coverUrl,
-      contentDescription = stringResource(Res.string.cd_book_cover, entry.title),
-      placeholder = placeholderBookPainter(),
-      shape = MaterialTheme.shapes.largeIncreased,
-      modifier = Modifier
-        .fillMaxWidth()
-        .aspectRatio(1f),
-      sharedElementModifier = Modifier
-        .drawWithContent {
-          drawContent()
-          drawRoundRect(scrim, cornerRadius = CornerRadius(20.dp.toPx()))
-        },
-    )
+    Box {
+      CoverImage(
+        imageUrl = entry.coverUrl,
+        contentDescription = stringResource(Res.string.cd_book_cover, entry.title),
+        placeholder = placeholderBookPainter(),
+        shape = MaterialTheme.shapes.largeIncreased,
+        modifier = Modifier
+          .fillMaxWidth()
+          .aspectRatio(1f),
+        sharedElementModifier = Modifier
+          .drawWithContent {
+            drawContent()
+            drawRoundRect(scrim, cornerRadius = CornerRadius(20.dp.toPx()))
+          },
+      )
+      entry.position?.let { position ->
+        SeriesBadge(
+          badge = "#${formatPosition(position)}",
+          modifier = Modifier
+            .align(Alignment.TopStart)
+            .padding(8.dp),
+        )
+      }
+    }
     Column(
       modifier = Modifier.padding(vertical = 16.dp),
     ) {

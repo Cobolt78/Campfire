@@ -97,6 +97,7 @@ fun SeriesDetail(
       )
 
       is LoadState.Loaded -> LoadedState(
+        seriesId = screen.seriesId,
         seriesName = screen.seriesName,
         items = state.seriesContentState.data,
         missingSection = state.missingSection,
@@ -111,6 +112,7 @@ fun SeriesDetail(
 
 @Composable
 private fun LoadedState(
+  seriesId: String,
   seriesName: String,
   items: List<LibraryItem>,
   missingSection: MissingSection?,
@@ -133,8 +135,17 @@ private fun LoadedState(
       items = items,
       key = { _, item -> item.id },
     ) { index, item ->
+      val seriesSequence = item.media.metadata.series
+        .firstOrNull { it.id == seriesId || it.name.equals(seriesName, ignoreCase = true) }
+        ?: item.media.metadata.seriesSequence
+
+      val seriesBadge = seriesSequence?.formattedSequence
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "#$it" }
+
       LibraryItemCard(
         item = item,
+        seriesBadge = seriesBadge,
         sharedTransitionKey = item.id + seriesName,
         sharedTransitionZIndex = (items.size - index) + 1f,
         offlineStatus = offlineStatus(item.id),

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.17]
+
+### Added
+
+- **Series Book Number Badges on Covers**: Added a book sequence number badge (`#1`, `#2`, `#2.5`) directly on the top-left corner of each book cover in the Series Detail view. Rendered as a sleek, semi-transparent dark pill badge with crisp white text, ensuring high legibility across all book cover artwork. When a book is completed, the green finished checkmark and the `#` sequence badge sit together harmoniously without visual collision. The sequence badge is also rendered for missing series entries in the "Missing from your library" section.
+
 ## [1.2.16]
 
 ### Fixed

@@ -825,6 +825,27 @@ In commit `2e65be6`, `isRemoteControllerRequest` logic was omitted, causing `!se
 3. **Version Bump to v1.2.16 (`gradle.properties`)**:
    - Bumped `campfire.version` to `1.2.16` and `campfire.versionCode` to `1021699`.
 
+---
+
+## 34. Series Book Number Badges on Covers (v1.2.17)
+
+### Summary
+Added a book sequence number badge (`#1`, `#2`, `#2.5`) directly on the top-left corner of each book cover in the Series Detail view (`SeriesDetailUi.kt`). When browsing a series, users can immediately identify the volume number and reading order at a glance without having to check the detail screen.
+
+### Key Changes
+1. **Reusable Series Badge (`LibraryItemCard.kt`)**:
+   - Created `@Composable fun SeriesBadge(badge: String, modifier: Modifier = Modifier, large: Boolean = true)`.
+   - Rendered as a sleek, semi-transparent dark pill badge (`scrim.copy(0.68f)`) with bold white text and rounded corners (`CircleShape`), providing high contrast across all light and dark cover artwork.
+   - Updated `ProgressDecorator` to render the badge alongside `MediaFinishedIndicator` in `TopStart` (`[✓] [#1]`) when a book is finished, avoiding any visual overlap.
+2. **Series Detail Sequence Extraction (`SeriesDetailUi.kt`)**:
+   - Passed `seriesId` into `LoadedState`.
+   - Extracted the matching series sequence for the active series (`item.media.metadata.series.firstOrNull { it.id == seriesId || it.name.equals(seriesName, true) } ?: item.media.metadata.seriesSequence`).
+   - Formatted the badge using `formattedSequence` into `#1`, `#2`, `#2.5`, etc.
+3. **Missing Series Books Parity (`MissingSeriesBookCard.kt`)**:
+   - Added `SeriesBadge` in `TopStart` on missing book covers matching their catalog position (`#${formatPosition(position)}`), providing unified visual consistency across both owned and unowned books in the series.
+4. **Version Bump to v1.2.17 (`gradle.properties`)**:
+   - Bumped `campfire.version` to `1.2.17` and `campfire.versionCode` to `1021799`.
+
 
 
 
