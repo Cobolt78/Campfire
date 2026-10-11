@@ -343,8 +343,8 @@ fun SeriesBadge(
   Text(
     text = badge,
     style = MaterialTheme.typography.labelSmall.copy(
-      fontSize = if (large) 10.5.sp else 9.sp,
-      lineHeight = if (large) 12.sp else 10.sp,
+      fontSize = if (large) 11.sp else 10.sp,
+      lineHeight = if (large) 13.sp else 12.sp,
       letterSpacing = 0.sp,
     ),
     fontWeight = FontWeight.Bold,
@@ -355,7 +355,7 @@ fun SeriesBadge(
         color = MaterialTheme.colorScheme.scrim.copy(0.60f),
       )
       .padding(
-        horizontal = if (large) 5.dp else 3.5.dp,
+        horizontal = if (large) 5.dp else 4.dp,
         vertical = if (large) 1.5.dp else 1.dp,
       ),
   )
