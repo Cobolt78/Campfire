@@ -19,6 +19,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.18]
+
+### Added
+
+- **Ported Custom Enhancements to Upstream 1.2.1 Base**:
+  - Re-architected custom extensions to native Metro DI (`dev.zacsweers.metro`) across all feature modules.
+  - Dedicated **Continue Series** and **Offline Downloads** screens with full sorting and filtering.
+  - Interactive shelf headings (`›`) on Home feed with fast routing to full screens.
+  - In-app **GitHub Updates** (`Cobolt78/Campfire`) with live download progress in drawer and direct APK installation handoff.
+  - Dynamic **Speed-Adjusted Book Countdown** on Android Auto (`MediaItemBuilder` & `ChapterWindowForwardingPlayer`).
+  - Audiobookshelf-style **Bottom Progress Bars** (6dp, green/orange) across Library, Search, Author, Collection, and Series views.
+  - Series book number badges (`#N`) rendered in the top-left corner before the finished checkmark (`[#1] [✓]`).
+  - Modernized offline indicator to an industry-standard download tray arrow (`CampfireIcons.Rounded.Download`) tinted green (`#4CAF50`).
+  - Media file size in MB displayed on Book & Podcast detail screens.
+  - App version displayed on bottom row of navigation drawer.
+  - Configurable action confirmations and warn-on-cellular downloads safeguards.
+  - Reset sleep timer on pause setting and shake-to-reset haptic confirmation.
+
+### Changed
+
+- **UI & Badge Harmonization**:
+  - Arranged `#N` series badge and finished checkmark in TopStart with `#N` positioned before the checkmark (`[#1] [✓]`).
+  - Book Detail series section positioned above Community Ratings & Reviews for faster navigation.
+  - Adopted upstream 1.2.1 native decibel volume fading (`VolumeFadeController`).
+  - Home feed Discoveries refresh bypasses server cache with millisecond timestamp parameters.
+
+### Fixed
+
+- **Performance & Battery Drain**:
+  - Throttled SQLite progress writes during active playback (15s progress, 5s session time) to eliminate background coroutine CPU pinning and battery drain.
+  - Replaced N+1 series queries with batch query `selectForMultipleSeries` offloaded to `databaseRead` dispatcher, preventing UI freezes and ANRs.
+  - Fixed Android Auto next/previous track controls to always skip chapters while preserving dedicated 30s jump buttons.
+  - Calibrated shake-to-reset thresholds and sensor delay.
+  - Widened equalizer bottom sheet label column to 90.dp to prevent word wrapping.
+
 ## [1.2.1]
 
 ### Added

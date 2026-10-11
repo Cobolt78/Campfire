@@ -24,8 +24,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
-@Inject
+// Disabled in favor of GitHubAppUpdateSource for custom GitHub releases
+// @ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+// @Inject
 class FirebaseAppUpdateSource(
   private val application: Application,
   private val appInfo: ApplicationInfo,
