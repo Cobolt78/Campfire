@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
+import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
 import app.campfire.core.extensions.seconds
 import app.campfire.core.model.Chapter
 import app.campfire.settings.api.PlaybackSettings
@@ -52,6 +53,15 @@ class ChapterWindowForwardingPlayer(
 
     /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
     fun skipToPreviousChapter()
+
+    /** Seeks forward by the configured interval. */
+    fun seekForward()
+
+    /** Seeks backward by the configured interval. */
+    fun seekBackward()
+
+    /** Format speed-adjusted remaining time for the whole book. */
+    fun remainingFormatted(): String = ""
   }
 
   /** Set after session creation, to identify the controller a command came from. */
@@ -60,6 +70,7 @@ class ChapterWindowForwardingPlayer(
   private val wrapped: Player = player
 
   private var cachedChapters: List<Chapter>? = null
+  private var cachedFormatted: String? = null
   private var cachedPlaylist: List<MediaItemData> = emptyList()
 
   /** Re-derives state; called from the audio player's progress tick while windowing is active. */
@@ -94,6 +105,8 @@ class ChapterWindowForwardingPlayer(
             Player.COMMAND_SEEK_TO_PREVIOUS,
             Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
             Player.COMMAND_SEEK_TO_MEDIA_ITEM,
+            Player.COMMAND_SEEK_BACK,
+            Player.COMMAND_SEEK_FORWARD,
           )
           .build(),
       )
@@ -123,15 +136,29 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_NEXT,
       Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
       -> {
-        // Remote controllers can prefer time jumps over chapter skips — the same behavior
-        // RemoteControlForwardingPlayer applies on chapter-granular queues
-        if (remoteJumpPreferred()) wrapped.seekForward() else host.skipToNextChapter()
+        if (remoteJumpPreferred()) {
+          host.seekForward()
+        } else {
+          host.skipToNextChapter()
+        }
       }
 
       Player.COMMAND_SEEK_TO_PREVIOUS,
       Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
       -> {
-        if (remoteJumpPreferred()) wrapped.seekBack() else host.skipToPreviousChapter()
+        if (remoteJumpPreferred()) {
+          host.seekBackward()
+        } else {
+          host.skipToPreviousChapter()
+        }
+      }
+
+      Player.COMMAND_SEEK_FORWARD -> {
+        host.seekForward()
+      }
+
+      Player.COMMAND_SEEK_BACK -> {
+        host.seekBackward()
       }
 
       else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
@@ -152,15 +179,19 @@ class ChapterWindowForwardingPlayer(
   }
 
   private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
-    cachedPlaylist.takeIf { chapters === cachedChapters }?.let { return it }
+    val formatted = host.remainingFormatted()
+    if (chapters === cachedChapters && formatted == cachedFormatted) {
+      return cachedPlaylist
+    }
     return chapters.map { chapter ->
+      val title = MediaItemBuilder.formatChapterTitleWithCountdown(chapter.title, formatted)
       MediaItemData.Builder("chapter_${chapter.id}")
         .setMediaItem(
           baseItem.buildUpon()
             .setMediaId("${baseItem.mediaId}_chapter_${chapter.id}")
             .setMediaMetadata(
               baseItem.mediaMetadata.buildUpon()
-                .setTitle(chapter.title)
+                .setTitle(title)
                 .setSubtitle(baseItem.mediaMetadata.title)
                 .setDurationMs(chapter.durationMs)
                 .build(),
@@ -172,6 +203,7 @@ class ChapterWindowForwardingPlayer(
         .build()
     }.also {
       cachedChapters = chapters
+      cachedFormatted = formatted
       cachedPlaylist = it
     }
   }

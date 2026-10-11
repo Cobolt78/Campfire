@@ -32,7 +32,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.launch
+import app.campfire.audioplayer.impl.forwarding.isAutoController
 
 @SuppressLint("UnsafeOptInUsageError")
 internal class MediaSessionCallback(
@@ -46,6 +49,67 @@ internal class MediaSessionCallback(
   private val cycleSpeedCommand = SessionCommand(WidgetSessionCommand.CYCLE_SPEED, Bundle.EMPTY)
   private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
   private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
+
+  fun bindSession(mediaSession: MediaSession) {
+    serviceScope.launch {
+      combine(
+        component.playbackSettings.observeRemoteNextPrevSkipsChapters(),
+        component.playbackSettings.observeBackwardTimeMs(),
+        component.playbackSettings.observeForwardTimeMs(),
+      ) { _, _, _ -> }
+        .collect {
+          mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
+        }
+    }
+  }
+
+  internal fun createMediaButtonPreferences(): List<CommandButton> {
+    val skipsChapters = component.playbackSettings.remoteNextPrevSkipsChapters
+    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
+      5_000L -> CommandButton.ICON_SKIP_BACK_5
+      10_000L -> CommandButton.ICON_SKIP_BACK_10
+      15_000L -> CommandButton.ICON_SKIP_BACK_15
+      30_000L -> CommandButton.ICON_SKIP_BACK_30
+      else -> CommandButton.ICON_SKIP_BACK
+    }
+    val skipForwardIcon = when (component.playbackSettings.forwardTimeMs) {
+      5_000L -> CommandButton.ICON_SKIP_FORWARD_5
+      10_000L -> CommandButton.ICON_SKIP_FORWARD_10
+      15_000L -> CommandButton.ICON_SKIP_FORWARD_15
+      30_000L -> CommandButton.ICON_SKIP_FORWARD_30
+      else -> CommandButton.ICON_SKIP_FORWARD
+    }
+
+    val prevChapterButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_previous))
+      .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
+      .setSlots(if (skipsChapters) CommandButton.SLOT_BACK else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val nextChapterButton = CommandButton.Builder(CommandButton.ICON_NEXT)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_next))
+      .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
+      .setSlots(if (skipsChapters) CommandButton.SLOT_FORWARD else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val rewindButton = CommandButton.Builder(skipBackIcon)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_backward))
+      .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+      .setSlots(if (!skipsChapters) CommandButton.SLOT_BACK else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    val fastForwardButton = CommandButton.Builder(skipForwardIcon)
+      .setDisplayName(context.getString(R.string.exo_controls_skip_forward))
+      .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+      .setSlots(if (!skipsChapters) CommandButton.SLOT_FORWARD else CommandButton.SLOT_OVERFLOW)
+      .build()
+
+    return if (skipsChapters) {
+      listOf(prevChapterButton, nextChapterButton, rewindButton, fastForwardButton)
+    } else {
+      listOf(rewindButton, fastForwardButton, prevChapterButton, nextChapterButton)
+    }
+  }
 
   override fun onConnect(
     session: MediaSession,
@@ -61,25 +125,11 @@ internal class MediaSessionCallback(
 
     if (
       session.isMediaNotificationController(controller) ||
-      session.isAutoCompanionController(controller)
+      session.isAutoController(controller)
     ) {
-      val mediaButtonPreferences = listOf(
-        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
-          .setDisplayName(context.getString(R.string.exo_controls_skip_previous))
-          .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-          .setSlots(CommandButton.SLOT_BACK)
-          .build(),
-        CommandButton.Builder(CommandButton.ICON_NEXT)
-          .setDisplayName(context.getString(R.string.exo_controls_skip_next))
-          .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-          .setSlots(CommandButton.SLOT_FORWARD)
-          .build(),
-        *createCustomLayoutCommandButtons().toTypedArray(),
-      )
-
       return AcceptedResultBuilder(session)
         .setAvailableSessionCommands(availableCommands)
-        .setMediaButtonPreferences(mediaButtonPreferences)
+        .setMediaButtonPreferences(createMediaButtonPreferences())
         .build()
     } else {
       return AcceptedResultBuilder(session)
@@ -172,20 +222,46 @@ internal class MediaSessionCallback(
       component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
     }
 
-    // Handle Bluetooth next/prev based on user settings.
-    // Media3 routes Bluetooth key events through this callback before processing them,
+    // Handle Bluetooth, wired headset, and external remote next/prev based on user settings.
+    // Media3 routes media button key events through this callback before processing them,
     // allowing us to intercept and redirect next/prev to seek when the setting is disabled.
-    if (controllerInfo.packageName in BLUETOOTH_PACKAGE_NAMES &&
-      !component.playbackSettings.remoteNextPrevSkipsChapters
-    ) {
-      if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
-        when (keyEvent.keyCode) {
-          KeyEvent.KEYCODE_MEDIA_NEXT -> {
+    val isAuto = session.isAutoController(controllerInfo)
+    val isNotification = session.isMediaNotificationController(controllerInfo)
+
+    if (keyEvent != null) {
+      when (keyEvent.keyCode) {
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
+        KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
+          if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
             player.seekForward()
+          }
+          return true
+        }
+        KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
+        KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
+          if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+            player.seekBackward()
+          }
+          return true
+        }
+        KeyEvent.KEYCODE_MEDIA_NEXT -> {
+          // In Android Auto and system notification, there are dedicated jump buttons,
+          // so next/prev should always skip chapters.
+          // For remote bluetooth devices without dedicated jump buttons, respect setting:
+          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+              player.seekForward()
+            }
             return true
           }
-          KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-            player.seekBackward()
+        }
+        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+              player.seekBackward()
+            }
             return true
           }
         }
@@ -315,51 +391,5 @@ internal class MediaSessionCallback(
     } else {
       error("Media items contain an unplayable item!")
     }
-  }
-
-  private fun createCustomLayoutCommandButtons(): List<CommandButton> {
-    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
-      5_000L -> CommandButton.ICON_SKIP_BACK_5
-      10_000L -> CommandButton.ICON_SKIP_BACK_10
-      15_000L -> CommandButton.ICON_SKIP_BACK_15
-      30_000L -> CommandButton.ICON_SKIP_BACK_30
-      else -> CommandButton.ICON_SKIP_BACK
-    }
-    val skipForwardIcon = when (component.playbackSettings.forwardTimeMs) {
-      5_000L -> CommandButton.ICON_SKIP_FORWARD_5
-      10_000L -> CommandButton.ICON_SKIP_FORWARD_10
-      15_000L -> CommandButton.ICON_SKIP_FORWARD_15
-      30_000L -> CommandButton.ICON_SKIP_FORWARD_30
-      else -> CommandButton.ICON_SKIP_FORWARD
-    }
-
-    return listOf(
-      CommandButton.Builder(skipBackIcon)
-        .setDisplayName(context.getString(R.string.exo_controls_skip_backward))
-        .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-        .setSlots(CommandButton.SLOT_OVERFLOW)
-        .build(),
-      CommandButton.Builder(skipForwardIcon)
-        .setDisplayName(context.getString(R.string.exo_controls_skip_forward))
-        .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-        .setSlots(CommandButton.SLOT_OVERFLOW)
-        .build(),
-    )
-  }
-
-  private companion object {
-    /**
-     * List of known package names used by bluetooth devices
-     */
-    private val BLUETOOTH_PACKAGE_NAMES = arrayOf(
-      "com.android.bluetooth",
-      "com.google.android.bluetooth",
-      // Google Bluetooth APEX services (renamed package in newer Android versions)
-      "com.google.android.btservices",
-      // Pixel Buds use this package name when triggering next/previous actions
-      "com.google.android.googlequicksearchbox",
-      // Android Auto sometimes sends the media events to the device.
-      "com.google.android.projection.gearhead",
-    )
   }
 }

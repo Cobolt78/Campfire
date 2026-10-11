@@ -84,6 +84,19 @@ class RemoteControlForwardingPlayer(
   }
 }
 
+@UnstableApi
+internal val AUTO_CONTROLLER_PACKAGES = setOf(
+  "com.google.android.projection.gearhead",
+  "com.google.android.apps.automotive.media",
+  "com.android.car.media",
+  "com.google.android.carassistant",
+)
+
+@UnstableApi
+internal fun MediaSession.isAutoController(controller: MediaSession.ControllerInfo): Boolean {
+  return isAutoCompanionController(controller) || controller.packageName in AUTO_CONTROLLER_PACKAGES
+}
+
 /**
  * Whether the session command currently being dispatched came from a *remote* controller —
  * a different package (e.g. car stereo). The media notification and Android Auto are NOT
@@ -97,7 +110,7 @@ internal fun MediaSession?.isRemoteControllerRequest(appPackageName: String): Bo
   val controller = currentSession.controllerForCurrentRequest ?: return false
 
   if (currentSession.isMediaNotificationController(controller) ||
-    currentSession.isAutoCompanionController(controller)
+    currentSession.isAutoController(controller)
   ) {
     return false
   }
