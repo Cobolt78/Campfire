@@ -41,6 +41,8 @@ class LocalSessionUpdateSynchronizer(
     get() = ComponentHolder.component<LocalSessionComponent>()
 
   private var lastPlayedTime: Long? = null
+  private var lastCurrentTimeUpdateMs = 0L
+  private var lastKnownOverallTime: Duration? = null
 
   override suspend fun onStateChanged(
     sessionId: Uuid,
@@ -57,6 +59,9 @@ class LocalSessionUpdateSynchronizer(
       state == AudioPlayer.State.Disabled ||
       state == AudioPlayer.State.Finished
     ) {
+      lastKnownOverallTime?.let { time ->
+        component.sessionsRepository.updateCurrentTime(libraryItemId, time)
+      }
       if (lastPlayedTime != null) {
         val elapsed = (fatherTime.nowInEpochMillis() - lastPlayedTime!!).milliseconds
         ibark { "Adding $elapsed time listening for ${sessionId.toHexDashString()})" }
@@ -76,30 +81,41 @@ class LocalSessionUpdateSynchronizer(
     ) {
       component.sessionsRepository.updateLastPlayed(libraryItemId)
     }
+
+    if (state == AudioPlayer.State.Disabled || state == AudioPlayer.State.Finished) {
+      lastCurrentTimeUpdateMs = 0L
+      lastKnownOverallTime = null
+    }
   }
 
   override suspend fun onOverallTimeChanged(libraryItemId: LibraryItemId, overallTime: Duration) {
-    component.sessionsRepository.updateCurrentTime(libraryItemId, overallTime)
+    lastKnownOverallTime = overallTime
+    val now = fatherTime.nowInEpochMillis()
+
+    if (now - lastCurrentTimeUpdateMs >= CURRENT_TIME_UPDATE_INTERVAL_MS) {
+      lastCurrentTimeUpdateMs = now
+      component.sessionsRepository.updateCurrentTime(libraryItemId, overallTime)
+      // Periodic sync while playing (throttled to 15s/60s-metered inside the updater).
+      // This was disabled in #682 out of caution for multi-device sync, but the protection
+      // was never write-avoidance: the MediaProgress source-of-truth freshness guard is what
+      // keeps a device's own server echoes from clobbering fresher local state, and the
+      // progress PATCH path pushed on this same cadence all along.
+      component.remoteSessionsUpdater.update()
+    }
 
     // Check if its been too long since we synced listening time
     if (lastPlayedTime != null) {
-      val elapsed = (fatherTime.nowInEpochMillis() - lastPlayedTime!!).milliseconds
+      val elapsed = (now - lastPlayedTime!!).milliseconds
       if (elapsed > MAX_TIME_LISTENING_INTERVAL) {
         ibark { "Timeout adding $elapsed time listening)" }
         component.sessionsRepository.addTimeListening(libraryItemId, elapsed)
-        lastPlayedTime = fatherTime.nowInEpochMillis()
+        lastPlayedTime = now
       }
     }
-
-    // Periodic sync while playing (throttled to 15s/60s-metered inside the updater).
-    // This was disabled in #682 out of caution for multi-device sync, but the protection
-    // was never write-avoidance: the MediaProgress source-of-truth freshness guard is what
-    // keeps a device's own server echoes from clobbering fresher local state, and the
-    // progress PATCH path pushed on this same cadence all along.
-    component.remoteSessionsUpdater.update()
   }
 
   companion object : Corked("LocalSessionUpdateSynchronizer") {
     private val MAX_TIME_LISTENING_INTERVAL = 1.minutes
+    private const val CURRENT_TIME_UPDATE_INTERVAL_MS = 5_000L
   }
 }

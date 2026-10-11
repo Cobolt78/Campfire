@@ -12,6 +12,7 @@ import app.campfire.core.extensions.asSeconds
 import app.campfire.core.extensions.epochMilliseconds
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
+import app.campfire.core.time.FatherTime
 import app.campfire.sessions.api.SessionsRepository
 import app.campfire.user.api.MediaProgressRepository
 import dev.zacsweers.metro.ContributesIntoSet
@@ -28,7 +29,9 @@ interface MediaProgressSynchronizerUserComponent {
 
 @ContributesIntoSet(AppScope::class)
 @Inject
-class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
+class MediaProgressPlaybackSynchronizer(
+  private val fatherTime: FatherTime,
+) : PlaybackSynchronizer {
 
   private val component: MediaProgressSynchronizerUserComponent
     get() = ComponentHolder.component()
@@ -38,10 +41,15 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
   override val rank: Int = PlaybackSynchronizer.RANK_HIGHEST
 
   private val userPlayCache = mutableMapOf<String, Boolean>()
+  private var lastSyncTimeMs = 0L
 
   override suspend fun onOverallTimeChanged(libraryItemId: LibraryItemId, overallTime: Duration) {
     if (userPlayCache[libraryItemId] ?: false) {
-      syncProgress(libraryItemId)
+      val now = fatherTime.nowInEpochMillis()
+      if (now - lastSyncTimeMs >= PROGRESS_UPDATE_INTERVAL_MS) {
+        lastSyncTimeMs = now
+        syncProgress(libraryItemId)
+      }
     }
   }
 
@@ -55,6 +63,7 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
       state == AudioPlayer.State.Paused &&
       previousState == AudioPlayer.State.Playing
     ) {
+      lastSyncTimeMs = fatherTime.nowInEpochMillis()
       syncProgress(libraryItemId, force = true)
     }
 
@@ -72,13 +81,22 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
 
     // Inversely, if the player finishes or loses state then we want to remove
     // the playback mark to avoid erroneous progress syncs.
-    if (state == AudioPlayer.State.Finished || state == AudioPlayer.State.Disabled) {
+    if (state == AudioPlayer.State.Finished) {
       userPlayCache.remove(libraryItemId)
+      lastSyncTimeMs = 0L
+      component.mediaProgressRepository.markFinished(libraryItemId)
+    } else if (state == AudioPlayer.State.Disabled) {
+      userPlayCache.remove(libraryItemId)
+      lastSyncTimeMs = 0L
     }
   }
 
   private suspend fun syncProgress(libraryItemId: LibraryItemId, force: Boolean = false) {
     val session = component.sessionsRepository.getSession(libraryItemId) ?: return
+
+    val isCompleted = session.isFinished ||
+      session.progress >= 0.99f ||
+      (session.duration.asSeconds() > 0f && session.currentTime.asSeconds() >= session.duration.asSeconds() - 2f)
 
     val updatedProgress = MediaProgress(
       id = MediaProgress.UNKNOWN_ID,
@@ -92,13 +110,13 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
       // session.duration is episode-aware (falls back to the parent item's duration only
       // when episodeId is null), so podcast episodes report the correct per-episode total.
       duration = session.duration.asSeconds(),
-      progress = session.progress,
-      currentTime = session.currentTime.asSeconds(),
-      isFinished = session.isFinished,
-      hideFromContinueListening = false,
+      progress = if (isCompleted) 1f else session.progress,
+      currentTime = if (isCompleted) 0f else session.currentTime.asSeconds(),
+      isFinished = isCompleted,
+      hideFromContinueListening = isCompleted,
       ebookLocation = null,
       ebookProgress = null,
-      finishedAt = if (session.isFinished) {
+      finishedAt = if (isCompleted) {
         session.updatedAt.epochMilliseconds
       } else {
         null
@@ -115,5 +133,9 @@ class MediaProgressPlaybackSynchronizer : PlaybackSynchronizer {
     // a redundant second writer of the same position. Explicit finish/unfinish actions
     // still upload through markFinished/markNotFinished, which this path never handled.
     component.mediaProgressRepository.updateProgress(updatedProgress, force, skipUpload = true)
+  }
+
+  companion object {
+    private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
   }
 }

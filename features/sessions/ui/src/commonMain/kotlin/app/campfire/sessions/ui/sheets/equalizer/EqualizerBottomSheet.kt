@@ -432,7 +432,7 @@ private fun LabeledSlider(
     Text(
       text = label,
       style = MaterialTheme.typography.bodyMedium,
-      modifier = Modifier.width(72.dp),
+      modifier = Modifier.width(90.dp),
     )
     Slider(
       value = value,

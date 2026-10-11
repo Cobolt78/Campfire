@@ -61,6 +61,7 @@ import app.campfire.network.models.User
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.time.Clock
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
@@ -145,9 +146,16 @@ class KtorAudioBookShelfApi(
     }
   }
 
-  override suspend fun getPersonalizedHome(libraryId: String): Result<List<Shelf>> {
+  override suspend fun getPersonalizedHome(libraryId: String, bustCache: Boolean): Result<List<Shelf>> {
     return trySendRequest<List<Shelf>> {
-      hydratedClientRequest("/api/libraries/$libraryId/personalized")
+      hydratedClientRequest(
+        {
+          appendPathSegments("api", "libraries", libraryId, "personalized")
+          if (bustCache) {
+            parameters.append("t", Clock.System.now().toEpochMilliseconds().toString())
+          }
+        },
+      )
     }
   }
 
@@ -296,8 +304,12 @@ class KtorAudioBookShelfApi(
   }
 
   override suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series> {
-    return trySendRequest {
+    val result = trySendRequest<Series> {
       hydratedClientRequest("/api/libraries/$libraryId/series/$seriesId")
+    }
+    if (result.isSuccess) return result
+    return trySendRequest {
+      hydratedClientRequest("/api/series/$seriesId")
     }
   }
 

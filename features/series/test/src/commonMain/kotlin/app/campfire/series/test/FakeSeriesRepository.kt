@@ -53,4 +53,7 @@ class FakeSeriesRepository : SeriesRepository {
   ): Flow<Int?> {
     TODO("Not yet implemented")
   }
+
+  val continueSeriesFlow = MutableSharedFlow<List<Series>>(replay = 1)
+  override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
 }

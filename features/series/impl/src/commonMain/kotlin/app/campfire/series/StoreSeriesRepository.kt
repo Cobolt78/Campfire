@@ -38,6 +38,7 @@ import app.campfire.series.paging.SeriesPagerFactory
 import app.campfire.series.paging.SeriesPagingInput
 import app.campfire.series.store.SeriesStore
 import app.campfire.user.api.UserRepository
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -47,14 +48,20 @@ import dev.zacsweers.metro.SingleIn
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.withContext
 import org.mobilenativefoundation.store.store5.Fetcher
 import org.mobilenativefoundation.store.store5.MemoryPolicy
@@ -105,24 +112,26 @@ class StoreSeriesRepository(
       withContext(dispatcherProvider.io) {
         val series = async { api.getSeriesById(s.libraryId, s.seriesId) }
         val books = async {
-          api.getLibraryItemsMinified(
-            libraryId = s.libraryId,
-            filter = LibraryItemFilter(
-              group = "series",
-              value = s.seriesId,
-            ),
-          )
+          runCatching {
+            api.getLibraryItemsMinified(
+              libraryId = s.libraryId,
+              filter = LibraryItemFilter(
+                group = "series",
+                value = s.seriesId,
+              ),
+            ).getOrNull()
+          }.getOrNull()
         }
 
         val seriesResult = series.await()
-        val seriesBooksResult = books.await()
+        val minifiedResponse = books.await()
 
-        seriesResult.with(seriesBooksResult) { series, books ->
+        seriesResult.map { seriesObj ->
+          val minifiedBooks = minifiedResponse?.data?.filterIsInstance<LibraryItemMinified.Book>()
+          val resolvedBooks = minifiedBooks?.takeIf { it.isNotEmpty() } ?: seriesObj.books.orEmpty()
           SeriesNetworkResult(
-            series = series,
-            // Series is a book-only concept on the server, so the polymorphic response will only
-            // contain Book variants. Filter to the Book subtype to keep downstream code typed.
-            books = books.data.filterIsInstance<LibraryItemMinified.Book>(),
+            series = seriesObj,
+            books = resolvedBooks,
           )
         }.asFetcherResult()
       }
@@ -157,7 +166,9 @@ class StoreSeriesRepository(
 
             // This is the series' full book list, so replace its links rather than adding to
             // them — books removed from the series (or the server) would otherwise linger.
-            db.seriesBookJoinQueries.deleteForSeries(s.seriesId)
+            if (networkResult.books.isNotEmpty()) {
+              db.seriesBookJoinQueries.deleteForSeries(s.seriesId)
+            }
 
             // Insert the books
             networkResult.books.forEach { item ->
@@ -303,5 +314,86 @@ class StoreSeriesRepository(
             items
           }
       }
+      .flowOn(dispatcherProvider.databaseRead)
   }
+
+  private val repositoryScope = CoroutineScope(
+    SupervisorJob() + dispatcherProvider.databaseRead,
+  )
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private val continueSeriesFlow: Flow<List<Series>> by lazy {
+    userRepository.observeCurrentUser()
+      .flatMapLatest { user ->
+        db.seriesQueries
+          .selectContinueSeries(
+            libraryId = user.selectedLibraryId,
+            userId = user.id,
+          )
+          .asFlow()
+          .mapToList(dispatcherProvider.databaseRead)
+          .distinctUntilChanged()
+          .mapLatest { seriesList ->
+            withContext(dispatcherProvider.databaseRead) {
+              if (seriesList.isEmpty()) return@withContext emptyList()
+
+              val seriesIds = seriesList.map { it.id }
+              val allBooksFlat = db.libraryItemsQueries
+                .selectForMultipleSeries(
+                  userId = user.id,
+                  seriesIds = seriesIds,
+                )
+                .awaitAsList()
+
+              val booksBySeriesId = allBooksFlat.groupBy { it.joinSeriesId }
+
+              seriesList.map { s ->
+                val booksForSeries = booksBySeriesId[s.id] ?: emptyList()
+                val sortedBooks = booksForSeries
+                  .map { row ->
+                    mapToLibraryItemWithProgress(
+                      id = row.id, ino = row.ino, libraryId = row.libraryId, oldLibraryItemId = row.oldLibraryItemId,
+                      folderId = row.folderId, path = row.path, relPath = row.relPath, isFile = row.isFile,
+                      mtimeMs = row.mtimeMs, ctimeMs = row.ctimeMs, birthtimeMs = row.birthtimeMs,
+                      addedAt = row.addedAt, updatedAt = row.updatedAt, isMissing = row.isMissing,
+                      isInvalid = row.isInvalid, mediaType = row.mediaType, numFiles = row.numFiles,
+                      size = row.size, serverUrl = row.serverUrl, mediaId = row.mediaId, coverPath = row.coverPath,
+                      tags = row.tags, numTracks = row.numTracks, numAudioFiles = row.numAudioFiles,
+                      numChapters = row.numChapters, numMissingParts = row.numMissingParts,
+                      numInvalidAudioFiles = row.numInvalidAudioFiles, durationInMillis = row.durationInMillis,
+                      sizeInBytes = row.sizeInBytes, propertySize = row.propertySize, ebookFormat = row.ebookFormat,
+                      metadata_title = row.metadata_title, metadata_subtitle = row.metadata_subtitle,
+                      metadata_genres = row.metadata_genres, metadata_publishedYear = row.metadata_publishedYear,
+                      metadata_publishedDate = row.metadata_publishedDate, metadata_publisher = row.metadata_publisher,
+                      metadata_description = row.metadata_description, metadata_isbn = row.metadata_isbn,
+                      metadata_asin = row.metadata_asin, metadata_language = row.metadata_language,
+                      metadata_explicit = row.metadata_explicit, metadata_abridged = row.metadata_abridged,
+                      metadata_titleIgnorePrefix = row.metadata_titleIgnorePrefix, metadata_authorName = row.metadata_authorName,
+                      metadata_authorNameLF = row.metadata_authorNameLF, metadata_narratorName = row.metadata_narratorName,
+                      metadata_seriesName = row.metadata_seriesName, metadata_series_id = row.metadata_series_id,
+                      metadata_series_name = row.metadata_series_name, metadata_series_sequence = row.metadata_series_sequence,
+                      libraryItemId = row.libraryItemId, metadata_series = row.metadata_series,
+                      id_ = row.id_, libraryItemId_ = row.libraryItemId_, userId = row.userId,
+                      episodeId = row.episodeId, mediaItemId = row.mediaItemId, mediaItemType = row.mediaItemType,
+                      duration = row.duration, progress = row.progress, currentTime = row.currentTime,
+                      isFinished = row.isFinished, hideFromContinueListening = row.hideFromContinueListening,
+                      ebookLocation = row.ebookLocation, ebookProgress = row.ebookProgress, lastUpdate = row.lastUpdate,
+                      startedAt = row.startedAt, finishedAt = row.finishedAt, source = row.source
+                    ).asDomainModel(urlHydrator)
+                  }
+                  .sortedBy { it.media.metadata.seriesSequence?.sequence }
+
+                s.asDomainModel(sortedBooks)
+              }
+            }
+          }
+      }
+      .shareIn(
+        scope = repositoryScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 300_000, replayExpirationMillis = 300_000),
+        replay = 1,
+      )
+  }
+
+  override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
 }
