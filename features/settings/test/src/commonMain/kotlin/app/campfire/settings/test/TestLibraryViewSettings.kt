@@ -85,4 +85,19 @@ class TestLibraryViewSettings(
   override fun observeShowTimeInBook(): StateFlow<Boolean> =
     observeBoolean(::showTimeInBook)
       .stateIn(testScope, SharingStarted.Lazily, showTimeInBook)
+
+  override var confirmActions: Boolean by boolean()
+  override fun observeConfirmActions(): StateFlow<Boolean> =
+    observeBoolean(::confirmActions)
+      .stateIn(testScope, SharingStarted.Lazily, confirmActions)
+
+  override var warnOnCellularDownload: Boolean by boolean()
+  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> =
+    observeBoolean(::warnOnCellularDownload)
+      .stateIn(testScope, SharingStarted.Lazily, warnOnCellularDownload)
+
+  override var continueSeriesAlternateView: Boolean by boolean()
+  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> =
+    observeBoolean(::continueSeriesAlternateView)
+      .stateIn(testScope, SharingStarted.Lazily, continueSeriesAlternateView)
 }

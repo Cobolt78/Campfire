@@ -85,6 +85,18 @@ class LibraryViewSettingsImpl(
   private val showTimeInBookProperty = booleanSetting(KEY_SHOW_TIME_IN_BOOK, true)
   override var showTimeInBook: Boolean by showTimeInBookProperty
   override fun observeShowTimeInBook(): StateFlow<Boolean> = showTimeInBookProperty.observe()
+
+  private val confirmActionsProperty = booleanSetting(KEY_CONFIRM_ACTIONS, true)
+  override var confirmActions: Boolean by confirmActionsProperty
+  override fun observeConfirmActions(): StateFlow<Boolean> = confirmActionsProperty.observe()
+
+  private val warnOnCellularDownloadProperty = booleanSetting(KEY_WARN_ON_CELLULAR_DOWNLOAD, true)
+  override var warnOnCellularDownload: Boolean by warnOnCellularDownloadProperty
+  override fun observeWarnOnCellularDownload(): StateFlow<Boolean> = warnOnCellularDownloadProperty.observe()
+
+  private val continueSeriesAlternateViewProperty = booleanSetting(KEY_CONTINUE_SERIES_ALTERNATE_VIEW, false)
+  override var continueSeriesAlternateView: Boolean by continueSeriesAlternateViewProperty
+  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> = continueSeriesAlternateViewProperty.observe()
 }
 
 internal const val KEY_LIBRARY_ITEM_DISPLAY_STATE = "pref_library_item_display_state"
@@ -100,6 +112,9 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
 internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
 internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
 internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
+internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
+internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
+internal const val KEY_CONTINUE_SERIES_ALTERNATE_VIEW = "pref_continue_series_alternate_view"
 
 /** The library view settings stored as strings, for copying into a new account's settings. */
 internal val LibraryViewStringKeys = listOf(
@@ -120,4 +135,7 @@ internal val LibraryViewBooleanKeys = listOf(
   KEY_LIBRARY_ITEM_MARQUEE,
   KEY_SHOW_CONFIRM_DOWNLOAD,
   KEY_SHOW_TIME_IN_BOOK,
+  KEY_CONFIRM_ACTIONS,
+  KEY_WARN_ON_CELLULAR_DOWNLOAD,
+  KEY_CONTINUE_SERIES_ALTERNATE_VIEW,
 )

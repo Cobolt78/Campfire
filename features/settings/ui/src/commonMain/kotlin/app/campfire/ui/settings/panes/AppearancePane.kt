@@ -90,5 +90,12 @@ internal fun AppearancePane(
       headlineContent = { Text(stringResource(Res.string.setting_item_card_marquee_title)) },
       supportingContent = { Text(stringResource(Res.string.setting_item_card_marquee_subtitle)) },
     )
+
+    SwitchSetting(
+      value = state.appearanceSettings.continueSeriesAlternateView,
+      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView(it)) },
+      headlineContent = { Text("Continue Series Alternate View") },
+      supportingContent = { Text("Use an alternate grid view for the Continue Series screen") },
+    )
   }
 }

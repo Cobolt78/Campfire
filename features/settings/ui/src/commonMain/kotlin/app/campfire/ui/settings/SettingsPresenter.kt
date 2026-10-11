@@ -61,13 +61,16 @@ import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.PrivacyPolicyC
 import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.TermsOfServiceClick
 import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.ChangeName
 import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.Logout
+import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView
 import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.DynamicItemDetailTheming
 import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.DynamicPlaybackTheming
 import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.ItemCardMarqueeEnabled
 import app.campfire.ui.settings.SettingsUiEvent.AppearanceSettingEvent.Theme
+import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.ConfirmActions
 import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.DeleteDownload
 import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.DownloadClicked
 import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.ShowDownloadConfirmation
+import app.campfire.ui.settings.SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoRewindOnResumeEnabled
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoRewindStopAtChapterBoundary
 import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoSyncEnabled
@@ -94,6 +97,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
+import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
 import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
 import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
@@ -170,6 +174,9 @@ class SettingsPresenter(
     val itemCardMarqueeEnabled by remember {
       libraryViewSettings.observeLibraryItemMarqueeEnabled()
     }.collectAsState()
+    val continueSeriesAlternateView by remember {
+      libraryViewSettings.observeContinueSeriesAlternateView()
+    }.collectAsState()
 
     // Playback Settings
     val playbackRates by remember { playbackSettings.observePlaybackRates() }.collectAsState()
@@ -198,6 +205,10 @@ class SettingsPresenter(
 
     // Downloads Settings
     val showDownloadConfirmation by remember { libraryViewSettings.observeShowConfirmDownload() }
+      .collectAsState()
+    val confirmActions by remember { libraryViewSettings.observeConfirmActions() }
+      .collectAsState()
+    val warnOnCellularDownload by remember { libraryViewSettings.observeWarnOnCellularDownload() }
       .collectAsState()
 
     val downloads by remember {
@@ -243,6 +254,7 @@ class SettingsPresenter(
     val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
     val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
     val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
+    val resetTimerOnPause by remember { sleepSettings.observeResetTimerOnPause() }.collectAsState()
 
     // Account Settings
     val keepSignedInAfterReinstall by remember { privacySettings.observeKeepSignedInAfterReinstall() }
@@ -307,9 +319,12 @@ class SettingsPresenter(
         dynamicItemDetailTheming = dynamicItemDetailTheming,
         dynamicPlaybackTheming = dynamicPlaybackTheming,
         itemCardMarqueeEnabled = itemCardMarqueeEnabled,
+        continueSeriesAlternateView = continueSeriesAlternateView,
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
+        confirmActions = confirmActions,
+        warnOnCellularDownload = warnOnCellularDownload,
         isWifiOnlyAvailable = currentPlatform == Platform.ANDROID,
         downloadOnWifiOnly = downloadOnWifiOnly,
         downloads = downloadEntries,
@@ -340,6 +355,7 @@ class SettingsPresenter(
         shakeToReset = shakeToResetEnabled,
         shakeSensitivity = shakeSensitivity,
         fadeOutDuration = fadeOutDuration,
+        resetTimerOnPause = resetTimerOnPause,
         autoSleepSetting = if (autoSleepTimerEnabled) {
           SleepSettingsInfo.AutoSleepSetting(
             start = autoSleepTimerStart,
@@ -447,11 +463,14 @@ class SettingsPresenter(
           is DynamicItemDetailTheming -> themeSettings.dynamicallyThemeItemDetail = event.enabled
           is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
           is ItemCardMarqueeEnabled -> libraryViewSettings.libraryItemMarqueeEnabled = event.enabled
+          is ContinueSeriesAlternateView -> libraryViewSettings.continueSeriesAlternateView = event.enabled
           SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> navigator.goTo(ThemePickerScreen)
         }
 
         is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
           is ShowDownloadConfirmation -> libraryViewSettings.showConfirmDownload = event.enabled
+          is ConfirmActions -> libraryViewSettings.confirmActions = event.enabled
+          is WarnOnCellularDownload -> libraryViewSettings.warnOnCellularDownload = event.enabled
           is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
             mobileDataSettings.downloadOnWifiOnly = event.enabled
           }
@@ -527,6 +546,7 @@ class SettingsPresenter(
           is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
           is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
           is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
+          is ResetTimerOnPause -> sleepSettings.resetTimerOnPause = event.enabled
         }
 
         is SettingsUiEvent.AboutSettingEvent -> when (event) {

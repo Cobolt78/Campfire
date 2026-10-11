@@ -88,11 +88,14 @@ class SettingsAnalyticUiEventHandler(
       is DynamicItemDetailTheming -> send("dynamic_item_detail_theme", Updated, event.enabled.toString())
       is DynamicPlaybackTheming -> send("dynamic_playback_theme", Updated, event.enabled.toString())
       is ItemCardMarqueeEnabled -> send("item_card_marquee", Updated, event.enabled.toString())
+      is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView -> send("continue_series_alternate_view", Updated, event.enabled.toString())
       SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> send("edit_theme", Click)
     }
 
     is SettingsUiEvent.DownloadsSettingEvent -> when (event) {
       is ShowDownloadConfirmation -> send("show_confirm_download", Updated, event.enabled.toString())
+      is SettingsUiEvent.DownloadsSettingEvent.ConfirmActions -> send("confirm_actions", Updated, event.enabled.toString())
+      is SettingsUiEvent.DownloadsSettingEvent.WarnOnCellularDownload -> send("warn_cellular_download", Updated, event.enabled.toString())
       is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
         send("download_on_wifi_only", Updated, event.enabled.toString())
       }
@@ -151,6 +154,7 @@ class SettingsAnalyticUiEventHandler(
       is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
       is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
       is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
+      is SettingsUiEvent.SleepSettingEvent.ResetTimerOnPause -> send("reset_timer_on_pause", Updated, event.enabled)
     }
 
     is SettingsUiEvent.AboutSettingEvent -> when (event) {

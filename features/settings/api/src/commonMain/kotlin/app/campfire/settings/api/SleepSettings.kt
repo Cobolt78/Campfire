@@ -46,6 +46,9 @@ interface SleepSettings {
   var fadeOutDuration: Duration
   fun observeFadeOutDuration(): StateFlow<Duration>
 
+  var resetTimerOnPause: Boolean
+  fun observeResetTimerOnPause(): StateFlow<Boolean>
+
   sealed class AutoSleepTimer {
     data class Epoch(val millis: Long) : AutoSleepTimer()
     data object EndOfChapter : AutoSleepTimer()

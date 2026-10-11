@@ -102,6 +102,10 @@ class SleepSettingsImpl(
   private val fadeOutDurationProperty = durationSetting(KEY_FADE_OUT_DURATION, SleepSettings.DefaultFadeOutDuration)
   override var fadeOutDuration: Duration by fadeOutDurationProperty
   override fun observeFadeOutDuration(): StateFlow<Duration> = fadeOutDurationProperty.observe()
+
+  private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, false)
+  override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
+  override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
 }
 
 private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
@@ -114,6 +118,7 @@ private const val KEY_AUTO_SLEEP_TIMER = "pref_auto_sleep_timer"
 private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
 private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
 private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
+private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
 
 private const val DefaultShakeToResetEnabled = false
 private const val DefaultAutoSleepTimerEnabled = false

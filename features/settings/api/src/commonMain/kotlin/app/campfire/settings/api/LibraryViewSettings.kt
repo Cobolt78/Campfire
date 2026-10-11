@@ -52,4 +52,13 @@ interface LibraryViewSettings {
 
   var showTimeInBook: Boolean
   fun observeShowTimeInBook(): StateFlow<Boolean>
+
+  var confirmActions: Boolean
+  fun observeConfirmActions(): StateFlow<Boolean>
+
+  var warnOnCellularDownload: Boolean
+  fun observeWarnOnCellularDownload(): StateFlow<Boolean>
+
+  var continueSeriesAlternateView: Boolean
+  fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
 }

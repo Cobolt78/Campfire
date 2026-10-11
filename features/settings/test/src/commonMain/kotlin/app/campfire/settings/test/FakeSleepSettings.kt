@@ -77,4 +77,10 @@ class FakeSleepSettings : SleepSettings {
     get() = _fadeOutDuration.value
     set(value) { _fadeOutDuration.value = value }
   override fun observeFadeOutDuration(): StateFlow<Duration> = _fadeOutDuration.asStateFlow()
+
+  private val _resetTimerOnPause = MutableStateFlow(false)
+  override var resetTimerOnPause: Boolean
+    get() = _resetTimerOnPause.value
+    set(value) { _resetTimerOnPause.value = value }
+  override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
 }
