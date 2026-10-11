@@ -136,13 +136,32 @@ fun LibraryItemListItem(
           )
         }
 
-        if (mediaProgress?.isFinished == true) {
-          MediaFinishedIndicator(
-            size = 18.dp,
+        val seriesSeq = libraryItem.media.metadata.seriesSequence?.takeIf { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }
+          ?: libraryItem.media.metadata.series.firstOrNull { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }
+
+        val isFinished = mediaProgress?.isFinished == true
+        val hasBadge = !seriesSeq.isNullOrBlank()
+
+        if (isFinished || hasBadge) {
+          Row(
             modifier = Modifier
               .align(Alignment.TopStart)
-              .padding(8.dp),
-          )
+              .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            if (!seriesSeq.isNullOrBlank()) {
+              SeriesBadge(
+                badge = "#$seriesSeq",
+                large = false,
+              )
+            }
+            if (isFinished) {
+              MediaFinishedIndicator(
+                size = 18.dp,
+              )
+            }
+          }
         }
 
         mediaProgress

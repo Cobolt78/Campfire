@@ -121,6 +121,13 @@ fun LibraryItemCard(
 ) = SharedElementTransitionScope {
   val animationScope = findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)
 
+  val resolvedSeriesBadge = seriesBadge
+    ?: item.media.metadata.seriesSequence?.takeIf { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }?.let { "#$it" }
+    ?: item.media.metadata.series.firstOrNull { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }?.let { "#$it" }
+    ?: item.media.metadata.seriesName?.let { name ->
+      SERIES_SEQUENCE_REGEX.find(name)?.groupValues?.getOrNull(1)?.let { "#$it" }
+    }
+
   ElevatedContentCard(
     modifier = modifier
       .thenIfNotNull(animationScope) { scope ->
@@ -151,7 +158,7 @@ fun LibraryItemCard(
               progress = progress,
               isTransitioning = isTransitioning,
               large = showInformation,
-              seriesBadge = seriesBadge,
+              seriesBadge = resolvedSeriesBadge,
             )
 
             if (!episode?.episode.isNullOrBlank()) {
@@ -745,3 +752,5 @@ private val LibraryItemMarqueeVelocityRange = 30..40
 val SmallProgressBarHeight = 8.dp
 val LargeProgressBarHeight = 12.dp
 private const val ProgressBarAlpha = 0.5f
+
+private val SERIES_SEQUENCE_REGEX = ".*#([0-9]+(?:\\.[0-9]+)?)".toRegex()

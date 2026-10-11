@@ -128,7 +128,9 @@ class StoreSeriesRepository(
 
         seriesResult.map { seriesObj ->
           val minifiedBooks = minifiedResponse?.data?.filterIsInstance<LibraryItemMinified.Book>()
-          val resolvedBooks = minifiedBooks?.takeIf { it.isNotEmpty() } ?: seriesObj.books.orEmpty()
+          val resolvedBooks = seriesObj.books?.takeIf { it.isNotEmpty() }
+            ?: minifiedBooks?.takeIf { it.isNotEmpty() }
+            ?: emptyList()
           SeriesNetworkResult(
             series = seriesObj,
             books = resolvedBooks,
@@ -171,20 +173,18 @@ class StoreSeriesRepository(
             }
 
             // Insert the books
-            networkResult.books.forEach { item ->
+            networkResult.books.forEachIndexed { index, item ->
               val libraryItem = item.asDbModel(serverUrl)
-              val media = item.media.asDbModel(item.id)
+              val fallbackSeq = (index + 1).toDouble()
+              val media = item.media.asDbModel(item.id, fallbackSeriesSequence = fallbackSeq)
               db.libraryItemsQueries.insertOrIgnore(libraryItem)
               db.mediaQueries.insertOrIgnore(media)
 
               // Make sure we keep our item series sequence up to date
-              runIfNotNull(
-                media.metadata_series_id,
-                media.metadata_series_name,
-                media.metadata_series_sequence,
-              ) { id, name, sequence ->
-                db.mediaQueries.updateSeriesSequence(id, name, sequence, item.id)
-              }
+              val seqToUpdate = media.metadata_series_sequence ?: fallbackSeq
+              val seriesIdToUpdate = media.metadata_series_id ?: s.seriesId
+              val seriesNameToUpdate = media.metadata_series_name ?: networkResult.series.name
+              db.mediaQueries.updateSeriesSequence(seriesIdToUpdate, seriesNameToUpdate, seqToUpdate, item.id)
 
               // Insert junction entry
               db.seriesBookJoinQueries.insert(

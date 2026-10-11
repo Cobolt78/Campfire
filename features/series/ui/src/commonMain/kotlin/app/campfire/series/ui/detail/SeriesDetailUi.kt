@@ -49,6 +49,7 @@ import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.SeriesId
+import app.campfire.core.model.SeriesSequence
 import app.campfire.core.offline.OfflineStatus
 import app.campfire.series.ui.detail.composables.ConfirmSeriesProgressDialog
 import app.campfire.series.ui.detail.composables.MissingSeriesBookCard
@@ -180,15 +181,23 @@ private fun LoadedState(
         .firstOrNull { it.id == seriesId || it.name.equals(seriesName, ignoreCase = true) }
         ?: item.media.metadata.seriesSequence
 
-      val seriesBadge = seriesSequence?.formattedSequence
+      val seqNumber = seriesSequence?.takeIf { it.sequence != SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence
         ?.takeIf { it.isNotBlank() }
-        ?.let { "#$it" }
+        ?: item.media.metadata.seriesName?.let { SERIES_SEQUENCE_REGEX.find(it)?.groupValues?.getOrNull(1) }
+        ?: item.media.metadata.title?.let { SERIES_SEQUENCE_REGEX.find(it)?.groupValues?.getOrNull(1) }
+        ?: (index + 1).toString()
+
+      val seriesBadge = "#$seqNumber"
+
+      val resolvedPosition = seriesSequence?.takeIf { it.sequence != SeriesSequence.UNKNOWN_SEQUENCE }?.sequence
+        ?: seqNumber.toDoubleOrNull()
+        ?: (index + 1).toDouble()
 
       LibraryItemCard(
         item = item,
         // Same "Book 2 · 2014" line as the missing books, in place of the author.
         subtitle = seriesBookLabel(
-          position = item.media.metadata.seriesSequence(seriesId)?.sequence,
+          position = resolvedPosition,
           year = item.media.metadata.publishedYear,
         ),
         seriesBadge = seriesBadge,
@@ -225,3 +234,5 @@ private fun LoadedState(
     }
   }
 }
+
+private val SERIES_SEQUENCE_REGEX = ".*#([0-9]+(?:\\.[0-9]+)?)".toRegex()
