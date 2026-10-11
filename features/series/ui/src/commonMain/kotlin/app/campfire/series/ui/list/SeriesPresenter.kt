@@ -38,6 +38,7 @@ internal const val INVALID_SERIES_COUNT = -1
 @CircuitInject(SeriesScreen::class, UserScope::class)
 @Inject
 class SeriesPresenter(
+  private val screen: SeriesScreen,
   private val navigator: Navigator,
   private val userRepository: UserRepository,
   private val seriesRepository: SeriesRepository,
@@ -57,13 +58,24 @@ class SeriesPresenter(
       mutableStateOf<ContentFilter?>(null)
     }
 
-    val sortMode by remember {
+    var overrideSortMode by rememberRetainedSaveable {
+      mutableStateOf(screen.sortMode)
+    }
+
+    var overrideSortDirection by rememberRetainedSaveable {
+      mutableStateOf(screen.sortDirection)
+    }
+
+    val storedSortMode by remember {
       libraryViewSettings.observeSeriesSortMode()
     }.collectAsState()
 
-    val sortDirection by remember {
+    val storedSortDirection by remember {
       libraryViewSettings.observeSeriesSortDirection()
     }.collectAsState()
+
+    val sortMode = overrideSortMode ?: storedSortMode
+    val sortDirection = overrideSortDirection ?: storedSortDirection
 
     val displayState by remember {
       libraryViewSettings.observeSeriesDisplayState()
@@ -115,10 +127,17 @@ class SeriesPresenter(
 
         is SeriesUiEvent.SortModeChanged -> {
           analytics.send(ActionEvent("series_sort_mode", "selected", event.mode.storageKey))
-          if (sortMode == event.mode) {
-            libraryViewSettings.seriesSortDirection = sortDirection.flip()
+          if (overrideSortMode != null) {
+            if (sortMode == event.mode) {
+              overrideSortDirection = sortDirection.flip()
+            }
+            overrideSortMode = event.mode
+          } else {
+            if (sortMode == event.mode) {
+              libraryViewSettings.seriesSortDirection = sortDirection.flip()
+            }
+            libraryViewSettings.seriesSortMode = event.mode
           }
-          libraryViewSettings.seriesSortMode = event.mode
         }
 
         SeriesUiEvent.ToggleDisplayState -> {

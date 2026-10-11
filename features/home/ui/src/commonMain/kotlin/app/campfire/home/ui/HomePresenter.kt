@@ -5,51 +5,70 @@ package app.campfire.home.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import app.campfire.analytics.Analytics
+import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.bookinfo.api.BookInfoRegistry
 import app.campfire.bookinfo.api.UpcomingRelease
 import app.campfire.common.screens.AuthorDetailScreen
+import app.campfire.common.screens.AuthorsScreen
+import app.campfire.common.screens.ContinueSeriesScreen
+import app.campfire.common.screens.DownloadsScreen
 import app.campfire.common.screens.HomeScreen
 import app.campfire.common.screens.SeriesDetailScreen
+import app.campfire.common.screens.SeriesScreen
 import app.campfire.common.screens.UrlScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
+import app.campfire.core.filter.ContentFilter
+import app.campfire.core.model.Author
 import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.Series
 import app.campfire.core.model.ShelfEntity
+import app.campfire.core.model.ShelfType
+import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.SortDirection
 import app.campfire.discover.api.screen.UpcomingScreen
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
 import app.campfire.home.api.map
 import app.campfire.home.api.model.ShelfIds
+import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.libraries.api.screen.LibraryScreen
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.api.MediaProgressRepository
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @CircuitInject(HomeScreen::class, UserScope::class)
 @Inject
@@ -58,6 +77,7 @@ class HomePresenter(
   private val homeRepository: HomeRepository,
   private val mediaProgressRepository: MediaProgressRepository,
   private val offlineDownloadManager: OfflineDownloadManager,
+  private val libraryItemRepository: LibraryItemRepository,
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
 ) : NonPausablePresenter<HomeUiState> {
@@ -66,8 +86,9 @@ class HomePresenter(
   @OptIn(ExperimentalCoroutinesApi::class)
   @Composable
   override fun present(): HomeUiState {
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    var isRefreshingDiscoveries by remember { mutableStateOf(false) }
 
     // Observe just the shelf information. We will use this to compose the remaining elements
     val domainFeed by remember {
@@ -104,22 +125,24 @@ class HomePresenter(
       bookInfoRegistry.observeCachedUpcoming()
     }.collectAsState(emptyList())
 
-    // Now combine both the shelves and entities into the final set of UiShelf to render
-    // in the UI, weaving the locally sourced upcoming shelf into the server's feed.
-    val feed by remember {
-      derivedStateOf {
-        domainFeed.map { shelves ->
-          val uiShelves = shelves.map { shelf ->
-            UiShelf(
-              shelf,
-              shelfEntities[shelf.id]
-                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
-            )
-          }
-          insertUpcomingShelf(uiShelves, upcomingReleases).toPersistentList()
+    val completedDownloads by remember {
+      offlineDownloadManager.observeAll()
+        .map { downloads ->
+          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
         }
-      }
-    }
+        .distinctUntilChanged()
+        .mapLatest { downloadIds ->
+          downloadIds.mapNotNull { id ->
+            try {
+              libraryItemRepository.getLibraryItem(id)
+            } catch (e: CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              null
+            }
+          }
+        }
+    }.collectAsState(emptyList())
 
     val userMediaProgress by remember {
       mediaProgressRepository.observeAllProgress()
@@ -130,18 +153,59 @@ class HomePresenter(
         }
     }.collectAsState(persistentMapOf())
 
+    val feed by produceState(
+      initialValue = domainFeed.map { persistentListOf() },
+      domainFeed, shelfEntities, completedDownloads, userMediaProgress, upcomingReleases,
+    ) {
+      withContext(Dispatchers.Default) {
+        value = domainFeed.map { shelves ->
+          val uiShelves = shelves
+            .filter { it.id != ShelfIds.NewestAuthors && it.type != ShelfType.AUTHOR }
+            .map { shelf ->
+              UiShelf(
+                shelf,
+                shelfEntities[shelf.id]
+                  ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
+              )
+            }
+
+          val withEnhancedContinue = enhanceContinueListeningShelf(uiShelves, completedDownloads, userMediaProgress)
+          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, completedDownloads, userMediaProgress)
+          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, upcomingReleases).toMutableList()
+
+          if (completedDownloads.isNotEmpty()) {
+            withUpcoming.add(
+              UiShelf(
+                id = "downloads",
+                label = "Downloads",
+                total = completedDownloads.size,
+                entities = LoadState.Loaded(completedDownloads),
+              ),
+            )
+          }
+
+          withUpcoming.toPersistentList()
+        }
+      }
+    }
+
     val offlineDownloads by remember {
-      snapshotFlow { shelfEntities.values }
-        .map { responses ->
-          responses
-            .mapNotNull { it.dataOrNull }
-            .flatten()
-            .filterIsInstance<LibraryItem>()
-        }
-        .flatMapLatest { libraryItems ->
-          offlineDownloadManager.observeForItems(libraryItems)
-            .map { it.toPersistentMap() }
-        }
+      combine(
+        snapshotFlow { shelfEntities.values }
+          .map { responses ->
+            responses
+              .mapNotNull { it.dataOrNull }
+              .flatten()
+              .filterIsInstance<LibraryItem>()
+          },
+        snapshotFlow { completedDownloads },
+      ) { fromShelves, fromDownloads ->
+        (fromShelves + fromDownloads).distinctBy { it.id }
+      }
+      .flatMapLatest { libraryItems ->
+        offlineDownloadManager.observeForItems(libraryItems)
+          .map { it.toPersistentMap() }
+      }
     }.collectAsState(persistentMapOf())
 
     return HomeUiState(
@@ -149,33 +213,99 @@ class HomePresenter(
       offlineStates = offlineDownloads,
       progressStates = userMediaProgress,
       isRefreshing = isRefreshing,
+      isRefreshingDiscoveries = isRefreshingDiscoveries,
     ) { event ->
       when (event) {
         is HomeUiEvent.OpenLibraryItem -> {
           analytics.send(ContentSelected(ContentType.LibraryItem))
           navigator.goTo(LibraryItemScreen(event.item.id, event.sharedTransitionKey))
         }
+
         is HomeUiEvent.OpenLibraryItemWithEpisode -> {
           analytics.send(ContentSelected(ContentType.LibraryItem))
           navigator.goTo(LibraryItemScreen(event.item.id, event.sharedTransitionKey, event.episodeId))
         }
+
         is HomeUiEvent.OpenAuthor -> {
           analytics.send(ContentSelected(ContentType.Author))
           navigator.goTo(AuthorDetailScreen(event.author.id, event.author.name))
         }
+
         is HomeUiEvent.OpenSeries -> {
           analytics.send(ContentSelected(ContentType.Series))
           navigator.goTo(SeriesDetailScreen(event.series.id, event.series.name))
         }
+
         is HomeUiEvent.OpenUpcomingBook -> navigator.goTo(UrlScreen(event.url))
         HomeUiEvent.OpenUpcomingScreen -> navigator.goTo(UpcomingScreen)
-        HomeUiEvent.Refresh -> if (!isRefreshing) {
-          isRefreshing = true
-          scope.launch {
-            try {
-              homeRepository.refreshHomeFeed()
-            } finally {
-              isRefreshing = false
+
+        is HomeUiEvent.OpenShelf -> {
+          when {
+            event.shelfId.startsWith(ShelfIds.ContinueListening) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ContinueListening))
+              navigator.goTo(LibraryScreen(filter = ContentFilter.Progress(ContentFilter.Progress.Type.InProgress)))
+            }
+
+            event.shelfId.startsWith(ShelfIds.ListenAgain) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ListenAgain))
+              navigator.goTo(LibraryScreen(filter = ContentFilter.Progress(ContentFilter.Progress.Type.Finished)))
+            }
+
+            event.shelfId.startsWith(ShelfIds.RecentlyAdded) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.RecentlyAdded))
+              navigator.goTo(LibraryScreen(sortMode = ContentSortMode.AddedAt, sortDirection = SortDirection.Descending))
+            }
+
+            event.shelfId.startsWith(ShelfIds.RecentSeries) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.RecentSeries))
+              navigator.goTo(SeriesScreen(sortMode = ContentSortMode.AddedAt, sortDirection = SortDirection.Descending))
+            }
+
+            event.shelfId.startsWith(ShelfIds.ContinueSeries) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ContinueSeries))
+              navigator.goTo(ContinueSeriesScreen)
+            }
+
+            event.shelfId == "downloads" -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", "downloads"))
+              navigator.goTo(DownloadsScreen)
+            }
+
+            event.shelfId.startsWith(ShelfIds.UpcomingReleases) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.UpcomingReleases))
+              navigator.goTo(UpcomingScreen)
+            }
+
+            event.shelfId.startsWith(ShelfIds.NewestAuthors) -> {
+              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.NewestAuthors))
+              navigator.goTo(AuthorsScreen)
+            }
+          }
+        }
+
+        HomeUiEvent.Refresh -> {
+          if (!isRefreshing) {
+            isRefreshing = true
+            coroutineScope.launch {
+              try {
+                homeRepository.refreshHomeFeed()
+              } finally {
+                isRefreshing = false
+              }
+            }
+          }
+        }
+
+        HomeUiEvent.RefreshDiscoveries -> {
+          if (!isRefreshingDiscoveries) {
+            isRefreshingDiscoveries = true
+            coroutineScope.launch {
+              try {
+                homeRepository.refreshHomeFeed()
+                delay(400)
+              } finally {
+                isRefreshingDiscoveries = false
+              }
             }
           }
         }
@@ -225,4 +355,208 @@ private fun insertUpcomingShelf(
   } else {
     shelves + upcomingShelf
   }
+}
+
+private fun isMediaProgressCompleted(prog: app.campfire.core.model.MediaProgress?): Boolean {
+  if (prog == null) return false
+  return prog.isFinished || prog.hideFromContinueListening
+}
+
+private fun findUserMediaProgress(
+  entity: ShelfEntity,
+  userMediaProgress: Map<MediaProgressKey, app.campfire.core.model.MediaProgress>,
+): app.campfire.core.model.MediaProgress? {
+  return when (entity) {
+    is LibraryItem -> {
+      userMediaProgress[MediaProgressKey(entity.id, null)]
+        ?: userMediaProgress.entries.firstOrNull { it.key.libraryItemId == entity.id }?.value
+        ?: entity.userMediaProgress
+    }
+    is ShelfEntity.EpisodeShelfEntry -> {
+      userMediaProgress[MediaProgressKey(entity.libraryItem.id, entity.recentEpisode.id)]
+        ?: userMediaProgress[MediaProgressKey(entity.libraryItem.id, null)]
+        ?: userMediaProgress.entries.firstOrNull { it.key.libraryItemId == entity.libraryItem.id }?.value
+        ?: entity.libraryItem.userMediaProgress
+    }
+    else -> null
+  }
+}
+
+private fun enhanceContinueListeningShelf(
+  shelves: List<UiShelf<ShelfEntity>>,
+  completedDownloads: List<LibraryItem>,
+  userMediaProgress: Map<MediaProgressKey, app.campfire.core.model.MediaProgress>,
+): List<UiShelf<ShelfEntity>> {
+  fun entityKey(entity: ShelfEntity): String {
+    return when (entity) {
+      is LibraryItem -> entity.id
+      is ShelfEntity.EpisodeShelfEntry -> "${entity.libraryItem.id}_${entity.recentEpisode.id}"
+      is ShelfEntity.UpcomingBookShelfEntry -> entity.id
+      is Author -> entity.id
+      is Series -> entity.id
+    }
+  }
+
+  fun getEntityLastUpdate(entity: ShelfEntity): Long {
+    val prog = findUserMediaProgress(entity, userMediaProgress)
+    return prog?.lastUpdate ?: 0L
+  }
+
+  fun isEntityActive(entity: ShelfEntity): Boolean {
+    val prog = findUserMediaProgress(entity, userMediaProgress)
+    if (prog != null) {
+      if (isMediaProgressCompleted(prog)) return false
+      if (prog.progress <= 0f && prog.currentTime <= 0f) return false
+    }
+    return true
+  }
+
+  val activeDownloadedItems = completedDownloads.filter { item ->
+    val prog = findUserMediaProgress(item, userMediaProgress)
+    prog != null &&
+      !isMediaProgressCompleted(prog) &&
+      (prog.progress > 0f || prog.currentTime > 0f)
+  }
+
+  val continueListeningIndex = shelves.indexOfFirst {
+    it.id.startsWith(ShelfIds.ContinueListening)
+  }
+
+  if (continueListeningIndex >= 0) {
+    val shelf = shelves[continueListeningIndex]
+    val updatedEntitiesState: LoadState<List<ShelfEntity>> = when (val state = shelf.entities) {
+      is LoadState.Loaded<List<ShelfEntity>> -> {
+        val currentEntities = state.data
+        val combined = (activeDownloadedItems + currentEntities)
+          .distinctBy { entityKey(it) }
+          .filter { isEntityActive(it) }
+          .sortedByDescending { getEntityLastUpdate(it) }
+        LoadState.Loaded(combined)
+      }
+      is LoadState.Error -> {
+        if (activeDownloadedItems.isNotEmpty()) {
+          val sorted = activeDownloadedItems.sortedByDescending { getEntityLastUpdate(it) }
+          LoadState.Loaded(sorted)
+        } else {
+          state
+        }
+      }
+      else -> state
+    }
+
+    if (updatedEntitiesState is LoadState.Loaded<List<ShelfEntity>> && updatedEntitiesState.data.isEmpty()) {
+      return shelves.toMutableList().apply { removeAt(continueListeningIndex) }
+    }
+
+    val updatedShelf = UiShelf<ShelfEntity>(
+      id = shelf.id,
+      label = shelf.label,
+      total = when (updatedEntitiesState) {
+        is LoadState.Loaded<List<ShelfEntity>> -> updatedEntitiesState.data.size
+        else -> shelf.total
+      },
+      entities = updatedEntitiesState,
+    )
+
+    return shelves.toMutableList().apply {
+      set(continueListeningIndex, updatedShelf)
+    }
+  } else if (activeDownloadedItems.isNotEmpty()) {
+    val sortedDownloads = activeDownloadedItems.sortedByDescending { getEntityLastUpdate(it) }
+    val synthesizedShelf = UiShelf<ShelfEntity>(
+      id = ShelfIds.ContinueListening,
+      label = "Continue Listening",
+      total = sortedDownloads.size,
+      entities = LoadState.Loaded(sortedDownloads),
+    )
+    return listOf(synthesizedShelf) + shelves
+  }
+
+  return shelves
+}
+
+private fun enhanceListenAgainShelf(
+  shelves: List<UiShelf<ShelfEntity>>,
+  completedDownloads: List<LibraryItem>,
+  userMediaProgress: Map<MediaProgressKey, app.campfire.core.model.MediaProgress>,
+): List<UiShelf<ShelfEntity>> {
+  fun entityKey(entity: ShelfEntity): String {
+    return when (entity) {
+      is LibraryItem -> entity.id
+      is ShelfEntity.EpisodeShelfEntry -> "${entity.libraryItem.id}_${entity.recentEpisode.id}"
+      is ShelfEntity.UpcomingBookShelfEntry -> entity.id
+      is Author -> entity.id
+      is Series -> entity.id
+    }
+  }
+
+  fun getEntityLastUpdate(entity: ShelfEntity): Long {
+    val prog = findUserMediaProgress(entity, userMediaProgress)
+    return prog?.lastUpdate ?: 0L
+  }
+
+  val finishedDownloadedItems = completedDownloads.filter { item ->
+    val prog = findUserMediaProgress(item, userMediaProgress)
+    prog != null && isMediaProgressCompleted(prog)
+  }
+
+  val listenAgainIndex = shelves.indexOfFirst {
+    it.id.startsWith(ShelfIds.ListenAgain)
+  }
+
+  if (listenAgainIndex >= 0) {
+    val shelf = shelves[listenAgainIndex]
+    val updatedEntitiesState: LoadState<List<ShelfEntity>> = when (val state = shelf.entities) {
+      is LoadState.Loaded<List<ShelfEntity>> -> {
+        val currentEntities = state.data
+        val combined = (finishedDownloadedItems + currentEntities)
+          .distinctBy { entityKey(it) }
+          .sortedByDescending { getEntityLastUpdate(it) }
+        LoadState.Loaded(combined)
+      }
+      is LoadState.Error -> {
+        if (finishedDownloadedItems.isNotEmpty()) {
+          val sorted = finishedDownloadedItems.sortedByDescending { getEntityLastUpdate(it) }
+          LoadState.Loaded(sorted)
+        } else {
+          state
+        }
+      }
+      else -> state
+    }
+
+    val updatedShelf = UiShelf<ShelfEntity>(
+      id = shelf.id,
+      label = shelf.label,
+      total = when (updatedEntitiesState) {
+        is LoadState.Loaded<List<ShelfEntity>> -> updatedEntitiesState.data.size
+        else -> shelf.total
+      },
+      entities = updatedEntitiesState,
+    )
+
+    return shelves.toMutableList().apply {
+      set(listenAgainIndex, updatedShelf)
+    }
+  } else if (finishedDownloadedItems.isNotEmpty()) {
+    val sortedFinished = finishedDownloadedItems.sortedByDescending { getEntityLastUpdate(it) }
+    val synthesizedShelf = UiShelf<ShelfEntity>(
+      id = ShelfIds.ListenAgain,
+      label = "Listen Again",
+      total = sortedFinished.size,
+      entities = LoadState.Loaded(sortedFinished),
+    )
+
+    val continueListeningIndex = shelves.indexOfFirst {
+      it.id.startsWith(ShelfIds.ContinueListening)
+    }
+
+    return if (continueListeningIndex >= 0) {
+      shelves.toMutableList().apply { add(continueListeningIndex + 1, synthesizedShelf) }
+    } else {
+      listOf(synthesizedShelf) + shelves
+    }
+  }
+
+  return shelves
 }

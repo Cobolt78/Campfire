@@ -32,6 +32,7 @@ import androidx.compose.material3.DrawerState
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedIconButton
@@ -171,89 +172,102 @@ fun CampfireDrawer(
           horizontal = 16.dp,
           vertical = 8.dp,
         ),
-      horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      val changeThemeModeLabel = stringResource(Res.string.action_change_theme_mode)
-      IconButtonTooltip(
-        text = changeThemeModeLabel,
+      Text(
+        text = "v${state.appVersion}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 12.dp),
+      )
+
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        OutlinedIconButton(
-          shapes = IconButtonDefaults.shapes(
-            shape = RoundedCornerShape(
-              topStart = CornerSize(50),
-              bottomStart = CornerSize(50),
-              topEnd = CornerSize(4.dp),
-              bottomEnd = CornerSize(4.dp),
-            ),
-          ),
-          onClick = {
-            state.eventSink(DrawerUiEvent.CycleThemeMode)
-          },
-          modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .size(
-              IconButtonDefaults.smallContainerSize(
-                IconButtonDefaults.IconButtonWidthOption.Wide,
+        val changeThemeModeLabel = stringResource(Res.string.action_change_theme_mode)
+        IconButtonTooltip(
+          text = changeThemeModeLabel,
+        ) {
+          OutlinedIconButton(
+            shapes = IconButtonDefaults.shapes(
+              shape = RoundedCornerShape(
+                topStart = CornerSize(50),
+                bottomStart = CornerSize(50),
+                topEnd = CornerSize(4.dp),
+                bottomEnd = CornerSize(4.dp),
               ),
             ),
-        ) {
-          AnimatedContent(
-            targetState = state.themeMode,
-            transitionSpec = {
-              val inSpec: FiniteAnimationSpec<Float> = tween(220, delayMillis = 90)
-              (
-                fadeIn(animationSpec = inSpec) + scaleIn(
-                  initialScale = 0f,
-                  animationSpec = inSpec,
-                )
-                ) togetherWith (
-                scaleOut(
-                  animationSpec = tween(90),
-                ) + fadeOut(tween(90))
-                )
+            onClick = {
+              state.eventSink(DrawerUiEvent.CycleThemeMode)
             },
-          ) { mode ->
-            Icon(
-              when (mode) {
-                LIGHT -> CampfireIcons.Rounded.LightMode
-                DARK -> CampfireIcons.Rounded.DarkMode
-                SYSTEM -> CampfireIcons.Rounded.Brightness6
+            modifier = Modifier
+              .minimumInteractiveComponentSize()
+              .size(
+                IconButtonDefaults.smallContainerSize(
+                  IconButtonDefaults.IconButtonWidthOption.Wide,
+                ),
+              ),
+          ) {
+            AnimatedContent(
+              targetState = state.themeMode,
+              transitionSpec = {
+                val inSpec: FiniteAnimationSpec<Float> = tween(220, delayMillis = 90)
+                (
+                  fadeIn(animationSpec = inSpec) + scaleIn(
+                    initialScale = 0f,
+                    animationSpec = inSpec,
+                  )
+                  ) togetherWith (
+                  scaleOut(
+                    animationSpec = tween(90),
+                  ) + fadeOut(tween(90))
+                  )
               },
-              contentDescription = changeThemeModeLabel,
-            )
+            ) { mode ->
+              Icon(
+                when (mode) {
+                  LIGHT -> CampfireIcons.Rounded.LightMode
+                  DARK -> CampfireIcons.Rounded.DarkMode
+                  SYSTEM -> CampfireIcons.Rounded.Brightness6
+                },
+                contentDescription = changeThemeModeLabel,
+              )
+            }
           }
         }
-      }
 
-      val changeThemeLabel = stringResource(Res.string.action_change_theme)
-      IconButtonTooltip(
-        text = changeThemeLabel,
-      ) {
-        FilledTonalIconButton(
-          shapes = IconButtonDefaults.shapes(
-            shape = RoundedCornerShape(
-              topStart = CornerSize(4.dp),
-              bottomStart = CornerSize(4.dp),
-              topEnd = CornerSize(50),
-              bottomEnd = CornerSize(50),
-            ),
-          ),
-          colors = IconButtonDefaults.filledTonalIconButtonColors(),
-          onClick = {
-            navigator.goTo(ThemePickerScreen)
-            scope.launch {
-              drawerState.close()
-            }
-          },
-          modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .size(
-              IconButtonDefaults.smallContainerSize(
-                IconButtonDefaults.IconButtonWidthOption.Wide,
+        val changeThemeLabel = stringResource(Res.string.action_change_theme)
+        IconButtonTooltip(
+          text = changeThemeLabel,
+        ) {
+          FilledTonalIconButton(
+            shapes = IconButtonDefaults.shapes(
+              shape = RoundedCornerShape(
+                topStart = CornerSize(4.dp),
+                bottomStart = CornerSize(4.dp),
+                topEnd = CornerSize(50),
+                bottomEnd = CornerSize(50),
               ),
             ),
-        ) {
-          Icon(CampfireIcons.Rounded.Palette, contentDescription = changeThemeLabel)
+            colors = IconButtonDefaults.filledTonalIconButtonColors(),
+            onClick = {
+              navigator.goTo(ThemePickerScreen)
+              scope.launch {
+                drawerState.close()
+              }
+            },
+            modifier = Modifier
+              .minimumInteractiveComponentSize()
+              .size(
+                IconButtonDefaults.smallContainerSize(
+                  IconButtonDefaults.IconButtonWidthOption.Wide,
+                ),
+              ),
+          ) {
+            Icon(CampfireIcons.Rounded.Palette, contentDescription = changeThemeLabel)
+          }
         }
       }
     }

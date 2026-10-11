@@ -11,6 +11,7 @@ import com.slack.circuit.runtime.CircuitUiState
 @Stable
 data class DrawerUiState(
   val themeMode: ThemeMode,
+  val appVersion: String,
   val navigationItems: List<HomeNavigationItem>,
   val eventSink: (DrawerUiEvent) -> Unit,
 ) : CircuitUiState

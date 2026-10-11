@@ -47,6 +47,7 @@ import campfire.ui.navigation.ui.generated.resources.nav_statistics_content_desc
 import campfire.ui.navigation.ui.generated.resources.nav_statistics_label
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_content_description
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_label
+import app.campfire.core.app.ApplicationInfo
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Inject
 import org.jetbrains.compose.resources.stringResource
@@ -64,6 +65,7 @@ class NavigationPresenter(
   private val remoteEpisodeDownloadTracker: RemoteEpisodeDownloadTracker,
   private val layoutSettings: LayoutSettings,
   private val themeSettings: ThemeSettings,
+  private val applicationInfo: ApplicationInfo,
 ) {
 
   /**
@@ -112,6 +114,7 @@ class NavigationPresenter(
 
     return DrawerUiState(
       themeMode = themeMode,
+      appVersion = applicationInfo.versionName,
       navigationItems = items,
     ) { event ->
       when (event) {

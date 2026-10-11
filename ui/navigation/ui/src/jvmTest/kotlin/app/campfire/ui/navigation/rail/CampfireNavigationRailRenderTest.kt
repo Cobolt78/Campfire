@@ -58,7 +58,7 @@ class CampfireNavigationRailRenderTest {
   private val items = listOf(
     HomeNavigationItem(HomeScreen, "Home", "Home", CampfireIcons.Outline.Home, CampfireIcons.Filled.Home),
     HomeNavigationItem(LibraryScreen(), "Library", "Library", CampfireIcons.Outline.Library),
-    HomeNavigationItem(SeriesScreen, "Series", "Series", CampfireIcons.Outline.Series),
+    HomeNavigationItem(SeriesScreen(), "Series", "Series", CampfireIcons.Outline.Series),
     HomeNavigationItem(AuthorsScreen, "Authors", "Authors", CampfireIcons.Outline.Author),
     HomeNavigationItem(PlaylistsScreen, "Playlists", "Playlists", CampfireIcons.Outline.Playlists),
     HomeNavigationItem(CollectionsScreen, "Collections", "Collections", CampfireIcons.Outline.Collections),

@@ -44,6 +44,7 @@ import app.campfire.home.ui.composables.ShelfListItem
 import app.campfire.ui.appbar.CampfireAppBar
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 import app.campfire.user.api.MediaProgressKey
+import app.campfire.updates.AppUpdateWidget
 import campfire.features.home.ui.generated.resources.Res
 import campfire.features.home.ui.generated.resources.home_feed_load_error
 import com.slack.circuit.codegen.annotations.CircuitInject
@@ -55,6 +56,10 @@ import org.jetbrains.compose.resources.stringResource
 fun HomeScreen(
   state: HomeUiState,
   campfireAppbar: CampfireAppBar,
+  appUpdateWidget: AppUpdateWidget = object : AppUpdateWidget {
+    @Composable
+    override fun Content(modifier: Modifier) {}
+  },
   modifier: Modifier = Modifier,
 ) {
   val appBarBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
@@ -112,6 +117,7 @@ fun HomeScreen(
         } else {
           LoadedState(
             shelves = state.homeFeed.data,
+            appUpdateWidget = appUpdateWidget,
             offlineStatus = { libraryItemId ->
               state.offlineStates[libraryItemId].asWidgetStatus()
             },
@@ -121,6 +127,9 @@ fun HomeScreen(
             contentPadding = paddingValues,
             modifier = Modifier.fillMaxSize(),
             onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
+            onHeaderClick = { shelfId -> state.eventSink(HomeUiEvent.OpenShelf(shelfId)) },
+            onRefreshDiscoveriesClick = { state.eventSink(HomeUiEvent.RefreshDiscoveries) },
+            isRefreshingDiscoveries = state.isRefreshingDiscoveries,
             onItemClick = { shelf, item ->
               when (item) {
                 is LibraryItem -> state.eventSink(
@@ -154,10 +163,14 @@ fun HomeScreen(
 @Composable
 private fun LoadedState(
   shelves: List<UiShelf<ShelfEntity>>,
+  appUpdateWidget: AppUpdateWidget,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
   progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
   onItemClick: (UiShelf<*>, Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
+  onHeaderClick: (String) -> Unit,
+  onRefreshDiscoveriesClick: () -> Unit,
+  isRefreshingDiscoveries: Boolean,
   modifier: Modifier = Modifier,
   contentPadding: PaddingValues = PaddingValues(),
   state: LazyListState = rememberLazyListState(),
@@ -168,11 +181,23 @@ private fun LoadedState(
     contentPadding = contentPadding,
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    items(shelves) { shelf ->
+    item(key = "app_update_banner") {
+      appUpdateWidget.Content(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+      )
+    }
+
+    items(
+      items = shelves,
+      key = { it.id },
+    ) { shelf ->
       ShelfListItem(
         shelf = shelf,
         onItemClick = { onItemClick(shelf, it) },
         onViewAllUpcomingClick = onViewAllUpcomingClick,
+        onHeaderClick = onHeaderClick,
+        onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
+        isRefreshingDiscoveries = isRefreshingDiscoveries,
         offlineStatus = offlineStatus,
         progressStatus = progressStatus,
       )

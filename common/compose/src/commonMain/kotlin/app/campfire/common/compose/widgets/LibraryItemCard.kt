@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,7 @@ import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.CheckCircle
 import app.campfire.common.compose.icons.rounded.Circle
 import app.campfire.common.compose.icons.rounded.CloudDone
+import app.campfire.common.compose.icons.rounded.Download
 import app.campfire.common.compose.icons.rounded.FatCheck
 import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.common.compose.theme.colorScheme
@@ -115,6 +117,7 @@ fun LibraryItemCard(
   colors: CardColors = CardDefaults.elevatedCardColors(
     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
   ),
+  seriesBadge: String? = null,
 ) = SharedElementTransitionScope {
   val animationScope = findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)
 
@@ -148,6 +151,7 @@ fun LibraryItemCard(
               progress = progress,
               isTransitioning = isTransitioning,
               large = showInformation,
+              seriesBadge = seriesBadge,
             )
 
             if (!episode?.episode.isNullOrBlank()) {
@@ -267,47 +271,78 @@ private fun BoxScope.ProgressDecorator(
   progress: MediaProgress?,
   isTransitioning: Boolean,
   large: Boolean = true,
+  seriesBadge: String? = null,
 ) {
-  progress?.let { mediaProgress ->
-    if (mediaProgress.isFinished) {
-      AnimatedVisibility(
-        visible = isTransitioning,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-          .align(Alignment.TopStart),
+  val isFinished = progress != null && progress.isFinished
+  val hasBadge = !seriesBadge.isNullOrBlank()
+
+  if (isFinished || hasBadge) {
+    AnimatedVisibility(
+      visible = isTransitioning,
+      enter = fadeIn(),
+      exit = fadeOut(),
+      modifier = Modifier
+        .align(Alignment.TopStart)
+        .padding(if (large) 8.dp else 4.dp),
+    ) {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
       ) {
-        MediaFinishedIndicator(
-          size = if (large) 24.dp else 18.dp,
-          modifier = Modifier
-            .thenIf(
-              condition = large,
-              whenTrue = {
-                Modifier.padding(8.dp)
-              },
-              whenFalse = {
-                Modifier.padding(4.dp)
-              },
-            ),
-        )
-      }
-    } else {
-      AnimatedVisibility(
-        visible = isTransitioning,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-          .align(Alignment.BottomCenter),
-      ) {
-        MediaProgressBar(
-          mediaProgress = mediaProgress,
-          trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
-          modifier = Modifier
-            .fillMaxWidth(),
-        )
+        if (!seriesBadge.isNullOrBlank()) {
+          SeriesBadge(
+            badge = seriesBadge,
+            large = large,
+          )
+        }
+        if (isFinished) {
+          MediaFinishedIndicator(
+            size = if (large) 24.dp else 18.dp,
+          )
+        }
       }
     }
   }
+
+  if (progress != null && !isFinished) {
+    AnimatedVisibility(
+      visible = isTransitioning,
+      enter = fadeIn(),
+      exit = fadeOut(),
+      modifier = Modifier
+        .align(Alignment.BottomCenter),
+    ) {
+      MediaProgressBar(
+        mediaProgress = progress,
+        trackHeight = 6.dp,
+        modifier = Modifier
+          .fillMaxWidth(),
+      )
+    }
+  }
+}
+
+@Composable
+fun SeriesBadge(
+  badge: String,
+  modifier: Modifier = Modifier,
+  large: Boolean = true,
+) {
+  Text(
+    text = badge,
+    style = MaterialTheme.typography.labelSmall,
+    fontWeight = FontWeight.Bold,
+    color = Color.White,
+    modifier = modifier
+      .clip(CircleShape)
+      .background(
+        color = MaterialTheme.colorScheme.scrim.copy(0.68f),
+      )
+      .padding(
+        horizontal = if (large) 8.dp else 6.dp,
+        vertical = if (large) 4.dp else 2.dp,
+      ),
+  )
 }
 
 @Composable
@@ -575,35 +610,42 @@ private fun LibraryItemCardEditingScrim(
   }
 }
 
+private val MediaProgressTrackColor = Color(0x80000000)
+private val MediaProgressColor = Color(0xFFE58B22) // vibrant orange
+private val MediaFinishedColor = Color(0xFF4CAF50) // vibrant green
+
 @Composable
 fun MediaProgressBar(
   mediaProgress: MediaProgress,
   modifier: Modifier = Modifier,
-  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
-  progressColor: Color = MaterialTheme.colorScheme.primary,
-  trackHeight: Dp = LargeProgressBarHeight,
+  trackColor: Color = MediaProgressTrackColor,
+  progressColor: Color = if (mediaProgress.isFinished) MediaFinishedColor else MediaProgressColor,
+  trackHeight: Dp = 6.dp,
 ) {
   Canvas(
     modifier = modifier
+      .fillMaxWidth()
       .height(trackHeight),
   ) {
     // Draw Track
     drawRect(
       color = trackColor,
       size = size,
-      alpha = ProgressBarAlpha,
     )
 
     val cornerRadiusPx = trackHeight.toPx() / 2f
-    val progressSize = size.copy(
-      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
-    )
-    drawRoundRect(
-      color = progressColor,
-      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
-      size = progressSize,
-      cornerRadius = CornerRadius(cornerRadiusPx),
-    )
+    val progressFraction = mediaProgress.actualProgress.coerceIn(0f, 1f)
+    if (progressFraction > 0f) {
+      val progressSize = size.copy(
+        width = (size.width * progressFraction) + cornerRadiusPx,
+      )
+      drawRoundRect(
+        color = progressColor,
+        topLeft = Offset(x = -cornerRadiusPx, y = 0f),
+        size = progressSize,
+        cornerRadius = CornerRadius(cornerRadiusPx),
+      )
+    }
   }
 }
 
@@ -664,13 +706,26 @@ fun OfflineStatusIndicator(
     }
 
     OfflineStatus.Available -> {
-      Icon(
-        CampfireIcons.Rounded.CloudDone,
-        contentDescription = null,
-        tint = tint,
+      Box(
         modifier = modifier
-          .size(size),
-      )
+          .shadow(
+            elevation = 1.dp,
+            shape = CircleShape,
+          )
+          .background(
+            color = MaterialTheme.colorScheme.scrim.copy(0.68f),
+            shape = CircleShape,
+          )
+          .padding(3.dp),
+      ) {
+        Icon(
+          CampfireIcons.Rounded.Download,
+          contentDescription = null,
+          tint = Color(0xFF4CAF50),
+          modifier = Modifier
+            .size(size),
+        )
+      }
     }
 
     OfflineStatus.Failed -> {

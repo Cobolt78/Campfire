@@ -176,6 +176,14 @@ private fun LoadedState(
       items = items,
       key = { _, item -> item.id },
     ) { index, item ->
+      val seriesSequence = item.media.metadata.series
+        .firstOrNull { it.id == seriesId || it.name.equals(seriesName, ignoreCase = true) }
+        ?: item.media.metadata.seriesSequence
+
+      val seriesBadge = seriesSequence?.formattedSequence
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "#$it" }
+
       LibraryItemCard(
         item = item,
         // Same "Book 2 · 2014" line as the missing books, in place of the author.
@@ -183,6 +191,7 @@ private fun LoadedState(
           position = item.media.metadata.seriesSequence(seriesId)?.sequence,
           year = item.media.metadata.publishedYear,
         ),
+        seriesBadge = seriesBadge,
         sharedTransitionKey = item.id + seriesName,
         sharedTransitionZIndex = (items.size - index) + 1f,
         offlineStatus = offlineStatus(item.id),

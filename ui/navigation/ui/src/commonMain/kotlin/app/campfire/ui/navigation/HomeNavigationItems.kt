@@ -62,7 +62,7 @@ internal fun buildBookLibraryNavigationItems(): List<HomeNavigationItem> {
       selectedImageVector = CampfireIcons.Filled.Library,
     ),
     HomeNavigationItem(
-      screen = SeriesScreen,
+      screen = SeriesScreen(),
       label = stringResource(Res.string.nav_series_label),
       contentDescription = stringResource(Res.string.nav_series_content_description),
       iconImageVector = CampfireIcons.Outline.Series,

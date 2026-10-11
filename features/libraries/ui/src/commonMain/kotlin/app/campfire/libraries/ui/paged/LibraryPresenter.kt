@@ -68,13 +68,24 @@ class LibraryPresenter(
       mutableStateOf(screen.filter)
     }
 
-    val sortMode by remember {
+    var overrideSortMode by rememberRetainedSaveable {
+      mutableStateOf(screen.sortMode)
+    }
+
+    var overrideSortDirection by rememberRetainedSaveable {
+      mutableStateOf(screen.sortDirection)
+    }
+
+    val storedSortMode by remember {
       libraryViewSettings.observeLibrarySortMode()
     }.collectAsState()
 
-    val sortDirection by remember {
+    val storedSortDirection by remember {
       libraryViewSettings.observeLibrarySortDirection()
     }.collectAsState()
+
+    val sortMode = overrideSortMode ?: storedSortMode
+    val sortDirection = overrideSortDirection ?: storedSortDirection
 
     val currentUser by userRepository.userFlow.collectAsState()
 
@@ -144,10 +155,17 @@ class LibraryPresenter(
 
         is LibraryUiEvent.SortModeSelected -> {
           analytics.send(ActionEvent("sort_mode", "selected", event.mode.storageKey))
-          if (sortMode == event.mode) {
-            libraryViewSettings.librarySortDirection = sortDirection.flip()
+          if (overrideSortMode != null) {
+            if (sortMode == event.mode) {
+              overrideSortDirection = sortDirection.flip()
+            }
+            overrideSortMode = event.mode
+          } else {
+            if (sortMode == event.mode) {
+              libraryViewSettings.librarySortDirection = sortDirection.flip()
+            }
+            libraryViewSettings.librarySortMode = event.mode
           }
-          libraryViewSettings.librarySortMode = event.mode
         }
 
         is LibraryUiEvent.ItemFilterSelected -> {

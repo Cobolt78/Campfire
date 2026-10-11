@@ -31,6 +31,7 @@ import app.campfire.common.compose.icons.rounded.Schedule
 import app.campfire.common.compose.icons.rounded.Sensors
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
 import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
+import app.campfire.core.extensions.asReadableBytes
 import app.campfire.core.model.LibraryItem
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
 import campfire.features.libraries.ui.generated.resources.Res
@@ -108,6 +109,14 @@ class TitleSlot(
           style = MaterialTheme.typography.titleSmall,
           fontWeight = FontWeight.SemiBold,
         )
+        val sizeInBytes = libraryItem.media.sizeInBytes
+        if (sizeInBytes > 0L) {
+          Text(
+            text = " • ${sizeInBytes.asReadableBytes()}",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+          )
+        }
         if (showHlsBadge) {
           Spacer(Modifier.width(12.dp))
           Icon(
