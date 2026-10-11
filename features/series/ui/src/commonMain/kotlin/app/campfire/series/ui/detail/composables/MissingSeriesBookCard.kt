@@ -66,7 +66,7 @@ internal fun MissingSeriesBookCard(
             badge = "#${formatSeriesSequence(position)}",
             modifier = Modifier
               .align(Alignment.TopStart)
-              .padding(8.dp),
+              .padding(5.dp),
           )
         }
     }

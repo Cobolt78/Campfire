@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.campfire.common.compose.extensions.thenIf
 import app.campfire.common.compose.extensions.thenIfNotNull
@@ -290,10 +292,13 @@ private fun BoxScope.ProgressDecorator(
       exit = fadeOut(),
       modifier = Modifier
         .align(Alignment.TopStart)
-        .padding(if (large) 8.dp else 4.dp),
+        .padding(
+          start = if (large) 5.dp else 3.dp,
+          top = if (large) 5.dp else 3.dp,
+        ),
     ) {
       Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
       ) {
         if (!seriesBadge.isNullOrBlank()) {
@@ -304,7 +309,7 @@ private fun BoxScope.ProgressDecorator(
         }
         if (isFinished) {
           MediaFinishedIndicator(
-            size = if (large) 24.dp else 18.dp,
+            size = if (large) 20.dp else 16.dp,
           )
         }
       }
@@ -337,17 +342,21 @@ fun SeriesBadge(
 ) {
   Text(
     text = badge,
-    style = MaterialTheme.typography.labelSmall,
+    style = MaterialTheme.typography.labelSmall.copy(
+      fontSize = if (large) 10.5.sp else 9.sp,
+      lineHeight = if (large) 12.sp else 10.sp,
+      letterSpacing = 0.sp,
+    ),
     fontWeight = FontWeight.Bold,
     color = Color.White,
     modifier = modifier
-      .clip(CircleShape)
+      .clip(RoundedCornerShape(4.dp))
       .background(
-        color = MaterialTheme.colorScheme.scrim.copy(0.68f),
+        color = MaterialTheme.colorScheme.scrim.copy(0.60f),
       )
       .padding(
-        horizontal = if (large) 8.dp else 6.dp,
-        vertical = if (large) 4.dp else 2.dp,
+        horizontal = if (large) 5.dp else 3.5.dp,
+        vertical = if (large) 1.5.dp else 1.dp,
       ),
   )
 }
