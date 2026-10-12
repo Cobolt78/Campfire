@@ -5,6 +5,7 @@ package app.campfire.user
 
 import app.campfire.core.coroutines.CoroutineScopeHolder
 import app.campfire.core.coroutines.DispatcherProvider
+import app.campfire.core.model.Server
 import app.campfire.core.model.User
 import app.campfire.core.session.UserSession
 import app.campfire.data.mapping.asDatabaseModel
@@ -207,6 +208,62 @@ class StoreUserRepositoryTest {
     )
 
     assertThat(repository.userFlow.value).isEqualTo(User.EMPTY)
+    scope.cancel()
+  }
+
+  @Test
+  fun userFlow_doesNotCrashWhenUserSessionNeedsAuthentication() = testDb { db ->
+    val scope = CoroutineScope(Job())
+    val dispatchers = DispatcherProvider(
+      io = Dispatchers.Default,
+      databaseWrite = Dispatchers.Default,
+      databaseRead = Dispatchers.Default,
+      computation = Dispatchers.Default,
+      main = Dispatchers.Default,
+    )
+    val testUser = networkUser(download = false).asDomainModel(serverUrl, "lib-1")
+    val server = Server(
+      url = serverUrl,
+      name = "Test",
+      user = testUser,
+      settings = Server.Settings(
+        scannerFindCovers = false,
+        scannerCoverProvider = "",
+        scannerParseSubtitle = false,
+        scannerPreferMatchedMetadata = false,
+        scannerDisableWatcher = false,
+        storeCoverWithItem = false,
+        storeMetadataWithItem = false,
+        metadataFileFormat = "",
+        rateLimitLoginRequests = 0,
+        rateLimitLoginWindow = 0,
+        backupSchedule = "",
+        backupsToKeep = 0,
+        maxBackupSize = 0,
+        loggerDailyLogsToKeep = 0,
+        loggerScannerLogsToKeep = 0,
+        homeBookshelfView = 0,
+        bookshelfView = 0,
+        sortingIgnorePrefix = false,
+        sortingPrefixes = emptyList(),
+        chromecastEnabled = false,
+        dateFormat = "",
+        timeFormat = "",
+        language = "",
+        logLevel = 0,
+        version = "",
+      ),
+    )
+    val session = UserSession.NeedsAuthentication(server)
+    val repository = StoreUserRepository(
+      userSession = session,
+      userStoreFactory = UserStore.Factory(session, db, FakeAudioBookShelfApi(), dispatchers),
+      coroutineScopeHolder = CoroutineScopeHolder { scope },
+    )
+
+    assertThat(repository.userFlow.value).isEqualTo(testUser)
+    assertThat(repository.observeCurrentUser().first()).isEqualTo(testUser)
+    assertThat(repository.getCurrentUser()).isEqualTo(testUser)
     scope.cancel()
   }
 }

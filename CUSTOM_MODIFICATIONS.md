@@ -36,6 +36,13 @@ This document captures all custom features, bug fixes, and UI improvements added
 29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
 30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
 31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
+32. [Series Position Number Parsing & Polish (v1.2.16)](#32-series-position-number-parsing--polish-v1216)
+33. [Global Database Lock Resolution (v1.2.17)](#33-global-database-lock-resolution-v1217)
+34. [Series Book Number Badge on Item Cards (v1.2.18)](#34-series-book-number-badge-on-item-cards-v1218)
+35. [Downloaded Indicator Modernization (v1.2.18)](#35-downloaded-indicator-modernization-v1218)
+36. [Porting Custom Features to Upstream 1.2.1 Base & Metro DI (v1.2.18)](#36-porting-custom-features-to-upstream-121-base--metro-di-v1218)
+37. [Series Badge Refinement & Crash Fix (v1.2.20)](#37-series-badge-refinement--crash-fix-v1220)
+38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
 
 ---
 
@@ -890,6 +897,27 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
    - Calibrated font sizing to `11.sp` (standard) and `10.sp` (small grids/lists), with bold weight and `0.sp` tracking.
 2. **Crash Prevention (`app/android/build.gradle.kts`)**:
    - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
+
+---
+
+## 38. Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)
+
+### Summary
+Addressed runtime freezes and startup crashes on the desktop client caused by background upcoming series scans, SQLite database lock contention, atomic file flushing under Windows, and unauthenticated session reads during session restoration.
+
+### Key Changes
+1. **Upcoming Scan Threading & Flow Conflation (`InProcessDiscoverScanTracker.kt`)**:
+   - Offloaded disk/network scans for upcoming books to `Dispatchers.IO` so the UI/AWT thread is never blocked.
+   - Conflated the cached upcoming flow to prevent flood-induced UI stalls.
+2. **Desktop SQLite Concurrency (`DesktopSqliteDriver.kt`, `BookInfoDatabaseComponent.jvm.kt`)**:
+   - Configured SQLite WAL (`Write-Ahead Logging`) mode and a 5,000ms busy timeout on desktop to prevent lock contention between concurrent readers and writers.
+3. **Windows Atomic File Flush Fallback (`FileSystemPreferences.kt`)**:
+   - Implemented an atomic move with a `REPLACE_EXISTING` retry fallback to resolve `AccessDeniedException` during preference flush on Windows file systems.
+4. **Session Restore & Non-LoggedIn User Safety (`UserSession.kt`, `StoreUserRepository.kt`)**:
+   - Added `UserSession.NeedsAuthentication` handling to `UserSession.serverUrl`, `userId`, and `user` extensions, safely extracting `server.url`, `server.user.id`, and `server.user`.
+   - Guarded `StoreUserRepository.userFlow` and `observeCurrentUser()` to return cached user state immediately when not logged in, eliminating unauthenticated `/api/me` network calls and preventing uncaught `StoreReadResponse.Error` exceptions on the Compose event loop.
+5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
+   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
 
 
 

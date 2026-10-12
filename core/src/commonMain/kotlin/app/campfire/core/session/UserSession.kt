@@ -34,6 +34,7 @@ sealed class UserSession {
 
 val UserSession.serverUrl: String? get() = when (this) {
   is UserSession.LoggedIn -> user.serverUrl
+  is UserSession.NeedsAuthentication -> server.url
   else -> null
 }
 
@@ -41,6 +42,7 @@ val UserSession.requireServerUrl: String get() = requireNotNull(serverUrl)
 
 val UserSession.userId: UserId? get() = when (this) {
   is UserSession.LoggedIn -> user.id
+  is UserSession.NeedsAuthentication -> server.user.id
   else -> null
 }
 
@@ -48,6 +50,7 @@ val UserSession.requiredUserId: UserId get() = requireNotNull(userId)
 
 val UserSession.user: User? get() = when (this) {
   is UserSession.LoggedIn -> user
+  is UserSession.NeedsAuthentication -> server.user
   else -> null
 }
 
