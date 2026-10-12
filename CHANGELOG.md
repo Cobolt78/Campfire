@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
-## [1.2.18]
+## [1.2.20]
 
 ### Added
 
@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **UI & Badge Harmonization**:
+  - Refined `#N` series badge to a compact rounded pill tag (`RoundedCornerShape(4.dp)`) with tight padding and snug `5.dp` corner offset to prevent obscuring book cover art.
+  - Calibrated badge typography to **11sp bold** on standard cards and **10sp bold** on compact grids and list rows.
   - Arranged `#N` series badge and finished checkmark in TopStart with `#N` positioned before the checkmark (`[#1] [✓]`).
   - Book Detail series section positioned above Community Ratings & Reviews for faster navigation.
   - Adopted upstream 1.2.1 native decibel volume fading (`VolumeFadeController`).
@@ -47,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Performance & Battery Drain**:
+- **Stability & Performance**:
+  - Handled missing `google-services.json` gracefully on custom release builds to eliminate startup initialization crashes.
   - Throttled SQLite progress writes during active playback (15s progress, 5s session time) to eliminate background coroutine CPU pinning and battery drain.
   - Replaced N+1 series queries with batch query `selectForMultipleSeries` offloaded to `databaseRead` dispatcher, preventing UI freezes and ANRs.
   - Fixed Android Auto next/previous track controls to always skip chapters while preserving dedicated 30s jump buttons.

@@ -872,8 +872,24 @@ Cleanly ported all custom enhancements and critical performance bug fixes from f
 3. **GitHub In-App Updates**:
    - Contributed `GitHubAppUpdateSource` via Metro `@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])`.
    - Disabled conflicting Play Store and Firebase update source bindings on standard releases.
-4. **Version Bump to v1.2.18 (`gradle.properties`)**:
-   - Set `campfire.version=1.2.18` and `campfire.versionCode=1021899`.
+4. **Version Bump to v1.2.20 (`gradle.properties`)**:
+   - Set `campfire.version=1.2.20` and `campfire.versionCode=1022099`.
+
+---
+
+## 37. Series Badge Refinement & Crash Fix (v1.2.20)
+
+### Summary
+Refined the series book number badge (`#N`) on book cover art to reduce visual footprint while preserving legibility. Replaced the bulky circular bubble with a compact rounded rectangular pill (`RoundedCornerShape(4.dp)`), tightened padding and corner offsets, and calibrated text sizing (11sp on standard cards, 10sp on small grids). Handled missing `google-services.json` gracefully on custom release builds.
+
+### Key Changes
+1. **Series Badge Footprint & Positioning (`LibraryItemCard.kt`, `MissingSeriesBookCard.kt`)**:
+   - Replaced `CircleShape` with `RoundedCornerShape(4.dp)`.
+   - Reduced corner inset margin from `8.dp` to `5.dp` start and `5.dp` top, hugging the corner neatly without intruding on cover art.
+   - Reduced scrim opacity to `0.60f` for subtle transparency.
+   - Calibrated font sizing to `11.sp` (standard) and `10.sp` (small grids/lists), with bold weight and `0.sp` tracking.
+2. **Crash Prevention (`app/android/build.gradle.kts`)**:
+   - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
 
 
 
