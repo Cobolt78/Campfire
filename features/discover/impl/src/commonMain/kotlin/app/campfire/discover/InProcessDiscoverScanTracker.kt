@@ -45,29 +45,38 @@ class InProcessDiscoverScanTracker(
   override fun startScan() {
     // An explicit scan is the user asking for current data: bypass the series
     // cache and refetch every listing from the provider.
-    launchScan(refresh = true)
+    launchScan(refresh = true, isDelta = false)
   }
 
   override fun startScanIfStale() {
     val completed = _state.value as? DiscoverScanState.Completed
-    if (completed == null || !store.isFresh(completed)) launchScan(refresh = false)
+    if (completed == null || !store.isFresh(completed)) {
+      launchScan(refresh = false, isDelta = false)
+    } else {
+      launchScan(refresh = false, isDelta = true)
+    }
   }
 
   override fun cancelScan() {
     scanJob?.cancel()
   }
 
-  private fun launchScan(refresh: Boolean) {
+  private fun launchScan(refresh: Boolean, isDelta: Boolean = false) {
     if (scanJob?.isActive == true) return
-    scanJob = coroutineScopeHolder.get().launch(dispatcherProvider.io) { scan(refresh) }
+    scanJob = coroutineScopeHolder.get().launch(dispatcherProvider.io) { scan(refresh, isDelta) }
   }
 
-  private suspend fun scan(refresh: Boolean) {
+  private suspend fun scan(refresh: Boolean, isDelta: Boolean = false) {
+    val since = if (isDelta) store.lastScanEpochMillis() else null
+    if (isDelta && since != null && !seriesScanner.hasNewOrUpdatedSeries(since)) {
+      return
+    }
+
     var last = SeriesScanner.Progress(done = 0, total = 0, skippedCount = 0, failedCount = 0)
     // The scanner's first emission waits on the series listing.
     _state.value = DiscoverScanState.Running(done = 0, total = null)
     try {
-      seriesScanner.scan(refresh).collect { progress ->
+      seriesScanner.scan(refresh, sinceEpochMillis = since).collect { progress ->
         last = progress
         _state.value = DiscoverScanState.Running(progress.done, progress.total)
       }
@@ -75,7 +84,7 @@ class InProcessDiscoverScanTracker(
       // Runs for both completion and cancellation — a cancelled scan freezes
       // its counters, and everything it fetched is already in the series
       // cache. The write also refreshes the persisted freshness window.
-      _state.value = store.write(last)
+      _state.value = store.write(last, isDelta = isDelta)
     }
   }
 }

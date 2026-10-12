@@ -15,18 +15,17 @@ import com.russhwolf.settings.ObservableSettings
 import com.russhwolf.settings.coroutines.getLongOrNullFlow
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
  * How long a completed scan counts as fresh for
- * [app.campfire.discover.api.DiscoverScanTracker.startScanIfStale] — matched
- * to the registry's series miss TTL, since a sooner rescan couldn't surface
- * anything new anyway.
+ * [app.campfire.discover.api.DiscoverScanTracker.startScanIfStale] — 28 days
+ * for full library re-scans against Audible catalog.
  */
-private val SCAN_FRESHNESS_TTL = 1.hours
+private val SCAN_FRESHNESS_TTL = 28.days
 
 /**
  * Persists the terminal metadata of the last completed scan per user. Scan
@@ -53,14 +52,26 @@ class DiscoverScanStateStore(
     )
   }
 
+  fun lastScanEpochMillis(): Long? {
+    return settings.getLongOrNull(atKey())
+  }
+
+  fun lastFullScanEpochMillis(): Long? {
+    return settings.getLongOrNull(fullAtKey()) ?: settings.getLongOrNull(atKey())
+  }
+
   /** Persists [progress] as the last completed scan, stamped now, and returns it. */
-  fun write(progress: SeriesScanner.Progress): DiscoverScanState.Completed {
+  fun write(progress: SeriesScanner.Progress, isDelta: Boolean = false): DiscoverScanState.Completed {
     settings.putInt(skippedKey(), progress.skippedCount)
     settings.putInt(failedKey(), progress.failedCount)
     settings.putBoolean(rateLimitedKey(), progress.rateLimited)
+    val now = fatherTime.nowInEpochMillis()
+    if (!isDelta) {
+      settings.putLong(fullAtKey(), now)
+    }
     // Written last: the observe flow keys off this value, so the other
     // scalars are already in place when observers re-read.
-    settings.putLong(atKey(), fatherTime.nowInEpochMillis())
+    settings.putLong(atKey(), now)
     return checkNotNull(lastCompleted())
   }
 
@@ -69,11 +80,13 @@ class DiscoverScanStateStore(
   }
 
   fun isFresh(completed: DiscoverScanState.Completed): Boolean {
-    return fatherTime.nowInEpochMillis() - completed.scannedAt.toEpochMilliseconds() <
+    val fullScannedAt = settings.getLongOrNull(fullAtKey()) ?: completed.scannedAt.toEpochMilliseconds()
+    return fatherTime.nowInEpochMillis() - fullScannedAt <
       SCAN_FRESHNESS_TTL.inWholeMilliseconds
   }
 
   private fun atKey() = "discover_scan_at_${userSession.userId.orEmpty()}"
+  private fun fullAtKey() = "discover_full_scan_at_${userSession.userId.orEmpty()}"
   private fun skippedKey() = "discover_scan_skipped_${userSession.userId.orEmpty()}"
   private fun failedKey() = "discover_scan_failed_${userSession.userId.orEmpty()}"
   private fun rateLimitedKey() = "discover_scan_rate_limited_${userSession.userId.orEmpty()}"

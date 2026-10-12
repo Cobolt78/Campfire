@@ -61,21 +61,42 @@ class SeriesScanner(
   )
 
   /**
-   * Runs one full scan, emitting [Progress] after the initial snapshot and
+   * Checks whether the library contains any series that were added or modified
+   * after [sinceEpochMillis].
+   */
+  suspend fun hasNewOrUpdatedSeries(sinceEpochMillis: Long): Boolean {
+    return seriesRepository.getAllSeries().any { it.addedAt > sinceEpochMillis || it.updatedAt > sinceEpochMillis }
+  }
+
+  /**
+   * Runs one scan, emitting [Progress] after the initial snapshot and
    * after every series. The series snapshot is always the server's listing.
+   * If [sinceEpochMillis] is provided, only series added or modified after
+   * that timestamp are scanned.
    * With [refresh] each series' provider listing bypasses its cache TTL;
    * without it those read through the cache, which lets an interrupted scan
    * fast-forward to where it left off.
    */
-  fun scan(refresh: Boolean): Flow<Progress> = channelFlow {
+  fun scan(refresh: Boolean, sinceEpochMillis: Long? = null): Flow<Progress> = channelFlow {
     // Always the server's complete listing: the local series cache only holds
     // series that were loaded somewhere else (series pages, shelves, search).
     val allSeries = seriesRepository.getAllSeries()
+      .let { list ->
+        if (sinceEpochMillis != null) {
+          list.filter { it.addedAt > sinceEpochMillis || it.updatedAt > sinceEpochMillis }
+        } else {
+          list
+        }
+      }
       .sortedByDescending { it.updatedAt }
 
     var progress = Progress(done = 0, total = allSeries.size, skippedCount = 0, failedCount = 0)
     val mutex = Mutex()
     send(progress)
+
+    if (allSeries.isEmpty()) {
+      return@channelFlow
+    }
 
     try {
       val semaphore = Semaphore(SCAN_CONCURRENCY)

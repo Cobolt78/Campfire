@@ -140,6 +140,21 @@ class SeriesScannerTest {
   }
 
   @Test
+  fun `delta scan filters series by addedAt and updatedAt`() = runTest {
+    seriesRepository.allSeries = listOf(
+      series(id = "s1", name = "Old Series", addedAt = 100L, updatedAt = 100L, books = listOf(ownedItem("Book A", "B000000001"))),
+      series(id = "s2", name = "New Series", addedAt = 500L, updatedAt = 500L, books = listOf(ownedItem("Book B", "B000000002"))),
+    )
+    registry.fetchSeriesResults["New Series"] = successWith()
+
+    val terminal = scanner.scan(refresh = false, sinceEpochMillis = 300L).last()
+
+    assertThat(terminal.done).isEqualTo(1)
+    assertThat(terminal.total).isEqualTo(1)
+    assertThat(registry.fetchSeriesRequests.map { it.seriesName }).isEqualTo(listOf("New Series"))
+  }
+
+  @Test
   fun `a rate limited series is retried after the pause`() = runTest {
     seriesRepository.allSeries = listOf(
       series(id = "s1", name = "Series One", books = listOf(ownedItem("Book A", "B000000001"))),

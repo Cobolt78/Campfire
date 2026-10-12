@@ -980,6 +980,39 @@ Conducted a thorough section-by-section audit of all custom features from `v1.2.
    - Passed `bustCache = true` in `HomeFetcherFactory.kt` on `api.getPersonalizedHome(key.libraryId)` to bypass Audiobookshelf server's internal home feed caching.
    - Purged in-memory `homeStore.clear()` and `shelfStore.clear()` on `refreshHomeFeed()` in `StoreHomeRepository.kt` to ensure instant propagation on pull-to-refresh.
 
+---
+
+## 41. Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (Client-Side)
+
+### Summary
+Optimized the Upcoming Releases scanner to eliminate redundant Audible API network traffic, prevent battery drain, and respect rate limits. Extended the scan freshness window from 1 hour to 28 days, matched individual series cache TTL to 28 days, and implemented intelligent delta scanning so that only new or updated series are scanned when entering the Upcoming screen within the freshness window.
+
+### Key Details
+1. **28-Day Freshness Window**:
+   - Updated `SCAN_FRESHNESS_TTL = 28.days` in `DiscoverScanStateStore.kt` (previously `1.hours`).
+   - Updated `SERIES_INFO_CACHE_TTL = 28.days` in `CachedSeriesInfo.kt` (previously `7.days`) so cached individual series entries from Audible remain fresh across the full 28-day cycle.
+2. **Dual-Key Timestamp Tracking (`fullAtKey` vs `atKey`)**:
+   - `DiscoverScanStateStore.kt` tracks `fullAtKey` (`discover_full_scan_at_${userId}`) for full library scans alongside `atKey` (`discover_scan_at_${userId}`) for all scan checkpoints.
+   - A delta scan updates `atKey` to mark the latest inspection time without postponing the 28-day expiration timer for full library rescans.
+3. **Delta Series Scanner**:
+   - Added `SeriesScanner.hasNewOrUpdatedSeries(sinceEpochMillis: Long): Boolean` to inspect whether any library series have `addedAt > sinceEpochMillis || updatedAt > sinceEpochMillis`.
+   - Updated `SeriesScanner.scan(refresh: Boolean, sinceEpochMillis: Long? = null)` to filter and scan only series added/modified since `sinceEpochMillis` when provided.
+4. **Android WorkManager & In-Process Coordination**:
+   - In `InProcessDiscoverScanTracker.kt` and `AndroidDiscoverScanTracker.kt`, `startScanIfStale()` checks `store.isFresh(completed)`. If fresh, it launches/enqueues a delta scan (`isDelta = true`).
+   - If no new or updated series exist, `InProcessDiscoverScanTracker` and `DiscoverScanWorker` abort immediately without setting progress state or posting foreground notifications, ensuring instantaneous opening and zero notification flicker.
+   - If new series exist, only those series are scanned against Audible, emitting focused progress and persisting discovered books immediately.
+
+### Modified Files:
+* `data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/CachedSeriesInfo.kt`
+* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt`
+* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt`
+* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt`
+* `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/AndroidDiscoverScanTracker.kt`
+* `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/DiscoverScanWorker.kt`
+* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/InProcessDiscoverScanTrackerTest.kt`
+* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
+
+
 
 
 

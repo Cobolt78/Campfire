@@ -26,6 +26,7 @@ import assertk.assertions.isInstanceOf
 import assertk.assertions.isTrue
 import com.russhwolf.settings.MapSettings
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -87,9 +88,15 @@ class InProcessDiscoverScanTrackerTest {
     return state.first { it is DiscoverScanState.Completed } as DiscoverScanState.Completed
   }
 
-  private fun emitOneScannableSeries() {
+  private fun emitOneScannableSeries(addedAt: Long = 0L, updatedAt: Long = 0L) {
     seriesRepository.allSeries = listOf(
-      series(id = "s1", name = "Series One", books = listOf(ownedItem("Book A", "B000000001"))),
+      series(
+        id = "s1",
+        name = "Series One",
+        addedAt = addedAt,
+        updatedAt = updatedAt,
+        books = listOf(ownedItem("Book A", "B000000001")),
+      ),
     )
     registry.fetchSeriesResults["Series One"] = success()
   }
@@ -166,13 +173,56 @@ class InProcessDiscoverScanTrackerTest {
     first.startScanIfStale()
     first.awaitCompleted()
 
-    fatherTime.nowMillis += 2.hours.inWholeMilliseconds
+    fatherTime.nowMillis += 29.days.inWholeMilliseconds
     val second = tracker()
     second.startScanIfStale()
     second.state.first { it is DiscoverScanState.Running }
     second.awaitCompleted()
 
     assertThat(registry.fetchSeriesRequests.size).isEqualTo(2)
+  }
+
+  @Test
+  fun `opening within freshness window with newly added series scans only the new series`() = runTest {
+    emitOneScannableSeries()
+    val first = tracker()
+    first.startScanIfStale()
+    first.awaitCompleted()
+
+    // 5 days later, a new series is added to the library
+    fatherTime.nowMillis += 5.days.inWholeMilliseconds
+    val newSeriesAddedAt = fatherTime.nowMillis
+    seriesRepository.allSeries = listOf(
+      series(id = "s1", name = "Series One", addedAt = 0L, updatedAt = 0L, books = listOf(ownedItem("Book A", "B000000001"))),
+      series(id = "s2", name = "Series Two", addedAt = newSeriesAddedAt, updatedAt = newSeriesAddedAt, books = listOf(ownedItem("Book B", "B000000002"))),
+    )
+    registry.fetchSeriesResults["Series Two"] = success()
+
+    val second = tracker()
+    second.startScanIfStale()
+    second.state.first { it is DiscoverScanState.Running }
+    second.awaitCompleted()
+
+    // Series One was already scanned, so only Series Two was fetched
+    assertThat(registry.fetchSeriesRequests.size).isEqualTo(2)
+    assertThat(registry.fetchSeriesRequests.map { it.seriesName }).isEqualTo(listOf("Series One", "Series Two"))
+  }
+
+  @Test
+  fun `opening within freshness window with no new series does not rescan`() = runTest {
+    emitOneScannableSeries()
+    val first = tracker()
+    first.startScanIfStale()
+    first.awaitCompleted()
+
+    // 10 days later with no series additions
+    fatherTime.nowMillis += 10.days.inWholeMilliseconds
+    val second = tracker()
+    second.startScanIfStale()
+    runCurrent()
+
+    assertThat(registry.fetchSeriesRequests.size).isEqualTo(1)
+    assertThat(second.state.value).isInstanceOf(DiscoverScanState.Completed::class)
   }
 
   @Test

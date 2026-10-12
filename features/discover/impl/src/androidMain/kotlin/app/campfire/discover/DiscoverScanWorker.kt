@@ -48,6 +48,7 @@ internal class DiscoverScanWorker(
 
   override suspend fun doWork(): Result {
     val userId = inputData.getString(KEY_USER_ID) ?: return Result.failure()
+    val isDelta = inputData.getBoolean(KEY_DELTA, false)
     // Re-runs (process death, system stop, rate-limit retry) fast-forward
     // through the series cache instead of refetching thousands of listings.
     val refresh = inputData.getBoolean(KEY_REFRESH, false) && runAttemptCount == 0
@@ -58,6 +59,11 @@ internal class DiscoverScanWorker(
     val userComponent = ComponentHolder.maybeComponent<DiscoverScanUserComponent>()
       ?: return Result.failure()
     if (userComponent.currentUserSession.userId != userId) return Result.failure()
+
+    val since = if (isDelta) userComponent.discoverScanStateStore.lastScanEpochMillis() else null
+    if (isDelta && since != null && !userComponent.seriesScanner.hasNewOrUpdatedSeries(since)) {
+      return Result.success()
+    }
 
     // Regular (non-expedited) work has to promote itself to a foreground
     // service; when the app is in a state where that's disallowed the scan
@@ -73,7 +79,7 @@ internal class DiscoverScanWorker(
     var publishedTotal = false
     var publishedAt = TimeSource.Monotonic.markNow()
     try {
-      userComponent.seriesScanner.scan(refresh).collect { progress ->
+      userComponent.seriesScanner.scan(refresh, sinceEpochMillis = since).collect { progress ->
         last = progress
         val step = max(1, progress.total / 200)
         // Always publish the first emission: until KEY_TOTAL lands the tracker
@@ -94,7 +100,7 @@ internal class DiscoverScanWorker(
       // Persist terminal metadata for every exit — completion, user cancel,
       // logout cancel, and system stops (quota) alike freeze the checkpoint.
       withContext(NonCancellable) {
-        userComponent.discoverScanStateStore.write(last)
+        userComponent.discoverScanStateStore.write(last, isDelta = isDelta)
         notifications.cancelProgress()
       }
     }
@@ -135,6 +141,7 @@ internal class DiscoverScanWorker(
     const val UNIQUE_WORK_NAME = "discover-scan"
     const val KEY_USER_ID = "user_id"
     const val KEY_REFRESH = "refresh"
+    const val KEY_DELTA = "is_delta"
     const val KEY_DONE = "done"
     const val KEY_TOTAL = "total"
 

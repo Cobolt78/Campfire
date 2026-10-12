@@ -24,7 +24,7 @@ data class CachedSeriesInfo(
   val matchKey: String? = null,
 )
 
-internal val SERIES_INFO_CACHE_TTL = 7.days
+internal val SERIES_INFO_CACHE_TTL = 28.days
 internal val SERIES_INFO_MISS_TTL = 1.hours
 
 internal fun CachedSeriesInfo.isStale(nowMillis: Long, currentMatchKey: String): Boolean {

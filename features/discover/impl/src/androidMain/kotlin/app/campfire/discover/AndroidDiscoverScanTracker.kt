@@ -75,19 +75,23 @@ class AndroidDiscoverScanTracker(
   override fun startScan() {
     // An explicit scan is the user asking for current data: bypass the series
     // cache and refetch every listing from the provider.
-    enqueue(refresh = true)
+    enqueue(refresh = true, isDelta = false)
   }
 
   override fun startScanIfStale() {
     val completed = state.value as? DiscoverScanState.Completed
-    if (completed == null || !store.isFresh(completed)) enqueue(refresh = false)
+    if (completed == null || !store.isFresh(completed)) {
+      enqueue(refresh = false, isDelta = false)
+    } else {
+      enqueue(refresh = false, isDelta = true)
+    }
   }
 
   override fun cancelScan() {
     workManager.cancelUniqueWork(DiscoverScanWorker.UNIQUE_WORK_NAME)
   }
 
-  private fun enqueue(refresh: Boolean) {
+  private fun enqueue(refresh: Boolean, isDelta: Boolean = false) {
     val userId = userSession.userId ?: return
     val request = OneTimeWorkRequestBuilder<DiscoverScanWorker>()
       .setConstraints(
@@ -99,6 +103,7 @@ class AndroidDiscoverScanTracker(
         workDataOf(
           DiscoverScanWorker.KEY_USER_ID to userId,
           DiscoverScanWorker.KEY_REFRESH to refresh,
+          DiscoverScanWorker.KEY_DELTA to isDelta,
         ),
       )
       .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
