@@ -89,7 +89,8 @@ class AudibleBookInfoProviderTest {
 
     val info = (result as BookInfoResult.Success).data
     assertThat(info.providerBookId).isEqualTo("B002V0QK4C")
-    assertThat(info.providerUrl).isEqualTo("https://www.audible.com/pd/B002V0QK4C")
+    assertThat(info.providerUrl)
+      .isEqualTo("https://www.audible.com/pd/B002V0QK4C?ipRedirectOverride=true&overrideBaseCountry=true")
     assertThat(info.rating).isEqualTo(4.510169568993098)
     assertThat(info.ratingsCount).isEqualTo(21879)
     assertThat(info.ratingsDistribution).isEqualTo(

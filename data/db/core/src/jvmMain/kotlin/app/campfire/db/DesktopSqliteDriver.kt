@@ -26,6 +26,8 @@ fun desktopSqliteDriver(
   onLegacyDatabase: SqlDriver.() -> Unit,
 ): SqlDriver {
   val driver: SqlDriver = JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
+  driver.execute(null, "PRAGMA journal_mode = WAL;", 0)
+  driver.execute(null, "PRAGMA busy_timeout = 5000;", 0)
   driver.upgradeTo(schema, onLegacyDatabase)
   return driver
 }

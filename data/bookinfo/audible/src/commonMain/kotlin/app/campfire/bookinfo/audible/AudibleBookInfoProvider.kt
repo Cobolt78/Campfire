@@ -221,7 +221,8 @@ internal fun String.decodeHtmlEntities(): String {
     .replace("&amp;", "&")
 }
 
-internal fun audibleProductUrl(asin: String): String = "https://www.audible.com/pd/$asin"
+internal fun audibleProductUrl(asin: String): String =
+  "https://www.audible.com/pd/$asin?ipRedirectOverride=true&overrideBaseCountry=true"
 
 internal fun AudibleRatingDistribution.toDistribution(): Map<Int, Int>? {
   val counts = mapOf(

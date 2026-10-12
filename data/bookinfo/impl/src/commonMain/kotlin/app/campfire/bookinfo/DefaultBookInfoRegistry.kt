@@ -36,6 +36,7 @@ import kotlin.time.Clock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -261,7 +262,9 @@ class DefaultBookInfoRegistry(
 
   override fun observeCachedUpcoming(): Flow<List<UpcomingRelease>> {
     val userId = userSession.userId ?: return flowOf(emptyList())
-    return seriesStore.observeAllCached(userId).map { rows ->
+    return seriesStore.observeAllCached(userId)
+      .conflate()
+      .map { rows ->
       rows
         .flatMap { row ->
           val providerId = ProviderId.entries.firstOrNull { it.key == row.providerKey }

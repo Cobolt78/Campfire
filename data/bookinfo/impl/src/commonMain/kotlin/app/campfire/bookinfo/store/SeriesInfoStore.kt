@@ -19,6 +19,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import org.mobilenativefoundation.store.store5.Fetcher
@@ -106,6 +107,7 @@ class SeriesInfoStore(
       .selectAllForUser(userId)
       .asFlow()
       .mapToList(dispatcherProvider.io)
+      .conflate()
       .map { rows ->
         rows.mapNotNull { row ->
           decode(row.payload)?.let { CachedRow(row.providerId, row.seriesName, it) }

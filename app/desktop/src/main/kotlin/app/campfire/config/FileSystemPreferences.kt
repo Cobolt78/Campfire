@@ -15,6 +15,7 @@ import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.Base64
 import java.util.Properties
@@ -342,11 +343,25 @@ internal class FileSystemPreferences : AbstractPreferences {
       FileOutputStream(tmpFile).use { fos ->
         serializer.write(fos, prefsCache!!)
       }
-      if (!tmpFile.renameTo(prefsFile)) {
-        throw BackingStoreException(
-          "Can't rename " +
-            tmpFile + " to " + prefsFile,
+      try {
+        Files.move(
+          tmpFile.toPath(),
+          prefsFile.toPath(),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE,
         )
+      } catch (e: Exception) {
+        try {
+          Files.move(
+            tmpFile.toPath(),
+            prefsFile.toPath(),
+            StandardCopyOption.REPLACE_EXISTING,
+          )
+        } catch (e2: Exception) {
+          throw BackingStoreException(
+            "Can't rename $tmpFile to $prefsFile: $e2",
+          )
+        }
       }
     } catch (e: Exception) {
       if (e is BackingStoreException) throw e

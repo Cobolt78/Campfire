@@ -4,6 +4,7 @@
 package app.campfire.discover
 
 import app.campfire.core.coroutines.CoroutineScopeHolder
+import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.di.UserScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.discover.api.DiscoverScanState
@@ -33,6 +34,7 @@ class InProcessDiscoverScanTracker(
   private val seriesScanner: SeriesScanner,
   private val store: DiscoverScanStateStore,
   @ForScope(UserScope::class) private val coroutineScopeHolder: CoroutineScopeHolder,
+  private val dispatcherProvider: DispatcherProvider,
 ) : DiscoverScanTracker {
 
   private val _state = MutableStateFlow(store.lastCompleted() ?: DiscoverScanState.Idle)
@@ -57,7 +59,7 @@ class InProcessDiscoverScanTracker(
 
   private fun launchScan(refresh: Boolean) {
     if (scanJob?.isActive == true) return
-    scanJob = coroutineScopeHolder.get().launch { scan(refresh) }
+    scanJob = coroutineScopeHolder.get().launch(dispatcherProvider.io) { scan(refresh) }
   }
 
   private suspend fun scan(refresh: Boolean) {

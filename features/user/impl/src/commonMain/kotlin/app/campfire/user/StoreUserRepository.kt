@@ -8,7 +8,7 @@ import app.campfire.core.di.UserScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.core.model.User
 import app.campfire.core.session.UserSession
-import app.campfire.core.session.requiredUser
+import app.campfire.core.session.user
 import app.campfire.user.api.UserRepository
 import app.campfire.user.store.UserStore
 import dev.zacsweers.metro.ContributesBinding
@@ -50,7 +50,7 @@ class StoreUserRepository(
         // Cache this in our UserScope coroutine scope
         scope = coroutineScopeHolder.get(),
         started = SharingStarted.Eagerly,
-        initialValue = userSession.requiredUser,
+        initialValue = userSession.user ?: User.EMPTY,
       )
   }
 

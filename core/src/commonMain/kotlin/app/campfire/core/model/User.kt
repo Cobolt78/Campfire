@@ -66,4 +66,27 @@ data class User(
     val accessAllTags: Boolean,
     val accessExplicitContent: Boolean,
   )
+
+  companion object {
+    val EMPTY = User(
+      id = "",
+      name = "",
+      selectedLibraryId = "",
+      type = Type.Guest,
+      isActive = false,
+      isLocked = false,
+      lastSeen = 0L,
+      createdAt = 0L,
+      permissions = Permissions(
+        download = false,
+        update = false,
+        delete = false,
+        upload = false,
+        accessAllLibraries = false,
+        accessAllTags = false,
+        accessExplicitContent = false,
+      ),
+      serverUrl = "",
+    )
+  }
 }

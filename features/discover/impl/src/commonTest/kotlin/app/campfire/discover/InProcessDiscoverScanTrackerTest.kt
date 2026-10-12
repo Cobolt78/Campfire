@@ -7,8 +7,10 @@ import app.campfire.bookinfo.api.ProviderId
 import app.campfire.bookinfo.api.SeriesFetchResult
 import app.campfire.bookinfo.api.SeriesInfoState
 import app.campfire.bookinfo.test.FakeBookInfoRegistry
+import app.campfire.common.test.coroutines.asTestDispatcherProvider
 import app.campfire.common.test.user
 import app.campfire.core.coroutines.CoroutineScopeHolder
+import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.session.UserSession
 import app.campfire.core.time.FatherTime
@@ -65,6 +67,7 @@ class InProcessDiscoverScanTrackerTest {
     seriesScanner = SeriesScanner(seriesRepository, registry),
     store = store(),
     coroutineScopeHolder = CoroutineScopeHolder { backgroundScope },
+    dispatcherProvider = asTestDispatcherProvider(),
   )
 
   private fun ownedItem(title: String, asin: String): LibraryItem = libraryItem(

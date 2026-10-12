@@ -188,4 +188,25 @@ class StoreUserRepositoryTest {
 
     assertThat(repository.observeCurrentUser().first().id).isEqualTo("user-1")
   }
+
+  @Test
+  fun userFlow_doesNotCrashWhenUserSessionIsLoggedOut() = testDb { db ->
+    val scope = CoroutineScope(Job())
+    val dispatchers = DispatcherProvider(
+      io = Dispatchers.Default,
+      databaseWrite = Dispatchers.Default,
+      databaseRead = Dispatchers.Default,
+      computation = Dispatchers.Default,
+      main = Dispatchers.Default,
+    )
+    val session = UserSession.LoggedOut
+    val repository = StoreUserRepository(
+      userSession = session,
+      userStoreFactory = UserStore.Factory(session, db, FakeAudioBookShelfApi(), dispatchers),
+      coroutineScopeHolder = CoroutineScopeHolder { scope },
+    )
+
+    assertThat(repository.userFlow.value).isEqualTo(User.EMPTY)
+    scope.cancel()
+  }
 }
