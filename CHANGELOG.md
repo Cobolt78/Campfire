@@ -17,8 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Podcast libraries not loading in the Home, Shows, and Latest tabs when a podcast has a blank or hand-typed release date, as podcasts added from an RSS feed or OPML import do
-
 ### Other Notes & Contributions
 
 ## [1.2.20]
@@ -52,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Stability & Performance**:
+  - Fixed podcast libraries failing to load in Home, Shows, and Latest tabs when a podcast contains a blank or non-ISO release date (e.g. from RSS feed or OPML import).
   - Handled missing `google-services.json` gracefully on custom release builds to eliminate startup initialization crashes.
   - Throttled SQLite progress writes during active playback (15s progress, 5s session time) to eliminate background coroutine CPU pinning and battery drain.
   - Replaced N+1 series queries with batch query `selectForMultipleSeries` offloaded to `databaseRead` dispatcher, preventing UI freezes and ANRs.
