@@ -359,7 +359,7 @@ private fun insertUpcomingShelf(
 
 private fun isMediaProgressCompleted(prog: app.campfire.core.model.MediaProgress?): Boolean {
   if (prog == null) return false
-  return prog.isFinished || prog.hideFromContinueListening
+  return prog.isCompleted || prog.hideFromContinueListening
 }
 
 private fun findUserMediaProgress(

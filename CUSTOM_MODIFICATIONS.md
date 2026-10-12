@@ -951,6 +951,36 @@ Fixed a lockout bug where users attempting to log in on a previously registered 
    - Mirrored the output to `C:\Campfire Desktop`.
    - Updated `C:\Users\David\Desktop\Campfire.lnk` to point directly to `C:\Campfire Desktop\Campfire.exe`.
 
+---
+
+## 40. Audit & Comprehensive Feature Restoration (v1.2.20)
+
+### Summary
+Conducted a thorough section-by-section audit of all custom features from `v1.2.17` against the ported `1.2.20` codebase. Restored all missing and regressed functionality including destructive action confirmations, headset/remote media button controls, cellular download warnings, navigation drawer What's New entry, series and progress mapping invariants, and home feed cache busting.
+
+### Restored Implementations
+1. **Destructive Action Confirmations & Cellular Download Warnings**:
+   - Restored `ConfirmActionDialog.kt` across common and platform targets (`NetworkType.kt`, `NetworkType.android.kt`, `NetworkType.apple.kt`, `NetworkType.jvm.kt`).
+   - Wired `confirmActionsSetting` and `warnOnCellularDownloadSetting` into `ExpressiveControlSlot.kt` for book details (deleting download, discarding progress, marking finished, downloading on cellular) and podcast episode sheets (`PodcastEpisodeBottomSheet.kt`, `PodcastEpisodePresenter.kt`, `PodcastEpisodeUiState.kt`).
+2. **Headset & Remote Next/Prev Skip Settings & Logic**:
+   - Updated setting labels in `ui_settings_strings.xml` to `"Headset & remote next/prev skips chapters"` to explicitly include wired headsets and external remotes alongside Bluetooth devices.
+   - Refined `RemoteControlForwardingPlayer.kt` so media buttons from wired headsets (dispatched via the app's local MediaController) are not falsely rejected. Only notification and Android Auto controllers (which have dedicated seek buttons) are excluded from the chapter skip setting.
+3. **Progress State Invariants & Instant Local DB Updates**:
+   - Restored `MediaProgress.isCompleted` (evaluating `isFinished`, `progress >= 0.99f`, `finishedAt > 0`, or playback time within 2s of duration).
+   - Restored immediate local database updates (`markFinished` and `deleteLocalProgress`) in `StoreMediaProgressRepository.kt` before remote API network calls for zero UI lag and instant offline responsiveness.
+   - Restored `MediaProgressBar.kt` completed checks and safe fallback to `"Finished"`.
+4. **Series Persistence & Join Query Restoration**:
+   - Restored `DbSeries.asDomainModel` mapping in `SeriesMapping.kt` (`inProgress`, `hasActiveBook`, `hideFromContinueListening`, `bookInProgressLastUpdate`, `firstBookUnreadId`).
+   - Restored series and `SeriesBookJoin` inserts in `LibraryItemDao.kt` (`insert(expanded)` and `insertBookDomain`).
+   - Restored fallback to `SeriesSequence.UNKNOWN_SEQUENCE` in `LibraryItemMapping.kt`.
+5. **Navigation Drawer "What's New" Item**:
+   - Added `ChangelogScreen` entry with `CampfireIcons.Rounded.NewReleases` to `NavigationPresenter.kt` secondary navigation items.
+   - Added drawer string resources `nav_whats_new_label` and `nav_whats_new_content_description` in `ui_drawer_strings.xml`.
+6. **Home Feed Cache Busting & Fresh Store Purge**:
+   - Passed `bustCache = true` in `HomeFetcherFactory.kt` on `api.getPersonalizedHome(key.libraryId)` to bypass Audiobookshelf server's internal home feed caching.
+   - Purged in-memory `homeStore.clear()` and `shelfStore.clear()` on `refreshHomeFeed()` in `StoreHomeRepository.kt` to ensure instant propagation on pull-to-refresh.
+
+
 
 
 

@@ -131,6 +131,14 @@ private fun PodcastEpisodeBottomSheet(
       showDownloadConfirmation = false
     }
   }
+
+  var showConfirmDeleteDialog by remember { mutableStateOf(false) }
+  var showConfirmDiscardDialog by remember { mutableStateOf(false) }
+  var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
+  var showCellularWarningDialog by remember { mutableStateOf(false) }
+
+  val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
+
   if (showDownloadConfirmation) {
     ConfirmDownloadDialog(
       item = state.libraryItem,
@@ -145,6 +153,62 @@ private fun PodcastEpisodeBottomSheet(
         }
       },
       onDismissRequest = { showDownloadConfirmation = false },
+    )
+  }
+
+  if (showCellularWarningDialog) {
+    app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+      title = "Mobile Data Warning",
+      message = "You are currently on a mobile or metered connection. Downloading may result in extra data charges.",
+      confirmButtonText = "Download anyway",
+      onConfirm = {
+        showCellularWarningDialog = false
+        if (state.showConfirmDownloadDialog) {
+          showDownloadConfirmation = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
+        }
+      },
+      onDismissRequest = { showCellularWarningDialog = false },
+    )
+  }
+
+  if (showConfirmDeleteDialog) {
+    app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+      title = "Delete Episode Download",
+      message = "Are you sure you want to delete this downloaded episode?",
+      confirmButtonText = "Delete",
+      onConfirm = {
+        showConfirmDeleteDialog = false
+        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+      },
+      onDismissRequest = { showConfirmDeleteDialog = false },
+    )
+  }
+
+  if (showConfirmDiscardDialog) {
+    app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+      title = "Discard Progress",
+      message = "Are you sure you want to discard your listening progress for this episode?",
+      confirmButtonText = "Discard",
+      onConfirm = {
+        showConfirmDiscardDialog = false
+        state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
+      },
+      onDismissRequest = { showConfirmDiscardDialog = false },
+    )
+  }
+
+  if (showConfirmMarkFinishedDialog) {
+    app.campfire.common.compose.widgets.dialog.ConfirmActionDialog(
+      title = "Mark as Finished",
+      message = "You have not completed listening to this episode yet. Are you sure you want to mark it as finished?",
+      confirmButtonText = "Mark finished",
+      onConfirm = {
+        showConfirmMarkFinishedDialog = false
+        state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
+      },
+      onDismissRequest = { showConfirmMarkFinishedDialog = false },
     )
   }
 
@@ -214,20 +278,38 @@ private fun PodcastEpisodeBottomSheet(
       canDownload = state.canDownload,
       onPlayClick = { state.eventSink(PodcastEpisodeUiEvent.PlayClick) },
       onDownloadClick = {
-        if (state.showConfirmDownloadDialog) {
+        if (state.warnOnCellularDownload && isCellularOrMetered) {
+          showCellularWarningDialog = true
+        } else if (state.showConfirmDownloadDialog) {
           showDownloadConfirmation = true
         } else {
           state.eventSink(PodcastEpisodeUiEvent.DownloadClick())
         }
       },
-      onMarkFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkFinished) },
+      onMarkFinished = {
+        if (state.confirmActions && state.progress != null && state.progress.progress > 0f) {
+          showConfirmMarkFinishedDialog = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.MarkFinished)
+        }
+      },
       onMarkNotFinished = { state.eventSink(PodcastEpisodeUiEvent.MarkNotFinished) },
-      onDiscardProgress = { state.eventSink(PodcastEpisodeUiEvent.DiscardProgress) },
+      onDiscardProgress = {
+        if (state.confirmActions) {
+          showConfirmDiscardDialog = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.DiscardProgress)
+        }
+      },
       onStopDownloadClick = {
         state.eventSink(PodcastEpisodeUiEvent.StopDownloadClick)
       },
       onDeleteDownloadClick = {
-        state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+        if (state.confirmActions) {
+          showConfirmDeleteDialog = true
+        } else {
+          state.eventSink(PodcastEpisodeUiEvent.RemoveDownloadClick)
+        }
       },
       onAddToPlaylistClick = {
         showAddToPlaylistDialog = true

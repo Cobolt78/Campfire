@@ -139,6 +139,14 @@ class PodcastEpisodePresenter(
       libraryViewSettings.observeShowConfirmDownload()
     }.collectAsState()
 
+    val confirmActions by remember {
+      libraryViewSettings.observeConfirmActions()
+    }.collectAsState()
+
+    val warnOnCellularDownload by remember {
+      libraryViewSettings.observeWarnOnCellularDownload()
+    }.collectAsState()
+
     // Live from the user row, which the socket updates when an admin changes permissions
     val currentUser by userRepository.userFlow.collectAsState()
 
@@ -154,6 +162,8 @@ class PodcastEpisodePresenter(
       offlineDownload = offlineDownload,
       canDownload = currentUser.canDownload,
       showConfirmDownloadDialog = showConfirmDownloadDialog,
+      confirmActions = confirmActions,
+      warnOnCellularDownload = warnOnCellularDownload,
       addToPlaylistDialog = addToPlaylistDialog,
     ) { event ->
       when (event) {

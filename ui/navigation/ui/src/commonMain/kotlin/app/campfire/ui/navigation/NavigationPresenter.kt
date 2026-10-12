@@ -47,6 +47,10 @@ import campfire.ui.navigation.ui.generated.resources.nav_statistics_content_desc
 import campfire.ui.navigation.ui.generated.resources.nav_statistics_label
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_content_description
 import campfire.ui.navigation.ui.generated.resources.nav_upcoming_label
+import campfire.ui.navigation.ui.generated.resources.nav_whats_new_content_description
+import campfire.ui.navigation.ui.generated.resources.nav_whats_new_label
+import app.campfire.common.compose.icons.rounded.NewReleases
+import app.campfire.whatsnew.api.screen.ChangelogScreen
 import app.campfire.core.app.ApplicationInfo
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Inject
@@ -198,6 +202,16 @@ class NavigationPresenter(
           contentDescription = stringResource(Res.string.nav_settings_content_description),
           iconImageVector = CampfireIcons.Rounded.Settings,
           selectedImageVector = CampfireIcons.Filled.Settings,
+        ),
+      )
+
+      add(
+        HomeNavigationItem(
+          screen = ChangelogScreen,
+          label = stringResource(Res.string.nav_whats_new_label),
+          contentDescription = stringResource(Res.string.nav_whats_new_content_description),
+          iconImageVector = CampfireIcons.Rounded.NewReleases,
+          selectedImageVector = CampfireIcons.Rounded.NewReleases,
         ),
       )
     }

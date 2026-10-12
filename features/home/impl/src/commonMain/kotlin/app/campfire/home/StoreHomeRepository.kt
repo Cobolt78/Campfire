@@ -82,9 +82,12 @@ class StoreHomeRepository(
       }
   }
 
+  @OptIn(org.mobilenativefoundation.store.store5.ExperimentalStoreApi::class)
   override suspend fun refreshHomeFeed() {
     val user = userRepository.getCurrentUser()
     try {
+      homeStore.clear()
+      shelfStore.clear()
       homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
     } catch (e: CancellationException) {
       throw e

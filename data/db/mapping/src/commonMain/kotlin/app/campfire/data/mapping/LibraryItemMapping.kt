@@ -422,17 +422,13 @@ suspend fun LibraryItemWithMedia.asDomainModel(
         isExplicit = metadata_explicit,
         isAbridged = metadata_abridged,
         series = mergedSeries(
-          primary = createIfNotNull(
-            metadata_series_id,
-            metadata_series_name,
-            metadata_series_sequence,
-          ) {
+          primary = if (metadata_series_id != null && metadata_series_name != null) {
             SeriesSequence(
-              id = metadata_series_id!!,
-              name = metadata_series_name!!,
-              sequence = metadata_series_sequence!!,
+              id = metadata_series_id,
+              name = metadata_series_name,
+              sequence = metadata_series_sequence ?: SeriesSequence.UNKNOWN_SEQUENCE,
             )
-          },
+          } else null,
           series = metadata_series,
         ),
         authors = metadataAuthors.map {

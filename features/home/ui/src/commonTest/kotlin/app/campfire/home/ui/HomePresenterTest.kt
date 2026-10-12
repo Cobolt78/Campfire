@@ -193,6 +193,7 @@ class HomePresenterTest {
         )
         index(2).prop(UiShelf<*>::id).isEqualTo(ShelfIds.RecentlyAdded)
       }
+      cancelAndIgnoreRemainingEvents()
     }
   }
 

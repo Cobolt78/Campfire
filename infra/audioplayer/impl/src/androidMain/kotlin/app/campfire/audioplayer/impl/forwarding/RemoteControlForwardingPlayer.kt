@@ -99,21 +99,22 @@ internal fun MediaSession.isAutoController(controller: MediaSession.ControllerIn
 
 /**
  * Whether the session command currently being dispatched came from a *remote* controller —
- * a different package (e.g. car stereo). The media notification and Android Auto are NOT
- * remote: they have dedicated custom seek buttons, so their next/prev are always chapter
- * skips. Bluetooth is handled separately via onMediaButtonEvent in MediaSessionCallback,
- * since Media3 routes those key events through the app's own package.
+ * e.g., Bluetooth device, wired headset, car stereo, or external media button. The media
+ * notification and Android Auto are excluded: they have dedicated custom seek buttons in their layout,
+ * so their next/prev buttons always perform chapter skips.
  */
 @UnstableApi
 internal fun MediaSession?.isRemoteControllerRequest(appPackageName: String): Boolean {
   val currentSession = this ?: return false
-  val controller = currentSession.controllerForCurrentRequest ?: return false
+  val controller = currentSession.controllerForCurrentRequest
 
-  if (currentSession.isMediaNotificationController(controller) ||
-    currentSession.isAutoController(controller)
+  if (controller != null && (
+    currentSession.isMediaNotificationController(controller) ||
+      currentSession.isAutoController(controller)
+    )
   ) {
     return false
   }
 
-  return controller.packageName != appPackageName
+  return true
 }

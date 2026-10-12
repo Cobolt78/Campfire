@@ -62,6 +62,11 @@ fun DbSeries.asDomainModel(
     description = description,
     addedAt = addedAt,
     updatedAt = updatedAt,
+    inProgress = inProgress,
+    hasActiveBook = hasActiveBook,
+    hideFromContinueListening = hideFromContinueListening,
+    bookInProgressLastUpdate = bookInProgressLastUpdate,
+    firstBookUnreadId = firstBookUnreadId,
     books = books,
   )
 }

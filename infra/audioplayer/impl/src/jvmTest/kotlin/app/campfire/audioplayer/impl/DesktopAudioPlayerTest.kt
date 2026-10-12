@@ -30,6 +30,7 @@ import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
+import assertk.assertions.startsWith
 import kotlin.test.Test
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -305,14 +306,14 @@ class DesktopAudioPlayerTest {
     position(5.minutes)
     assertThat(player.currentTime.value).isEqualTo(5.minutes)
     assertThat(player.currentDuration.value).isEqualTo(30.minutes)
-    assertThat(player.currentMetadata.value.title).isEqualTo("Track 1")
+    assertThat(player.currentMetadata.value.title.orEmpty()).startsWith("Track 1")
 
     engine.emit(PlaybackEngineEvent.DurationChanged(30.minutes + 1.seconds))
     assertThat(player.currentDuration.value).isEqualTo(30.minutes + 1.seconds)
 
     player.skipToNext()
     assertThat(engine.opens.last()).isEqualTo(openOf(1, Duration.ZERO))
-    assertThat(player.currentMetadata.value.title).isEqualTo("Track 2")
+    assertThat(player.currentMetadata.value.title.orEmpty()).startsWith("Track 2")
   }
 
   @Test

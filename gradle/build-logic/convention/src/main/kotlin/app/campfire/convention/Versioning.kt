@@ -34,11 +34,12 @@ fun Project.campfireVersionName(): String =
  */
 fun deriveVersionCode(versionName: String): Int? {
   val match = SEMVER_REGEX.find(versionName) ?: return null
-  val (major, minor, patch, rc) = match.destructured
+  val (major, minor, patch, _, preNum) = match.destructured
+  val pre = preNum.toIntOrNull() ?: 99
   return major.toInt() * 1_000_000 +
     minor.toInt() * 10_000 +
     patch.toInt() * 100 +
-    (rc.toIntOrNull() ?: 99)
+    pre
 }
 
-private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
+private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-(rc|test)(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
