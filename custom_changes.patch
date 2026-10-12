@@ -50,10 +50,10 @@ index c0278c85..1dcbc292 100644
  ### Added
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..5a415fde
+index 00000000..2f2f941b
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,926 @@
+@@ -0,0 +1,959 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -975,6 +975,39 @@ index 00000000..5a415fde
 +5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
 +   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
 +
++---
++
++## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
++
++### Summary
++Fixed a lockout bug where users attempting to log in on a previously registered server encountered the error `"You're already signed in to this server as <user>. Switch to that account, or sign out of it first."` despite entering the identical username. Additionally added an automatic session restore fallback in `DatabaseUserSessionRestorer` to recover the active account from the database if `deviceSettings.currentUserId` was lost or unset in `config.properties`.
++
++### Root Cause
++1. **False Positive in `DefaultAuthRepository.authenticate`**:
++   - When entering credentials on the login screen (`userId == null`), the app called `checkServerAvailable(serverUrl)`.
++   - `checkServerAvailable` checked only whether the server URL was present in `serverRepository.getAllServers()`. If found, it immediately failed with `AuthException.ServerAlreadyAdded(existing.user.name)`, blocking the *same* user from logging back into their account.
++2. **Missing Fallback in `DatabaseUserSessionRestorer`**:
++   - If `deviceSettings.currentUserId` was null in `config.properties` (e.g. from an unclean shutdown, cleared preferences, or missing key), `restore()` immediately returned `UserSession.LoggedOut`, dropping the desktop app onto the welcome login screen even though `campfire.db` still had a valid server and user record.
++3. **Out-of-Sync Desktop Shortcut**:
++   - The desktop shortcut `Campfire.lnk` pointed to an older build in `C:\Campfire Desktop\bin\Campfire.exe` from an earlier packaging format, bypassing newer fixes.
++
++### Key Changes
++1. **Same-User Re-Authentication (`DefaultAuthRepository.kt`)**:
++   - In `authenticate(serverUrl, serverName, username, password, userId, ...)`:
++     When `userId == null`, inspect `existingServer = serverRepository.getAllServers().firstOrNull { it.url.isSameServerAs(serverUrl) }`.
++     If `existingServer` exists and `existingServer.user.name.equals(username, ignoreCase = true)`, resolve `targetUserId = existingServer.user.id`.
++     Only throw `ServerAlreadyAdded` if `existingServer` belongs to a *different* username, preserving the one-account-per-server invariant while allowing seamless re-login for the account owner.
++   - Verified with unit test `signing into an existing account with the same username is allowed even if userId is null` in `DefaultAuthRepositoryTest.kt`.
++2. **Database Fallback for Current User ID (`UserSessionRestorer.kt`)**:
++   - If `deviceSettings.currentUserId` is null, query `db.serversQueries.selectAll(::ServerWithUser).awaitAsList().firstOrNull()?.userId`.
++   - If found, recover the user ID and persist it to `deviceSettings.currentUserId = it`, smoothly restoring `UserSession.LoggedIn` (if token exists) or `UserSession.NeedsAuthentication` (prompting password re-auth) instead of getting stranded in `LoggedOut`.
++   - Verified with unit test `restores existing account when current user id setting is missing` in `DatabaseUserSessionRestorerTest.kt`.
++3. **Desktop Packaging & Shortcut Synchronization**:
++   - Re-packaged distributable via `:app:desktop:createDistributable`.
++   - Mirrored the output to `C:\Campfire Desktop`.
++   - Updated `C:\Users\David\Desktop\Campfire.lnk` to point directly to `C:\Campfire Desktop\Campfire.exe`.
++
++
 +
 +
 +
@@ -1852,6 +1885,1812 @@ index d298526f..70f4ec47 100644
    else -> null
  }
  
+diff --git a/custom_changes.patch b/custom_changes.patch
+new file mode 100644
+index 00000000..c062627b
+--- /dev/null
++++ b/custom_changes.patch
+@@ -0,0 +1,1745 @@
++diff --git a/CHANGELOG.md b/CHANGELOG.md
++index c0278c85..1dcbc292 100644
++--- a/CHANGELOG.md
+++++ b/CHANGELOG.md
++@@ -19,6 +19,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
++ 
++ ### Other Notes & Contributions
++ 
+++## [1.2.20]
+++
+++### Added
+++
+++- **Ported Custom Enhancements to Upstream 1.2.1 Base**:
+++  - Re-architected custom extensions to native Metro DI (`dev.zacsweers.metro`) across all feature modules.
+++  - Dedicated **Continue Series** and **Offline Downloads** screens with full sorting and filtering.
+++  - Interactive shelf headings (`›`) on Home feed with fast routing to full screens.
+++  - In-app **GitHub Updates** (`Cobolt78/Campfire`) with live download progress in drawer and direct APK installation handoff.
+++  - Dynamic **Speed-Adjusted Book Countdown** on Android Auto (`MediaItemBuilder` & `ChapterWindowForwardingPlayer`).
+++  - Audiobookshelf-style **Bottom Progress Bars** (6dp, green/orange) across Library, Search, Author, Collection, and Series views.
+++  - Series book number badges (`#N`) rendered in the top-left corner before the finished checkmark (`[#1] [✓]`).
+++  - Modernized offline indicator to an industry-standard download tray arrow (`CampfireIcons.Rounded.Download`) tinted green (`#4CAF50`).
+++  - Media file size in MB displayed on Book & Podcast detail screens.
+++  - App version displayed on bottom row of navigation drawer.
+++  - Configurable action confirmations and warn-on-cellular downloads safeguards.
+++  - Reset sleep timer on pause setting and shake-to-reset haptic confirmation.
+++
+++### Changed
+++
+++- **UI & Badge Harmonization**:
+++  - Refined `#N` series badge to a compact rounded pill tag (`RoundedCornerShape(4.dp)`) with tight padding and snug `5.dp` corner offset to prevent obscuring book cover art.
+++  - Calibrated badge typography to **11sp bold** on standard cards and **10sp bold** on compact grids and list rows.
+++  - Arranged `#N` series badge and finished checkmark in TopStart with `#N` positioned before the checkmark (`[#1] [✓]`).
+++  - Book Detail series section positioned above Community Ratings & Reviews for faster navigation.
+++  - Adopted upstream 1.2.1 native decibel volume fading (`VolumeFadeController`).
+++  - Home feed Discoveries refresh bypasses server cache with millisecond timestamp parameters.
+++
+++### Fixed
+++
+++- **Stability & Performance**:
+++  - Fixed podcast libraries failing to load in Home, Shows, and Latest tabs when a podcast contains a blank or non-ISO release date (e.g. from RSS feed or OPML import).
+++  - Handled missing `google-services.json` gracefully on custom release builds to eliminate startup initialization crashes.
+++  - Throttled SQLite progress writes during active playback (15s progress, 5s session time) to eliminate background coroutine CPU pinning and battery drain.
+++  - Replaced N+1 series queries with batch query `selectForMultipleSeries` offloaded to `databaseRead` dispatcher, preventing UI freezes and ANRs.
+++  - Fixed Android Auto next/previous track controls to always skip chapters while preserving dedicated 30s jump buttons.
+++  - Calibrated shake-to-reset thresholds and sensor delay.
+++  - Widened equalizer bottom sheet label column to 90.dp to prevent word wrapping.
+++
++ ## [1.2.1]
++ 
++ ### Added
++diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
++new file mode 100644
++index 00000000..2f2f941b
++--- /dev/null
+++++ b/CUSTOM_MODIFICATIONS.md
++@@ -0,0 +1,959 @@
+++# Campfire Custom Modifications Guide
+++
+++This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
+++
+++---
+++
+++## Table of Contents
+++1. [Audiobookshelf-Style Cover Progress Bars](#1-audiobookshelf-style-cover-progress-bars)
+++2. [Global Progress Bar Support (Series, Authors, Collections, Search)](#2-global-progress-bar-support)
+++3. [Home Screen: Replaced "Newest Authors" with "Downloads" Shelf](#3-home-screen-replaced-newest-authors-with-downloads-shelf)
+++4. [Book & Podcast Details: File Size in Megabytes](#4-book--podcast-details-file-size-in-megabytes)
+++5. [Android Auto & System Media: Dynamic Speed-Adjusted Total Book Countdown](#5-android-auto--system-media-dynamic-speed-adjusted-total-book-countdown)
+++6. [Search Cache Invalidation & Duplicate Purge](#6-search-cache-invalidation--duplicate-purge)
+++7. [Sleep Timer Pause & Freeze Fix](#7-sleep-timer-pause--freeze-fix)
+++8. [Configurable Sleep Timer Fade-Out & Settings UI](#8-configurable-sleep-timer-fade-out--settings-ui)
+++9. [Perceptual (Logarithmic) Audio Fade Curve](#9-perceptual-logarithmic-audio-fade-curve)
+++10. [FOSS Release Build & Deployment Commands](#10-foss-release-build--deployment-commands)
+++11. [Modified Files Inventory](#11-modified-files-inventory)
+++12. [Home Screen: Pull-to-Refresh](#12-home-screen-pull-to-refresh)
+++13. [Reset Sleep Timer on Pause (User Configurable)](#13-reset-sleep-timer-on-pause-user-configurable)
+++14. [Dynamic Continue Listening Sorting, Download Integration & Finished Book Pruning](#14-dynamic-continue-listening-sorting-download-integration--finished-book-pruning)
+++15. [Headset & Remote Control Forward/Rewind Time Skips & Dynamic Lock Screen Notification Icons](#15-headset--remote-control-forwardrewind-time-skips--dynamic-lock-screen-notification-icons)
+++16. [Equalizer Bottom Sheet Layout Polish](#16-equalizer-bottom-sheet-layout-polish)
+++17. [Native GitHub In-App Updates & Versioning Strategy](#17-native-github-in-app-updates--versioning-strategy)
+++18. [Clickable Home Shelf Headings, Dedicated Continue Series & Offline Downloads Screens](#18-clickable-home-shelf-headings-dedicated-continue-series--offline-downloads-screens)
+++19. [In-App "What's New" Changelog Synchronization Rule](#19-in-app-whats-new-changelog-synchronization-rule)
+++20. [Continue Series Query Optimization & Freeze Fix](#20-continue-series-query-optimization--freeze-fix)
+++21. [Continue Series Alternate View, Drawer Version Display & Main Thread Performance Optimization (v1.2.4)](#21-continue-series-alternate-view-drawer-version-display--main-thread-performance-optimization-v124)
+++22. [Home Screen Update Banner, Fast Retained Continue Series & Layout Polish (v1.2.5)](#22-home-screen-update-banner-fast-retained-continue-series--layout-polish-v125)
+++23. [Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)](#23-instant-continue-series-in-memory-repository-cache--sql-query-optimization-v126)
+++24. [Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)](#24-home-continue-series-background-pre-warming-discover-shelf-stabilization--dedicated-refresh-button-v127)
+++25. [Discoveries Refresh Server Cache Bypass & Reactive Pipeline Fix (v1.2.8)](#25-discoveries-refresh-server-cache-bypass--reactive-pipeline-fix-v128)
+++26. [Dynamic In-App Update Alert (v1.2.9)](#26-dynamic-in-app-update-alert-v129)
+++27. [Discoveries Refresh Persistence & Book Detail Series Navigation (v1.2.11)](#27-discoveries-refresh-persistence--book-detail-series-navigation-v1211)
+++28. [Version Code Ordering & In-App Upgrade Delivery (v1.2.12)](#28-version-code-ordering--in-app-upgrade-delivery-v1212)
+++29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
+++30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
+++31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
+++32. [Series Position Number Parsing & Polish (v1.2.16)](#32-series-position-number-parsing--polish-v1216)
+++33. [Global Database Lock Resolution (v1.2.17)](#33-global-database-lock-resolution-v1217)
+++34. [Series Book Number Badge on Item Cards (v1.2.18)](#34-series-book-number-badge-on-item-cards-v1218)
+++35. [Downloaded Indicator Modernization (v1.2.18)](#35-downloaded-indicator-modernization-v1218)
+++36. [Porting Custom Features to Upstream 1.2.1 Base & Metro DI (v1.2.18)](#36-porting-custom-features-to-upstream-121-base--metro-di-v1218)
+++37. [Series Badge Refinement & Crash Fix (v1.2.20)](#37-series-badge-refinement--crash-fix-v1220)
+++38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
+++
+++---
+++
+++## 1. Audiobookshelf-Style Cover Progress Bars
+++
+++### Summary
+++Replaced the tiny top-left badge checkmark with a clean, Audiobookshelf-style bottom progress bar on all item cards and list items.
+++
+++### Key Details
+++- **Bar Thickness**: 6dp on cards, 4dp on list items and cover headers.
+++- **Color Scheme**:
+++  - **100% Completed**: Solid Green `#4CAF50`.
+++  - **In Progress (0% < progress < 100%)**: Solid Orange `#E58B22` with a subtle dark backdrop (`#40000000`).
+++- **Removed**: Top-left corner checkmark badge (which was difficult to see on varied cover art).
+++
+++### Modified Files:
+++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt`
+++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/PodcastPresenter.kt`
+++
+++---
+++
+++## 2. Global Progress Bar Support (Series, Authors, Collections, Search)
+++
+++### Summary
+++Upstream Campfire only passed media progress to Home screen cards. We connected `MediaProgressRepository` to all presenters across the app and passed progress to `LibraryItemCard` so progress bars display uniformly everywhere.
+++
+++### Key Details
+++- Injected `MediaProgressRepository` into presenters.
+++- Collected realtime progress state as a map of `itemId -> MediaProgress`.
+++- Passed progress to each book card in Series details, Author details, Collection details, and Search results.
+++
+++### Modified Files:
+++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt`
+++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt`
+++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt`
+++* `features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailPresenter.kt`
+++* `features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUiState.kt`
+++* `features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/detail/AuthorDetailUi.kt`
+++* `features/collections/ui/build.gradle.kts` (added `:data:media-progress:api` dependency)
+++* `features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailPresenter.kt`
+++* `features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUiState.kt`
+++* `features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/detail/CollectionDetailUi.kt`
+++* `features/search/ui/build.gradle.kts` (added `:data:media-progress:api` dependency)
+++* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt`
+++* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchUiState.kt`
+++* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/CampfireSearchComponent.kt`
+++* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/composables/SearchResultContent.kt`
+++
+++---
+++
+++## 3. Home Screen: Replaced "Newest Authors" with "Downloads" Shelf
+++
+++### Summary
+++Removed the "Newest Authors" shelf from the main feed and replaced it with a dynamic "Downloads" shelf that lists all audiobooks and podcast episodes downloaded locally to the device.
+++
+++### Key Details
+++- Injected `LibraryItemRepository` into `HomePresenter.kt`.
+++- Filtered out `ShelfIds.NewestAuthors` / `ShelfType.AUTHOR` from the domain feed.
+++- Observed `offlineDownloadManager.observeAll()` and resolved completed downloads (`State.Completed`) to `LibraryItem` / `EpisodeShelfEntry` entities.
+++- Dynamically appends a `UiShelf(id = "downloads", label = "Downloads", total = count, entities = LoadState.Loaded(downloadedEntities))` to the bottom of the home feed when downloaded items are present.
+++- Tapping any card in the Downloads shelf opens the book/episode for playback or offline detail view.
+++
+++### Modified Files:
+++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+++* `features/home/ui/build.gradle.kts`
+++* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+++
+++---
+++
+++## 4. Book & Podcast Details: File Size in Megabytes
+++
+++### Summary
+++Added the media file size in megabytes directly alongside the total duration on the book and podcast detail screens.
+++
+++### Key Details
+++- In `TitleSlot.kt`, displays `libraryItem.media.sizeInBytes.asReadableBytes()` (e.g. `12 hr 45 min • 345.2 MB`) centered beneath the title and subtitle.
+++
+++### Modified Files:
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt`
+++
+++---
+++
+++## 5. Android Auto & System Media: Dynamic Speed-Adjusted Total Book Countdown
+++
+++### Summary
+++In Campfire 1.1.0, Android Auto formats the media screen with the Chapter Title on Line 1 (`MediaMetadata.title`), Book Title on Line 2 (`MediaMetadata.artist`), and the chapter scrubber on the progress bar. We enhanced Line 1 by stripping any raw chapter length suffix (e.g., `- 00:20:40` or `(20:40)`) and dynamically appending the live speed-adjusted total book remaining countdown (e.g., `Chapter 134 - 18h 45m left`), counting down minute-by-minute while you drive.
+++
+++### Key Details
+++- **Line 1 - Chapter Title + Total Book Countdown**:
+++  - The chapter title is formatted as `"$cleanTitle - $remainingFormatted left"` (e.g. `Chapter 134 - 18h 45m left`).
+++  - Existing durations like `- 00:20:40` or `(20:40)` appended to chapter titles from metadata or track tagging are automatically cleaned using `MediaItemBuilder.cleanChapterTitle()`.
+++- **Preserved Layout Elements**:
+++  - **Line 2 (Book Title)**: Retains `albumTitle ?: artist` so the book title remains prominently visible beneath the chapter title.
+++  - **Scrubber Bar**: Continues tracking the active chapter progress (`3:52 / 20:40`).
+++- **Playback Speed Adjustment**:
+++  $$\text{Effective Remaining Time} = \frac{\text{Raw Remaining Audio Duration}}{\text{Playback Speed}}$$
+++  *(e.g., at 1.25x speed, 5 hours of remaining audio displays as 4h 0m left)*.
+++- **Initial & Dynamic Updates**:
+++  - `MediaItemBuilder.kt` initializes `title` on the platform `MediaMetadata` with the formatted countdown.
+++  - `ChapterWindowForwardingPlayer.kt` dynamically formats `chapterPlaylist` titles with `host.remainingFormatted()`.
+++  - `ExoPlayerAudioPlayer.kt` updates the active item's title via `exoPlayer.replaceMediaItem(currentIndex, newItem)` whenever the minute string updates, actively dispatching changes to Android Auto and system media controls without interrupting playback.
+++
+++### Modified Files:
+++* `core/src/commonMain/kotlin/app/campfire/core/extensions/Duration.kt`
+++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
+++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
+++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+++
+++---
+++
+++## 6. Search Cache Invalidation (SUPERSEDED by 1.2.0 upstream)
+++
+++### Summary
+++## 6. Search Cache Invalidation (SUPERSEDED by 1.2.0 upstream) (SUPERSEDED)
+++
+++**Status in 1.2.0:** Dropped. Upstream natively fixed this issue ("Titles removed from the server lingering in the app..."). We now use the upstream implementation.
+++
+++---
+++
+++## 7. Sleep Timer Pause, Volume Restoration & Freeze Fix
+++
+++### Summary
+++Fixed a bug where pausing playback did not freeze the sleep timer countdown on the UI, and resolved an issue where pausing during an active volume fade allowed the background fade job to continue decreasing volume to 0%, causing playback to silence and pause again upon resumption.
+++
+++### Key Details
+++- **Immediate Fade Cancellation & Volume Restoration (`cancelFade`)**:
+++  - Added `cancelFade()` to `AudioPlayer` interface and `ExoPlayerAudioPlayer`.
+++  - Calling `pause()`, `playPause()`, `stop()`, or handling playback state change cancels the background `fadeJob` immediately and restores audio volume to 100% (`previousVolumeLevel`).
+++  - In `CoroutineSleepTimerManager.kt`, pausing during a fade immediately cancels the fade job and restores 100% volume. Resuming resets the sleep timer countdown from the beginning at 100% volume.
+++- **UI Freeze on Pause**:
+++  - Added `isPaused: Boolean = false` field to `RunningTimer`.
+++  - In `RunningTimerText.kt` and `SleepTimerButton.kt`, when `isPaused` is true, the timer displays the frozen remaining duration without continuing to subtract elapsed wall-clock time.
+++- **Reset Timer on Pause (User Configurable)**:
+++  - Added `resetTimerOnPause` (`pref_sleep_reset_timer_on_pause`, default `false`) setting in **Settings > Sleep** under the *Reset* section.
+++  - When enabled, pausing playback (via earbuds, lockscreen, notification, or in-app button) cancels the active countdown job, cancels any pending volume fade, and immediately resets `remainingMillis = timer.epochMillis`.
+++  - When disabled (default), pausing freezes the timer at its current elapsed time and resumes where it left off.
+++
+++### Modified Files:
+++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+++* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt`
+++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+++
+++---
+++
+++## 8. Configurable Sleep Timer Fade-Out & Settings UI
+++
+++### Summary
+++Added a user-selectable **"Fade out before stopping"** preference under **Settings > Sleep** with 10-second increments (`Off`, `10s`, `20s`, `30s` (Default), `40s`, `50s`, `60s`).
+++
+++### Key Details
+++- Backed by `ObservableSettings` property `pref_sleep_fade_out_duration`.
+++- In `CoroutineSleepTimerManager.kt`, for an Epoch timer of total duration T and fade duration F:
+++  - Audio plays at 100% volume for (T - F).
+++  - At (T - F), `player.fadeToPause(duration = F)` is launched.
+++  - Automatically bounds F <= T / 2 for very short timers (e.g. 1-minute timer).
+++- Wrapped volume fades in `try ... finally { setVolume(startVolume) }` in `VolumeFadeController.kt` so that tapping pause to reset or shaking immediately cancels the fade and restores 100% volume.
+++
+++### Modified Files:
+++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+++* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/composables/TimeJumpSetting.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/SleepPane.kt`
+++
+++---
+++
+++## 9. Perceptual (Logarithmic) Audio Fade Curve
+++
+++### Summary
+++Human hearing perceives sound level logarithmically (decibels). A linear volume ramp (1.0 -> 0.0) sounds almost full-volume for the first 70% of time and suddenly drops off in the last few seconds. We replaced it with a human-ear calibrated perceptual curve.
+++
+++### Mathematical Formula
+++Volume(t) = StartVolume * ((T - t) / T)^2
+++Where:
+++- T = total fade duration in milliseconds
+++- t = elapsed fade time in milliseconds
+++- StartVolume = initial player volume (1.0)
+++
+++### Loudness Drop Profile (for 30s fade):
+++- **30s – 25s remaining**: Volume drops audibly from 100% to ~70% perceived level within 5 seconds (immediate cue).
+++- **20s remaining**: Down to ~45% volume (ample time to pause or shake).
+++- **10s remaining**: Down to ~11% volume (soft whisper).
+++- **0s remaining**: Mutes and pauses cleanly.
+++
+++### Modified Files:
+++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/VolumeFadeController.kt`
+++
+++---
+++
+++## 10. Action Confirmations & Warn on Cellular Downloads
+++
+++### Summary
+++Added configurable safeguards under **Settings > Downloads** to prevent accidental destructive actions (deleting offline downloads, discarding progress, marking in-progress books as finished) and accidental downloads over mobile data.
+++
+++### Key Details
+++- **Settings Added**:
+++  - **Action Confirmations** (`pref_confirm_actions`, default `true`): Asks for confirmation before deleting downloads, discarding progress, or marking books with active progress as finished.
+++  - **Warn on Cellular Downloads** (`pref_warn_on_cellular_download`, default `true`): Checks if connected to mobile data / metered network and warns before downloading media.
+++- **Smart Mark as Finished Popup**:
+++  - Only prompts if the user has actual progress on the item (`progress > 0` and not already finished). If the book has not been started yet (`progress == 0`), it marks as finished immediately without a popup.
+++- **Cross-Platform Dialog Support**:
+++  - Added reusable `ConfirmActionDialog` in `common/compose`.
+++  - Added `rememberIsCellularOrMetered()` using Android `ConnectivityManager` (and stubbed for other platforms).
+++
+++### Modified Files:
+++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt`
+++* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
+++* `common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt`
+++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/dialog/ConfirmActionDialog.kt`
+++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/CampfireSettings.kt`
+++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/CampfireSettingsImpl.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeUiState.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodePresenter.kt`
+++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt`
+++
+++---
+++
+++## 11. Shake-to-Reset Sensor Polling, Sensitivity Calibration & Haptic Feedback
+++
+++### Summary
+++Fixed the "Shake to reset" feature in **Settings > Sleep** so that shaking the phone reliably and immediately resets the sleep timer:
+++1. **Sensor Polling Rate**: Upgraded accelerometer listener from `SENSOR_DELAY_NORMAL` (5 Hz, ~200ms) to `SENSOR_DELAY_GAME` (50 Hz, ~20ms). 5 Hz was too slow to capture rapid back-and-forth shake peaks within the 500ms sliding sampling window.
+++2. **Sensitivity Threshold Calibration**: Corrected the inverted thresholds where "High" had previously set a 15.0 m/s² threshold and "Very Low" set 10.0 m/s². The calibrated values now accurately map higher sensitivity to lower acceleration thresholds:
+++   - **Very High**: 11.0 m/s² (light flick triggers it)
+++   - **High**: 12.5 m/s²
+++   - **Medium**: 13.5 m/s² (balanced default)
+++   - **Low**: 15.5 m/s²
+++   - **Very Low**: 17.5 m/s² (requires firm shake)
+++3. **Haptic Vibration Feedback**: Added an immediate 100ms vibration pulse via `Vibrator` / `VibratorManager` when a shake is detected so the user feels confirmation that the shake was recognized.
+++4. **Live Dynamic Setting Observation**: `CoroutineSleepTimerManager` now collects `sleepSettings.observeShakeSensitivity()` and `sleepSettings.observeShakeToResetEnabled()` in real-time, instantly applying sensitivity or toggle changes while a timer is counting down.
+++
+++### Modified Files:
+++* `infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt`
+++* `infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeDetector.android.kt`
+++* `infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt`
+++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+++
+++---
+++
+++## 12. Release Build & Deployment Commands
+++
+++### Build Command (PowerShell):
+++```powershell
+++$env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
+++$env:ANDROID_HOME = "C:\Android\Sdk"
+++.\gradlew.bat :app:android:assembleFossRelease
+++.\gradlew.bat :app:android:assembleStandardRelease
+++```
+++
+++### Direct Install via ADB (Samsung Galaxy S24 Ultra):
+++```powershell
+++& "C:\Android\Sdk\platform-tools\adb.exe" install -r "C:\Campfire_source_1.05\app\android\build\outputs\apk\foss\release\android-foss-release.apk"
+++```
+++
+++---
+++
+++## 13. Modified Files Inventory
+++
+++| File Path | Description |
+++| :--- | :--- |
+++| `common/compose/.../LibraryItemCard.kt` | Bottom 6dp green/orange progress bar, badge removed |
+++| `common/compose/.../LibraryItemListItem.kt` | Bottom 4dp progress bar |
+++| `common/compose/.../network/NetworkType.kt` | Expect/actual for cellular/metered connection |
+++| `common/compose/.../dialog/ConfirmActionDialog.kt` | Reusable confirmation alert dialog |
+++| `core/.../Duration.kt` | Added `formatHoursAndMinutes()` extension |
+++| `features/libraries/ui/.../CoverImageSlot.kt` | Detail page cover art progress bar overlay |
+++| `features/libraries/ui/.../BookPresenter.kt` | Pass media progress and confirmation settings to slots |
+++| `features/libraries/ui/.../ExpressiveControlSlot.kt` | Confirmation dialogs for delete, discard, finish, cellular download |
+++| `features/libraries/ui/.../PodcastPresenter.kt` | Pass media progress to CoverImageSlot |
+++| `features/libraries/ui/.../PodcastEpisodeBottomSheet.kt` | Confirmation dialogs for episode actions & cellular download |
+++| `features/libraries/ui/.../TitleSlot.kt` | Display duration and file size in megabytes |
+++| `features/series/ui/.../SeriesDetailPresenter.kt` | Injected MediaProgressRepository for series |
+++| `features/series/ui/.../SeriesDetailUiState.kt` | Added mediaProgress map to UI state |
+++| `features/series/ui/.../SeriesDetailUi.kt` | Passed progress to series LibraryItemCards |
+++| `features/author/ui/.../AuthorDetailPresenter.kt` | Injected MediaProgressRepository for author |
+++| `features/author/ui/.../AuthorDetailUiState.kt` | Added mediaProgress map to UI state |
+++| `features/author/ui/.../AuthorDetailUi.kt` | Passed progress to author LibraryItemCards |
+++| `features/collections/ui/build.gradle.kts` | Added media-progress:api dependency |
+++| `features/collections/ui/.../CollectionDetailPresenter.kt` | Injected MediaProgressRepository for collection |
+++| `features/collections/ui/.../CollectionDetailUiState.kt` | Added mediaProgress map to UI state |
+++| `features/collections/ui/.../CollectionDetailUi.kt` | Passed progress to collection LibraryItemCards |
+++| `features/search/ui/build.gradle.kts` | Added media-progress:api dependency |
+++| `features/search/ui/.../SearchPresenter.kt` | Injected MediaProgressRepository for search |
+++| `features/search/ui/.../SearchUiState.kt` | Added mediaProgress map to UI state |
+++| `features/search/ui/.../CampfireSearchComponent.kt` | Connected presenter to search UI |
+++| `features/search/ui/.../SearchResultContent.kt` | Passed progress to search LibraryItemCards |
+++| `features/search/impl/.../SearchSourceOfTruthFactory.kt` | Clear stale search records before writing fresh results |
+++| `features/home/ui/.../HomePresenter.kt` | Replaced Newest Authors with Downloads shelf |
+++| `features/home/ui/build.gradle.kts` | Added test dependencies |
+++| `features/home/ui/.../HomePresenterTest.kt` | Updated tests with FakeLibraryItemRepository |
+++| `infra/audioplayer/api/.../RunningTimer.kt` | Added `isPaused: Boolean` property |
+++| `infra/audioplayer/public-ui/.../RunningTimerText.kt` | Countdown pause freeze support |
+++| `features/sessions/ui/.../RunningTimerText.kt` | Countdown pause freeze support in player |
+++| `infra/audioplayer/public-ui/.../SleepTimerButton.kt` | Timer button pause freeze support |
+++| `infra/audioplayer/impl/.../CoroutineSleepTimerManager.kt` | Managed pause reset & fade timing |
+++| `infra/audioplayer/impl/.../VolumeFadeController.kt` | Perceptual quadratic fade & try-finally reset |
+++| `infra/audioplayer/impl/.../MediaItemBuilder.kt` | Clean chapter title & format speed-adjusted remaining book time countdown |
+++| `infra/audioplayer/impl/.../ChapterWindowForwardingPlayer.kt` | Dynamic chapter playlist titles with remaining book countdown |
+++| `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Real-time minute countdown, replaceMediaItem & speed factor |
+++| `features/settings/api/.../CampfireSettings.kt` | Added `confirmActions` and `warnOnCellularDownload` |
+++| `features/settings/impl/.../CampfireSettingsImpl.kt` | Persistent storage for `confirmActions` & `warnOnCellularDownload` |
+++| `features/settings/api/.../SleepSettings.kt` | Added `fadeOutDuration` setting |
+++| `features/settings/impl/.../SleepSettingsImpl.kt` | Persistent storage for `fadeOutDuration` |
+++| `features/settings/ui/.../ui_settings_strings.xml` | Added string resources for fade out setting |
+++| `features/settings/ui/.../TimeJumpSetting.kt` | Added `textFormat` parameter |
+++| `features/settings/ui/.../SettingsUiState.kt` | Added confirmation settings to DownloadsSettingsInfo |
+++| `features/settings/ui/.../SettingsPresenter.kt` | Connected confirmation settings to UI & events |
+++| `features/settings/ui/.../SettingsAnalyticUiEventHandler.kt` | Handled confirmation settings analytics |
+++| `features/settings/ui/.../DownloadsPane.kt` | Added Action Confirmations and Warn on Cellular toggles |
+++| `features/settings/ui/.../SleepPane.kt` | Added `FadeOutJumps` enum and TimeJumpSetting |
+++| `features/settings/test/.../TestCampfireSettings.kt` | Test implementation of confirmActions & warnOnCellularDownload |
+++| `infra/audioplayer/api/.../AudioPlayer.kt` | Added `cancelFade()` to AudioPlayer interface |
+++| `infra/shake/.../SeismicShakeDetector.kt` | Default sensor delay updated to SENSOR_DELAY_GAME (50 Hz) |
+++| `infra/shake/.../ShakeDetector.android.kt` | Added 100ms haptic feedback vibration pulse & game delay |
+++| `infra/shake/.../ShakeSensitivityMagnitudes.android.kt` | Corrected inverted thresholds (VeryHigh=11.0, VeryLow=17.5) |
+++| `features/home/api/.../HomeRepository.kt` | Added `refreshHomeFeed(): Result<Unit>` method |
+++| `features/home/impl/.../StoreHomeRepository.kt` | Implemented `refreshHomeFeed()` via Store5 `homeStore.fresh(key)` |
+++| `features/home/ui/.../HomeUiState.kt` | Added `isRefreshing` state property and `HomeUiEvent.Refresh` |
+++| `features/home/ui/.../HomePresenter.kt` | Added refresh coroutine handling and state flow |
+++| `features/home/ui/.../HomeUi.kt` | Integrated `PullToRefreshBox` with `CampfireLoadingIndicator` |
+++| `features/home/ui/.../FakeHomeRepository.kt` | Implemented `refreshHomeFeed()` in test fake |
+++| `features/home/ui/.../HomePresenterTest.kt` | Unit tests for refresh event trigger and state transitions |
+++| `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
+++| `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
+++| `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
+++
+++---
+++
+++## 12. Home Screen: Pull-to-Refresh (SUPERSEDED by 1.2.0 upstream)
+++
+++### Summary
+++Added a standard swipe-down Pull-to-Refresh gesture to the main Home feed. This brings the Home screen in line with all other major tabs (Library, Series, Authors, Podcasts) that already support pull-to-refresh, allowing users to effortlessly check for newly added audiobooks, updated podcasts, and refreshed shelves from their Audiobookshelf server without restarting the app.
+++
+++### Key Details
+++- **Non-Destructive Network Refresh**:
+++  - `StoreHomeRepository.refreshHomeFeed()` requests fresh personalized shelves from Audiobookshelf via Store5's `homeStore.fresh(key)`.
+++  - Wrapped with `runCatching` so that if the device is offline or the server is momentarily unreachable, the refresh simply dismisses the spinner and preserves all existing cached shelves and downloaded books without presenting an error screen.
+++- **Animated Flame Indicator**:
+++  - Reuses Campfire's custom animated flame loader (`CampfireLoadingIndicator`) in `HomeUi.kt` via Material 3's `PullToRefreshBox`.
+++  - Configured with `padding(top = paddingValues.calculateTopPadding())` to seamlessly respect the collapsing search/app bar without nested scroll conflicts.
+++- **Spamming Guard**:
+++  - `HomePresenter` checks `if (!isRefreshing)` before launching a refresh coroutine, preventing duplicate network requests from rapid subsequent swipes.
+++
+++### Modified Files:
+++* `features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt`
+++* `features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt`
+++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt`
+++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt`
+++* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt`
+++* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+++
+++---
+++
+++## 13. Reset Sleep Timer on Pause (User Configurable)
+++
+++### Summary
+++Added a user-configurable toggle in **Settings → Sleep** ("Reset timer on pause"). When enabled, pausing audio playback (via headset button, lockscreen widget, notification, or in-app button) automatically resets the active sleep timer back to its initial configured duration. Playback can then be resumed with the full timer ready.
+++
+++### Key Details
+++- **Toggle Setting**: Added `resetTimerOnPause` to `SleepSettings` and `CampfireSettings`.
+++- **Playback State Hook**: Observed player state in `CoroutineSleepTimerManager`. When the player transitions to paused/idle, the countdown resets to the initial duration rather than running down while paused.
+++
+++---
+++
+++## 14. Dynamic Continue Listening Sorting, Download Integration & Finished Book Pruning
+++
+++### Summary
+++Enhanced the Continue Listening and Listen Again shelves to provide a responsive, Audiobookshelf-like listening experience even offline.
+++
+++### Key Details
+++- **Dynamic Last-Played Sorting**: The Continue Listening shelf sorts items in realtime by `lastUpdate` descending. Pausing or playing a book smoothly moves it to the front of the shelf (the #&#8203;1 spot) using Compose item animations (`Modifier.animateItem()`).
+++- **Downloaded Books Integration**: Downloaded in-progress books appear on the Continue Listening shelf even without server synchronization.
+++- **Finished Book Pruning & Listen Again**: When an audiobook or podcast episode reaches 100% or is marked finished, it immediately drops off the Continue Listening shelf and is dynamically placed on the **Listen Again** shelf (synthesized client-side if missing from server feed), ordered by most recently finished.
+++- **Universal Green Checkmark**: Ensures the green completed badge reliably displays on cover cards, detail screens, and library list items for completed books (whether downloaded or streaming).
+++
+++---
+++
+++## 15. Headset & Remote Control Forward/Rewind Time Skips & Dynamic Lock Screen Notification Icons
+++
+++### Summary
+++Fixed headset/earphone button behavior so that double-clicking (forward) and triple-clicking (back) skips by the configured time interval (e.g. 30s) instead of jumping entire chapters. Added dynamic lock screen and notification action icons that switch between chapter skip icons (`|<` / `>|`) and time jump icons (`↺` / `↻`) in real time based on the user's setting.
+++
+++### Key Details
+++- **Settings Toggle**: "Headset & remote next/prev skips chapters" in **Settings → Playback** (`skipChaptersWithHeadset`).
+++- **ExoPlayer Forwarding Player**: Intercepts `seekToNextMediaItem()` and `seekToPreviousMediaItem()` from wired headsets, Bluetooth remotes, and Android Auto, delegating to `seekForward()` or `seekBack()` when chapter skipping is disabled.
+++- **System Media Notification**: Updated `AudioPlayerService` and `MediaSessionCallback` to advertise `COMMAND_SEEK_FORWARD` / `COMMAND_SEEK_BACK` as primary actions instead of chapter skips when disabled, updating Android lockscreen icons in real time.
+++
+++---
+++
+++## 16. Equalizer Bottom Sheet Layout Polish
+++
+++### Summary
+++Widened the control label column in `EqualizerBottomSheet.kt` from `72.dp` to `90.dp`. This prevents words like "Loudness" from wrapping mid-word ("Loudnes-s") onto a second line on devices with large display scalings or accessibility font sizes.
+++
+++---
+++
+++## 17. Native GitHub In-App Updates & Versioning Strategy
+++
+++### Summary
+++Integrated a fully native in-app updater backed directly by GitHub Releases (`Cobolt78/Campfire`). Replaces Google Play In-App Updates for standard release builds and adds update support to FOSS builds. Users receive visual notifications in the navigation drawer when a new APK is released on GitHub, can read release notes, and install updates with a single tap.
+++
+++### Architecture & Key Components
+++- **`GitHubAppUpdateSource.kt`**: Implements `AppUpdateSource` in `app/android/src/main/java/app/campfire/android/updates/`. Replaces `NoOpUpdateSource` via `@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])`.
+++- **GitHub API Integration**: Queries `https://api.github.com/repos/Cobolt78/Campfire/releases/latest`, parses tag name/release name for SemVer versioning, compares against installed `applicationInfo.versionCode`, extracts release notes from the release body, and matches the APK asset based on flavor (`standard` vs `foss`).
+++- **In-App Download & Stream**: Uses `OkHttpClient` to stream the APK download directly to `cacheDir/updates/campfire-update.apk` while reporting live progress (`AppUpdateProgress`) to `AppUpdateWidgetImpl` in the navigation drawer.
+++- **Android Package Installer Hand-off**: Declares `REQUEST_INSTALL_PACKAGES` permission in `AndroidManifest.xml` and uses `androidx.core.content.FileProvider` (`${applicationId}.update_provider` with `update_file_paths.xml`) to launch `Intent.ACTION_VIEW` targeting Android's native package installer.
+++- **Drawer Integration**: Integrated directly into `AppUpdateWidgetCard` and `AppUpdateSheet` in `CampfireDrawer`.
+++
+++### Versioning Strategy & Rules for Future AI Instances
+++1. **Semantic Versioning Format**: Always use standard SemVer `major.minor.patch` (e.g. `1.2.1`, `1.2.2`, `1.2.3`). Do NOT use 4-part numbers (like `1.2.1.1`) or skip numbers (like `1.2.11`), as standard tools, CI guards, and Campfire's internal SemVer regex expect 3-segment versions.
+++2. **Version Code Formula**:
+++   $$\text{versionCode} = \text{major} \times 1,000,000 + \text{minor} \times 10,000 + \text{patch} \times 100 + 99$$
+++   - `1.2.0` = `1020099`
+++   - `1.2.1` = `1020199`
+++   - `1.2.2` = `1020299`
+++   - `1.2.3` = `1020399`
+++3. **Strict Monotonic Increase**: Android OS requires incoming APKs to have a strictly higher `versionCode` than the installed version (`incoming > installed`). With every bug fix, patch, or feature release:
+++   - Increment `campfire.version` and `campfire.versionCode` in `gradle.properties`.
+++   - Run `gradlew.bat :app:android:verifyVersionCode` to confirm they match.
+++   - Tag the release on GitHub as `v<version>-custom` (e.g., `v1.2.1-custom`).
+++   - Include both APK assets: `cobolt-campfire-standard-release_<version>.apk` and `cobolt-campfire-foss-release_<version>.apk`.
+++4. **Always Update `CHANGELOG.md` with Every Release**: The in-app "What's New" feature (`infra/whats-new/`) is driven at build time by `CHANGELOG.md`. With every release or patch, add a `## [<version>]` section to `CHANGELOG.md` with `### Added`, `### Changed`, or `### Fixed` bullet points describing the changes. This ensures the What's New drawer item and update notification accurately reflect the custom build's enhancements.
+++
+++
+++
+++---
+++
+++## 18. Clickable Home Shelf Headings, Dedicated Continue Series & Offline Downloads Screens
+++
+++### Summary
+++Added interactive shelf headers with chevron indicators (Heading ›) on the Home screen to bypass the Audiobookshelf server's 5/10-item cap. Users can tap any supported shelf header to view all items with full custom sorting. Built dedicated, beautifully crafted **Continue Series** and **Offline Downloads** screens.
+++
+++### Key Components & Architecture
+++- **Interactive Shelf Headers (ShelfHeader.kt, ShelfListItem.kt)**:
+++  - ShelfHeader.kt: Displays a subtle CampfireIcons.Rounded.ChevronRight icon next to shelf titles when clickable, with a rounded ripple click target.
+++  - ShelfListItem.kt: Selectively enables header clicks for supported shelves (ContinueListening, ListenAgain, RecentlyAdded, RecentSeries, ContinueSeries, Downloads, UpcomingReleases, NewestAuthors).
+++- **Home Navigation Routing (HomePresenter.kt)**:
+++  - RecentlyAdded › -> LibraryScreen(sortMode = AddedAt, sortDirection = Descending).
+++  - RecentSeries › -> SeriesScreen(sortMode = AddedAt, sortDirection = Descending).
+++  - ContinueListening › -> LibraryScreen(filter = ContentFilter.Progress(InProgress)).
+++  - ListenAgain › -> LibraryScreen(filter = ContentFilter.Progress(Finished)).
+++  - UpcomingReleases › -> UpcomingScreen.
+++  - NewestAuthors › -> AuthorsScreen.
+++  - ContinueSeries › -> ContinueSeriesScreen.
+++  - Downloads › -> DownloadsScreen.
+++- **Dynamic Sorting Support on Destination Screens**:
+++  - LibraryScreen.kt & LibraryPresenter.kt: Extended LibraryScreen to accept optional sortMode and sortDirection parameters so navigation can specify an initial sort order without permanently overriding global preferences unless changed by user.
+++  - SeriesScreen in Screens.kt & SeriesPresenter.kt: Converted SeriesScreen to a data class accepting optional sortMode and sortDirection parameters.
+++- **Dedicated Continue Series Screen (features/series/ui/continueseries/)**:
+++  - Reactive ContinueSeriesPresenter streams all user series via seriesRepository.observeAllSeries() and cross-references mediaProgressRepository.observeAllProgress().
+++  - Accurately filters for series currently in progress (where at least one book is finished or started, and not all books are completed).
+++  - Identifies the exact **Next Up** book in sequence (preferring an in-progress book, or the next unread book).
+++  - Rich UI (ContinueSeriesUi.kt):
+++    - Series card header with series name, progress readout ("X of Y books completed"), and chevron link to the full series detail view.
+++    - Series progress indicator bar.
+++    - Prominent **Next Up** book card with cover art, "NEXT UP" badge, book sequence number ("Book #&#8203;3"), title, author, and listening progress bar.
+++    - Interactive sort menu: Recently Played (last read), Series Name A–Z, Progress %, Date Added, with ascending/descending toggle.
+++- **Dedicated Offline Downloads Screen (features/libraries/ui/downloads/)**:
+++  - Reactive DownloadsPresenter monitors offlineDownloadManager.observeAll() for completed downloads and hydrates full LibraryItem and MediaProgress models.
+++  - Top app bar displays a real-time storage summary: total offline book count and formatted storage footprint (e.g. "12 books • 3.8 GB").
+++  - List items render book covers, titles, authors, file sizes (e.g. "740 MB"), listening progress indicators, and offline checkmarks.
+++  - Interactive sort menu: Recently Played, Date Added/Downloaded, Title A–Z, Author A–Z, File Size, with ascending/descending toggle.
+++
+++
+++---
+++
+++## 19. In-App "What's New" Changelog Synchronization Rule
+++
+++### Summary
+++Established a permanent development rule ensuring that all custom enhancements, fixes, and version releases are systematically documented in `CHANGELOG.md`.
+++
+++### Mechanism & Build Architecture
+++- `infra/whats-new/` generates `changelog.json` at build time from `CHANGELOG.md` via `GenerateChangelogTask`.
+++- `WhatsNewRepositoryImpl` checks `settings.observeLastSeenVersion()` against `applicationInfo.versionName`. When the version increases and contains changes for the platform, the app automatically surfaces the What's New dialog to the user.
+++- The "What's New" option in the navigation drawer also reads this JSON to display the full version history.
+++- Starting from `1.2.1`, `1.2.2`, and `1.2.3`, all custom additions are maintained in `CHANGELOG.md`.
+++
+++---
+++
+++## 20. Continue Series Query Optimization & Freeze Fix
+++
+++### Summary
+++Diagnosed and fixed an Application Not Responding (ANR) freeze when tapping the Continue Series chevron (`›`) on the Home screen. Replaced an expensive, blocking full-library network and database traversal with a high-performance indexed SQLite query executed off the UI thread.
+++
+++### Root Cause
+++- `ContinueSeriesPresenter` previously invoked `seriesRepository.observeAllSeries(refresh = true)`.
+++- In `StoreSeriesRepository`, `observeAllSeries(refresh = true)` triggered `fetchAllPages`, walking all series in the user's library and writing them to SQLite.
+++- SqlDelight's `SeriesSourceOfTruthFactory` then ran `db.seriesQueries.selectByLibraryId(key.libraryId)` and iterated through every series in the library, executing `db.libraryItemsQueries.selectForSeries(seriesId).awaitAsList()` in an iterative blocking loop on the database.
+++- For libraries with hundreds of series, this produced hundreds of sequential queries and heavy object mapping. Because this flow was collected with `collectAsState()` and mapped inside the Composable on the Android main thread, it locked the UI thread for multiple seconds, triggering an immediate app freeze and crash.
+++
+++### Resolution & Architecture
+++1. **Targeted SQL Query (`series.sq`)**:
+++   - Added `selectContinueSeries` to `series.sq`:
+++     ```sql
+++     selectContinueSeries:
+++     SELECT series.* FROM series
+++     LEFT JOIN shelfJoin ON shelfJoin.entityId = series.id AND shelfJoin.shelfId LIKE 'continue-series_%'
+++     LEFT JOIN seriesBookJoin ON seriesBookJoin.seriesId = series.id
+++     LEFT JOIN mediaProgress ON mediaProgress.libraryItemId = seriesBookJoin.libraryItemId AND mediaProgress.userId = :userId AND (mediaProgress.progress > 0 OR mediaProgress.isFinished = 1)
+++     WHERE series.libraryId = :libraryId
+++       AND (
+++         series.inProgress = 1
+++         OR shelfJoin.entityId IS NOT NULL
+++         OR mediaProgress.libraryItemId IS NOT NULL
+++       )
+++     GROUP BY series.id
+++     ORDER BY COALESCE(series.bookInProgressLastUpdate, series.updatedAt) DESC;
+++     ```
+++   - Filters directly in SQLite to the 5–20 series actually in progress (either marked in-progress, present on the personalized continue series shelf, or having listening progress on a book in `mediaProgress`).
+++2. **Repository Flow (`SeriesRepository.kt` & `StoreSeriesRepository.kt`)**:
+++   - Added `fun observeContinueSeries(): Flow<List<Series>>`.
+++   - Hydrates books only for the filtered in-progress series on `dispatcherProvider.databaseRead`, completing in milliseconds.
+++3. **Presenter Non-Blocking Offload (`ContinueSeriesPresenter.kt`)**:
+++   - Switched from `observeAllSeries` to `observeContinueSeries()`.
+++   - Applied `.flowOn(Dispatchers.Default)` to ensure sorting and filtering execute completely off the UI thread.
+++   - Preserves reading progress metadata (`inProgress`, `bookInProgressLastUpdate`, `firstBookUnreadId`) across mapping layers.
+++
+++---
+++
+++## 21. Continue Series Alternate View, Drawer Version Display & Main Thread Performance Optimization (v1.2.4)
+++
+++### Summary
+++Added a user-configurable alternate view for Continue Series in Appearance settings, placed the current app version prominently in the main navigation drawer, and eliminated all UI sluggishness / swipe-back stutter across the app by moving heavy Compose state derivation off the main thread onto background coroutines.
+++
+++### Key Changes
+++1. **Continue Series Alternate Grid View (`ContinueSeriesUi.kt`, `AppearancePane.kt`)**:
+++   - Added `continueSeriesAlternateView` boolean toggle to `CampfireSettings` and `AppearancePane.kt`.
+++   - When enabled, renders a `LazyVerticalGrid` that mirrors the visual layout of "Continue Listening" using `ContinueSeriesGridCard` / `ElevatedContentCard`.
+++   - Displays the series title and sequence indicator (`#X in [Series Name]`) underneath the book title.
+++   - Active books currently in progress are cleanly excluded from the grid so the user only sees subsequent unread books in their series.
+++2. **Main Navigation Drawer App Version Display (`CampfireDrawer.kt`)**:
+++   - Integrated the application version string (`v1.2.4`) into the bottom row of `CampfireDrawer.kt`, positioned alongside the theme toggle controls.
+++   - Powered by `ApplicationInfo.versionName` fed into `NavigationPresenter.kt` and `DrawerUiState.kt`.
+++3. **UI Snappiness & Main Thread Offload (`HomePresenter.kt`, `ContinueSeriesPresenter.kt`)**:
+++   - Heavy data transformations (shelf item enrichment, progress map lookups, and list sorting) previously executing synchronously inside Composable `remember { derivedStateOf { ... } }` blocks have been transitioned to Kotlin `Flow.combine()` pipelines offloaded to `Dispatchers.Default`.
+++   - Eliminates UI freezes and multi-second stutters when swiping back to the Home screen or returning from detail views.
+++
+++---
+++
+++## 22. Home Screen Update Banner, Fast Retained Continue Series & Layout Polish (v1.2.5)
+++
+++### Summary
+++Added a prominent yet dismissible in-app update banner directly at the top of the Home feed, eliminated the 20–30s reload delay on Continue Series by retaining in-memory state and parallelizing database book queries, formatted alternate grid cards to prioritize the book number with automatic marquee scrolling, and upgraded the default list view with an enlarged left poster cover art layout.
+++
+++### Key Changes
+++1. **Home Screen Dismissible Update Banner (`HomeUi.kt`, `features/home/ui/build.gradle.kts`)**:
+++   - Injected `AppUpdateWidget` directly into `@CircuitInject HomeScreen`.
+++   - Rendered as the top item of the main Home `LazyColumn` directly beneath the top search bar.
+++   - Fully dismissible via "✕" (persists dismissed version code in `CampfireSettings` to prevent nagging until next release) with animated expand/collapse transitions.
+++2. **Instant Continue Series Back Navigation & Concurrent Database Loading (`ContinueSeriesPresenter.kt`, `StoreSeriesRepository.kt`)**:
+++   - Retained `cachedItems` in memory via Slack Circuit's `rememberRetained` so navigating to a book detail and clicking Back renders instantly (0ms latency) without showing a loading spinner or re-querying disk.
+++   - Refactored `StoreSeriesRepository.observeContinueSeries()` to load series books concurrently using coroutine `async`/`awaitAll()` on `dispatcherProvider.databaseRead`, slashing query execution times.
+++3. **Alternate Grid: Book Number First & Marquee (`ContinueSeriesUi.kt`)**:
+++   - Formatted alternate view subtitle to lead with the book number: `Book #X • Series Name`.
+++   - Applied `Modifier.basicMarquee()` to both book title and series subtitle so long text smoothly scrolls horizontally without truncating.
+++   - Stripped redundant progress bars from unread next-up books.
+++4. **Default View: Enlarged Left Poster Cover Layout (`ContinueSeriesUi.kt`)**:
+++   - Enlarged the Next Up cover art from a 56dp thumbnail to a prominent `80 × 108 dp` book jacket with `10.dp` rounded corners.
+++   - Arranged metadata in a clean vertical stack beside the cover (Next Up badge, Book number, 2-line title, and author name), removing redundant progress bars.
+++
+++---
+++
+++## 23. Instant Continue Series In-Memory Repository Cache & SQL Query Optimization (v1.2.6)
+++
+++### Summary
+++Completely eliminated the 15-second loading delay when navigating between the Home Screen and Continue Series. Stored computed series in an in-memory repository cache with `replay = 1` and presenter-level caching that survives leaving the screen, and rewrote the SQLite series query to filter out completed and active series directly at the database level.
+++
+++### Key Changes
+++1. **Repository-Level In-Memory Cache with Replay Buffer (`StoreSeriesRepository.kt`)**:
+++   - Transformed `StoreSeriesRepository.observeContinueSeries()` into a shared flow (`shareIn`) backed by `repositoryScope` with `SharingStarted.WhileSubscribed(stopTimeoutMillis = 300_000)` and `replay = 1`.
+++   - Caches the loaded series in UserScope memory for up to 5 minutes after leaving the screen.
+++2. **Presenter Memory Retention Across Screen Instances (`ContinueSeriesPresenter.kt`)**:
+++   - Added a static `@Volatile memoryCache` to `ContinueSeriesPresenter`.
+++   - Initialized `cachedItems` directly from `memoryCache`, ensuring the screen renders in **0 ms** without displaying a loading indicator when opened from the Home Screen.
+++   - Background `LaunchedEffect` continues silently checking for fresh changes and updates the cache without UI interruption.
+++3. **SQLite Completed & Active Series Exclusion (`series.sq`)**:
+++   - Rewrote `selectContinueSeries` to use subquery checks:
+++     - `EXISTS` on unread books: ensures series where all books are marked `isFinished = 1` are excluded directly by SQLite.
+++     - `NOT EXISTS` on active books: filters out series with actively playing books (`isFinished = 0 AND progress > 0`).
+++   - Prevents loading dozens of completed series and hundreds of books from storage into memory only to discard them in Kotlin, reducing database execution time from 15 seconds down to milliseconds.
+++
+++---
+++
+++## 24. Home Continue Series Background Pre-Warming, Discover Shelf Stabilization & Dedicated Refresh Button (v1.2.7)
+++
+++### Summary
+++Enabled active eager background pre-warming of Continue Series directly while viewing the Home feed so tapping Continue Series is always instantaneous (0ms). Stabilized the Discover shelf so random reshuffling never occurs during the session (on scroll or navigating back from books), and added a dedicated animated Refresh button to the Discover shelf header that fetches fresh recommendations on demand and resets horizontal scroll back to the start.
+++
+++### Key Changes
+++1. **Home Screen Continue Series Background Pre-Warming (`StoreSeriesRepository.kt`, `HomePresenter.kt`, `features/home/ui/build.gradle.kts`)**:
+++   - In `StoreSeriesRepository.kt`, configured `continueSeriesFlow` with `SharingStarted.Eagerly` so it initializes immediately.
+++   - Injected `SeriesRepository` into `HomePresenter.kt` and added a background `LaunchedEffect(Unit)` collecting `seriesRepository.observeContinueSeries()` in `Dispatchers.Default`.
+++   - Pre-warms the in-memory cache silently while the user browses the Home feed, ensuring tapping "Continue Series" renders immediately with 0ms delay.
+++2. **Discoveries Shelf Stability (`StoreHomeRepository.kt`, `HomePresenter.kt`)**:
+++   - Audiobookshelf's `/personalized` endpoint randomizes the Discover shelf on every API call. Store5 was previously requested with `refresh = true` on every user/session emission, wiping and re-inserting `ShelfJoin` rows in SQLite and reshuffling books whenever the user scrolled or navigated back from a book.
+++   - Changed `StoreHomeRepository.observeHomeFeed()` to default to `refresh = false`, serving deterministic cached shelves across session navigations.
+++   - In `HomePresenter.kt`, used `rememberRetained` to track `lastRefreshedLibraryId`, performing the API refresh only once upon cold start / initial library load or library switch.
+++3. **Dedicated Discoveries Refresh Button (`ShelfHeader.kt`, `ShelfListItem.kt`, `HomeUi.kt`, `HomePresenter.kt`, `HomeUiState.kt`)**:
+++   - Added an animated Refresh icon button (`CampfireIcons.Rounded.Refresh`) to the "Discover" shelf header.
+++   - When tapped, triggers `HomeUiEvent.RefreshDiscoveries`, causing the icon to smoothly spin indefinitely while `homeRepository.refreshHomeFeed()` runs.
+++   - When fresh discoveries are received, `ShelfListItem` automatically resets horizontal scroll position back to the first item (`listState.scrollToItem(0)`).
+++
+++---
+++
+++## 25. Discoveries Refresh Server Cache Bypass & Reactive Pipeline Fix (v1.2.8)
+++
+++### Summary
+++Fixed the Discoveries refresh button on the Home feed so tapping it reliably fetches brand new random recommendations from Audiobookshelf and immediately updates the shelf on screen. In v1.2.7, tapping refresh appeared to do nothing because the Audiobookshelf server caches `/api/libraries/:id/personalized` responses in its internal `ApiCacheManager` without a query timestamp parameter, and Store5's `ShelfStore` wrapped SQLite reads in an unnecessary 5-minute memory cache.
+++
+++### Key Changes
+++1. **Audiobookshelf API Server Cache Bypass (`KtorAudioBookShelfApi.kt`)**:
+++   - Audiobookshelf's server-side `ApiCacheManager` caches personalized endpoints by full URL string (`req.originalUrl`). Consecutive requests to `/api/libraries/:libraryId/personalized` without parameters hit the server's cache and return identical Discover shelf books.
+++   - Updated `KtorAudioBookShelfApi.getPersonalizedHome` to append a millisecond timestamp parameter (`parameters.append("t", Clock.System.now().toEpochMilliseconds().toString())`).
+++   - Every refresh request now produces an `ApiCacheManager` cache miss on the Audiobookshelf server, forcing it to generate a fresh, randomized selection of books.
+++2. **Store5 Reactive SQLite Pipeline Fix (`ShelfStore.kt`, `StoreHomeRepository.kt`)**:
+++   - `ShelfStore` previously defined a 5-minute memory cache (`MemoryPolicy.builder<Key, List<ShelfEntity>>().setExpireAfterAccess(5.minutes).build()`). Since `ShelfStore` has no network fetcher and reads purely from SQLite (`shelfJoin`), the 5-minute memory cache prevented SQLite database updates from reaching Compose.
+++   - Removed `cachePolicy` from `ShelfStore.kt` so SQLDelight query flows stream database updates directly.
+++   - In `StoreHomeRepository.refreshHomeFeed()`, explicitly called `shelfStore.clear()` after `homeStore.fresh()` to guarantee any in-memory store states are evicted.
+++3. **Smooth Visual Rotation Feedback (`HomePresenter.kt`, `ShelfHeader.kt`)**:
+++   - Added a minimum 400ms delay in `HomePresenter.kt` during `HomeUiEvent.RefreshDiscoveries` so fast local network responses still produce smooth, satisfying spin feedback.
+++   - Simplified rotation graphics layer in `ShelfHeader.kt` using `rotationZ = if (isRefreshing) rotation else 0f`.
+++
+++---
+++
+++## 26. Performance Overhaul for Startup, Continue Series, and Home Feed (v1.2.10)
+++
+++### Summary
+++Fixed cold startup freezes where the app was stuck on a black screen for 10-15 seconds, eliminated the 10-15s delay opening Continue Series via single-pass SQL batch queries, and resolved micro-stutter when scrolling the Home Screen.
+++
+++### Key Changes
+++1. **Startup Connection Pool Saturation Fix (`HomePresenter.kt`, `StoreSeriesRepository.kt`)**:
+++   - Replaced aggressive background database pre-warming on cold launch with lazy on-demand initialization.
+++2. **Continue Series N+1 Query Elimination (`series.sq`, `StoreSeriesRepository.kt`)**:
+++   - Replaced dozens of per-series database queries with an optimized batch SQL `IN` query.
+++3. **Home Feed Background Thread Offload (`HomePresenter.kt`)**:
+++   - Offloaded shelf sorting and filtering transformations from the Compose main thread to `Dispatchers.Default`.
+++4. **Pre-release SemVer Offset (`Versioning.kt`)**:
+++   - Introduced deterministic +100 version code offset for test builds (`-testN`) to prevent `INSTALL_FAILED_VERSION_DOWNGRADE`.
+++
+++---
+++
+++## 27. Discoveries Refresh Persistence & Book Detail Series Navigation (v1.2.11)
+++
+++### Summary
+++Fixed Discoveries refresh persistence across screen transitions, added dedicated Series navigation beneath Ratings & Reviews on the Book Detail screen for any series book, and resolved SQLite series junction consistency and API fallbacks across the app.
+++
+++### Key Changes
+++1. **Discoveries Shelf Refresh Persistence (`StoreHomeRepository.kt`, `HomeFetcherFactory.kt`)**:
+++   - Cleared `homeStore` and `shelfStore` synchronously on manual refresh so newly randomized recommendations persist when navigating between book detail and home screens.
+++2. **Book Detail Series Navigation (`BookPresenter.kt`, `SeriesSlot.kt`)**:
+++   - Added a dedicated "Series" section directly beneath Ratings & Reviews for any book belonging to a series.
+++   - Guaranteed immediate display of the current book in `SeriesSlot` and seamless navigation to `SeriesDetailScreen` to browse the full series.
+++3. **Persistent SQLite Series Linkages (`LibraryItemDao.kt`, `LibraryItemMapping.kt`)**:
+++   - Ingested series and `seriesBookJoin` rows whenever expanded books are saved to SQLite, ensuring series associations persist locally across all screens (Search, Library, Recently Added, Discoveries).
+++   - Preserved series metadata even when series sequence is unparsed or null.
+++4. **Series Book Ingestion & Endpoint Fallback (`StoreSeriesRepository.kt`, `KtorAudioBookShelfApi.kt`)**:
+++   - Fallback to series endpoint book data when minified filtering fails, and fallback from `/api/libraries/$libraryId/series/$seriesId` to `/api/series/$seriesId`.
+++
+++---
+++
+++## 28. Version Code Ordering & In-App Upgrade Delivery (v1.2.12)
+++
+++### Summary
+++Normalized version code derivation in build-logic to eliminate artificial test build offsets that inverted release ordering. Bumped release to v1.2.12 (versionCode 1021299) to ensure users running pre-release test builds (`v1.2.11-test2`, versionCode 1021202) seamlessly receive the in-app update prompt and can upgrade cleanly.
+++
+++### Key Changes
+++1. **Normalized Version Code Derivation (`Versioning.kt`)**:
+++   - Removed artificial `+100` offset from test build semver parsing so version codes remain monotonically ordered: `rc/test < final release`.
+++2. **Version Bump to v1.2.12 (`gradle.properties`)**:
+++   - Bumped `campfire.version` to `1.2.12` and `campfire.versionCode` to `1021299`, which strictly exceeds `1021202` (test2).
+++
+++---
+++
+++## 29. Shared Element Transition Layout Lockup Fix (v1.2.13)
+++
+++### Summary
+++Fixed an app freeze / deadlock that occurred when opening series books from the Discover shelf on the Home screen. When navigating with a shared element transition (`sharedBounds`), injecting the series slot into the `LazyColumn` mid-transition caused Compose's layout engine to lock up. Added a 500ms delay to allow the shared bounds transition to settle cleanly before slot insertion.
+++
+++### Key Changes
+++1. **Transition Settling Delay for Series Slot (`BookPresenter.kt`)**:
+++   - Attached `.onStart { delay(500) }` to the `combine` flow in `seriesContentState`.
+++   - Prevents abrupt insertion of `SeriesSlot` (and its image collages) during Jetpack Compose's active `sharedBounds` measurement pass.
+++2. **Version Bump to v1.2.13 (`gradle.properties`)**:
+++   - Bumped `campfire.version` to `1.2.13` and `campfire.versionCode` to `1021399`.
+++
+++---
+++
+++## 30. ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)
+++
+++### Summary
+++Diagnosed and permanently resolved the Application Not Responding (ANR) crash that occurred when opening series books from the Discover shelf on the Home screen. From live Android device stack traces (`SIGQUIT` Signal 3 / tombstone dump), thread `main` was discovered completely blocked in `SQLiteConnection.nativeExecuteForCursorWindow` inside `SeriesSourceOfTruthFactory`. The root cause was synchronous database traversal and N+1 query loops executed on the Android UI thread (`AndroidUiDispatcher`) while competing with background write transactions.
+++
+++### Root Cause
+++1. In `BookPresenter.kt`, a fallback flow (`resolvedSeriesFlow`) previously invoked `seriesRepository.observeAllSeries(refresh = false)` whenever `allSeries` was empty.
+++2. In `StoreSeriesRepository.kt` & `SeriesSourceOfTruthFactory.kt`, `observeAllSeries` queried all series in the user's library and iterated through each one sequentially executing `db.libraryItemsQueries.selectForSeries(...).awaitAsList()`.
+++3. Because the Flow had no `flowOn(dispatcherProvider.databaseRead)` and was collected by `collectAsState()` in Compose, all queries ran on the main UI thread.
+++4. Concurrently, the expanded item network fetch opened an exclusive write transaction in SQLite (`db.transaction`).
+++5. The main UI thread deadlocked on `art::ConditionVariable::WaitHoldingLocks` waiting for the SQLite lock, causing Android to declare an ANR after 10,000ms (`Input dispatching timed out`).
+++
+++### Key Changes
+++1. **Batch Series Query & Dispatcher Offloading (`SeriesSourceOfTruthFactory.kt`)**:
+++   - Replaced iterative N+1 SQLite queries with a single batch query: `db.libraryItemsQueries.selectForMultipleSeries(userId, seriesIds).awaitAsList()`.
+++   - Enclosed all query execution and mapping within `withContext(dispatcherProvider.databaseRead)`.
+++   - Attached `.flowOn(dispatcherProvider.databaseRead)` to the returned Flow to guarantee it never executes on the UI thread.
+++2. **Repository Flow Offloading (`StoreSeriesRepository.kt`)**:
+++   - Appended `.flowOn(dispatcherProvider.databaseRead)` to `observeSeriesLibraryItems` so all sorting, deduplication, and database streaming execute off the main thread.
+++3. **Clean Series Observation & Removed Fragile Delays (`BookPresenter.kt`)**:
+++   - Reverted `seriesContentState` to cleanly observe `allSeries` directly, eliminating the dangerous `observeAllSeries` fallback.
+++   - Removed the artificial `.onStart { delay(500) }` workaround that caused inconsistent UI delays and failed to prevent the ANR.
+++   - Attached `.flowOn(dispatcherProvider.databaseRead)` to `combine` to ensure background computation.
+++4. **Version Bump to v1.2.14 (`gradle.properties`)**:
+++   - Bumped `campfire.version` to `1.2.14` and `campfire.versionCode` to `1021499`.
+++
+++---
+++
+++## 31. Book Detail Series Slot Repositioning (v1.2.15)
+++
+++### Summary
+++Repositioned the "Series" section on the Book Detail view (`BookPresenter.kt`). Previously, the Series slot was rendered beneath the "Ratings & Reviews" section (`CommunitySlot`). Moved the Series section directly above "Ratings & Reviews", placing it between the "Summary" section (`SummarySlot`) and "Ratings & Reviews". This provides immediate, natural context for series books and quicker access to other books in the series without having to scroll past community reviews.
+++
+++### Key Changes
+++1. **Slot Reordering (`BookPresenter.kt`)**:
+++   - Placed `seriesContentState.onLoaded { ... }` immediately following `SummarySlot` and ahead of `communityInfoState?.let { ... }`.
+++2. **Version Bump to v1.2.15 (`gradle.properties`)**:
+++   - Bumped `campfire.version` to `1.2.15` and `campfire.versionCode` to `1021599`.
+++
+++---
+++
+++## 32. Playback Database Throttling & High CPU / Battery Drain Resolution (v1.2.16)
+++
+++### Summary
+++Diagnosed and resolved a major performance regression causing 39%–46% CPU utilization and rapid battery drain during audiobook playback on modern multi-core devices (tested on Samsung Galaxy S24 Ultra). Thread inspection using live ADB profiling revealed four coroutine worker threads (`DefaultDispatcher-worker-1` through `worker-4`) pinned at 75%–91% CPU each during active playback, dropping immediately to 0% when playback was paused.
+++
+++### Root Cause
+++1. In `ExoPlayerAudioPlayer.kt`, an unthrottled 500ms ticker continuously dispatched position updates to `PlaybackSynchronizer`s.
+++2. In `MediaProgressPlaybackSynchronizer.kt`, every 500ms tick invoked `mediaProgressRepository.updateProgress(..., skipUpload = true)` with a SQLite write transaction.
+++3. In `LocalSessionUpdateSynchronizer.kt`, every 500ms tick invoked `sessionsRepository.updateCurrentTime(libraryItemId, overallTime)` with another SQLite write transaction.
+++4. Each SQLite write transaction invalidated SQLDelight table queries (including `selectContinueSeries` which performs 3 subqueries across all series in the library, and `HomePresenter` shelf sorting). As a result, all four background worker threads were constantly re-evaluating heavy database queries twice per second.
+++
+++### Key Changes
+++1. **Throttled Progress Synchronization (`MediaProgressPlaybackSynchronizer.kt`)**:
+++   - Injected `FatherTime` from `AppScope`.
+++   - Throttled `onOverallTimeChanged` progress database writes to once every 15 seconds (`PROGRESS_UPDATE_INTERVAL_MS = 15_000L`) during active playback.
+++   - Guaranteed immediate synchronous flush (`force = true`) on pause, stop, and completion.
+++2. **Throttled Local Session Current Time Updates (`LocalSessionUpdateSynchronizer.kt`)**:
+++   - Throttled `onOverallTimeChanged` session time updates to once every 5 seconds (`CURRENT_TIME_UPDATE_INTERVAL_MS = 5_000L`).
+++   - Cached `lastKnownOverallTime` and immediately persisted it when state changes to `Paused`, `Disabled`, or `Finished`.
+++   - Limited `remoteSessionsUpdater.update()` calls to the 5-second interval instead of every 500ms.
+++
+++---
+++
+++## 33. Android Auto & Dedicated Controller Chapter Skip Restoration (v1.2.16)
+++
+++### Summary
+++Fixed an issue where Android Auto next and previous track buttons only jumped forward or back 30 seconds instead of skipping chapters, despite Android Auto already having dedicated 30-second fast-forward and rewind buttons on its interface.
+++
+++### Root Cause
+++In commit `2e65be6`, `isRemoteControllerRequest` logic was omitted, causing `!settings.remoteNextPrevSkipsChapters` to unconditionally hijack `COMMAND_SEEK_TO_NEXT` and `COMMAND_SEEK_TO_PREVIOUS` into interval seeks for all controllers indiscriminately (including Android Auto and the media notification).
+++
+++### Key Changes
+++1. **Remote Controller Identification (`RemoteControlForwardingPlayer.kt`)**:
+++   - Restored and centralized `MediaSession?.isRemoteControllerRequest(appPackageName: String): Boolean`.
+++   - Exempts Android Auto (`isAutoCompanionController`) and media notifications (`isMediaNotificationController`) since both provide dedicated fast-forward and rewind buttons.
+++2. **Chapter Forwarding Integration (`ChapterWindowForwardingPlayer.kt`)**:
+++   - Updated `handleSeek` for `COMMAND_SEEK_TO_NEXT` and `COMMAND_SEEK_TO_PREVIOUS` to check `remoteJumpPreferred()`.
+++   - Added `private fun remoteJumpPreferred(): Boolean = session.isRemoteControllerRequest(appPackageName) && !settings.remoteNextPrevSkipsChapters`.
+++   - Ensures Android Auto next/previous track controls always skip chapters while Bluetooth car stereos without seek buttons respect the user preference.
+++3. **Version Bump to v1.2.16 (`gradle.properties`)**:
+++   - Bumped `campfire.version` to `1.2.16` and `campfire.versionCode` to `1021699`.
+++
+++---
+++
+++## 34. Series Book Number Badges on Covers (v1.2.17)
+++
+++### Summary
+++Added a book sequence number badge (`#1`, `#2`, `#2.5`) directly on the top-left corner of each book cover in the Series Detail view (`SeriesDetailUi.kt`). When browsing a series, users can immediately identify the volume number and reading order at a glance without having to check the detail screen.
+++
+++### Key Changes
+++1. **Reusable Series Badge (`LibraryItemCard.kt`)**:
+++   - Created `@Composable fun SeriesBadge(badge: String, modifier: Modifier = Modifier, large: Boolean = true)`.
+++   - Rendered as a sleek, semi-transparent dark pill badge (`scrim.copy(0.68f)`) with bold white text and rounded corners (`CircleShape`), providing high contrast across all light and dark cover artwork.
+++3. **Series Badge Ordering (`LibraryItemCard.kt`)**:
+++   - In `ProgressDecorator`, arranged `SeriesBadge` and `MediaFinishedIndicator` in a `Row` at `Alignment.TopStart` with the `#N` badge placed *before* the checkmark (`[#1] [✓]`).
+++   - If unread: only `[#1]` is shown.
+++   - If finished: `[#1]` followed by `[✓]`.
+++   - The bottom edge remains reserved for the Audiobookshelf-style 6dp progress bar.
+++4. **Missing Series Books Parity (`MissingSeriesBookCard.kt`)**:
+++   - Added `SeriesBadge` in `TopStart` on missing book covers matching their catalog position (`#${formatPosition(position)}`), providing unified visual consistency across both owned and unowned books in the series.
+++
+++---
+++
+++## 35. Downloaded Indicator Modernization (v1.2.18)
+++
+++### Summary
+++Modernized the offline downloaded status indicator across all book cards from the confusing white cloud (`CloudDone`) to the standard downward arrow into a tray (`CampfireIcons.Rounded.Download`). The icon is tinted vibrant finished green (`#4CAF50` / `Color.Green`) with a semi-transparent dark circle backing (`scrim.copy(0.68f)`) for maximum contrast and readability across light and dark cover artwork.
+++
+++### Key Changes
+++1. **Icon & Tint Replacement (`LibraryItemCard.kt`)**:
+++   - Replaced `CampfireIcons.Filled.CloudDone` with `CampfireIcons.Rounded.Download`.
+++   - Updated icon tint to `Color(0xFF4CAF50)` matching the completed checkmark and finished progress bar.
+++
+++---
+++
+++## 36. Porting Custom Features to Upstream 1.2.1 Base & Metro DI (v1.2.18)
+++
+++### Summary
+++Cleanly ported all custom enhancements and critical performance bug fixes from fork `v1.2.17` onto the official upstream `1.2.1` release base (`05939f58`), adopting upstream's new Metro dependency injection architecture (`dev.zacsweers.metro`) across all feature presenters, UI screens, and update sources. Obsolete workarounds (such as artificial layout delays and custom decibel volume calculation) were retired in favor of upstream's native decibel volume fading (`VolumeFadeController`).
+++
+++### Key Architecture Updates
+++1. **Metro Dependency Injection**:
+++   - Converted all custom and extended presenters (`ContinueSeriesPresenter`, `DownloadsPresenter`, `SettingsPresenter`, `HomePresenter`) to use Metro DI annotations (`@CircuitInject`, `@Inject constructor`).
+++   - Replaced Tatarka/Kimchi DI imports with `dev.zacsweers.metro.*`.
+++2. **Settings API Decomposition**:
+++   - Adapted custom preferences (`resetTimerOnPause`, `confirmActions`, `warnOnCellularDownload`, `continueSeriesAlternateView`, `dismissedUpdateVersionCode`) to upstream's decomposed settings architecture (`SleepSettings`, `LibraryViewSettings`, `DownloadsSettings`, `AppStateSettings`).
+++3. **GitHub In-App Updates**:
+++   - Contributed `GitHubAppUpdateSource` via Metro `@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])`.
+++   - Disabled conflicting Play Store and Firebase update source bindings on standard releases.
+++4. **Version Bump to v1.2.20 (`gradle.properties`)**:
+++   - Set `campfire.version=1.2.20` and `campfire.versionCode=1022099`.
+++
+++---
+++
+++## 37. Series Badge Refinement & Crash Fix (v1.2.20)
+++
+++### Summary
+++Refined the series book number badge (`#N`) on book cover art to reduce visual footprint while preserving legibility. Replaced the bulky circular bubble with a compact rounded rectangular pill (`RoundedCornerShape(4.dp)`), tightened padding and corner offsets, and calibrated text sizing (11sp on standard cards, 10sp on small grids). Handled missing `google-services.json` gracefully on custom release builds.
+++
+++### Key Changes
+++1. **Series Badge Footprint & Positioning (`LibraryItemCard.kt`, `MissingSeriesBookCard.kt`)**:
+++   - Replaced `CircleShape` with `RoundedCornerShape(4.dp)`.
+++   - Reduced corner inset margin from `8.dp` to `5.dp` start and `5.dp` top, hugging the corner neatly without intruding on cover art.
+++   - Reduced scrim opacity to `0.60f` for subtle transparency.
+++   - Calibrated font sizing to `11.sp` (standard) and `10.sp` (small grids/lists), with bold weight and `0.sp` tracking.
+++2. **Crash Prevention (`app/android/build.gradle.kts`)**:
+++   - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
+++
+++---
+++
+++## 38. Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)
+++
+++### Summary
+++Addressed runtime freezes and startup crashes on the desktop client caused by background upcoming series scans, SQLite database lock contention, atomic file flushing under Windows, and unauthenticated session reads during session restoration.
+++
+++### Key Changes
+++1. **Upcoming Scan Threading & Flow Conflation (`InProcessDiscoverScanTracker.kt`)**:
+++   - Offloaded disk/network scans for upcoming books to `Dispatchers.IO` so the UI/AWT thread is never blocked.
+++   - Conflated the cached upcoming flow to prevent flood-induced UI stalls.
+++2. **Desktop SQLite Concurrency (`DesktopSqliteDriver.kt`, `BookInfoDatabaseComponent.jvm.kt`)**:
+++   - Configured SQLite WAL (`Write-Ahead Logging`) mode and a 5,000ms busy timeout on desktop to prevent lock contention between concurrent readers and writers.
+++3. **Windows Atomic File Flush Fallback (`FileSystemPreferences.kt`)**:
+++   - Implemented an atomic move with a `REPLACE_EXISTING` retry fallback to resolve `AccessDeniedException` during preference flush on Windows file systems.
+++4. **Session Restore & Non-LoggedIn User Safety (`UserSession.kt`, `StoreUserRepository.kt`)**:
+++   - Added `UserSession.NeedsAuthentication` handling to `UserSession.serverUrl`, `userId`, and `user` extensions, safely extracting `server.url`, `server.user.id`, and `server.user`.
+++   - Guarded `StoreUserRepository.userFlow` and `observeCurrentUser()` to return cached user state immediately when not logged in, eliminating unauthenticated `/api/me` network calls and preventing uncaught `StoreReadResponse.Error` exceptions on the Compose event loop.
+++5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
+++   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
+++
+++---
+++
+++## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
+++
+++### Summary
+++Fixed a lockout bug where users attempting to log in on a previously registered server encountered the error `"You're already signed in to this server as <user>. Switch to that account, or sign out of it first."` despite entering the identical username. Additionally added an automatic session restore fallback in `DatabaseUserSessionRestorer` to recover the active account from the database if `deviceSettings.currentUserId` was lost or unset in `config.properties`.
+++
+++### Root Cause
+++1. **False Positive in `DefaultAuthRepository.authenticate`**:
+++   - When entering credentials on the login screen (`userId == null`), the app called `checkServerAvailable(serverUrl)`.
+++   - `checkServerAvailable` checked only whether the server URL was present in `serverRepository.getAllServers()`. If found, it immediately failed with `AuthException.ServerAlreadyAdded(existing.user.name)`, blocking the *same* user from logging back into their account.
+++2. **Missing Fallback in `DatabaseUserSessionRestorer`**:
+++   - If `deviceSettings.currentUserId` was null in `config.properties` (e.g. from an unclean shutdown, cleared preferences, or missing key), `restore()` immediately returned `UserSession.LoggedOut`, dropping the desktop app onto the welcome login screen even though `campfire.db` still had a valid server and user record.
+++3. **Out-of-Sync Desktop Shortcut**:
+++   - The desktop shortcut `Campfire.lnk` pointed to an older build in `C:\Campfire Desktop\bin\Campfire.exe` from an earlier packaging format, bypassing newer fixes.
+++
+++### Key Changes
+++1. **Same-User Re-Authentication (`DefaultAuthRepository.kt`)**:
+++   - In `authenticate(serverUrl, serverName, username, password, userId, ...)`:
+++     When `userId == null`, inspect `existingServer = serverRepository.getAllServers().firstOrNull { it.url.isSameServerAs(serverUrl) }`.
+++     If `existingServer` exists and `existingServer.user.name.equals(username, ignoreCase = true)`, resolve `targetUserId = existingServer.user.id`.
+++     Only throw `ServerAlreadyAdded` if `existingServer` belongs to a *different* username, preserving the one-account-per-server invariant while allowing seamless re-login for the account owner.
+++   - Verified with unit test `signing into an existing account with the same username is allowed even if userId is null` in `DefaultAuthRepositoryTest.kt`.
+++2. **Database Fallback for Current User ID (`UserSessionRestorer.kt`)**:
+++   - If `deviceSettings.currentUserId` is null, query `db.serversQueries.selectAll(::ServerWithUser).awaitAsList().firstOrNull()?.userId`.
+++   - If found, recover the user ID and persist it to `deviceSettings.currentUserId = it`, smoothly restoring `UserSession.LoggedIn` (if token exists) or `UserSession.NeedsAuthentication` (prompting password re-auth) instead of getting stranded in `LoggedOut`.
+++   - Verified with unit test `restores existing account when current user id setting is missing` in `DatabaseUserSessionRestorerTest.kt`.
+++3. **Desktop Packaging & Shortcut Synchronization**:
+++   - Re-packaged distributable via `:app:desktop:createDistributable`.
+++   - Mirrored the output to `C:\Campfire Desktop`.
+++   - Updated `C:\Users\David\Desktop\Campfire.lnk` to point directly to `C:\Campfire Desktop\Campfire.exe`.
+++
+++
+++
+++
+++
+++
+++
++diff --git a/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt b/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt
++index 5f36eb58..78496c6d 100644
++--- a/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt
+++++ b/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt
++@@ -13,7 +13,7 @@ import dev.zacsweers.metro.Inject
++  * Debug builds use the developer-settings driven [FakeAppUpdateSource] so the app
++  * update widget and flows can be tested from the Developer settings pane.
++  */
++-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+++@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class, GitHubAppUpdateSource::class])
++ @Inject
++ class DebugAppUpdateSource(
++   private val fake: FakeAppUpdateSource,
++diff --git a/app/android/src/main/AndroidManifest.xml b/app/android/src/main/AndroidManifest.xml
++index 0e30e5db..a155898e 100644
++--- a/app/android/src/main/AndroidManifest.xml
+++++ b/app/android/src/main/AndroidManifest.xml
++@@ -12,6 +12,7 @@
++     be requested at runtime (prot=dangerous) before the first local-network request.
++   -->
++   <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+++  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
++ 
++   <application
++     android:name=".CampfireApplication"
++@@ -41,6 +42,17 @@
++       </intent-filter>
++     </activity>
++ 
+++    <!-- FileProvider for GitHub in-app APK installer -->
+++    <provider
+++      android:name="androidx.core.content.FileProvider"
+++      android:authorities="${applicationId}.update_provider"
+++      android:exported="false"
+++      android:grantUriPermissions="true">
+++      <meta-data
+++        android:name="android.support.FILE_PROVIDER_PATHS"
+++        android:resource="@xml/update_file_paths" />
+++    </provider>
+++
++     <!-- Disable Firebase's built-in provider initializer so we can control when we initialize FB  -->
++     <provider
++       android:name="com.google.firebase.provider.FirebaseInitProvider"
++diff --git a/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
++new file mode 100644
++index 00000000..caf3062c
++--- /dev/null
+++++ b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
++@@ -0,0 +1,293 @@
+++// Copyright 2026, Drew Heavner and the Campfire project contributors
+++// SPDX-License-Identifier: GPL-3.0-only
+++
+++package app.campfire.android.updates
+++
+++import android.app.Application
+++import android.content.Intent
+++import android.net.Uri
+++import android.os.Build
+++import android.provider.Settings
+++import androidx.core.content.FileProvider
+++import app.campfire.core.app.ApplicationInfo
+++import app.campfire.core.app.Flavor
+++import app.campfire.core.di.AppScope
+++import app.campfire.core.logging.LogPriority
+++import app.campfire.core.logging.bark
+++import app.campfire.updates.source.AppUpdate
+++import app.campfire.updates.source.AppUpdateProgress
+++import app.campfire.updates.source.AppUpdateProgress.Status
+++import app.campfire.updates.source.AppUpdateSource
+++import dev.zacsweers.metro.ContributesBinding
+++import dev.zacsweers.metro.Inject
+++import java.io.File
+++import java.util.concurrent.TimeUnit
+++import kotlinx.coroutines.Dispatchers
+++import kotlinx.coroutines.flow.Flow
+++import kotlinx.coroutines.flow.flow
+++import kotlinx.coroutines.flow.flowOn
+++import kotlinx.coroutines.withContext
+++import okhttp3.OkHttpClient
+++import okhttp3.Request
+++import org.json.JSONObject
+++
+++/**
+++ * [AppUpdateSource] backed by GitHub Releases API for custom releases.
+++ * Checks Cobolt78/Campfire for newer releases, matches the flavor (FOSS vs Standard),
+++ * downloads the APK into app cache, and launches Android's package installer.
+++ */
+++@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+++@Inject
+++class GitHubAppUpdateSource(
+++  private val application: Application,
+++  private val applicationInfo: ApplicationInfo,
+++) : AppUpdateSource {
+++
+++  private val okHttpClient by lazy {
+++    OkHttpClient.Builder()
+++      .connectTimeout(30, TimeUnit.SECONDS)
+++      .readTimeout(60, TimeUnit.SECONDS)
+++      .followRedirects(true)
+++      .followSslRedirects(true)
+++      .build()
+++  }
+++
+++  @Volatile
+++  private var cachedUpdate: AppUpdate? = null
+++
+++  @Volatile
+++  private var cachedDownloadUrl: String? = null
+++
+++  @Volatile
+++  private var lastCheckTimestamp: Long = 0L
+++
+++  override val isSupported: Boolean = true
+++
+++  override fun isSignedIn(): Boolean = true
+++
+++  override suspend fun signIn() = Unit
+++
+++  override suspend fun isUpdateAvailable(): Boolean = getAvailableUpdate() != null
+++
+++  override suspend fun getAvailableUpdate(): AppUpdate? = withContext(Dispatchers.IO) {
+++    val now = System.currentTimeMillis()
+++    val cached = cachedUpdate
+++    if (cached != null && (now - lastCheckTimestamp) < CACHE_DURATION_MS) {
+++      return@withContext cached
+++    }
+++
+++    try {
+++      val request = Request.Builder()
+++        .url(RELEASES_API_URL)
+++        .header("Accept", "application/vnd.github+json")
+++        .header("User-Agent", applicationInfo.userAgent)
+++        .build()
+++
+++      okHttpClient.newCall(request).execute().use { response ->
+++        if (!response.isSuccessful) {
+++          bark(LogPriority.WARN) { "GitHub Releases API returned HTTP ${response.code}" }
+++          return@withContext cached
+++        }
+++
+++        val jsonString = response.body.string()
+++        val releaseJson = JSONObject(jsonString)
+++
+++        val tagName = releaseJson.optString("tag_name", "")
+++        val releaseName = releaseJson.optString("name", "")
+++        val body = releaseJson.optString("body", "")
+++
+++        val remoteVersionCode = parseVersionCode(tagName)
+++          ?: parseVersionCode(releaseName)
+++          ?: return@withContext null
+++
+++        // Check if remote version is strictly newer than current installed app
+++        if (remoteVersionCode <= applicationInfo.versionCode) {
+++          cachedUpdate = null
+++          cachedDownloadUrl = null
+++          lastCheckTimestamp = now
+++          return@withContext null
+++        }
+++
+++        val remoteVersionName = parseVersionName(tagName).ifEmpty {
+++          parseVersionName(releaseName)
+++        }.ifEmpty {
+++          tagName.removePrefix("v")
+++        }
+++
+++        // Find matching APK asset for current flavor
+++        val assetsArray = releaseJson.optJSONArray("assets") ?: return@withContext null
+++        var matchedDownloadUrl: String? = null
+++        val isFoss = applicationInfo.flavor == Flavor.Foss
+++
+++        for (i in 0 until assetsArray.length()) {
+++          val asset = assetsArray.getJSONObject(i)
+++          val assetName = asset.optString("name", "").lowercase()
+++          val downloadUrl = asset.optString("browser_download_url", "")
+++
+++          if (!assetName.endsWith(".apk")) continue
+++
+++          if (isFoss && assetName.contains("foss")) {
+++            matchedDownloadUrl = downloadUrl
+++            break
+++          } else if (!isFoss && (assetName.contains("standard") || !assetName.contains("foss"))) {
+++            matchedDownloadUrl = downloadUrl
+++            break
+++          }
+++        }
+++
+++        if (matchedDownloadUrl.isNullOrBlank()) {
+++          bark(LogPriority.WARN) { "No matching APK asset found in release $tagName for flavor ${applicationInfo.flavor}" }
+++          return@withContext null
+++        }
+++
+++        cachedDownloadUrl = matchedDownloadUrl
+++        lastCheckTimestamp = now
+++
+++        val update = AppUpdate(
+++          versionName = remoteVersionName,
+++          versionCode = remoteVersionCode,
+++          releaseNotes = body.ifBlank { null },
+++        )
+++        cachedUpdate = update
+++        update
+++      }
+++    } catch (e: Exception) {
+++      bark(LogPriority.WARN, throwable = e) { "Failed to check for GitHub updates" }
+++      cached
+++    }
+++  }
+++
+++  override suspend fun installUpdate(): Flow<AppUpdateProgress> = flow {
+++    emit(AppUpdateProgress(-1L, -1L, Status.Pending))
+++
+++    val downloadUrl = cachedDownloadUrl ?: run {
+++      getAvailableUpdate()
+++      cachedDownloadUrl
+++    }
+++
+++    if (downloadUrl.isNullOrBlank()) {
+++      bark(LogPriority.ERROR) { "No download URL available for update" }
+++      emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+++      return@flow
+++    }
+++
+++    val updateDir = File(application.cacheDir, "updates")
+++    if (!updateDir.exists()) {
+++      updateDir.mkdirs()
+++    }
+++    val apkFile = File(updateDir, "campfire-update.apk")
+++    if (apkFile.exists()) {
+++      apkFile.delete()
+++    }
+++
+++    try {
+++      val request = Request.Builder()
+++        .url(downloadUrl)
+++        .header("User-Agent", applicationInfo.userAgent)
+++        .build()
+++
+++      okHttpClient.newCall(request).execute().use { response ->
+++        if (!response.isSuccessful) {
+++          bark(LogPriority.ERROR) { "Failed to download update APK: HTTP ${response.code}" }
+++          emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+++          return@flow
+++        }
+++
+++        val body = response.body
+++
+++        val totalBytes = body.contentLength()
+++        var bytesDownloaded = 0L
+++        var lastEmitTime = 0L
+++
+++        val buffer = ByteArray(32 * 1024)
+++        body.byteStream().use { input ->
+++          apkFile.outputStream().use { output ->
+++            var read: Int
+++            while (input.read(buffer).also { read = it } != -1) {
+++              output.write(buffer, 0, read)
+++              bytesDownloaded += read
+++              val now = System.currentTimeMillis()
+++              if (now - lastEmitTime > 100L || bytesDownloaded == totalBytes) {
+++                lastEmitTime = now
+++                emit(
+++                  AppUpdateProgress(
+++                    bytes = bytesDownloaded,
+++                    totalBytes = totalBytes,
+++                    status = Status.Downloading,
+++                  ),
+++                )
+++              }
+++            }
+++            output.flush()
+++          }
+++        }
+++
+++        emit(
+++          AppUpdateProgress(
+++            bytes = bytesDownloaded,
+++            totalBytes = totalBytes,
+++            status = Status.Downloaded,
+++          ),
+++        )
+++
+++        launchPackageInstaller(apkFile)
+++      }
+++    } catch (e: Exception) {
+++      bark(LogPriority.ERROR, throwable = e) { "Error downloading/installing update" }
+++      emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+++    }
+++  }.flowOn(Dispatchers.IO)
+++
+++  private fun launchPackageInstaller(apkFile: File) {
+++    try {
+++      val contentUri = FileProvider.getUriForFile(
+++        application,
+++        "${application.packageName}.update_provider",
+++        apkFile,
+++      )
+++
+++      val installIntent = Intent(Intent.ACTION_VIEW).apply {
+++        setDataAndType(contentUri, "application/vnd.android.package-archive")
+++        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+++        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+++      }
+++
+++      application.startActivity(installIntent)
+++    } catch (e: Exception) {
+++      bark(LogPriority.ERROR, throwable = e) { "Failed to launch package installer" }
+++      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !application.packageManager.canRequestPackageInstalls()) {
+++        try {
+++          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+++            data = Uri.parse("package:${application.packageName}")
+++            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+++          }
+++          application.startActivity(settingsIntent)
+++        } catch (settingsError: Exception) {
+++          bark(LogPriority.ERROR, throwable = settingsError) { "Failed to open unknown app sources settings" }
+++        }
+++      }
+++    }
+++  }
+++
+++  companion object {
+++    private const val GITHUB_REPO = "Cobolt78/Campfire"
+++    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+++    private val CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(15)
+++
+++    private fun parseVersionCode(raw: String): Long? {
+++      val match = Regex("""(?:v)?(\d+)\.(\d+)\.(\d+)(?:[.-]rc(\d+))?""", RegexOption.IGNORE_CASE).find(raw)
+++        ?: return null
+++      val (major, minor, patch, rc) = match.destructured
+++      val rcCode = rc.toIntOrNull() ?: 99
+++      return major.toLong() * 1_000_000L +
+++        minor.toLong() * 10_000L +
+++        patch.toLong() * 100L +
+++        rcCode.toLong()
+++    }
+++
+++    private fun parseVersionName(raw: String): String {
+++      val match = Regex("""(?:v)?(\d+\.\d+\.\d+(?:[.-]rc\d+)?)""", RegexOption.IGNORE_CASE).find(raw)
+++      return match?.groupValues?.get(1) ?: ""
+++    }
+++  }
+++}
++diff --git a/app/android/src/main/res/xml/update_file_paths.xml b/app/android/src/main/res/xml/update_file_paths.xml
++new file mode 100644
++index 00000000..c9cc2571
++--- /dev/null
+++++ b/app/android/src/main/res/xml/update_file_paths.xml
++@@ -0,0 +1,4 @@
+++<?xml version="1.0" encoding="utf-8"?>
+++<paths>
+++    <cache-path name="updates" path="updates/" />
+++</paths>
++diff --git a/app/android/src/preRelease/kotlin/app/campfire/android/updates/FirebaseAppUpdateSource.kt b/app/android/src/preRelease/kotlin/app/campfire/android/updates/FirebaseAppUpdateSource.kt
++index c0e8836e..1a6db5df 100644
++--- a/app/android/src/preRelease/kotlin/app/campfire/android/updates/FirebaseAppUpdateSource.kt
+++++ b/app/android/src/preRelease/kotlin/app/campfire/android/updates/FirebaseAppUpdateSource.kt
++@@ -24,8 +24,9 @@ import kotlinx.coroutines.flow.Flow
++ import kotlinx.coroutines.flow.callbackFlow
++ import kotlinx.coroutines.tasks.await
++ 
++-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
++-@Inject
+++// Disabled in favor of GitHubAppUpdateSource for custom GitHub releases
+++// @ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+++// @Inject
++ class FirebaseAppUpdateSource(
++   private val application: Application,
++   private val appInfo: ApplicationInfo,
++diff --git a/app/android/src/standardRelease/kotlin/app/campfire/android/updates/GooglePlayAppUpdateSource.kt b/app/android/src/standardRelease/kotlin/app/campfire/android/updates/GooglePlayAppUpdateSource.kt
++index c6e76769..e497fca6 100644
++--- a/app/android/src/standardRelease/kotlin/app/campfire/android/updates/GooglePlayAppUpdateSource.kt
+++++ b/app/android/src/standardRelease/kotlin/app/campfire/android/updates/GooglePlayAppUpdateSource.kt
++@@ -35,8 +35,9 @@ import kotlinx.coroutines.launch
++  * (via [PlayUpdateFlowLauncher]), the update downloads in the background while the app
++  * stays usable, and installation hands off to the platform installer once downloaded.
++  */
++-@ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
++-@Inject
+++// Disabled in favor of GitHubAppUpdateSource for custom GitHub releases
+++// @ContributesBinding(AppScope::class, replaces = [NoOpUpdateSource::class])
+++// @Inject
++ class GooglePlayAppUpdateSource(
++   private val application: Application,
++   private val updateFlowLauncher: PlayUpdateFlowLauncher,
++diff --git a/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt b/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt
++index 7b8dac4a..ecc96c47 100644
++--- a/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt
+++++ b/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt
++@@ -128,7 +128,7 @@ object AutomationScreens {
++   fun resolve(navigate: DeepLink.Navigate): Screen? = when (navigate.screen) {
++     "home" -> HomeScreen
++     "library" -> LibraryScreen()
++-    "series" -> SeriesScreen
+++    "series" -> SeriesScreen()
++     "authors" -> AuthorsScreen
++     "collections" -> CollectionsScreen
++     "playlists" -> PlaylistsScreen
++diff --git a/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt b/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt
++index 71757dbb..548cfbe4 100644
++--- a/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt
+++++ b/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt
++@@ -15,6 +15,7 @@ import java.io.IOException
++ import java.nio.channels.FileChannel
++ import java.nio.channels.FileLock
++ import java.nio.file.Files
+++import java.nio.file.StandardCopyOption
++ import java.nio.file.attribute.PosixFilePermissions
++ import java.util.Base64
++ import java.util.Properties
++@@ -342,11 +343,25 @@ internal class FileSystemPreferences : AbstractPreferences {
++       FileOutputStream(tmpFile).use { fos ->
++         serializer.write(fos, prefsCache!!)
++       }
++-      if (!tmpFile.renameTo(prefsFile)) {
++-        throw BackingStoreException(
++-          "Can't rename " +
++-            tmpFile + " to " + prefsFile,
+++      try {
+++        Files.move(
+++          tmpFile.toPath(),
+++          prefsFile.toPath(),
+++          StandardCopyOption.REPLACE_EXISTING,
+++          StandardCopyOption.ATOMIC_MOVE,
++         )
+++      } catch (e: Exception) {
+++        try {
+++          Files.move(
+++            tmpFile.toPath(),
+++            prefsFile.toPath(),
+++            StandardCopyOption.REPLACE_EXISTING,
+++          )
+++        } catch (e2: Exception) {
+++          throw BackingStoreException(
+++            "Can't rename $tmpFile to $prefsFile: $e2",
+++          )
+++        }
++       }
++     } catch (e: Exception) {
++       if (e is BackingStoreException) throw e
++diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
++index d9aeca50..2e557be3 100644
++--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
+++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
++@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
++ import androidx.compose.foundation.layout.size
++ import androidx.compose.foundation.layout.widthIn
++ import androidx.compose.foundation.shape.CircleShape
+++import androidx.compose.foundation.shape.RoundedCornerShape
++ import androidx.compose.material3.CardColors
++ import androidx.compose.material3.CardDefaults
++ import androidx.compose.material3.CircularProgressIndicator
++@@ -50,9 +51,11 @@ import androidx.compose.ui.geometry.Offset
++ import androidx.compose.ui.graphics.Color
++ import androidx.compose.ui.graphics.Shape
++ import androidx.compose.ui.text.font.FontStyle
+++import androidx.compose.ui.text.font.FontWeight
++ import androidx.compose.ui.text.style.TextOverflow
++ import androidx.compose.ui.unit.Dp
++ import androidx.compose.ui.unit.dp
+++import androidx.compose.ui.unit.sp
++ import androidx.compose.ui.zIndex
++ import app.campfire.common.compose.extensions.thenIf
++ import app.campfire.common.compose.extensions.thenIfNotNull
++@@ -60,6 +63,7 @@ import app.campfire.common.compose.icons.CampfireIcons
++ import app.campfire.common.compose.icons.rounded.CheckCircle
++ import app.campfire.common.compose.icons.rounded.Circle
++ import app.campfire.common.compose.icons.rounded.CloudDone
+++import app.campfire.common.compose.icons.rounded.Download
++ import app.campfire.common.compose.icons.rounded.FatCheck
++ import app.campfire.common.compose.icons.rounded.Warning
++ import app.campfire.common.compose.theme.colorScheme
++@@ -115,9 +119,17 @@ fun LibraryItemCard(
++   colors: CardColors = CardDefaults.elevatedCardColors(
++     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
++   ),
+++  seriesBadge: String? = null,
++ ) = SharedElementTransitionScope {
++   val animationScope = findAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation)
++ 
+++  val resolvedSeriesBadge = seriesBadge
+++    ?: item.media.metadata.seriesSequence?.takeIf { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }?.let { "#$it" }
+++    ?: item.media.metadata.series.firstOrNull { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }?.let { "#$it" }
+++    ?: item.media.metadata.seriesName?.let { name ->
+++      SERIES_SEQUENCE_REGEX.find(name)?.groupValues?.getOrNull(1)?.let { "#$it" }
+++    }
+++
++   ElevatedContentCard(
++     modifier = modifier
++       .thenIfNotNull(animationScope) { scope ->
++@@ -148,6 +160,7 @@ fun LibraryItemCard(
++               progress = progress,
++               isTransitioning = isTransitioning,
++               large = showInformation,
+++              seriesBadge = resolvedSeriesBadge,
++             )
++ 
++             if (!episode?.episode.isNullOrBlank()) {
++@@ -267,49 +280,87 @@ private fun BoxScope.ProgressDecorator(
++   progress: MediaProgress?,
++   isTransitioning: Boolean,
++   large: Boolean = true,
+++  seriesBadge: String? = null,
++ ) {
++-  progress?.let { mediaProgress ->
++-    if (mediaProgress.isFinished) {
++-      AnimatedVisibility(
++-        visible = isTransitioning,
++-        enter = fadeIn(),
++-        exit = fadeOut(),
++-        modifier = Modifier
++-          .align(Alignment.TopStart),
+++  val isFinished = progress != null && progress.isFinished
+++  val hasBadge = !seriesBadge.isNullOrBlank()
+++
+++  if (isFinished || hasBadge) {
+++    AnimatedVisibility(
+++      visible = isTransitioning,
+++      enter = fadeIn(),
+++      exit = fadeOut(),
+++      modifier = Modifier
+++        .align(Alignment.TopStart)
+++        .padding(
+++          start = if (large) 5.dp else 3.dp,
+++          top = if (large) 5.dp else 3.dp,
+++        ),
+++    ) {
+++      Row(
+++        horizontalArrangement = Arrangement.spacedBy(3.dp),
+++        verticalAlignment = Alignment.CenterVertically,
++       ) {
++-        MediaFinishedIndicator(
++-          size = if (large) 24.dp else 18.dp,
++-          modifier = Modifier
++-            .thenIf(
++-              condition = large,
++-              whenTrue = {
++-                Modifier.padding(8.dp)
++-              },
++-              whenFalse = {
++-                Modifier.padding(4.dp)
++-              },
++-            ),
++-        )
+++        if (!seriesBadge.isNullOrBlank()) {
+++          SeriesBadge(
+++            badge = seriesBadge,
+++            large = large,
+++          )
+++        }
+++        if (isFinished) {
+++          MediaFinishedIndicator(
+++            size = if (large) 20.dp else 16.dp,
+++          )
+++        }
++       }
++-    } else {
++-      AnimatedVisibility(
++-        visible = isTransitioning,
++-        enter = fadeIn(),
++-        exit = fadeOut(),
+++    }
+++  }
+++
+++  if (progress != null && !isFinished) {
+++    AnimatedVisibility(
+++      visible = isTransitioning,
+++      enter = fadeIn(),
+++      exit = fadeOut(),
+++      modifier = Modifier
+++        .align(Alignment.BottomCenter),
+++    ) {
+++      MediaProgressBar(
+++        mediaProgress = progress,
+++        trackHeight = 6.dp,
++         modifier = Modifier
++-          .align(Alignment.BottomCenter),
++-      ) {
++-        MediaProgressBar(
++-          mediaProgress = mediaProgress,
++-          trackHeight = if (large) LargeProgressBarHeight else SmallProgressBarHeight,
++-          modifier = Modifier
++-            .fillMaxWidth(),
++-        )
++-      }
+++          .fillMaxWidth(),
+++      )
++     }
++   }
++ }
++ 
+++@Composable
+++fun SeriesBadge(
+++  badge: String,
+++  modifier: Modifier = Modifier,
+++  large: Boolean = true,
+++) {
+++  Text(
+++    text = badge,
+++    style = MaterialTheme.typography.labelSmall.copy(
+++      fontSize = if (large) 11.sp else 10.sp,
+++      lineHeight = if (large) 13.sp else 12.sp,
+++      letterSpacing = 0.sp,
+++    ),
+++    fontWeight = FontWeight.Bold,
+++    color = Color.White,
+++    modifier = modifier
+++      .clip(RoundedCornerShape(4.dp))
+++      .background(
+++        color = MaterialTheme.colorScheme.scrim.copy(0.60f),
+++      )
+++      .padding(
+++        horizontal = if (large) 5.dp else 4.dp,
+++        vertical = if (large) 1.5.dp else 1.dp,
+++      ),
+++  )
+++}
+++
++ @Composable
++ private fun BoxScope.OfflineStatusDecorator(
++   offlineStatus: OfflineStatus,
++@@ -575,35 +626,42 @@ private fun LibraryItemCardEditingScrim(
++   }
++ }
++ 
+++private val MediaProgressTrackColor = Color(0x80000000)
+++private val MediaProgressColor = Color(0xFFE58B22) // vibrant orange
+++private val MediaFinishedColor = Color(0xFF4CAF50) // vibrant green
+++
++ @Composable
++ fun MediaProgressBar(
++   mediaProgress: MediaProgress,
++   modifier: Modifier = Modifier,
++-  trackColor: Color = MaterialTheme.colorScheme.primaryContainer,
++-  progressColor: Color = MaterialTheme.colorScheme.primary,
++-  trackHeight: Dp = LargeProgressBarHeight,
+++  trackColor: Color = MediaProgressTrackColor,
+++  progressColor: Color = if (mediaProgress.isFinished) MediaFinishedColor else MediaProgressColor,
+++  trackHeight: Dp = 6.dp,
++ ) {
++   Canvas(
++     modifier = modifier
+++      .fillMaxWidth()
++       .height(trackHeight),
++   ) {
++     // Draw Track
++     drawRect(
++       color = trackColor,
++       size = size,
++-      alpha = ProgressBarAlpha,
++     )
++ 
++     val cornerRadiusPx = trackHeight.toPx() / 2f
++-    val progressSize = size.copy(
++-      width = (size.width * mediaProgress.actualProgress) + cornerRadiusPx,
++-    )
++-    drawRoundRect(
++-      color = progressColor,
++-      topLeft = Offset(x = -cornerRadiusPx, y = 0f),
++-      size = progressSize,
++-      cornerRadius = CornerRadius(cornerRadiusPx),
++-    )
+++    val progressFraction = mediaProgress.actualProgress.coerceIn(0f, 1f)
+++    if (progressFraction > 0f) {
+++      val progressSize = size.copy(
+++        width = (size.width * progressFraction) + cornerRadiusPx,
+++      )
+++      drawRoundRect(
+++        color = progressColor,
+++        topLeft = Offset(x = -cornerRadiusPx, y = 0f),
+++        size = progressSize,
+++        cornerRadius = CornerRadius(cornerRadiusPx),
+++      )
+++    }
++   }
++ }
++ 
++@@ -664,13 +722,26 @@ fun OfflineStatusIndicator(
++     }
++ 
++     OfflineStatus.Available -> {
++-      Icon(
++-        CampfireIcons.Rounded.CloudDone,
++-        contentDescription = null,
++-        tint = tint,
+++      Box(
++         modifier = modifier
++-          .size(size),
++-      )
+++          .shadow(
+++            elevation = 1.dp,
+++            shape = CircleShape,
+++          )
+++          .background(
+++            color = MaterialTheme.colorScheme.scrim.copy(0.68f),
+++            shape = CircleShape,
+++          )
+++          .padding(3.dp),
+++      ) {
+++        Icon(
+++          CampfireIcons.Rounded.Download,
+++          contentDescription = null,
+++          tint = Color(0xFF4CAF50),
+++          modifier = Modifier
+++            .size(size),
+++        )
+++      }
++     }
++ 
++     OfflineStatus.Failed -> {
++@@ -690,3 +761,5 @@ private val LibraryItemMarqueeVelocityRange = 30..40
++ val SmallProgressBarHeight = 8.dp
++ val LargeProgressBarHeight = 12.dp
++ private const val ProgressBarAlpha = 0.5f
+++
+++private val SERIES_SEQUENCE_REGEX = ".*#([0-9]+(?:\\.[0-9]+)?)".toRegex()
++diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
++index a39765d8..fd10840f 100644
++--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
+++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemListItem.kt
++@@ -136,13 +136,32 @@ fun LibraryItemListItem(
++           )
++         }
++ 
++-        if (mediaProgress?.isFinished == true) {
++-          MediaFinishedIndicator(
++-            size = 18.dp,
+++        val seriesSeq = libraryItem.media.metadata.seriesSequence?.takeIf { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }
+++          ?: libraryItem.media.metadata.series.firstOrNull { it.sequence != app.campfire.core.model.SeriesSequence.UNKNOWN_SEQUENCE }?.formattedSequence?.takeIf { it.isNotBlank() }
+++
+++    
+\ No newline at end of file
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
+index ddcf1e05..954a4921 100644
+--- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
+@@ -11,6 +11,7 @@ import app.campfire.core.di.AppScope
+ import app.campfire.core.logging.bark
+ import app.campfire.core.session.UserSession
+ import app.campfire.settings.api.DeviceSettings
++import app.cash.sqldelight.async.coroutines.awaitAsList
+ import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+@@ -32,7 +33,16 @@ class DatabaseUserSessionRestorer(
+ ) : UserSessionRestorer {
+ 
+   override suspend fun restore(): UserSession = measureTimedValue {
+-    val currentUserId = deviceSettings.currentUserId ?: return@measureTimedValue UserSession.LoggedOut
++    val currentUserId = deviceSettings.currentUserId
++      ?: withContext(dispatcherProvider.databaseRead) {
++        db.serversQueries.selectAll(::ServerWithUser)
++          .awaitAsList()
++          .firstOrNull()
++          ?.userId
++      }?.also {
++        deviceSettings.currentUserId = it
++      }
++      ?: return@measureTimedValue UserSession.LoggedOut
+ 
+     val server = withContext(dispatcherProvider.databaseRead) {
+       db.serversQueries.selectByUserId(currentUserId, ::ServerWithUser)
+diff --git a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt b/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
+index 823cd918..f8324bae 100644
+--- a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
++++ b/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
+@@ -35,6 +35,19 @@ class DatabaseUserSessionRestorerTest {
+     assertThat(restorer(db).restore()).isEqualTo(UserSession.LoggedOut)
+   }
+ 
++  @Test
++  fun `restores existing account when current user id setting is missing`() = restorerTest { db ->
++    db.insertAccount(USER)
++    tokenStorage.stored += USER
++
++    assertThat(restorer(db).restore())
++      .isInstanceOf<UserSession.LoggedIn>()
++      .prop(UserSession.LoggedIn::user)
++      .prop("id") { it.id }
++      .isEqualTo(USER)
++    assertThat(deviceSettings.currentUserId).isEqualTo(USER)
++  }
++
+   @Test
+   fun `signed out when the current user's account is gone`() = restorerTest { db ->
+     deviceSettings.currentUserId = USER
 diff --git a/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt b/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt
 index d26d7ff5..80bb097d 100644
 --- a/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt
@@ -2362,6 +4201,52 @@ index 8ab31610..c22878ec 100644
      personalizedHomeRequests += libraryId
      return personalizedHomeResult(libraryId)
    }
+diff --git a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
+index 2798de1a..6f9fea73 100644
+--- a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
++++ b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
+@@ -60,13 +60,17 @@ class DefaultAuthRepository(
+     userId: UserId?,
+     networkSettings: NetworkSettings?,
+   ): Result<Unit> {
+-    if (userId == null) checkServerAvailable(serverUrl).onFailure { return Result.failure(it) }
++    val existingServer = serverRepository.getAllServers().firstOrNull { it.url.isSameServerAs(serverUrl) }
++    val targetUserId = userId ?: existingServer?.takeIf { it.user.name.equals(username, ignoreCase = true) }?.user?.id
++    if (targetUserId == null && existingServer != null) {
++      return Result.failure(AuthException.ServerAlreadyAdded(existingServer.user.name))
++    }
+     val result = api.login(serverUrl, username, password, networkSettings?.extraHeaders)
+     return processLoginResult(
+       result = result,
+       serverUrl = serverUrl,
+       serverName = serverName,
+-      userId = userId,
++      userId = targetUserId,
+       networkSettings = networkSettings,
+     ).map { }
+   }
+diff --git a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
+index ef48384e..a7b783e3 100644
+--- a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
++++ b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
+@@ -216,6 +216,17 @@ class DefaultAuthRepositoryTest {
+     assertThat(existingUserStorage.stored).isTrue()
+   }
+ 
++  @Test
++  fun `signing into an existing account with the same username is allowed even if userId is null`() = runTest {
++    serverRepository.all += server(SERVER_URL, userName = "testuser")
++    api.loginResult = Result.success(loginResponse(userDefaultLibraryId = "lib_1"))
++
++    val result = repository.authenticate(SERVER_URL, SERVER_NAME, "testuser", "pass", userId = null)
++
++    assertThat(result.isSuccess).isTrue()
++    assertThat(existingUserStorage.stored).isTrue()
++  }
++
+   @Test
+   fun `restoring onto a server that already has an account fails without asking the server`() = runTest {
+     serverRepository.all += server(SERVER_URL, userName = "alice")
 diff --git a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt
 index 5d200102..0516f4b6 100644
 --- a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt
