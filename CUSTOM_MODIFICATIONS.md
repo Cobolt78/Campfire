@@ -919,6 +919,39 @@ Addressed runtime freezes and startup crashes on the desktop client caused by ba
 5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
    - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
 
+---
+
+## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
+
+### Summary
+Fixed a lockout bug where users attempting to log in on a previously registered server encountered the error `"You're already signed in to this server as <user>. Switch to that account, or sign out of it first."` despite entering the identical username. Additionally added an automatic session restore fallback in `DatabaseUserSessionRestorer` to recover the active account from the database if `deviceSettings.currentUserId` was lost or unset in `config.properties`.
+
+### Root Cause
+1. **False Positive in `DefaultAuthRepository.authenticate`**:
+   - When entering credentials on the login screen (`userId == null`), the app called `checkServerAvailable(serverUrl)`.
+   - `checkServerAvailable` checked only whether the server URL was present in `serverRepository.getAllServers()`. If found, it immediately failed with `AuthException.ServerAlreadyAdded(existing.user.name)`, blocking the *same* user from logging back into their account.
+2. **Missing Fallback in `DatabaseUserSessionRestorer`**:
+   - If `deviceSettings.currentUserId` was null in `config.properties` (e.g. from an unclean shutdown, cleared preferences, or missing key), `restore()` immediately returned `UserSession.LoggedOut`, dropping the desktop app onto the welcome login screen even though `campfire.db` still had a valid server and user record.
+3. **Out-of-Sync Desktop Shortcut**:
+   - The desktop shortcut `Campfire.lnk` pointed to an older build in `C:\Campfire Desktop\bin\Campfire.exe` from an earlier packaging format, bypassing newer fixes.
+
+### Key Changes
+1. **Same-User Re-Authentication (`DefaultAuthRepository.kt`)**:
+   - In `authenticate(serverUrl, serverName, username, password, userId, ...)`:
+     When `userId == null`, inspect `existingServer = serverRepository.getAllServers().firstOrNull { it.url.isSameServerAs(serverUrl) }`.
+     If `existingServer` exists and `existingServer.user.name.equals(username, ignoreCase = true)`, resolve `targetUserId = existingServer.user.id`.
+     Only throw `ServerAlreadyAdded` if `existingServer` belongs to a *different* username, preserving the one-account-per-server invariant while allowing seamless re-login for the account owner.
+   - Verified with unit test `signing into an existing account with the same username is allowed even if userId is null` in `DefaultAuthRepositoryTest.kt`.
+2. **Database Fallback for Current User ID (`UserSessionRestorer.kt`)**:
+   - If `deviceSettings.currentUserId` is null, query `db.serversQueries.selectAll(::ServerWithUser).awaitAsList().firstOrNull()?.userId`.
+   - If found, recover the user ID and persist it to `deviceSettings.currentUserId = it`, smoothly restoring `UserSession.LoggedIn` (if token exists) or `UserSession.NeedsAuthentication` (prompting password re-auth) instead of getting stranded in `LoggedOut`.
+   - Verified with unit test `restores existing account when current user id setting is missing` in `DatabaseUserSessionRestorerTest.kt`.
+3. **Desktop Packaging & Shortcut Synchronization**:
+   - Re-packaged distributable via `:app:desktop:createDistributable`.
+   - Mirrored the output to `C:\Campfire Desktop`.
+   - Updated `C:\Users\David\Desktop\Campfire.lnk` to point directly to `C:\Campfire Desktop\Campfire.exe`.
+
+
 
 
 

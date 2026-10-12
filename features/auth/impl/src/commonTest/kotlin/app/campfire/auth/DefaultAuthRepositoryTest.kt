@@ -217,6 +217,17 @@ class DefaultAuthRepositoryTest {
   }
 
   @Test
+  fun `signing into an existing account with the same username is allowed even if userId is null`() = runTest {
+    serverRepository.all += server(SERVER_URL, userName = "testuser")
+    api.loginResult = Result.success(loginResponse(userDefaultLibraryId = "lib_1"))
+
+    val result = repository.authenticate(SERVER_URL, SERVER_NAME, "testuser", "pass", userId = null)
+
+    assertThat(result.isSuccess).isTrue()
+    assertThat(existingUserStorage.stored).isTrue()
+  }
+
+  @Test
   fun `restoring onto a server that already has an account fails without asking the server`() = runTest {
     serverRepository.all += server(SERVER_URL, userName = "alice")
 

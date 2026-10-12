@@ -60,13 +60,17 @@ class DefaultAuthRepository(
     userId: UserId?,
     networkSettings: NetworkSettings?,
   ): Result<Unit> {
-    if (userId == null) checkServerAvailable(serverUrl).onFailure { return Result.failure(it) }
+    val existingServer = serverRepository.getAllServers().firstOrNull { it.url.isSameServerAs(serverUrl) }
+    val targetUserId = userId ?: existingServer?.takeIf { it.user.name.equals(username, ignoreCase = true) }?.user?.id
+    if (targetUserId == null && existingServer != null) {
+      return Result.failure(AuthException.ServerAlreadyAdded(existingServer.user.name))
+    }
     val result = api.login(serverUrl, username, password, networkSettings?.extraHeaders)
     return processLoginResult(
       result = result,
       serverUrl = serverUrl,
       serverName = serverName,
-      userId = userId,
+      userId = targetUserId,
       networkSettings = networkSettings,
     ).map { }
   }

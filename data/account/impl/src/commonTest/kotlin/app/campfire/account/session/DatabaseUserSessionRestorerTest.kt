@@ -36,6 +36,19 @@ class DatabaseUserSessionRestorerTest {
   }
 
   @Test
+  fun `restores existing account when current user id setting is missing`() = restorerTest { db ->
+    db.insertAccount(USER)
+    tokenStorage.stored += USER
+
+    assertThat(restorer(db).restore())
+      .isInstanceOf<UserSession.LoggedIn>()
+      .prop(UserSession.LoggedIn::user)
+      .prop("id") { it.id }
+      .isEqualTo(USER)
+    assertThat(deviceSettings.currentUserId).isEqualTo(USER)
+  }
+
+  @Test
   fun `signed out when the current user's account is gone`() = restorerTest { db ->
     deviceSettings.currentUserId = USER
 

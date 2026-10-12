@@ -11,6 +11,7 @@ import app.campfire.core.di.AppScope
 import app.campfire.core.logging.bark
 import app.campfire.core.session.UserSession
 import app.campfire.settings.api.DeviceSettings
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -32,7 +33,16 @@ class DatabaseUserSessionRestorer(
 ) : UserSessionRestorer {
 
   override suspend fun restore(): UserSession = measureTimedValue {
-    val currentUserId = deviceSettings.currentUserId ?: return@measureTimedValue UserSession.LoggedOut
+    val currentUserId = deviceSettings.currentUserId
+      ?: withContext(dispatcherProvider.databaseRead) {
+        db.serversQueries.selectAll(::ServerWithUser)
+          .awaitAsList()
+          .firstOrNull()
+          ?.userId
+      }?.also {
+        deviceSettings.currentUserId = it
+      }
+      ?: return@measureTimedValue UserSession.LoggedOut
 
     val server = withContext(dispatcherProvider.databaseRead) {
       db.serversQueries.selectByUserId(currentUserId, ::ServerWithUser)
