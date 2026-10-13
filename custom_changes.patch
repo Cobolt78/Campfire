@@ -1,8 +1,8 @@
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..1dcbc292 100644
+index c0278c85..831f7e37 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -19,6 +19,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -19,6 +19,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Other Notes & Contributions
  
@@ -23,6 +23,11 @@ index c0278c85..1dcbc292 100644
 +  - App version displayed on bottom row of navigation drawer.
 +  - Configurable action confirmations and warn-on-cellular downloads safeguards.
 +  - Reset sleep timer on pause setting and shake-to-reset haptic confirmation.
++  - **Server-Synced Audible Series Tracking & Completion Filters**:
++    - Seamlessly integrates with Audiobookshelf server Audible series provider endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`).
++    - Added Series **Completion** filters (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`).
++    - Upcoming releases screen syncs directly from Audiobookshelf server with 100% backwards compatibility and instant fallback to local 28-day scanning when connected to vanilla upstream servers.
++    - Added top bar status subtitle indicator showing "Synced from server" or "Scanned on device".
 +
 +### Changed
 +
@@ -50,10 +55,10 @@ index c0278c85..1dcbc292 100644
  ### Added
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..724fb3ca
+index 00000000..ef9caad9
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1022 @@
+@@ -0,0 +1,1079 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -99,6 +104,9 @@ index 00000000..724fb3ca
 +36. [Porting Custom Features to Upstream 1.2.1 Base & Metro DI (v1.2.18)](#36-porting-custom-features-to-upstream-121-base--metro-di-v1218)
 +37. [Series Badge Refinement & Crash Fix (v1.2.20)](#37-series-badge-refinement--crash-fix-v1220)
 +38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
++39. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
++40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
++41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1220)
 +
 +---
 +
@@ -1067,6 +1075,60 @@ index 00000000..724fb3ca
 +* `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/DiscoverScanWorker.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/InProcessDiscoverScanTrackerTest.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
++
++---
++
++## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)
++
++### Summary
++Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
++
++### Key Details
++1. **Series Completion Filters & Sorting**:
++   - Added `ContentFilter.Completion` with `HasMissing`, `Complete`, `HasUpcoming` to `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`.
++   - Added `ContentSortMode.MissingBooks` (`missingBooks`) and `ContentSortMode.UpcomingDate` (`upcomingDate`) to `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`.
++   - Enabled completion filtering in series filter bottom sheet (`ContentFilterBottomSheet.kt`, `ContentFilterPresenter.kt`, `ContentFilterUiState.kt`).
++   - Enabled sort options in `SortModeBottomSheet.kt`.
++   - Added strings in `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`.
++2. **Network DTOs & API Methods**:
++   - Created `SeriesProviderEntryDto.kt` in `data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt` modeling upcoming releases, missing books, entries, and scan status.
++   - Added `getUpcomingReleases`, `getMissingBooks`, `getSeriesProviderEntries`, `getSeriesProviderStatus`, `startSeriesProviderScan`, and `cancelSeriesProviderScan` to `AudioBookShelfApi.kt` and `KtorAudioBookShelfApi.kt`.
++3. **Database & Cache Sync (`SeriesInfoStore` & `BookInfoRegistry`)**:
++   - Added `SeriesInfoStore.putServerEntries(userId, providerId, seriesName, series)` to write server-scraped series entries directly into `seriesInfoCacheQueries`.
++   - Added `syncServerUpcomingAndMissing` to `BookInfoRegistry` and `DefaultBookInfoRegistry.kt`: queries `/api/libraries/:id/upcoming-releases` and `/api/libraries/:id/missing-books`, writes directly into cache, and returns `true` on success.
++4. **Adaptive Fallback in `SeriesScanner`**:
++   - `SeriesScanner` checks `syncServerUpcomingAndMissing` first. If server returns upcoming entries, it marks progress as `isServerSynced = true` and finishes instantly with zero mobile battery drain.
++   - If the server returns 404 (vanilla ABS upstream server without the Audible provider extension), `syncServerUpcomingAndMissing` returns `false`, and `SeriesScanner` immediately falls back to its 28-day local delta scanning against the Audible catalog.
++5. **UI Scan Source Indicator**:
++   - `DiscoverScanState.Completed` tracks `isServerSynced: Boolean`.
++   - `DiscoverScanStateStore` persists `isServerSynced` per user.
++   - `UpcomingUi.kt` top app bar displays "Synced from server" or "Scanned on device" under "Upcoming" when a scan has completed.
++
++### Modified Files:
++* `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`
++* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
++* `data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt`
++* `data/bookinfo/impl/build.gradle.kts`
++* `data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt`
++* `data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt`
++* `data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt`
++* `data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt`
++* `data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt` (new)
++* `data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt`
++* `data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt`
++* `features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt`
++* `features/discover/impl/build.gradle.kts`
++* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt`
++* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt`
++* `features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml`
++* `features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt`
++* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
++* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt`
++* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt`
++* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt`
++* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
++* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
++
 +
 +
 +
@@ -2092,6 +2154,30 @@ index 32190c7a..a77e963c 100644
 +    }
 +  }.trim()
 +}
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt b/core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt
+index 15add242..623f9964 100644
+--- a/core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt
++++ b/core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt
+@@ -115,4 +115,19 @@ sealed interface ContentFilter : Parcelable {
+       Multi("multi"),
+     }
+   }
++
++  @Parcelize
++  class Completion(
++    val type: Type,
++  ) : ContentFilter {
++    override val value: String = type.value
++    override val group: String = "completion"
++
++    enum class Type(val value: String) {
++      HasMissing("has-missing"),
++      Complete("complete"),
++      HasUpcoming("has-upcoming"),
++    }
++  }
+ }
++
 diff --git a/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt b/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt
 index e883ca00..6ed5f95d 100644
 --- a/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt
@@ -2184,6 +2270,36 @@ index d298526f..70f4ec47 100644
    else -> null
  }
  
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt b/core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt
+index 39bcc1ef..6903dccd 100644
+--- a/core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt
++++ b/core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt
+@@ -44,6 +44,16 @@ enum class ContentSortMode(
+   Name("name", "name", Mode.Alphabetical),
+   LastBookAdded("last-book-added", "lastBookAdded", Mode.Normal),
+   LastBookUpdated("last-book-updated", "lastBookUpdated", Mode.Normal),
++  MissingBooks(
++    "missing-books",
++    SortNetworkKey("", "missingBooks", ""),
++    Mode.Numerical,
++  ),
++  UpcomingDate(
++    "upcoming-date",
++    SortNetworkKey("", "upcomingDate", ""),
++    Mode.Numerical,
++  ),
+   ;
+ 
+   constructor(storageKey: String, networkKey: String, mode: Mode) : this(storageKey, SortNetworkKey(networkKey), mode)
+@@ -88,6 +98,8 @@ object SeriesSortModes : SortModeConfig {
+   override val availableModes = listOf(
+     ContentSortMode.Name,
+     ContentSortMode.NumberOfBooks,
++    ContentSortMode.MissingBooks,
++    ContentSortMode.UpcomingDate,
+     ContentSortMode.AddedAt,
+     ContentSortMode.LastBookAdded,
+     ContentSortMode.LastBookUpdated,
 diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
 index ddcf1e05..954a4921 100644
 --- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
@@ -2238,6 +2354,28 @@ index 823cd918..f8324bae 100644
    @Test
    fun `signed out when the current user's account is gone`() = restorerTest { db ->
      deviceSettings.currentUserId = USER
+diff --git a/data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt b/data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt
+index ceb58622..39273ed3 100644
+--- a/data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt
++++ b/data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt
+@@ -78,6 +78,17 @@ interface BookInfoRegistry {
+    * Fresh data is fetched on the next read.
+    */
+   suspend fun clearCache()
++
++  /**
++   * Attempts to sync upcoming releases and missing books from the Audiobookshelf server.
++   * Returns true if the server supports the provider endpoints and sync succeeded;
++   * returns false if the server returned 404 or failed (signaling local fallback).
++   */
++  suspend fun syncServerUpcomingAndMissing(
++    libraryId: String,
++    allSeries: List<app.campfire.core.model.Series>,
++    triggerServerScanIfRefresh: Boolean = false,
++  ): Boolean
+ }
+ 
+ /** An unreleased series entry read back from the local series cache. */
 diff --git a/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt b/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt
 index d26d7ff5..80bb097d 100644
 --- a/data/bookinfo/audible/src/commonMain/kotlin/app/campfire/bookinfo/audible/AudibleBookInfoProvider.kt
@@ -2266,11 +2404,39 @@ index 51ffcaff..2853db7b 100644
      assertThat(info.rating).isEqualTo(4.510169568993098)
      assertThat(info.ratingsCount).isEqualTo(21879)
      assertThat(info.ratingsDistribution).isEqualTo(
+diff --git a/data/bookinfo/impl/build.gradle.kts b/data/bookinfo/impl/build.gradle.kts
+index 8c18b4cd..94ca1c4e 100644
+--- a/data/bookinfo/impl/build.gradle.kts
++++ b/data/bookinfo/impl/build.gradle.kts
+@@ -25,6 +25,7 @@ kotlin {
+         api(projects.data.bookinfo.api)
+ 
+         implementation(projects.core)
++        implementation(projects.data.network.api)
+         implementation(libs.kotlinx.serialization.json)
+         implementation(libs.multiplatformsettings.core)
+         implementation(libs.multiplatformsettings.coroutines)
 diff --git a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt b/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt
-index 255bf2d8..e05705bd 100644
+index 255bf2d8..7cd9e93e 100644
 --- a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt
 +++ b/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt
-@@ -36,6 +36,7 @@ import kotlin.time.Clock
+@@ -12,12 +12,15 @@ import app.campfire.bookinfo.api.CommunitySource
+ import app.campfire.bookinfo.api.ProviderId
+ import app.campfire.bookinfo.api.ProviderLinkState
+ import app.campfire.bookinfo.api.ProviderSeries
++import app.campfire.bookinfo.api.ProviderSeriesEntry
+ import app.campfire.bookinfo.api.ProviderStatus
+ import app.campfire.bookinfo.api.SeriesFetchResult
+ import app.campfire.bookinfo.api.SeriesInfoState
+ import app.campfire.bookinfo.api.UpcomingRelease
+ import app.campfire.bookinfo.api.bestMatch
+ import app.campfire.bookinfo.api.seriesMatch
++import app.campfire.core.model.Series
++import app.campfire.network.AudioBookShelfApi
+ import app.campfire.bookinfo.store.BookInfoRateLimitedException
+ import app.campfire.bookinfo.store.BookInfoStore
+ import app.campfire.bookinfo.store.CachedBookInfo
+@@ -36,6 +39,7 @@ import kotlin.time.Clock
  import kotlinx.coroutines.ExperimentalCoroutinesApi
  import kotlinx.coroutines.flow.Flow
  import kotlinx.coroutines.flow.combine
@@ -2278,7 +2444,15 @@ index 255bf2d8..e05705bd 100644
  import kotlinx.coroutines.flow.distinctUntilChanged
  import kotlinx.coroutines.flow.first
  import kotlinx.coroutines.flow.flatMapLatest
-@@ -261,7 +262,9 @@ class DefaultBookInfoRegistry(
+@@ -56,6 +60,7 @@ class DefaultBookInfoRegistry(
+   private val store: BookInfoStore,
+   private val seriesStore: SeriesInfoStore,
+   private val userSession: UserSession,
++  private val api: AudioBookShelfApi? = null,
+ ) : BookInfoRegistry {
+ 
+   override fun observeProviders(): Flow<List<ProviderStatus>> {
+@@ -261,7 +266,9 @@ class DefaultBookInfoRegistry(
  
    override fun observeCachedUpcoming(): Flow<List<UpcomingRelease>> {
      val userId = userSession.userId ?: return flowOf(emptyList())
@@ -2289,6 +2463,160 @@ index 255bf2d8..e05705bd 100644
        rows
          .flatMap { row ->
            val providerId = ProviderId.entries.firstOrNull { it.key == row.providerKey }
+@@ -287,6 +294,153 @@ class DefaultBookInfoRegistry(
+     seriesStore.clearAll()
+   }
+ 
++  override suspend fun syncServerUpcomingAndMissing(
++    libraryId: String,
++    allSeries: List<Series>,
++    triggerServerScanIfRefresh: Boolean,
++  ): Boolean {
++    val currentApi = api ?: return false
++    val userId = userSession.userId ?: return false
++
++    val upcomingResult = currentApi.getUpcomingReleases(libraryId)
++    if (upcomingResult.isFailure) {
++      return false
++    }
++
++    if (triggerServerScanIfRefresh) {
++      try {
++        currentApi.startSeriesProviderScan(libraryId)
++      } catch (_: Exception) {
++        // Best-effort trigger
++      }
++    }
++
++    val upcomingReleases = upcomingResult.getOrNull()?.upcomingReleases ?: emptyList()
++    val missingResult = currentApi.getMissingBooks(libraryId)
++    val missingBooks = missingResult.getOrNull()?.missingBooks ?: emptyList()
++
++    // Group entries by series
++    val upcomingBySeriesName = upcomingReleases.groupBy { it.seriesName?.trim()?.lowercase().orEmpty() }
++    val missingBySeriesName = missingBooks.groupBy { it.seriesName?.trim()?.lowercase().orEmpty() }
++
++    val processedSeriesNames = mutableSetOf<String>()
++
++    for (series in allSeries) {
++      val key = series.name.trim().lowercase()
++      processedSeriesNames.add(key)
++      val upcomingForSeries = upcomingBySeriesName[key].orEmpty()
++      val missingForSeries = missingBySeriesName[key].orEmpty()
++
++      val upcomingEntries = upcomingForSeries.map { dto ->
++        ProviderSeriesEntry(
++          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${series.id}_${dto.title}",
++          position = dto.position?.toDoubleOrNull(),
++          title = dto.title,
++          releaseDate = dto.releaseDate,
++          isReleased = false,
++          providerUrl = dto.providerUrl,
++          coverUrl = dto.coverUrl,
++          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
++        )
++      }
++
++      val missingEntries = missingForSeries.map { dto ->
++        ProviderSeriesEntry(
++          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${series.id}_${dto.title}",
++          position = dto.position?.toDoubleOrNull(),
++          title = dto.title,
++          releaseDate = dto.releaseDate,
++          isReleased = true,
++          providerUrl = dto.providerUrl,
++          coverUrl = dto.coverUrl,
++          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
++        )
++      }
++
++      val allEntries = (upcomingEntries + missingEntries).sortedWith(
++        compareBy(
++          { it.position == null },
++          { it.position },
++          { it.releaseDate },
++        ),
++      )
++
++      if (allEntries.isNotEmpty()) {
++        val providerSeries = ProviderSeries(
++          providerSeriesId = series.id,
++          name = series.name,
++          isCompleted = missingEntries.isEmpty(),
++          entries = allEntries,
++        )
++        seriesStore.putServerEntries(
++          userId = userId,
++          providerId = ProviderId.Audible,
++          seriesName = series.name,
++          series = providerSeries,
++        )
++      }
++    }
++
++    // Also process any server entries for series not in allSeries (if any)
++    val remainingUpcoming = upcomingReleases.filter {
++      val key = it.seriesName?.trim()?.lowercase().orEmpty()
++      key.isNotEmpty() && !processedSeriesNames.contains(key)
++    }.groupBy { it.seriesName.orEmpty() }
++
++    for ((seriesName, items) in remainingUpcoming) {
++      val missingForSeries = missingBooks.filter {
++        it.seriesName.equals(seriesName, ignoreCase = true)
++      }
++      val upcomingEntries = items.map { dto ->
++        ProviderSeriesEntry(
++          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${dto.seriesId}_${dto.title}",
++          position = dto.position?.toDoubleOrNull(),
++          title = dto.title,
++          releaseDate = dto.releaseDate,
++          isReleased = false,
++          providerUrl = dto.providerUrl,
++          coverUrl = dto.coverUrl,
++          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
++        )
++      }
++      val missingEntries = missingForSeries.map { dto ->
++        ProviderSeriesEntry(
++          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${dto.seriesId}_${dto.title}",
++          position = dto.position?.toDoubleOrNull(),
++          title = dto.title,
++          releaseDate = dto.releaseDate,
++          isReleased = true,
++          providerUrl = dto.providerUrl,
++          coverUrl = dto.coverUrl,
++          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
++        )
++      }
++      val allEntries = (upcomingEntries + missingEntries).sortedWith(
++        compareBy(
++          { it.position == null },
++          { it.position },
++          { it.releaseDate },
++        ),
++      )
++      if (allEntries.isNotEmpty()) {
++        val providerSeries = ProviderSeries(
++          providerSeriesId = items.firstOrNull()?.seriesId ?: seriesName,
++          name = seriesName,
++          isCompleted = missingEntries.isEmpty(),
++          entries = allEntries,
++        )
++        seriesStore.putServerEntries(
++          userId = userId,
++          providerId = ProviderId.Audible,
++          seriesName = seriesName,
++          series = providerSeries,
++        )
++      }
++    }
++
++    return true
++  }
++
+   private fun streamFromStore(
+     status: ProviderStatus,
+     key: BookInfoStore.Key,
 diff --git a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/CachedSeriesInfo.kt b/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/CachedSeriesInfo.kt
 index b5b5dd1a..27794fbc 100644
 --- a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/CachedSeriesInfo.kt
@@ -2303,7 +2631,7 @@ index b5b5dd1a..27794fbc 100644
  
  internal fun CachedSeriesInfo.isStale(nowMillis: Long, currentMatchKey: String): Boolean {
 diff --git a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt b/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt
-index 230345ae..1dc58fa7 100644
+index 230345ae..43746e37 100644
 --- a/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt
 +++ b/data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt
 @@ -19,6 +19,7 @@ import dev.zacsweers.metro.Inject
@@ -2314,7 +2642,34 @@ index 230345ae..1dc58fa7 100644
  import kotlinx.coroutines.flow.map
  import kotlinx.serialization.json.Json
  import org.mobilenativefoundation.store.store5.Fetcher
-@@ -106,6 +107,7 @@ class SeriesInfoStore(
+@@ -94,6 +95,26 @@ class SeriesInfoStore(
+       ?.let { decode(it.payload) }
+   }
+ 
++  suspend fun putServerEntries(
++    userId: UserId,
++    providerId: ProviderId,
++    seriesName: String,
++    series: app.campfire.bookinfo.api.ProviderSeries,
++  ) {
++    val cachedInfo = CachedSeriesInfo(
++      series = series,
++      fetchedAt = nowMillis(),
++      matchKey = seriesName,
++    )
++    db.seriesInfoCacheQueries.upsert(
++      userId = userId,
++      providerId = providerId.key,
++      seriesName = seriesName,
++      payload = json.encodeToString(CachedSeriesInfo.serializer(), cachedInfo),
++      fetchedAt = cachedInfo.fetchedAt,
++    )
++  }
++
+   data class CachedRow(
+     val providerKey: String,
+     val seriesName: String,
+@@ -106,6 +127,7 @@ class SeriesInfoStore(
        .selectAllForUser(userId)
        .asFlow()
        .mapToList(dispatcherProvider.io)
@@ -2335,6 +2690,22 @@ index 3acb9736..bcdb176a 100644
      BookInfoDatabase.Schema
        .synchronous()
        .create(driver)
+diff --git a/data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt b/data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt
+index 41bf70c4..b924e4a7 100644
+--- a/data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt
++++ b/data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt
+@@ -76,4 +76,11 @@ class FakeBookInfoRegistry : BookInfoRegistry {
+   override suspend fun clearCache() {
+     clearCacheCount++
+   }
++
++  var syncServerResult: Boolean = false
++  override suspend fun syncServerUpcomingAndMissing(
++    libraryId: String,
++    allSeries: List<app.campfire.core.model.Series>,
++    triggerServerScanIfRefresh: Boolean,
++  ): Boolean = syncServerResult
+ }
 diff --git a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt b/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt
 index 494a9b26..de6bdd24 100644
 --- a/data/crashreporting/firebase/src/androidMain/kotlin/app/campfire/crashreporting/firebase/FirebaseCrashReporter.kt
@@ -2658,10 +3029,30 @@ index 00000000..3a1c03e9
 +  }
 +}
 diff --git a/data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt b/data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt
-index 23466e36..f23081df 100644
+index 23466e36..4e76606d 100644
 --- a/data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt
 +++ b/data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt
-@@ -83,7 +83,7 @@ interface AudioBookShelfApi {
+@@ -22,6 +22,7 @@ import app.campfire.network.models.PagedRecentEpisodesResponse
+ import app.campfire.network.models.PlaySession
+ import app.campfire.network.models.PlaybackSession
+ import app.campfire.network.models.PlaylistExpanded
++import app.campfire.network.models.MissingBooksResponse
+ import app.campfire.network.models.PlaylistItem
+ import app.campfire.network.models.PodcastFeed
+ import app.campfire.network.models.PodcastMetadata
+@@ -29,7 +30,11 @@ import app.campfire.network.models.PodcastSearchResultDto
+ import app.campfire.network.models.RssPodcastEpisode
+ import app.campfire.network.models.SearchResult
+ import app.campfire.network.models.Series
++import app.campfire.network.models.SeriesProviderEntriesResponse
++import app.campfire.network.models.SeriesProviderScanActionResponse
++import app.campfire.network.models.SeriesProviderScanStatus
+ import app.campfire.network.models.Shelf
++import app.campfire.network.models.UpcomingReleasesResponse
+ import app.campfire.network.models.User
+ 
+ interface AudioBookShelfApi {
+@@ -83,7 +88,7 @@ interface AudioBookShelfApi {
     * Get a Library's Personalized View
     * This endpoint returns a library's personalized view for home page display.
     */
@@ -2670,6 +3061,43 @@ index 23466e36..f23081df 100644
  
    /**
     * Get a podcast library's most recently published episodes, sorted publishedAt DESC. The server
+@@ -177,6 +182,36 @@ interface AudioBookShelfApi {
+    */
+   suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series>
+ 
++  /**
++   * Fetch upcoming releases discovered across series in [libraryId].
++   */
++  suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse>
++
++  /**
++   * Fetch missing books discovered across series in [libraryId].
++   */
++  suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse>
++
++  /**
++   * Fetch external provider entries (upcoming releases and missing books) for [seriesId].
++   */
++  suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse>
++
++  /**
++   * Fetch status of series provider scraper for [libraryId].
++   */
++  suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus>
++
++  /**
++   * Start series provider scraper scan for [libraryId].
++   */
++  suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse>
++
++  /**
++   * Cancel series provider scraper scan for [libraryId].
++   */
++  suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse>
++
+   //endregion
+ 
+   //region Authors
 diff --git a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt
 index fa60179e..31acd48e 100644
 --- a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt
@@ -2686,6 +3114,89 @@ index fa60179e..31acd48e 100644
  
    /* The genres of the podcast. */
    @SerialName(value = "genres")
+diff --git a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt
+new file mode 100644
+index 00000000..fec0871b
+--- /dev/null
++++ b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt
+@@ -0,0 +1,77 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.network.models
++
++import kotlinx.serialization.Serializable
++
++@Serializable
++data class SeriesProviderEntryDto(
++  val id: String? = null,
++  val libraryId: String? = null,
++  val seriesId: String? = null,
++  val seriesName: String? = null,
++  val title: String,
++  val position: String? = null,
++  val releaseDate: String? = null,
++  val asin: String? = null,
++  val coverUrl: String? = null,
++  val providerUrl: String? = null,
++  val summary: String? = null,
++  val entryType: String? = null,
++  val isReleased: Boolean = false,
++  val lastScannedAt: Long? = null,
++)
++
++@Serializable
++data class UpcomingReleasesResponse(
++  val libraryId: String? = null,
++  val upcomingReleases: List<SeriesProviderEntryDto> = emptyList(),
++  val total: Int = 0,
++  val scanStatus: SeriesProviderScanStatus? = null,
++)
++
++@Serializable
++data class MissingBooksResponse(
++  val libraryId: String? = null,
++  val missingBooks: List<SeriesProviderEntryDto> = emptyList(),
++  val total: Int = 0,
++  val scanStatus: SeriesProviderScanStatus? = null,
++)
++
++@Serializable
++data class SeriesProviderEntriesResponse(
++  val seriesId: String? = null,
++  val seriesName: String? = null,
++  val entries: List<SeriesProviderEntryDto> = emptyList(),
++)
++
++@Serializable
++data class SeriesProviderScanStatus(
++  val isScanning: Boolean = false,
++  val progress: SeriesScanProgress? = null,
++  val lastScan: SeriesScanSummary? = null,
++)
++
++@Serializable
++data class SeriesScanProgress(
++  val current: Int = 0,
++  val total: Int = 0,
++)
++
++@Serializable
++data class SeriesScanSummary(
++  val scannedAt: Long? = null,
++  val status: String? = null,
++  val seriesChecked: Int = 0,
++  val upcomingFound: Int = 0,
++  val missingFound: Int = 0,
++  val skippedCount: Int = 0,
++  val errorMessage: String? = null,
++)
++
++@Serializable
++data class SeriesProviderScanActionResponse(
++  val success: Boolean = false,
++  val message: String? = null,
++)
 diff --git a/data/network/api/src/commonTest/kotlin/app/campfire/network/models/PodcastMetadataTest.kt b/data/network/api/src/commonTest/kotlin/app/campfire/network/models/PodcastMetadataTest.kt
 new file mode 100644
 index 00000000..5c73dbe9
@@ -2823,10 +3334,27 @@ index 00000000..5c73dbe9
 +  """.trimIndent()
 +}
 diff --git a/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt b/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
-index 3a1d8f0a..7b0704e7 100644
+index 3a1d8f0a..8386a0c7 100644
 --- a/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
 +++ b/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
-@@ -61,6 +61,7 @@ import app.campfire.network.models.User
+@@ -45,6 +45,7 @@ import app.campfire.network.models.LibraryItemMinified
+ import app.campfire.network.models.LibraryStats
+ import app.campfire.network.models.ListeningStats
+ import app.campfire.network.models.MediaProgress
++import app.campfire.network.models.MissingBooksResponse
+ import app.campfire.network.models.PagedRecentEpisodesResponse
+ import app.campfire.network.models.PlaySession
+ import app.campfire.network.models.PlaybackSession
+@@ -56,11 +57,16 @@ import app.campfire.network.models.PodcastSearchResultDto
+ import app.campfire.network.models.RssPodcastEpisode
+ import app.campfire.network.models.SearchResult
+ import app.campfire.network.models.Series
++import app.campfire.network.models.SeriesProviderEntriesResponse
++import app.campfire.network.models.SeriesProviderScanActionResponse
++import app.campfire.network.models.SeriesProviderScanStatus
+ import app.campfire.network.models.Shelf
++import app.campfire.network.models.UpcomingReleasesResponse
+ import app.campfire.network.models.User
  import dev.zacsweers.metro.ContributesBinding
  import dev.zacsweers.metro.Inject
  import dev.zacsweers.metro.SingleIn
@@ -2834,7 +3362,7 @@ index 3a1d8f0a..7b0704e7 100644
  import io.ktor.client.HttpClient
  import io.ktor.client.request.HttpRequestBuilder
  import io.ktor.client.request.header
-@@ -145,9 +146,16 @@ class KtorAudioBookShelfApi(
+@@ -145,9 +151,16 @@ class KtorAudioBookShelfApi(
      }
    }
  
@@ -2853,7 +3381,7 @@ index 3a1d8f0a..7b0704e7 100644
      }
    }
  
-@@ -296,9 +304,13 @@ class KtorAudioBookShelfApi(
+@@ -296,9 +309,53 @@ class KtorAudioBookShelfApi(
    }
  
    override suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series> {
@@ -2865,14 +3393,74 @@ index 3a1d8f0a..7b0704e7 100644
 +    return trySendRequest {
 +      hydratedClientRequest("/api/series/$seriesId")
 +    }
++  }
++
++  override suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse> {
++    return trySendRequest {
++      hydratedClientRequest("/api/libraries/$libraryId/upcoming-releases")
++    }
++  }
++
++  override suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse> {
++    return trySendRequest {
++      hydratedClientRequest("/api/libraries/$libraryId/missing-books")
++    }
++  }
++
++  override suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse> {
++    return trySendRequest {
++      hydratedClientRequest("/api/series/$seriesId/provider-entries")
++    }
++  }
++
++  override suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus> {
++    return trySendRequest {
++      hydratedClientRequest("/api/libraries/$libraryId/series-provider/status")
++    }
++  }
++
++  override suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> {
++    return trySendRequest {
++      hydratedClientRequest("/api/libraries/$libraryId/series-provider/scan") {
++        method = HttpMethod.Post
++      }
++    }
++  }
++
++  override suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> {
++    return trySendRequest {
++      hydratedClientRequest("/api/libraries/$libraryId/series-provider/cancel") {
++        method = HttpMethod.Post
++      }
++    }
    }
  
    override suspend fun getAuthors(
 diff --git a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
-index 8ab31610..c22878ec 100644
+index 8ab31610..bee7c4f2 100644
 --- a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
 +++ b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
-@@ -126,7 +126,7 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
+@@ -20,6 +20,7 @@ import app.campfire.network.models.LibraryItemMinified
+ import app.campfire.network.models.LibraryStats
+ import app.campfire.network.models.ListeningStats
+ import app.campfire.network.models.MediaProgress
++import app.campfire.network.models.MissingBooksResponse
+ import app.campfire.network.models.PagedRecentEpisodesResponse
+ import app.campfire.network.models.PlaySession
+ import app.campfire.network.models.PlaybackSession
+@@ -31,7 +32,11 @@ import app.campfire.network.models.PodcastSearchResultDto
+ import app.campfire.network.models.RssPodcastEpisode
+ import app.campfire.network.models.SearchResult
+ import app.campfire.network.models.Series
++import app.campfire.network.models.SeriesProviderEntriesResponse
++import app.campfire.network.models.SeriesProviderScanActionResponse
++import app.campfire.network.models.SeriesProviderScanStatus
+ import app.campfire.network.models.Shelf
++import app.campfire.network.models.UpcomingReleasesResponse
+ import app.campfire.network.models.User
+ 
+ class FakeAudioBookShelfApi : AudioBookShelfApi {
+@@ -126,7 +131,7 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
      return libraryStatsResult(libraryId)
    }
  
@@ -2881,6 +3469,31 @@ index 8ab31610..c22878ec 100644
      personalizedHomeRequests += libraryId
      return personalizedHomeResult(libraryId)
    }
+@@ -195,6 +200,24 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
+     TODO("Not yet implemented")
+   }
+ 
++  override suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse> =
++    Result.success(UpcomingReleasesResponse(libraryId = libraryId))
++
++  override suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse> =
++    Result.success(MissingBooksResponse(libraryId = libraryId))
++
++  override suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse> =
++    Result.success(SeriesProviderEntriesResponse(seriesId = seriesId))
++
++  override suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus> =
++    Result.success(SeriesProviderScanStatus())
++
++  override suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> =
++    Result.success(SeriesProviderScanActionResponse(success = true))
++
++  override suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> =
++    Result.success(SeriesProviderScanActionResponse(success = true))
++
+   override suspend fun getAuthors(
+     libraryId: String,
+     sortMode: String?,
 diff --git a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
 index 2798de1a..6f9fea73 100644
 --- a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
@@ -2927,6 +3540,30 @@ index ef48384e..a7b783e3 100644
    @Test
    fun `restoring onto a server that already has an account fails without asking the server`() = runTest {
      serverRepository.all += server(SERVER_URL, userName = "alice")
+diff --git a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt b/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
+index 385366ff..fade3c78 100644
+--- a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
++++ b/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
+@@ -62,5 +62,7 @@ sealed interface DiscoverScanState {
+      * next scan picks up from the cache checkpoint.
+      */
+     val rateLimited: Boolean = false,
++    /** Whether the scan completed by syncing directly from an Audiobookshelf server. */
++    val isServerSynced: Boolean = false,
+   ) : DiscoverScanState
+ }
+diff --git a/features/discover/impl/build.gradle.kts b/features/discover/impl/build.gradle.kts
+index 5012c685..8978858c 100644
+--- a/features/discover/impl/build.gradle.kts
++++ b/features/discover/impl/build.gradle.kts
+@@ -15,6 +15,7 @@ kotlin {
+         implementation(projects.core)
+         implementation(projects.features.series.api)
+         implementation(projects.data.bookinfo.api)
++        implementation(projects.features.user.api)
+ 
+         implementation(libs.multiplatformsettings.core)
+         implementation(libs.multiplatformsettings.coroutines)
 diff --git a/features/discover/impl/src/androidMain/kotlin/app/campfire/discover/AndroidDiscoverScanTracker.kt b/features/discover/impl/src/androidMain/kotlin/app/campfire/discover/AndroidDiscoverScanTracker.kt
 index d0bd066e..1b32a6ab 100644
 --- a/features/discover/impl/src/androidMain/kotlin/app/campfire/discover/AndroidDiscoverScanTracker.kt
@@ -3017,7 +3654,7 @@ index 7760973f..a7002f72 100644
      const val KEY_TOTAL = "total"
  
 diff --git a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt
-index a4ee4379..8573179a 100644
+index a4ee4379..ecc4eb61 100644
 --- a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt
 +++ b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt
 @@ -15,18 +15,17 @@ import com.russhwolf.settings.ObservableSettings
@@ -3043,7 +3680,11 @@ index a4ee4379..8573179a 100644
  
  /**
   * Persists the terminal metadata of the last completed scan per user. Scan
-@@ -53,14 +52,26 @@ class DiscoverScanStateStore(
+@@ -50,17 +49,31 @@ class DiscoverScanStateStore(
+       skippedCount = settings.getInt(skippedKey(), 0),
+       failedCount = settings.getInt(failedKey(), 0),
+       rateLimited = settings.getBoolean(rateLimitedKey(), false),
++      isServerSynced = settings.getBoolean(serverSyncedKey(), false),
      )
    }
  
@@ -3061,6 +3702,7 @@ index a4ee4379..8573179a 100644
      settings.putInt(skippedKey(), progress.skippedCount)
      settings.putInt(failedKey(), progress.failedCount)
      settings.putBoolean(rateLimitedKey(), progress.rateLimited)
++    settings.putBoolean(serverSyncedKey(), progress.isServerSynced)
 +    val now = fatherTime.nowInEpochMillis()
 +    if (!isDelta) {
 +      settings.putLong(fullAtKey(), now)
@@ -3072,7 +3714,7 @@ index a4ee4379..8573179a 100644
      return checkNotNull(lastCompleted())
    }
  
-@@ -69,11 +80,13 @@ class DiscoverScanStateStore(
+@@ -69,12 +82,15 @@ class DiscoverScanStateStore(
    }
  
    fun isFresh(completed: DiscoverScanState.Completed): Boolean {
@@ -3087,6 +3729,8 @@ index a4ee4379..8573179a 100644
    private fun skippedKey() = "discover_scan_skipped_${userSession.userId.orEmpty()}"
    private fun failedKey() = "discover_scan_failed_${userSession.userId.orEmpty()}"
    private fun rateLimitedKey() = "discover_scan_rate_limited_${userSession.userId.orEmpty()}"
++  private fun serverSyncedKey() = "discover_scan_server_synced_${userSession.userId.orEmpty()}"
+ }
 diff --git a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt
 index 5d200102..da0d3e7f 100644
 --- a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/InProcessDiscoverScanTracker.kt
@@ -3162,10 +3806,31 @@ index 5d200102..da0d3e7f 100644
    }
  }
 diff --git a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt
-index cf54972b..9229cfb0 100644
+index cf54972b..b3926ae6 100644
 --- a/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt
 +++ b/features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt
-@@ -61,22 +61,43 @@ class SeriesScanner(
+@@ -8,6 +8,7 @@ import app.campfire.bookinfo.api.SeriesFetchResult
+ import app.campfire.bookinfo.api.seriesMatch
+ import app.campfire.core.model.Series
+ import app.campfire.series.api.SeriesRepository
++import app.campfire.user.api.UserRepository
+ import dev.zacsweers.metro.Inject
+ import kotlin.time.Duration.Companion.seconds
+ import kotlinx.coroutines.coroutineScope
+@@ -49,6 +50,7 @@ private val RATE_LIMIT_PAUSE = 60.seconds
+ class SeriesScanner(
+   private val seriesRepository: SeriesRepository,
+   private val bookInfoRegistry: BookInfoRegistry,
++  private val userRepository: UserRepository? = null,
+ ) {
+ 
+   data class Progress(
+@@ -58,25 +60,66 @@ class SeriesScanner(
+     val failedCount: Int,
+     /** The provider rate limited the scan and it stopped early; this is the terminal emission. */
+     val rateLimited: Boolean = false,
++    /** Whether the scan completed by syncing from a capable Audiobookshelf server. */
++    val isServerSynced: Boolean = false,
    )
  
    /**
@@ -3206,6 +3871,24 @@ index cf54972b..9229cfb0 100644
  
 +    if (allSeries.isEmpty()) {
 +      return@channelFlow
++    }
++
++    val selectedLibraryId = userRepository?.getCurrentUser()?.selectedLibraryId
++    if (selectedLibraryId != null) {
++      val serverSynced = bookInfoRegistry.syncServerUpcomingAndMissing(
++        libraryId = selectedLibraryId,
++        allSeries = allSeries,
++        triggerServerScanIfRefresh = refresh,
++      )
++      if (serverSynced) {
++        progress = progress.copy(
++          done = allSeries.size,
++          total = allSeries.size,
++          isServerSynced = true,
++        )
++        send(progress)
++        return@channelFlow
++      }
 +    }
 +
      try {
@@ -3344,6 +4027,231 @@ index 68ff3c18..7c847d46 100644
    @Test
    fun `a rate limited series is retried after the pause`() = runTest {
      seriesRepository.allSeries = listOf(
+diff --git a/features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml b/features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml
+index 90ca4ff3..a55ae462 100644
+--- a/features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml
++++ b/features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml
+@@ -13,4 +13,7 @@
+   <string name="discover_tba_group">To be announced</string>
+ 
+   <string name="cd_book_cover">%1$s cover</string>
++
++  <string name="discover_scan_server_synced">Synced from server</string>
++  <string name="discover_scan_device_local">Scanned on device</string>
+ </resources>
+diff --git a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt b/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt
+index 06d72e19..3d624d3f 100644
+--- a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt
++++ b/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt
+@@ -67,9 +67,11 @@ import campfire.features.discover.ui.generated.resources.Res
+ import campfire.features.discover.ui.generated.resources.discover_cancel_scan
+ import campfire.features.discover.ui.generated.resources.discover_empty_upcoming
+ import campfire.features.discover.ui.generated.resources.discover_scan_action
++import campfire.features.discover.ui.generated.resources.discover_scan_device_local
+ import campfire.features.discover.ui.generated.resources.discover_scan_loading_series
+ import campfire.features.discover.ui.generated.resources.discover_scan_progress
+ import campfire.features.discover.ui.generated.resources.discover_scan_rate_limited
++import campfire.features.discover.ui.generated.resources.discover_scan_server_synced
+ import campfire.features.discover.ui.generated.resources.discover_scanning_title
+ import campfire.features.discover.ui.generated.resources.upcoming_title
+ import com.slack.circuit.codegen.annotations.CircuitInject
+@@ -90,7 +92,22 @@ fun UpcomingUi(
+   Scaffold(
+     topBar = {
+       CampfireTopAppBar(
+-        title = { Text(stringResource(Res.string.upcoming_title)) },
++        title = {
++          Column {
++            Text(stringResource(Res.string.upcoming_title))
++            val scan = state.scanState as? DiscoverScanState.Completed
++            if (scan != null) {
++              Text(
++                text = stringResource(
++                  if (scan.isServerSynced) Res.string.discover_scan_server_synced
++                  else Res.string.discover_scan_device_local
++                ),
++                style = MaterialTheme.typography.labelSmall,
++                color = MaterialTheme.colorScheme.onSurfaceVariant,
++              )
++            }
++          }
++        },
+         navigationIcon = {
+           NavigationBackButton(onClick = { state.eventSink(UpcomingUiEvent.Back) })
+         },
+diff --git a/features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml b/features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml
+index 325159b3..ed8d7413 100644
+--- a/features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml
++++ b/features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml
+@@ -60,5 +60,13 @@
+   <string name="filter_value_tracks_single">Single-track</string>
+   <string name="filter_value_tracks_multi">Multi-track</string>
+ 
++  <string name="sort_mode_missing_books">Missing Books</string>
++  <string name="sort_mode_upcoming_date">Upcoming Release</string>
++
++  <string name="filter_category_completion">Completion</string>
++  <string name="filter_value_completion_has_missing">Has Missing Books</string>
++  <string name="filter_value_completion_complete">Complete Series</string>
++  <string name="filter_value_completion_has_upcoming">Has Upcoming Releases</string>
++
+   <string name="action_back">Back</string>
+ </resources>
+diff --git a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt
+index 534055ab..04f2692b 100644
+--- a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt
++++ b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt
+@@ -60,6 +60,7 @@ import app.campfire.filters.ContentFilterUi
+ import campfire.features.filters.ui.generated.resources.Res
+ import campfire.features.filters.ui.generated.resources.action_back
+ import campfire.features.filters.ui.generated.resources.filter_category_author
++import campfire.features.filters.ui.generated.resources.filter_category_completion
+ import campfire.features.filters.ui.generated.resources.filter_category_genre
+ import campfire.features.filters.ui.generated.resources.filter_category_language
+ import campfire.features.filters.ui.generated.resources.filter_category_missing
+@@ -69,6 +70,9 @@ import campfire.features.filters.ui.generated.resources.filter_category_publishe
+ import campfire.features.filters.ui.generated.resources.filter_category_series
+ import campfire.features.filters.ui.generated.resources.filter_category_tag
+ import campfire.features.filters.ui.generated.resources.filter_category_tracks
++import campfire.features.filters.ui.generated.resources.filter_value_completion_complete
++import campfire.features.filters.ui.generated.resources.filter_value_completion_has_missing
++import campfire.features.filters.ui.generated.resources.filter_value_completion_has_upcoming
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_asin
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_authors
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_description
+@@ -123,7 +127,8 @@ class OverlayContentFilterUi(
+       clazz == UiItemFilter.Narrators::class ||
+       clazz == UiItemFilter.Publishers::class ||
+       clazz == UiItemFilter.Languages::class ||
+-      clazz == UiItemFilter.Progress::class
++      clazz == UiItemFilter.Progress::class ||
++      clazz == UiItemFilter.Completion::class
+   }
+ 
+   override suspend fun showContentFilterBottomSheet(
+@@ -409,6 +414,7 @@ private fun filterGroupLabel(
+   is ContentFilter.Series -> stringResource(Res.string.filter_category_series)
+   is ContentFilter.Tags -> stringResource(Res.string.filter_category_tag)
+   is ContentFilter.Tracks -> stringResource(Res.string.filter_category_tracks)
++  is ContentFilter.Completion -> stringResource(Res.string.filter_category_completion)
+ }
+ 
+ @Composable
+@@ -425,6 +431,12 @@ private fun filterValueLabel(
+   is ContentFilter.Tags,
+   -> filter.value
+ 
++  is ContentFilter.Completion -> when (filter.type) {
++    ContentFilter.Completion.Type.HasMissing -> stringResource(Res.string.filter_value_completion_has_missing)
++    ContentFilter.Completion.Type.Complete -> stringResource(Res.string.filter_value_completion_complete)
++    ContentFilter.Completion.Type.HasUpcoming -> stringResource(Res.string.filter_value_completion_has_upcoming)
++  }
++
+   is ContentFilter.Missing -> when (filter.type) {
+     ContentFilter.Missing.Type.ASIN -> stringResource(Res.string.filter_value_missing_asin)
+     ContentFilter.Missing.Type.ISBN -> stringResource(Res.string.filter_value_missing_isbn)
+diff --git a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt
+index b5bc804c..3230d612 100644
+--- a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt
++++ b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt
+@@ -62,6 +62,10 @@ class ContentFilterPresenter(
+         UiItemFilter.Tracks(
+           values = ContentFilter.Tracks.Type.entries.toPersistentList(),
+         ),
++
++        UiItemFilter.Completion(
++          values = ContentFilter.Completion.Type.entries.toPersistentList(),
++        ),
+       ).filter { itemFilter ->
+         allowedCategories?.isAllowed(itemFilter::class) ?: true
+       }.toPersistentList(),
+@@ -73,6 +77,7 @@ class ContentFilterPresenter(
+               val entity = event.value as FilterData.Entity
+               ContentFilter.Authors(entity.id, entity.name)
+             }
++            is UiItemFilter.Completion -> ContentFilter.Completion(event.value as ContentFilter.Completion.Type)
+             is UiItemFilter.Genres -> ContentFilter.Genres(event.value as String)
+             is UiItemFilter.Languages -> ContentFilter.Languages(event.value as String)
+             is UiItemFilter.Missing -> ContentFilter.Missing(event.value as ContentFilter.Missing.Type)
+diff --git a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt
+index 701ad8f2..0895a535 100644
+--- a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt
++++ b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt
+@@ -9,6 +9,7 @@ import app.campfire.core.filter.ContentFilter
+ import app.campfire.core.model.FilterData
+ import campfire.features.filters.ui.generated.resources.Res
+ import campfire.features.filters.ui.generated.resources.filter_category_author
++import campfire.features.filters.ui.generated.resources.filter_category_completion
+ import campfire.features.filters.ui.generated.resources.filter_category_genre
+ import campfire.features.filters.ui.generated.resources.filter_category_language
+ import campfire.features.filters.ui.generated.resources.filter_category_missing
+@@ -18,6 +19,9 @@ import campfire.features.filters.ui.generated.resources.filter_category_publishe
+ import campfire.features.filters.ui.generated.resources.filter_category_series
+ import campfire.features.filters.ui.generated.resources.filter_category_tag
+ import campfire.features.filters.ui.generated.resources.filter_category_tracks
++import campfire.features.filters.ui.generated.resources.filter_value_completion_complete
++import campfire.features.filters.ui.generated.resources.filter_value_completion_has_missing
++import campfire.features.filters.ui.generated.resources.filter_value_completion_has_upcoming
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_asin
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_authors
+ import campfire.features.filters.ui.generated.resources.filter_value_missing_description
+@@ -247,6 +251,29 @@ sealed interface UiItemFilter<Value : Any> {
+       else -> false
+     }
+   }
++
++  data class Completion(
++    override val values: ImmutableList<ContentFilter.Completion.Type>,
++  ) : UiItemFilter<ContentFilter.Completion.Type> {
++    override val name = Res.string.filter_category_completion
++
++    @Composable
++    override fun valueLabel(value: ContentFilter.Completion.Type): String {
++      return when (value) {
++        ContentFilter.Completion.Type.HasMissing -> stringResource(Res.string.filter_value_completion_has_missing)
++        ContentFilter.Completion.Type.Complete -> stringResource(Res.string.filter_value_completion_complete)
++        ContentFilter.Completion.Type.HasUpcoming -> stringResource(Res.string.filter_value_completion_has_upcoming)
++      }
++    }
++
++    override fun isValueSelectedFor(
++      filter: ContentFilter,
++      value: ContentFilter.Completion.Type,
++    ): Boolean = when (filter) {
++      is ContentFilter.Completion -> value.value == filter.value
++      else -> false
++    }
++  }
+ }
+ 
+ sealed interface ItemFilterUiEvent : CircuitUiEvent {
+diff --git a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt
+index b77e5e64..0638b047 100644
+--- a/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt
++++ b/features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt
+@@ -34,6 +34,7 @@ import campfire.features.filters.ui.generated.resources.sort_mode_author_lf
+ import campfire.features.filters.ui.generated.resources.sort_mode_duration
+ import campfire.features.filters.ui.generated.resources.sort_mode_last_book_added
+ import campfire.features.filters.ui.generated.resources.sort_mode_last_book_updated
++import campfire.features.filters.ui.generated.resources.sort_mode_missing_books
+ import campfire.features.filters.ui.generated.resources.sort_mode_name
+ import campfire.features.filters.ui.generated.resources.sort_mode_number_of_books
+ import campfire.features.filters.ui.generated.resources.sort_mode_publishyear
+@@ -41,6 +42,7 @@ import campfire.features.filters.ui.generated.resources.sort_mode_sheet_title
+ import campfire.features.filters.ui.generated.resources.sort_mode_size
+ import campfire.features.filters.ui.generated.resources.sort_mode_title
+ import campfire.features.filters.ui.generated.resources.sort_mode_updatedat
++import campfire.features.filters.ui.generated.resources.sort_mode_upcoming_date
+ import com.slack.circuit.overlay.OverlayHost
+ import com.slack.circuitx.overlays.BottomSheetOverlay
+ import dev.zacsweers.metro.ContributesBinding
+@@ -165,4 +167,6 @@ val ContentSortMode.displayName
+     ContentSortMode.Name -> stringResource(Res.string.sort_mode_name)
+     ContentSortMode.LastBookAdded -> stringResource(Res.string.sort_mode_last_book_added)
+     ContentSortMode.LastBookUpdated -> stringResource(Res.string.sort_mode_last_book_updated)
++    ContentSortMode.MissingBooks -> stringResource(Res.string.sort_mode_missing_books)
++    ContentSortMode.UpcomingDate -> stringResource(Res.string.sort_mode_upcoming_date)
+   }
 diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
 index 9360b9c6..e2a38515 100644
 --- a/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
@@ -4567,6 +5475,19 @@ index c75a9317..e479cbab 100644
 +  val sortMode: ContentSortMode? = null,
 +  val sortDirection: SortDirection? = null,
  ) : BaseScreen(name = "Library")
+diff --git a/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt b/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt
+index e9e3ff49..0999ae8c 100644
+--- a/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt
++++ b/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt
+@@ -416,6 +416,8 @@ class FilteredItemQueryHelper(
+           }
+         }
+ 
++        is ContentFilter.Completion -> Unit
++
+         null -> Unit
+       }
+ 
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
 index ef03b49d..26af246d 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/book/BookPresenter.kt
