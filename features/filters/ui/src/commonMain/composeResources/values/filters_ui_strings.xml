@@ -60,5 +60,13 @@
   <string name="filter_value_tracks_single">Single-track</string>
   <string name="filter_value_tracks_multi">Multi-track</string>
 
+  <string name="sort_mode_missing_books">Missing Books</string>
+  <string name="sort_mode_upcoming_date">Upcoming Release</string>
+
+  <string name="filter_category_completion">Completion</string>
+  <string name="filter_value_completion_has_missing">Has Missing Books</string>
+  <string name="filter_value_completion_complete">Complete Series</string>
+  <string name="filter_value_completion_has_upcoming">Has Upcoming Releases</string>
+
   <string name="action_back">Back</string>
 </resources>

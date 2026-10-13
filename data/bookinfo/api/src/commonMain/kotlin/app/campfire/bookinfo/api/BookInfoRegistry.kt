@@ -78,6 +78,17 @@ interface BookInfoRegistry {
    * Fresh data is fetched on the next read.
    */
   suspend fun clearCache()
+
+  /**
+   * Attempts to sync upcoming releases and missing books from the Audiobookshelf server.
+   * Returns true if the server supports the provider endpoints and sync succeeded;
+   * returns false if the server returned 404 or failed (signaling local fallback).
+   */
+  suspend fun syncServerUpcomingAndMissing(
+    libraryId: String,
+    allSeries: List<app.campfire.core.model.Series>,
+    triggerServerScanIfRefresh: Boolean = false,
+  ): Boolean
 }
 
 /** An unreleased series entry read back from the local series cache. */

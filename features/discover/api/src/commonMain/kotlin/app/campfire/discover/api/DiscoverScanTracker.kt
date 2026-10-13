@@ -62,5 +62,7 @@ sealed interface DiscoverScanState {
      * next scan picks up from the cache checkpoint.
      */
     val rateLimited: Boolean = false,
+    /** Whether the scan completed by syncing directly from an Audiobookshelf server. */
+    val isServerSynced: Boolean = false,
   ) : DiscoverScanState
 }

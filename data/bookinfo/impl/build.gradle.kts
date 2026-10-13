@@ -25,6 +25,7 @@ kotlin {
         api(projects.data.bookinfo.api)
 
         implementation(projects.core)
+        implementation(projects.data.network.api)
         implementation(libs.kotlinx.serialization.json)
         implementation(libs.multiplatformsettings.core)
         implementation(libs.multiplatformsettings.coroutines)

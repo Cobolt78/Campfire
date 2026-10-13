@@ -8,6 +8,7 @@ import app.campfire.bookinfo.api.SeriesFetchResult
 import app.campfire.bookinfo.api.seriesMatch
 import app.campfire.core.model.Series
 import app.campfire.series.api.SeriesRepository
+import app.campfire.user.api.UserRepository
 import dev.zacsweers.metro.Inject
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.coroutineScope
@@ -49,6 +50,7 @@ private val RATE_LIMIT_PAUSE = 60.seconds
 class SeriesScanner(
   private val seriesRepository: SeriesRepository,
   private val bookInfoRegistry: BookInfoRegistry,
+  private val userRepository: UserRepository? = null,
 ) {
 
   data class Progress(
@@ -58,6 +60,8 @@ class SeriesScanner(
     val failedCount: Int,
     /** The provider rate limited the scan and it stopped early; this is the terminal emission. */
     val rateLimited: Boolean = false,
+    /** Whether the scan completed by syncing from a capable Audiobookshelf server. */
+    val isServerSynced: Boolean = false,
   )
 
   /**
@@ -96,6 +100,24 @@ class SeriesScanner(
 
     if (allSeries.isEmpty()) {
       return@channelFlow
+    }
+
+    val selectedLibraryId = userRepository?.getCurrentUser()?.selectedLibraryId
+    if (selectedLibraryId != null) {
+      val serverSynced = bookInfoRegistry.syncServerUpcomingAndMissing(
+        libraryId = selectedLibraryId,
+        allSeries = allSeries,
+        triggerServerScanIfRefresh = refresh,
+      )
+      if (serverSynced) {
+        progress = progress.copy(
+          done = allSeries.size,
+          total = allSeries.size,
+          isServerSynced = true,
+        )
+        send(progress)
+        return@channelFlow
+      }
     }
 
     try {

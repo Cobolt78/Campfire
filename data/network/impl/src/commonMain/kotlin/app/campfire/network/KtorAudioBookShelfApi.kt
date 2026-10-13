@@ -45,6 +45,7 @@ import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.models.LibraryStats
 import app.campfire.network.models.ListeningStats
 import app.campfire.network.models.MediaProgress
+import app.campfire.network.models.MissingBooksResponse
 import app.campfire.network.models.PagedRecentEpisodesResponse
 import app.campfire.network.models.PlaySession
 import app.campfire.network.models.PlaybackSession
@@ -56,7 +57,11 @@ import app.campfire.network.models.PodcastSearchResultDto
 import app.campfire.network.models.RssPodcastEpisode
 import app.campfire.network.models.SearchResult
 import app.campfire.network.models.Series
+import app.campfire.network.models.SeriesProviderEntriesResponse
+import app.campfire.network.models.SeriesProviderScanActionResponse
+import app.campfire.network.models.SeriesProviderScanStatus
 import app.campfire.network.models.Shelf
+import app.campfire.network.models.UpcomingReleasesResponse
 import app.campfire.network.models.User
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -310,6 +315,46 @@ class KtorAudioBookShelfApi(
     if (result.isSuccess) return result
     return trySendRequest {
       hydratedClientRequest("/api/series/$seriesId")
+    }
+  }
+
+  override suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/upcoming-releases")
+    }
+  }
+
+  override suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/missing-books")
+    }
+  }
+
+  override suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse> {
+    return trySendRequest {
+      hydratedClientRequest("/api/series/$seriesId/provider-entries")
+    }
+  }
+
+  override suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/series-provider/status")
+    }
+  }
+
+  override suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/series-provider/scan") {
+        method = HttpMethod.Post
+      }
+    }
+  }
+
+  override suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> {
+    return trySendRequest {
+      hydratedClientRequest("/api/libraries/$libraryId/series-provider/cancel") {
+        method = HttpMethod.Post
+      }
     }
   }
 

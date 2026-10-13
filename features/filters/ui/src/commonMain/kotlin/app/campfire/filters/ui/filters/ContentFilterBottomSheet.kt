@@ -60,6 +60,7 @@ import app.campfire.filters.ContentFilterUi
 import campfire.features.filters.ui.generated.resources.Res
 import campfire.features.filters.ui.generated.resources.action_back
 import campfire.features.filters.ui.generated.resources.filter_category_author
+import campfire.features.filters.ui.generated.resources.filter_category_completion
 import campfire.features.filters.ui.generated.resources.filter_category_genre
 import campfire.features.filters.ui.generated.resources.filter_category_language
 import campfire.features.filters.ui.generated.resources.filter_category_missing
@@ -69,6 +70,9 @@ import campfire.features.filters.ui.generated.resources.filter_category_publishe
 import campfire.features.filters.ui.generated.resources.filter_category_series
 import campfire.features.filters.ui.generated.resources.filter_category_tag
 import campfire.features.filters.ui.generated.resources.filter_category_tracks
+import campfire.features.filters.ui.generated.resources.filter_value_completion_complete
+import campfire.features.filters.ui.generated.resources.filter_value_completion_has_missing
+import campfire.features.filters.ui.generated.resources.filter_value_completion_has_upcoming
 import campfire.features.filters.ui.generated.resources.filter_value_missing_asin
 import campfire.features.filters.ui.generated.resources.filter_value_missing_authors
 import campfire.features.filters.ui.generated.resources.filter_value_missing_description
@@ -123,7 +127,8 @@ class OverlayContentFilterUi(
       clazz == UiItemFilter.Narrators::class ||
       clazz == UiItemFilter.Publishers::class ||
       clazz == UiItemFilter.Languages::class ||
-      clazz == UiItemFilter.Progress::class
+      clazz == UiItemFilter.Progress::class ||
+      clazz == UiItemFilter.Completion::class
   }
 
   override suspend fun showContentFilterBottomSheet(
@@ -409,6 +414,7 @@ private fun filterGroupLabel(
   is ContentFilter.Series -> stringResource(Res.string.filter_category_series)
   is ContentFilter.Tags -> stringResource(Res.string.filter_category_tag)
   is ContentFilter.Tracks -> stringResource(Res.string.filter_category_tracks)
+  is ContentFilter.Completion -> stringResource(Res.string.filter_category_completion)
 }
 
 @Composable
@@ -424,6 +430,12 @@ private fun filterValueLabel(
   is ContentFilter.Publishers,
   is ContentFilter.Tags,
   -> filter.value
+
+  is ContentFilter.Completion -> when (filter.type) {
+    ContentFilter.Completion.Type.HasMissing -> stringResource(Res.string.filter_value_completion_has_missing)
+    ContentFilter.Completion.Type.Complete -> stringResource(Res.string.filter_value_completion_complete)
+    ContentFilter.Completion.Type.HasUpcoming -> stringResource(Res.string.filter_value_completion_has_upcoming)
+  }
 
   is ContentFilter.Missing -> when (filter.type) {
     ContentFilter.Missing.Type.ASIN -> stringResource(Res.string.filter_value_missing_asin)

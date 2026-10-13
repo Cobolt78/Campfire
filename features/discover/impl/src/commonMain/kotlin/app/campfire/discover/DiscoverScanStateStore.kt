@@ -49,6 +49,7 @@ class DiscoverScanStateStore(
       skippedCount = settings.getInt(skippedKey(), 0),
       failedCount = settings.getInt(failedKey(), 0),
       rateLimited = settings.getBoolean(rateLimitedKey(), false),
+      isServerSynced = settings.getBoolean(serverSyncedKey(), false),
     )
   }
 
@@ -65,6 +66,7 @@ class DiscoverScanStateStore(
     settings.putInt(skippedKey(), progress.skippedCount)
     settings.putInt(failedKey(), progress.failedCount)
     settings.putBoolean(rateLimitedKey(), progress.rateLimited)
+    settings.putBoolean(serverSyncedKey(), progress.isServerSynced)
     val now = fatherTime.nowInEpochMillis()
     if (!isDelta) {
       settings.putLong(fullAtKey(), now)
@@ -90,4 +92,5 @@ class DiscoverScanStateStore(
   private fun skippedKey() = "discover_scan_skipped_${userSession.userId.orEmpty()}"
   private fun failedKey() = "discover_scan_failed_${userSession.userId.orEmpty()}"
   private fun rateLimitedKey() = "discover_scan_rate_limited_${userSession.userId.orEmpty()}"
+  private fun serverSyncedKey() = "discover_scan_server_synced_${userSession.userId.orEmpty()}"
 }

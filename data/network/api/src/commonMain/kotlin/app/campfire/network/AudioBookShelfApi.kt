@@ -22,6 +22,7 @@ import app.campfire.network.models.PagedRecentEpisodesResponse
 import app.campfire.network.models.PlaySession
 import app.campfire.network.models.PlaybackSession
 import app.campfire.network.models.PlaylistExpanded
+import app.campfire.network.models.MissingBooksResponse
 import app.campfire.network.models.PlaylistItem
 import app.campfire.network.models.PodcastFeed
 import app.campfire.network.models.PodcastMetadata
@@ -29,7 +30,11 @@ import app.campfire.network.models.PodcastSearchResultDto
 import app.campfire.network.models.RssPodcastEpisode
 import app.campfire.network.models.SearchResult
 import app.campfire.network.models.Series
+import app.campfire.network.models.SeriesProviderEntriesResponse
+import app.campfire.network.models.SeriesProviderScanActionResponse
+import app.campfire.network.models.SeriesProviderScanStatus
 import app.campfire.network.models.Shelf
+import app.campfire.network.models.UpcomingReleasesResponse
 import app.campfire.network.models.User
 
 interface AudioBookShelfApi {
@@ -176,6 +181,36 @@ interface AudioBookShelfApi {
    * Get a specific series by its id
    */
   suspend fun getSeriesById(libraryId: String, seriesId: String): Result<Series>
+
+  /**
+   * Fetch upcoming releases discovered across series in [libraryId].
+   */
+  suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse>
+
+  /**
+   * Fetch missing books discovered across series in [libraryId].
+   */
+  suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse>
+
+  /**
+   * Fetch external provider entries (upcoming releases and missing books) for [seriesId].
+   */
+  suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse>
+
+  /**
+   * Fetch status of series provider scraper for [libraryId].
+   */
+  suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus>
+
+  /**
+   * Start series provider scraper scan for [libraryId].
+   */
+  suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse>
+
+  /**
+   * Cancel series provider scraper scan for [libraryId].
+   */
+  suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse>
 
   //endregion
 

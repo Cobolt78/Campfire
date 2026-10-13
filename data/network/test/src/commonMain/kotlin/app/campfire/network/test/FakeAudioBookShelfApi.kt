@@ -20,6 +20,7 @@ import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.models.LibraryStats
 import app.campfire.network.models.ListeningStats
 import app.campfire.network.models.MediaProgress
+import app.campfire.network.models.MissingBooksResponse
 import app.campfire.network.models.PagedRecentEpisodesResponse
 import app.campfire.network.models.PlaySession
 import app.campfire.network.models.PlaybackSession
@@ -31,7 +32,11 @@ import app.campfire.network.models.PodcastSearchResultDto
 import app.campfire.network.models.RssPodcastEpisode
 import app.campfire.network.models.SearchResult
 import app.campfire.network.models.Series
+import app.campfire.network.models.SeriesProviderEntriesResponse
+import app.campfire.network.models.SeriesProviderScanActionResponse
+import app.campfire.network.models.SeriesProviderScanStatus
 import app.campfire.network.models.Shelf
+import app.campfire.network.models.UpcomingReleasesResponse
 import app.campfire.network.models.User
 
 class FakeAudioBookShelfApi : AudioBookShelfApi {
@@ -194,6 +199,24 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
   ): Result<Series> {
     TODO("Not yet implemented")
   }
+
+  override suspend fun getUpcomingReleases(libraryId: String): Result<UpcomingReleasesResponse> =
+    Result.success(UpcomingReleasesResponse(libraryId = libraryId))
+
+  override suspend fun getMissingBooks(libraryId: String): Result<MissingBooksResponse> =
+    Result.success(MissingBooksResponse(libraryId = libraryId))
+
+  override suspend fun getSeriesProviderEntries(seriesId: String): Result<SeriesProviderEntriesResponse> =
+    Result.success(SeriesProviderEntriesResponse(seriesId = seriesId))
+
+  override suspend fun getSeriesProviderStatus(libraryId: String): Result<SeriesProviderScanStatus> =
+    Result.success(SeriesProviderScanStatus())
+
+  override suspend fun startSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> =
+    Result.success(SeriesProviderScanActionResponse(success = true))
+
+  override suspend fun cancelSeriesProviderScan(libraryId: String): Result<SeriesProviderScanActionResponse> =
+    Result.success(SeriesProviderScanActionResponse(success = true))
 
   override suspend fun getAuthors(
     libraryId: String,

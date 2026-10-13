@@ -76,4 +76,11 @@ class FakeBookInfoRegistry : BookInfoRegistry {
   override suspend fun clearCache() {
     clearCacheCount++
   }
+
+  var syncServerResult: Boolean = false
+  override suspend fun syncServerUpcomingAndMissing(
+    libraryId: String,
+    allSeries: List<app.campfire.core.model.Series>,
+    triggerServerScanIfRefresh: Boolean,
+  ): Boolean = syncServerResult
 }

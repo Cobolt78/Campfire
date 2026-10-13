@@ -9,6 +9,7 @@ import app.campfire.core.filter.ContentFilter
 import app.campfire.core.model.FilterData
 import campfire.features.filters.ui.generated.resources.Res
 import campfire.features.filters.ui.generated.resources.filter_category_author
+import campfire.features.filters.ui.generated.resources.filter_category_completion
 import campfire.features.filters.ui.generated.resources.filter_category_genre
 import campfire.features.filters.ui.generated.resources.filter_category_language
 import campfire.features.filters.ui.generated.resources.filter_category_missing
@@ -18,6 +19,9 @@ import campfire.features.filters.ui.generated.resources.filter_category_publishe
 import campfire.features.filters.ui.generated.resources.filter_category_series
 import campfire.features.filters.ui.generated.resources.filter_category_tag
 import campfire.features.filters.ui.generated.resources.filter_category_tracks
+import campfire.features.filters.ui.generated.resources.filter_value_completion_complete
+import campfire.features.filters.ui.generated.resources.filter_value_completion_has_missing
+import campfire.features.filters.ui.generated.resources.filter_value_completion_has_upcoming
 import campfire.features.filters.ui.generated.resources.filter_value_missing_asin
 import campfire.features.filters.ui.generated.resources.filter_value_missing_authors
 import campfire.features.filters.ui.generated.resources.filter_value_missing_description
@@ -244,6 +248,29 @@ sealed interface UiItemFilter<Value : Any> {
       value: ContentFilter.Tracks.Type,
     ): Boolean = when (filter) {
       is ContentFilter.Tracks -> value.value == filter.value
+      else -> false
+    }
+  }
+
+  data class Completion(
+    override val values: ImmutableList<ContentFilter.Completion.Type>,
+  ) : UiItemFilter<ContentFilter.Completion.Type> {
+    override val name = Res.string.filter_category_completion
+
+    @Composable
+    override fun valueLabel(value: ContentFilter.Completion.Type): String {
+      return when (value) {
+        ContentFilter.Completion.Type.HasMissing -> stringResource(Res.string.filter_value_completion_has_missing)
+        ContentFilter.Completion.Type.Complete -> stringResource(Res.string.filter_value_completion_complete)
+        ContentFilter.Completion.Type.HasUpcoming -> stringResource(Res.string.filter_value_completion_has_upcoming)
+      }
+    }
+
+    override fun isValueSelectedFor(
+      filter: ContentFilter,
+      value: ContentFilter.Completion.Type,
+    ): Boolean = when (filter) {
+      is ContentFilter.Completion -> value.value == filter.value
       else -> false
     }
   }

@@ -115,4 +115,19 @@ sealed interface ContentFilter : Parcelable {
       Multi("multi"),
     }
   }
+
+  @Parcelize
+  class Completion(
+    val type: Type,
+  ) : ContentFilter {
+    override val value: String = type.value
+    override val group: String = "completion"
+
+    enum class Type(val value: String) {
+      HasMissing("has-missing"),
+      Complete("complete"),
+      HasUpcoming("has-upcoming"),
+    }
+  }
 }
+

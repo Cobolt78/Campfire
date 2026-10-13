@@ -44,6 +44,16 @@ enum class ContentSortMode(
   Name("name", "name", Mode.Alphabetical),
   LastBookAdded("last-book-added", "lastBookAdded", Mode.Normal),
   LastBookUpdated("last-book-updated", "lastBookUpdated", Mode.Normal),
+  MissingBooks(
+    "missing-books",
+    SortNetworkKey("", "missingBooks", ""),
+    Mode.Numerical,
+  ),
+  UpcomingDate(
+    "upcoming-date",
+    SortNetworkKey("", "upcomingDate", ""),
+    Mode.Numerical,
+  ),
   ;
 
   constructor(storageKey: String, networkKey: String, mode: Mode) : this(storageKey, SortNetworkKey(networkKey), mode)
@@ -88,6 +98,8 @@ object SeriesSortModes : SortModeConfig {
   override val availableModes = listOf(
     ContentSortMode.Name,
     ContentSortMode.NumberOfBooks,
+    ContentSortMode.MissingBooks,
+    ContentSortMode.UpcomingDate,
     ContentSortMode.AddedAt,
     ContentSortMode.LastBookAdded,
     ContentSortMode.LastBookUpdated,

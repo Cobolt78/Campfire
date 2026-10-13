@@ -62,6 +62,10 @@ class ContentFilterPresenter(
         UiItemFilter.Tracks(
           values = ContentFilter.Tracks.Type.entries.toPersistentList(),
         ),
+
+        UiItemFilter.Completion(
+          values = ContentFilter.Completion.Type.entries.toPersistentList(),
+        ),
       ).filter { itemFilter ->
         allowedCategories?.isAllowed(itemFilter::class) ?: true
       }.toPersistentList(),
@@ -73,6 +77,7 @@ class ContentFilterPresenter(
               val entity = event.value as FilterData.Entity
               ContentFilter.Authors(entity.id, entity.name)
             }
+            is UiItemFilter.Completion -> ContentFilter.Completion(event.value as ContentFilter.Completion.Type)
             is UiItemFilter.Genres -> ContentFilter.Genres(event.value as String)
             is UiItemFilter.Languages -> ContentFilter.Languages(event.value as String)
             is UiItemFilter.Missing -> ContentFilter.Missing(event.value as ContentFilter.Missing.Type)

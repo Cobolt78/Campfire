@@ -416,6 +416,8 @@ class FilteredItemQueryHelper(
           }
         }
 
+        is ContentFilter.Completion -> Unit
+
         null -> Unit
       }
 

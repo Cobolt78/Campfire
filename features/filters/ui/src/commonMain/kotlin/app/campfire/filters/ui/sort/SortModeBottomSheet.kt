@@ -34,6 +34,7 @@ import campfire.features.filters.ui.generated.resources.sort_mode_author_lf
 import campfire.features.filters.ui.generated.resources.sort_mode_duration
 import campfire.features.filters.ui.generated.resources.sort_mode_last_book_added
 import campfire.features.filters.ui.generated.resources.sort_mode_last_book_updated
+import campfire.features.filters.ui.generated.resources.sort_mode_missing_books
 import campfire.features.filters.ui.generated.resources.sort_mode_name
 import campfire.features.filters.ui.generated.resources.sort_mode_number_of_books
 import campfire.features.filters.ui.generated.resources.sort_mode_publishyear
@@ -41,6 +42,7 @@ import campfire.features.filters.ui.generated.resources.sort_mode_sheet_title
 import campfire.features.filters.ui.generated.resources.sort_mode_size
 import campfire.features.filters.ui.generated.resources.sort_mode_title
 import campfire.features.filters.ui.generated.resources.sort_mode_updatedat
+import campfire.features.filters.ui.generated.resources.sort_mode_upcoming_date
 import com.slack.circuit.overlay.OverlayHost
 import com.slack.circuitx.overlays.BottomSheetOverlay
 import dev.zacsweers.metro.ContributesBinding
@@ -165,4 +167,6 @@ val ContentSortMode.displayName
     ContentSortMode.Name -> stringResource(Res.string.sort_mode_name)
     ContentSortMode.LastBookAdded -> stringResource(Res.string.sort_mode_last_book_added)
     ContentSortMode.LastBookUpdated -> stringResource(Res.string.sort_mode_last_book_updated)
+    ContentSortMode.MissingBooks -> stringResource(Res.string.sort_mode_missing_books)
+    ContentSortMode.UpcomingDate -> stringResource(Res.string.sort_mode_upcoming_date)
   }

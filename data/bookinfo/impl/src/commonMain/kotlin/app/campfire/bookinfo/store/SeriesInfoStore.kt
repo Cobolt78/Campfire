@@ -95,6 +95,26 @@ class SeriesInfoStore(
       ?.let { decode(it.payload) }
   }
 
+  suspend fun putServerEntries(
+    userId: UserId,
+    providerId: ProviderId,
+    seriesName: String,
+    series: app.campfire.bookinfo.api.ProviderSeries,
+  ) {
+    val cachedInfo = CachedSeriesInfo(
+      series = series,
+      fetchedAt = nowMillis(),
+      matchKey = seriesName,
+    )
+    db.seriesInfoCacheQueries.upsert(
+      userId = userId,
+      providerId = providerId.key,
+      seriesName = seriesName,
+      payload = json.encodeToString(CachedSeriesInfo.serializer(), cachedInfo),
+      fetchedAt = cachedInfo.fetchedAt,
+    )
+  }
+
   data class CachedRow(
     val providerKey: String,
     val seriesName: String,

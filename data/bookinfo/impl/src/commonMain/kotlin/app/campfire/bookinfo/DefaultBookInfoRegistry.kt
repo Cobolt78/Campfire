@@ -12,12 +12,15 @@ import app.campfire.bookinfo.api.CommunitySource
 import app.campfire.bookinfo.api.ProviderId
 import app.campfire.bookinfo.api.ProviderLinkState
 import app.campfire.bookinfo.api.ProviderSeries
+import app.campfire.bookinfo.api.ProviderSeriesEntry
 import app.campfire.bookinfo.api.ProviderStatus
 import app.campfire.bookinfo.api.SeriesFetchResult
 import app.campfire.bookinfo.api.SeriesInfoState
 import app.campfire.bookinfo.api.UpcomingRelease
 import app.campfire.bookinfo.api.bestMatch
 import app.campfire.bookinfo.api.seriesMatch
+import app.campfire.core.model.Series
+import app.campfire.network.AudioBookShelfApi
 import app.campfire.bookinfo.store.BookInfoRateLimitedException
 import app.campfire.bookinfo.store.BookInfoStore
 import app.campfire.bookinfo.store.CachedBookInfo
@@ -57,6 +60,7 @@ class DefaultBookInfoRegistry(
   private val store: BookInfoStore,
   private val seriesStore: SeriesInfoStore,
   private val userSession: UserSession,
+  private val api: AudioBookShelfApi? = null,
 ) : BookInfoRegistry {
 
   override fun observeProviders(): Flow<List<ProviderStatus>> {
@@ -288,6 +292,153 @@ class DefaultBookInfoRegistry(
   override suspend fun clearCache() {
     store.clearAll()
     seriesStore.clearAll()
+  }
+
+  override suspend fun syncServerUpcomingAndMissing(
+    libraryId: String,
+    allSeries: List<Series>,
+    triggerServerScanIfRefresh: Boolean,
+  ): Boolean {
+    val currentApi = api ?: return false
+    val userId = userSession.userId ?: return false
+
+    val upcomingResult = currentApi.getUpcomingReleases(libraryId)
+    if (upcomingResult.isFailure) {
+      return false
+    }
+
+    if (triggerServerScanIfRefresh) {
+      try {
+        currentApi.startSeriesProviderScan(libraryId)
+      } catch (_: Exception) {
+        // Best-effort trigger
+      }
+    }
+
+    val upcomingReleases = upcomingResult.getOrNull()?.upcomingReleases ?: emptyList()
+    val missingResult = currentApi.getMissingBooks(libraryId)
+    val missingBooks = missingResult.getOrNull()?.missingBooks ?: emptyList()
+
+    // Group entries by series
+    val upcomingBySeriesName = upcomingReleases.groupBy { it.seriesName?.trim()?.lowercase().orEmpty() }
+    val missingBySeriesName = missingBooks.groupBy { it.seriesName?.trim()?.lowercase().orEmpty() }
+
+    val processedSeriesNames = mutableSetOf<String>()
+
+    for (series in allSeries) {
+      val key = series.name.trim().lowercase()
+      processedSeriesNames.add(key)
+      val upcomingForSeries = upcomingBySeriesName[key].orEmpty()
+      val missingForSeries = missingBySeriesName[key].orEmpty()
+
+      val upcomingEntries = upcomingForSeries.map { dto ->
+        ProviderSeriesEntry(
+          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${series.id}_${dto.title}",
+          position = dto.position?.toDoubleOrNull(),
+          title = dto.title,
+          releaseDate = dto.releaseDate,
+          isReleased = false,
+          providerUrl = dto.providerUrl,
+          coverUrl = dto.coverUrl,
+          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
+        )
+      }
+
+      val missingEntries = missingForSeries.map { dto ->
+        ProviderSeriesEntry(
+          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${series.id}_${dto.title}",
+          position = dto.position?.toDoubleOrNull(),
+          title = dto.title,
+          releaseDate = dto.releaseDate,
+          isReleased = true,
+          providerUrl = dto.providerUrl,
+          coverUrl = dto.coverUrl,
+          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
+        )
+      }
+
+      val allEntries = (upcomingEntries + missingEntries).sortedWith(
+        compareBy(
+          { it.position == null },
+          { it.position },
+          { it.releaseDate },
+        ),
+      )
+
+      if (allEntries.isNotEmpty()) {
+        val providerSeries = ProviderSeries(
+          providerSeriesId = series.id,
+          name = series.name,
+          isCompleted = missingEntries.isEmpty(),
+          entries = allEntries,
+        )
+        seriesStore.putServerEntries(
+          userId = userId,
+          providerId = ProviderId.Audible,
+          seriesName = series.name,
+          series = providerSeries,
+        )
+      }
+    }
+
+    // Also process any server entries for series not in allSeries (if any)
+    val remainingUpcoming = upcomingReleases.filter {
+      val key = it.seriesName?.trim()?.lowercase().orEmpty()
+      key.isNotEmpty() && !processedSeriesNames.contains(key)
+    }.groupBy { it.seriesName.orEmpty() }
+
+    for ((seriesName, items) in remainingUpcoming) {
+      val missingForSeries = missingBooks.filter {
+        it.seriesName.equals(seriesName, ignoreCase = true)
+      }
+      val upcomingEntries = items.map { dto ->
+        ProviderSeriesEntry(
+          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${dto.seriesId}_${dto.title}",
+          position = dto.position?.toDoubleOrNull(),
+          title = dto.title,
+          releaseDate = dto.releaseDate,
+          isReleased = false,
+          providerUrl = dto.providerUrl,
+          coverUrl = dto.coverUrl,
+          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
+        )
+      }
+      val missingEntries = missingForSeries.map { dto ->
+        ProviderSeriesEntry(
+          providerBookId = dto.asin?.takeIf { it.isNotBlank() } ?: dto.id ?: "${dto.seriesId}_${dto.title}",
+          position = dto.position?.toDoubleOrNull(),
+          title = dto.title,
+          releaseDate = dto.releaseDate,
+          isReleased = true,
+          providerUrl = dto.providerUrl,
+          coverUrl = dto.coverUrl,
+          asins = dto.asin?.let { listOf(it) } ?: emptyList(),
+        )
+      }
+      val allEntries = (upcomingEntries + missingEntries).sortedWith(
+        compareBy(
+          { it.position == null },
+          { it.position },
+          { it.releaseDate },
+        ),
+      )
+      if (allEntries.isNotEmpty()) {
+        val providerSeries = ProviderSeries(
+          providerSeriesId = items.firstOrNull()?.seriesId ?: seriesName,
+          name = seriesName,
+          isCompleted = missingEntries.isEmpty(),
+          entries = allEntries,
+        )
+        seriesStore.putServerEntries(
+          userId = userId,
+          providerId = ProviderId.Audible,
+          seriesName = seriesName,
+          series = providerSeries,
+        )
+      }
+    }
+
+    return true
   }
 
   private fun streamFromStore(

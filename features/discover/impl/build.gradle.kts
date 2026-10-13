@@ -15,6 +15,7 @@ kotlin {
         implementation(projects.core)
         implementation(projects.features.series.api)
         implementation(projects.data.bookinfo.api)
+        implementation(projects.features.user.api)
 
         implementation(libs.multiplatformsettings.core)
         implementation(libs.multiplatformsettings.coroutines)

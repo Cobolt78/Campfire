@@ -43,6 +43,9 @@ This document captures all custom features, bug fixes, and UI improvements added
 36. [Porting Custom Features to Upstream 1.2.1 Base & Metro DI (v1.2.18)](#36-porting-custom-features-to-upstream-121-base--metro-di-v1218)
 37. [Series Badge Refinement & Crash Fix (v1.2.20)](#37-series-badge-refinement--crash-fix-v1220)
 38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
+39. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
+40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
+41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1220)
 
 ---
 
@@ -1011,6 +1014,60 @@ Optimized the Upcoming Releases scanner to eliminate redundant Audible API netwo
 * `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/DiscoverScanWorker.kt`
 * `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/InProcessDiscoverScanTrackerTest.kt`
 * `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
+
+---
+
+## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)
+
+### Summary
+Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
+
+### Key Details
+1. **Series Completion Filters & Sorting**:
+   - Added `ContentFilter.Completion` with `HasMissing`, `Complete`, `HasUpcoming` to `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`.
+   - Added `ContentSortMode.MissingBooks` (`missingBooks`) and `ContentSortMode.UpcomingDate` (`upcomingDate`) to `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`.
+   - Enabled completion filtering in series filter bottom sheet (`ContentFilterBottomSheet.kt`, `ContentFilterPresenter.kt`, `ContentFilterUiState.kt`).
+   - Enabled sort options in `SortModeBottomSheet.kt`.
+   - Added strings in `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`.
+2. **Network DTOs & API Methods**:
+   - Created `SeriesProviderEntryDto.kt` in `data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt` modeling upcoming releases, missing books, entries, and scan status.
+   - Added `getUpcomingReleases`, `getMissingBooks`, `getSeriesProviderEntries`, `getSeriesProviderStatus`, `startSeriesProviderScan`, and `cancelSeriesProviderScan` to `AudioBookShelfApi.kt` and `KtorAudioBookShelfApi.kt`.
+3. **Database & Cache Sync (`SeriesInfoStore` & `BookInfoRegistry`)**:
+   - Added `SeriesInfoStore.putServerEntries(userId, providerId, seriesName, series)` to write server-scraped series entries directly into `seriesInfoCacheQueries`.
+   - Added `syncServerUpcomingAndMissing` to `BookInfoRegistry` and `DefaultBookInfoRegistry.kt`: queries `/api/libraries/:id/upcoming-releases` and `/api/libraries/:id/missing-books`, writes directly into cache, and returns `true` on success.
+4. **Adaptive Fallback in `SeriesScanner`**:
+   - `SeriesScanner` checks `syncServerUpcomingAndMissing` first. If server returns upcoming entries, it marks progress as `isServerSynced = true` and finishes instantly with zero mobile battery drain.
+   - If the server returns 404 (vanilla ABS upstream server without the Audible provider extension), `syncServerUpcomingAndMissing` returns `false`, and `SeriesScanner` immediately falls back to its 28-day local delta scanning against the Audible catalog.
+5. **UI Scan Source Indicator**:
+   - `DiscoverScanState.Completed` tracks `isServerSynced: Boolean`.
+   - `DiscoverScanStateStore` persists `isServerSynced` per user.
+   - `UpcomingUi.kt` top app bar displays "Synced from server" or "Scanned on device" under "Upcoming" when a scan has completed.
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`
+* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
+* `data/bookinfo/api/src/commonMain/kotlin/app/campfire/bookinfo/api/BookInfoRegistry.kt`
+* `data/bookinfo/impl/build.gradle.kts`
+* `data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/DefaultBookInfoRegistry.kt`
+* `data/bookinfo/impl/src/commonMain/kotlin/app/campfire/bookinfo/store/SeriesInfoStore.kt`
+* `data/bookinfo/test/src/commonMain/kotlin/app/campfire/bookinfo/test/FakeBookInfoRegistry.kt`
+* `data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt`
+* `data/network/api/src/commonMain/kotlin/app/campfire/network/models/SeriesProviderEntryDto.kt` (new)
+* `data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt`
+* `data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt`
+* `features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt`
+* `features/discover/impl/build.gradle.kts`
+* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/DiscoverScanStateStore.kt`
+* `features/discover/impl/src/commonMain/kotlin/app/campfire/discover/SeriesScanner.kt`
+* `features/discover/ui/src/commonMain/composeResources/values/discover_ui_strings.xml`
+* `features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt`
+* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
+* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterBottomSheet.kt`
+* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterPresenter.kt`
+* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt`
+* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
+* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
+
 
 
 

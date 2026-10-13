@@ -67,9 +67,11 @@ import campfire.features.discover.ui.generated.resources.Res
 import campfire.features.discover.ui.generated.resources.discover_cancel_scan
 import campfire.features.discover.ui.generated.resources.discover_empty_upcoming
 import campfire.features.discover.ui.generated.resources.discover_scan_action
+import campfire.features.discover.ui.generated.resources.discover_scan_device_local
 import campfire.features.discover.ui.generated.resources.discover_scan_loading_series
 import campfire.features.discover.ui.generated.resources.discover_scan_progress
 import campfire.features.discover.ui.generated.resources.discover_scan_rate_limited
+import campfire.features.discover.ui.generated.resources.discover_scan_server_synced
 import campfire.features.discover.ui.generated.resources.discover_scanning_title
 import campfire.features.discover.ui.generated.resources.upcoming_title
 import com.slack.circuit.codegen.annotations.CircuitInject
@@ -90,7 +92,22 @@ fun UpcomingUi(
   Scaffold(
     topBar = {
       CampfireTopAppBar(
-        title = { Text(stringResource(Res.string.upcoming_title)) },
+        title = {
+          Column {
+            Text(stringResource(Res.string.upcoming_title))
+            val scan = state.scanState as? DiscoverScanState.Completed
+            if (scan != null) {
+              Text(
+                text = stringResource(
+                  if (scan.isServerSynced) Res.string.discover_scan_server_synced
+                  else Res.string.discover_scan_device_local
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            }
+          }
+        },
         navigationIcon = {
           NavigationBackButton(onClick = { state.eventSink(UpcomingUiEvent.Back) })
         },

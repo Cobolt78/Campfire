@@ -13,4 +13,7 @@
   <string name="discover_tba_group">To be announced</string>
 
   <string name="cd_book_cover">%1$s cover</string>
+
+  <string name="discover_scan_server_synced">Synced from server</string>
+  <string name="discover_scan_device_local">Scanned on device</string>
 </resources>
