@@ -45,7 +45,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
 39. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
 40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
-41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1220)
+41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1221)
 
 ---
 
@@ -1017,7 +1017,7 @@ Optimized the Upcoming Releases scanner to eliminate redundant Audible API netwo
 
 ---
 
-## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)
+## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)
 
 ### Summary
 Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.

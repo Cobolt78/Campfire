@@ -1,11 +1,29 @@
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..831f7e37 100644
+index c0278c85..6741db5d 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -19,6 +19,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -19,6 +19,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Other Notes & Contributions
  
++## [1.2.21]
++
++### Added
++
++- **Server-Synced Audible Series Tracking & Completion Filters**:
++  - Seamlessly integrates with Audiobookshelf server Audible series provider endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`).
++  - Added Series **Completion** filters (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`).
++  - Upcoming releases screen syncs directly from Audiobookshelf server with 100% backwards compatibility and instant fallback to local 28-day scanning when connected to vanilla upstream servers.
++  - Added top bar status subtitle indicator showing "Synced from server" or "Scanned on device".
++- **Upcoming Releases Optimizations**:
++  - Implemented 28-day freshness window and delta series scanning to reduce Audible query overhead and save battery.
++- **Core Stability & Restored Features**:
++  - Restored destructive action confirmations (delete downloaded episode, mark completed).
++  - Restored headset and remote media button controls (single click play/pause, double click skip next, triple click skip previous).
++  - Restored cellular download warnings and data safeguard dialogs.
++  - Restored "What's New" entry in navigation drawer.
++  - Fixed account re-authentication and session restore fallback.
++
 +## [1.2.20]
 +
 +### Added
@@ -23,11 +41,6 @@ index c0278c85..831f7e37 100644
 +  - App version displayed on bottom row of navigation drawer.
 +  - Configurable action confirmations and warn-on-cellular downloads safeguards.
 +  - Reset sleep timer on pause setting and shake-to-reset haptic confirmation.
-+  - **Server-Synced Audible Series Tracking & Completion Filters**:
-+    - Seamlessly integrates with Audiobookshelf server Audible series provider endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`).
-+    - Added Series **Completion** filters (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`).
-+    - Upcoming releases screen syncs directly from Audiobookshelf server with 100% backwards compatibility and instant fallback to local 28-day scanning when connected to vanilla upstream servers.
-+    - Added top bar status subtitle indicator showing "Synced from server" or "Scanned on device".
 +
 +### Changed
 +
@@ -55,7 +68,7 @@ index c0278c85..831f7e37 100644
  ### Added
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..ef9caad9
+index 00000000..5017a83d
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -0,0 +1,1079 @@
@@ -106,7 +119,7 @@ index 00000000..ef9caad9
 +38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
 +39. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
 +40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
-+41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1220)
++41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1221)
 +
 +---
 +
@@ -1078,7 +1091,7 @@ index 00000000..ef9caad9
 +
 +---
 +
-+## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.20)
++## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)
 +
 +### Summary
 +Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
@@ -8708,7 +8721,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..e42923f9 100644
+index f41126a7..674abc7e 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8716,13 +8729,13 @@ index f41126a7..e42923f9 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.20
++campfire.version=1.2.21
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022099
++campfire.versionCode=1022199
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

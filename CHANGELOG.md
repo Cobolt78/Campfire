@@ -19,6 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.21]
+
+### Added
+
+- **Server-Synced Audible Series Tracking & Completion Filters**:
+  - Seamlessly integrates with Audiobookshelf server Audible series provider endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`).
+  - Added Series **Completion** filters (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`).
+  - Upcoming releases screen syncs directly from Audiobookshelf server with 100% backwards compatibility and instant fallback to local 28-day scanning when connected to vanilla upstream servers.
+  - Added top bar status subtitle indicator showing "Synced from server" or "Scanned on device".
+- **Upcoming Releases Optimizations**:
+  - Implemented 28-day freshness window and delta series scanning to reduce Audible query overhead and save battery.
+- **Core Stability & Restored Features**:
+  - Restored destructive action confirmations (delete downloaded episode, mark completed).
+  - Restored headset and remote media button controls (single click play/pause, double click skip next, triple click skip previous).
+  - Restored cellular download warnings and data safeguard dialogs.
+  - Restored "What's New" entry in navigation drawer.
+  - Fixed account re-authentication and session restore fallback.
+
 ## [1.2.20]
 
 ### Added
@@ -36,11 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - App version displayed on bottom row of navigation drawer.
   - Configurable action confirmations and warn-on-cellular downloads safeguards.
   - Reset sleep timer on pause setting and shake-to-reset haptic confirmation.
-  - **Server-Synced Audible Series Tracking & Completion Filters**:
-    - Seamlessly integrates with Audiobookshelf server Audible series provider endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`).
-    - Added Series **Completion** filters (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`).
-    - Upcoming releases screen syncs directly from Audiobookshelf server with 100% backwards compatibility and instant fallback to local 28-day scanning when connected to vanilla upstream servers.
-    - Added top bar status subtitle indicator showing "Synced from server" or "Scanned on device".
 
 ### Changed
 
