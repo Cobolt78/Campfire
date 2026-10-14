@@ -68,10 +68,10 @@ index c0278c85..6741db5d 100644
  ### Added
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..5017a83d
+index 00000000..cd1ac290
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1079 @@
+@@ -0,0 +1,1105 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -463,6 +463,9 @@ index 00000000..5017a83d
 +| `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
 +| `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
 +| `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
++| `features/series/ui/.../ContinueSeriesPresenter.kt` | Observe offline download states for next-up books |
++| `features/series/ui/.../ContinueSeriesUi.kt` | Render OfflineStatusIndicator on list & grid cards |
++| `features/series/ui/.../ContinueSeriesUiState.kt` | Added offlineStates map to UI state |
 +
 +---
 +
@@ -1141,6 +1144,29 @@ index 00000000..5017a83d
 +* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt`
 +* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
++
++---
++
++## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
++
++### Summary
++Added offline downloaded status indicators (`OfflineStatusIndicator`) to book covers in the dedicated Continue Series screen (`ContinueSeriesUi.kt`) across both the standard list card view and the alternate grid card view. Users can now immediately identify which next-up series books are downloaded to the device without having to open individual book detail screens.
++
++### Key Details
++1. **Presenter & State Ingestion (`ContinueSeriesUiState.kt`, `ContinueSeriesPresenter.kt`)**:
++   - Added `offlineStates: Map<LibraryItemId, OfflineDownload> = emptyMap()` to `ContinueSeriesUiState`.
++   - Injected `OfflineDownloadManager` into `ContinueSeriesPresenter`.
++   - Used `snapshotFlow` over `cachedItems` to dynamically observe `offlineDownloadManager.observeForItems(books)` for all `nextUpBook` items with flow distinct-until-changed conflation.
++2. **Visual Parity across List & Grid Views (`ContinueSeriesUi.kt`)**:
++   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(6.dp)` on the book cover poster in `ContinueSeriesCard` (list view).
++   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(8.dp)` on the cover box in `ContinueSeriesGridCard` (alternate grid view).
++   - Mapped `state.offlineStates[item.nextUpBook.id].asWidgetStatus()` to both cards, rendering the standard green download arrow on dark scrim circle for downloaded books, progress wheels for active downloads, and nothing when not downloaded.
++
++### Modified Files:
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt`
++
 +
 +
 +
@@ -6881,10 +6907,10 @@ index d00049fe..01092936 100644
          implementation(projects.features.user.api)
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 new file mode 100644
-index 00000000..3de4de99
+index 00000000..a78c8d59
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,190 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -6897,10 +6923,12 @@ index 00000000..3de4de99
 +import androidx.compose.runtime.mutableStateOf
 +import androidx.compose.runtime.remember
 +import androidx.compose.runtime.setValue
++import androidx.compose.runtime.snapshotFlow
 +import app.campfire.analytics.Analytics
 +import app.campfire.analytics.events.ActionEvent
 +import app.campfire.analytics.events.ContentSelected
 +import app.campfire.analytics.events.ContentType
++import app.campfire.audioplayer.offline.OfflineDownloadManager
 +import app.campfire.common.screens.ContinueSeriesScreen
 +import app.campfire.common.screens.SeriesDetailScreen
 +import app.campfire.core.di.UserScope
@@ -6915,7 +6943,11 @@ index 00000000..3de4de99
 +import com.slack.circuit.runtime.Navigator
 +import dev.zacsweers.metro.Inject
 +import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.ExperimentalCoroutinesApi
 +import kotlinx.coroutines.flow.combine
++import kotlinx.coroutines.flow.distinctUntilChanged
++import kotlinx.coroutines.flow.filterNotNull
++import kotlinx.coroutines.flow.flatMapLatest
 +import kotlinx.coroutines.flow.flowOn
 +import kotlinx.coroutines.flow.map
 +
@@ -6925,10 +6957,12 @@ index 00000000..3de4de99
 +  private val navigator: Navigator,
 +  private val seriesRepository: SeriesRepository,
 +  private val mediaProgressRepository: MediaProgressRepository,
++  private val offlineDownloadManager: OfflineDownloadManager,
 +  private val libraryViewSettings: LibraryViewSettings,
 +  private val analytics: Analytics,
 +) : NonPausablePresenter<ContinueSeriesUiState> {
 +
++  @OptIn(ExperimentalCoroutinesApi::class)
 +  @Composable
 +  override fun present(): ContinueSeriesUiState {
 +    val alternateView by remember { libraryViewSettings.observeContinueSeriesAlternateView() }.collectAsState(false)
@@ -7011,8 +7045,19 @@ index 00000000..3de4de99
 +
 +    val isLoading = cachedItems == null
 +
++    val offlineDownloads by remember {
++      snapshotFlow { cachedItems }
++        .filterNotNull()
++        .map { items -> items.map { it.nextUpBook } }
++        .distinctUntilChanged()
++        .flatMapLatest { books ->
++          offlineDownloadManager.observeForItems(books)
++        }
++    }.collectAsState(emptyMap())
++
 +    return ContinueSeriesUiState(
 +      items = cachedItems ?: emptyList(),
++      offlineStates = offlineDownloads,
 +      isLoading = isLoading,
 +      sortMode = sortMode,
 +      sortAscending = sortAscending,
@@ -7058,10 +7103,10 @@ index 00000000..3de4de99
 +}
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
 new file mode 100644
-index 00000000..f836081c
+index 00000000..5992af4c
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
-@@ -0,0 +1,422 @@
+@@ -0,0 +1,445 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -7117,6 +7162,7 @@ index 00000000..f836081c
 +import androidx.compose.ui.text.font.FontWeight
 +import androidx.compose.ui.text.style.TextOverflow
 +import androidx.compose.ui.unit.dp
++import app.campfire.audioplayer.offline.asWidgetStatus
 +import app.campfire.common.compose.CampfireWindowInsets
 +import app.campfire.common.compose.OverlappedNavigationBarInsets
 +import app.campfire.common.compose.icons.CampfireIcons
@@ -7128,11 +7174,13 @@ index 00000000..f836081c
 +import app.campfire.common.compose.widgets.EmptyState
 +import app.campfire.common.compose.widgets.ItemImage
 +import app.campfire.common.compose.widgets.NavigationBackButton
++import app.campfire.common.compose.widgets.OfflineStatusIndicator
 +import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
 +import app.campfire.common.screens.ContinueSeriesScreen
 +import app.campfire.core.di.UserScope
 +import app.campfire.core.model.LibraryItem
 +import app.campfire.core.model.Series
++import app.campfire.core.offline.OfflineStatus
 +import com.slack.circuit.codegen.annotations.CircuitInject
 +
 +@OptIn(ExperimentalMaterial3Api::class)
@@ -7243,6 +7291,7 @@ index 00000000..f836081c
 +            ) { item ->
 +              ContinueSeriesGridCard(
 +                item = item,
++                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
 +                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
 +              )
 +            }
@@ -7264,6 +7313,7 @@ index 00000000..f836081c
 +            ) { item ->
 +              ContinueSeriesCard(
 +                item = item,
++                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
 +                onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
 +                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
 +              )
@@ -7278,6 +7328,7 @@ index 00000000..f836081c
 +@Composable
 +private fun ContinueSeriesCard(
 +  item: ContinueSeriesItem,
++  offlineStatus: OfflineStatus,
 +  onSeriesClick: (Series) -> Unit,
 +  onBookClick: (LibraryItem) -> Unit,
 +  modifier: Modifier = Modifier,
@@ -7368,6 +7419,14 @@ index 00000000..f836081c
 +                contentScale = ContentScale.Crop,
 +              )
 +            }
++
++            OfflineStatusIndicator(
++              status = offlineStatus,
++              size = 18.dp,
++              modifier = Modifier
++                .align(Alignment.TopEnd)
++                .padding(6.dp),
++            )
 +          }
 +
 +          Spacer(modifier = Modifier.width(14.dp))
@@ -7437,6 +7496,7 @@ index 00000000..f836081c
 +@Composable
 +private fun ContinueSeriesGridCard(
 +  item: ContinueSeriesItem,
++  offlineStatus: OfflineStatus,
 +  onBookClick: (LibraryItem) -> Unit,
 +  modifier: Modifier = Modifier,
 +) {
@@ -7451,6 +7511,14 @@ index 00000000..f836081c
 +          contentDescription = item.nextUpBook.media.metadata.title,
 +          modifier = Modifier.fillMaxSize(),
 +          contentScale = ContentScale.Crop,
++        )
++
++        OfflineStatusIndicator(
++          status = offlineStatus,
++          size = 18.dp,
++          modifier = Modifier
++            .align(Alignment.TopEnd)
++            .padding(8.dp),
 +        )
 +      }
 +
@@ -7486,17 +7554,19 @@ index 00000000..f836081c
 +}
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt
 new file mode 100644
-index 00000000..081fb827
+index 00000000..073553c6
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,49 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
 +package app.campfire.series.ui.continueseries
 +
 +import androidx.compose.runtime.Immutable
++import app.campfire.audioplayer.offline.OfflineDownload
 +import app.campfire.core.model.LibraryItem
++import app.campfire.core.model.LibraryItemId
 +import app.campfire.core.model.MediaProgress
 +import app.campfire.core.model.Series
 +import com.slack.circuit.runtime.CircuitUiEvent
@@ -7522,6 +7592,7 @@ index 00000000..081fb827
 +@Immutable
 +data class ContinueSeriesUiState(
 +  val items: List<ContinueSeriesItem>,
++  val offlineStates: Map<LibraryItemId, OfflineDownload> = emptyMap(),
 +  val isLoading: Boolean,
 +  val sortMode: ContinueSeriesSort,
 +  val sortAscending: Boolean,

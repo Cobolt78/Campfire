@@ -389,6 +389,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
 | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
 | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
+| `features/series/ui/.../ContinueSeriesPresenter.kt` | Observe offline download states for next-up books |
+| `features/series/ui/.../ContinueSeriesUi.kt` | Render OfflineStatusIndicator on list & grid cards |
+| `features/series/ui/.../ContinueSeriesUiState.kt` | Added offlineStates map to UI state |
 
 ---
 
@@ -1067,6 +1070,29 @@ Wired Campfire client to the new Audiobookshelf server Audible series endpoints 
 * `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/filters/ContentFilterUiState.kt`
 * `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
 * `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
+
+---
+
+## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
+
+### Summary
+Added offline downloaded status indicators (`OfflineStatusIndicator`) to book covers in the dedicated Continue Series screen (`ContinueSeriesUi.kt`) across both the standard list card view and the alternate grid card view. Users can now immediately identify which next-up series books are downloaded to the device without having to open individual book detail screens.
+
+### Key Details
+1. **Presenter & State Ingestion (`ContinueSeriesUiState.kt`, `ContinueSeriesPresenter.kt`)**:
+   - Added `offlineStates: Map<LibraryItemId, OfflineDownload> = emptyMap()` to `ContinueSeriesUiState`.
+   - Injected `OfflineDownloadManager` into `ContinueSeriesPresenter`.
+   - Used `snapshotFlow` over `cachedItems` to dynamically observe `offlineDownloadManager.observeForItems(books)` for all `nextUpBook` items with flow distinct-until-changed conflation.
+2. **Visual Parity across List & Grid Views (`ContinueSeriesUi.kt`)**:
+   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(6.dp)` on the book cover poster in `ContinueSeriesCard` (list view).
+   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(8.dp)` on the cover box in `ContinueSeriesGridCard` (alternate grid view).
+   - Mapped `state.offlineStates[item.nextUpBook.id].asWidgetStatus()` to both cards, rendering the standard green download arrow on dark scrim circle for downloaded books, progress wheels for active downloads, and nothing when not downloaded.
+
+### Modified Files:
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt`
+
 
 
 

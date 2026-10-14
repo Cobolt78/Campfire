@@ -10,10 +10,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
+import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.common.screens.ContinueSeriesScreen
 import app.campfire.common.screens.SeriesDetailScreen
 import app.campfire.core.di.UserScope
@@ -28,7 +30,11 @@ import com.slack.circuit.retained.rememberRetainedSaveable
 import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -38,10 +44,12 @@ class ContinueSeriesPresenter(
   private val navigator: Navigator,
   private val seriesRepository: SeriesRepository,
   private val mediaProgressRepository: MediaProgressRepository,
+  private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
 ) : NonPausablePresenter<ContinueSeriesUiState> {
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   @Composable
   override fun present(): ContinueSeriesUiState {
     val alternateView by remember { libraryViewSettings.observeContinueSeriesAlternateView() }.collectAsState(false)
@@ -124,8 +132,19 @@ class ContinueSeriesPresenter(
 
     val isLoading = cachedItems == null
 
+    val offlineDownloads by remember {
+      snapshotFlow { cachedItems }
+        .filterNotNull()
+        .map { items -> items.map { it.nextUpBook } }
+        .distinctUntilChanged()
+        .flatMapLatest { books ->
+          offlineDownloadManager.observeForItems(books)
+        }
+    }.collectAsState(emptyMap())
+
     return ContinueSeriesUiState(
       items = cachedItems ?: emptyList(),
+      offlineStates = offlineDownloads,
       isLoading = isLoading,
       sortMode = sortMode,
       sortAscending = sortAscending,

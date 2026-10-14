@@ -4,7 +4,9 @@
 package app.campfire.series.ui.continueseries
 
 import androidx.compose.runtime.Immutable
+import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.Series
 import com.slack.circuit.runtime.CircuitUiEvent
@@ -30,6 +32,7 @@ enum class ContinueSeriesSort(val label: String) {
 @Immutable
 data class ContinueSeriesUiState(
   val items: List<ContinueSeriesItem>,
+  val offlineStates: Map<LibraryItemId, OfflineDownload> = emptyMap(),
   val isLoading: Boolean,
   val sortMode: ContinueSeriesSort,
   val sortAscending: Boolean,

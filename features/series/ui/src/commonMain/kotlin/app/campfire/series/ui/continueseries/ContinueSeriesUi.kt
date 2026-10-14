@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.OverlappedNavigationBarInsets
 import app.campfire.common.compose.icons.CampfireIcons
@@ -64,11 +65,13 @@ import app.campfire.common.compose.widgets.ElevatedContentCard
 import app.campfire.common.compose.widgets.EmptyState
 import app.campfire.common.compose.widgets.ItemImage
 import app.campfire.common.compose.widgets.NavigationBackButton
+import app.campfire.common.compose.widgets.OfflineStatusIndicator
 import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
 import app.campfire.common.screens.ContinueSeriesScreen
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.Series
+import app.campfire.core.offline.OfflineStatus
 import com.slack.circuit.codegen.annotations.CircuitInject
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -179,6 +182,7 @@ fun ContinueSeries(
             ) { item ->
               ContinueSeriesGridCard(
                 item = item,
+                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
                 onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
               )
             }
@@ -200,6 +204,7 @@ fun ContinueSeries(
             ) { item ->
               ContinueSeriesCard(
                 item = item,
+                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
                 onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
                 onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
               )
@@ -214,6 +219,7 @@ fun ContinueSeries(
 @Composable
 private fun ContinueSeriesCard(
   item: ContinueSeriesItem,
+  offlineStatus: OfflineStatus,
   onSeriesClick: (Series) -> Unit,
   onBookClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
@@ -304,6 +310,14 @@ private fun ContinueSeriesCard(
                 contentScale = ContentScale.Crop,
               )
             }
+
+            OfflineStatusIndicator(
+              status = offlineStatus,
+              size = 18.dp,
+              modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(6.dp),
+            )
           }
 
           Spacer(modifier = Modifier.width(14.dp))
@@ -373,6 +387,7 @@ private fun ContinueSeriesCard(
 @Composable
 private fun ContinueSeriesGridCard(
   item: ContinueSeriesItem,
+  offlineStatus: OfflineStatus,
   onBookClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -387,6 +402,14 @@ private fun ContinueSeriesGridCard(
           contentDescription = item.nextUpBook.media.metadata.title,
           modifier = Modifier.fillMaxSize(),
           contentScale = ContentScale.Crop,
+        )
+
+        OfflineStatusIndicator(
+          status = offlineStatus,
+          size = 18.dp,
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(8.dp),
         )
       }
 
