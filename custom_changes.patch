@@ -1,3 +1,15 @@
+diff --git a/.gitignore b/.gitignore
+index fb1f5ca2..4029ecd1 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -75,6 +75,7 @@ xcuserdata/
+ 
+ ## App packaging
+ *.ipa
++*.apk
+ *.dSYM.zip
+ *.dSYM
+ 
 diff --git a/CHANGELOG.md b/CHANGELOG.md
 index c0278c85..89c2a520 100644
 --- a/CHANGELOG.md

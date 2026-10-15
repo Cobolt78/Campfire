@@ -75,6 +75,7 @@ xcuserdata/
 
 ## App packaging
 *.ipa
+*.apk
 *.dSYM.zip
 *.dSYM
 
