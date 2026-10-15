@@ -1167,7 +1167,7 @@ Fixed critical regressions affecting progress tracking, "Continue Listening" vis
 ## 46. Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.21)
 
 ### Summary
-Resolved two major Audiobookshelf server integration issues: (1) downloaded playback (e.g. *USS Jefferson*) not appearing under "Open Listening Sessions" on the ABS server dashboard, and (2) streaming sessions (e.g. *The Night Circus*) remaining stuck at `0 sec` listened / static timestamp and failing to close when stopped or when switching books.
+Resolved Audiobookshelf server integration issues: (1) downloaded playback (e.g. *USS Jefferson*) not appearing under "Open Listening Sessions" on the ABS server dashboard, (2) streaming/local sessions remaining stuck at `0 sec` listened / static timestamp, and (3) lingering zombie sessions failing to close when stopped or when switching books.
 
 ### Key Changes
 1. **Downloaded Playback Open Listening Sessions (`ServerSessionAttacher.kt`)**:
@@ -1183,8 +1183,13 @@ Resolved two major Audiobookshelf server integration issues: (1) downloaded play
    - In `LocalSessionUpdateSynchronizer.onStateChanged`, ensured that pausing or stopping playback triggers `remoteSessionsUpdater.update(skipInterval = true)` immediately.
    - In `LocalSessionUpdateSynchronizer.onOverallTimeChanged`, initialized `lastPlayedTime = now` if it was null, preventing listening time tracking gaps.
    - In `RemoteSessionsUpdater.update`, if a sync job is already in progress and `skipInterval = true`, calls `currentSyncJob.join()` so session closing requests are never dropped.
-4. **Logcat Stripping Disabled for Release Builds (`base-proguard-rules.pro`)**:
+4. **404 Orphaned Session Hydration Unblocking (`SqlDelightSessionDataSource.kt`)**:
+   - Fixed a critical crash where `hydrateSession` called `libraryItemRepository.getLibraryItem(session.libraryItemId)` unconditionally. If an item had been deleted or purged from the library on the server, `getLibraryItem` threw an unhandled `ApiException: API Error [404]`.
+   - Because `getSessions(userId)` called `dbSessions.map { hydrateSession(it) }`, any single orphaned row aborted the entire `syncLocalSessionsToServer()` pass, preventing all active sessions from syncing to the ABS server (causing the "0 sec / stuck timestamp" bug).
+   - Wrapped item retrieval in `try/catch`: if the item 404s/fails, the orphaned session is cleanly purged from the SQLite database via `db.sessionQueries.delete(...)` and returns `null`. `getSessions` uses `mapNotNull` to gracefully unblock all subsequent active sessions.
+5. **Release Logcat & Observability (`base-proguard-rules.pro`, `RemoteSessionsUpdater.kt`)**:
    - Commented out `-assumenosideeffects class android.util.Log { ... }` in `base-proguard-rules.pro`, restoring logcat output in release builds for device diagnostics.
+   - Promoted server session sync logs from `dbark` to `ibark` (`Synced Xs (pos=Ys) into server session <id>`) so periodic sync heartbeats are verifiable in live device logcat.
 
 ### Modified Files:
 * `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/ServerSessionAttacher.kt`

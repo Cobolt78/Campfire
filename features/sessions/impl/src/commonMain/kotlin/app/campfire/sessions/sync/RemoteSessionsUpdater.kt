@@ -150,7 +150,7 @@ class NetworkRemoteSessionsUpdater(
             libraryItemId = session.libraryItem.id,
             reported = session.reportedTimeListening + delta,
           )
-          dbark { "Synced ${delta.inWholeSeconds}s into server session $serverSessionId" }
+          ibark { "Synced ${delta.inWholeSeconds}s (pos=${session.currentTime.inWholeSeconds}s) into server session $serverSessionId" }
         }
       }
       .onFailure { error ->

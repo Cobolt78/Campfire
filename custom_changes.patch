@@ -1,5 +1,5 @@
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index 5017a83d..1786ef3f 100644
+index 5017a83d..eb80e49b 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -45,7 +45,11 @@ This document captures all custom features, bug fixes, and UI improvements added
@@ -28,7 +28,7 @@ index 5017a83d..1786ef3f 100644
  
  ---
  
-@@ -1068,6 +1078,127 @@ Wired Campfire client to the new Audiobookshelf server Audible series endpoints
+@@ -1068,6 +1078,132 @@ Wired Campfire client to the new Audiobookshelf server Audible series endpoints
  * `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
  * `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
  
@@ -121,7 +121,7 @@ index 5017a83d..1786ef3f 100644
 +## 46. Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.21)
 +
 +### Summary
-+Resolved two major Audiobookshelf server integration issues: (1) downloaded playback (e.g. *USS Jefferson*) not appearing under "Open Listening Sessions" on the ABS server dashboard, and (2) streaming sessions (e.g. *The Night Circus*) remaining stuck at `0 sec` listened / static timestamp and failing to close when stopped or when switching books.
++Resolved Audiobookshelf server integration issues: (1) downloaded playback (e.g. *USS Jefferson*) not appearing under "Open Listening Sessions" on the ABS server dashboard, (2) streaming/local sessions remaining stuck at `0 sec` listened / static timestamp, and (3) lingering zombie sessions failing to close when stopped or when switching books.
 +
 +### Key Changes
 +1. **Downloaded Playback Open Listening Sessions (`ServerSessionAttacher.kt`)**:
@@ -137,8 +137,13 @@ index 5017a83d..1786ef3f 100644
 +   - In `LocalSessionUpdateSynchronizer.onStateChanged`, ensured that pausing or stopping playback triggers `remoteSessionsUpdater.update(skipInterval = true)` immediately.
 +   - In `LocalSessionUpdateSynchronizer.onOverallTimeChanged`, initialized `lastPlayedTime = now` if it was null, preventing listening time tracking gaps.
 +   - In `RemoteSessionsUpdater.update`, if a sync job is already in progress and `skipInterval = true`, calls `currentSyncJob.join()` so session closing requests are never dropped.
-+4. **Logcat Stripping Disabled for Release Builds (`base-proguard-rules.pro`)**:
++4. **404 Orphaned Session Hydration Unblocking (`SqlDelightSessionDataSource.kt`)**:
++   - Fixed a critical crash where `hydrateSession` called `libraryItemRepository.getLibraryItem(session.libraryItemId)` unconditionally. If an item had been deleted or purged from the library on the server, `getLibraryItem` threw an unhandled `ApiException: API Error [404]`.
++   - Because `getSessions(userId)` called `dbSessions.map { hydrateSession(it) }`, any single orphaned row aborted the entire `syncLocalSessionsToServer()` pass, preventing all active sessions from syncing to the ABS server (causing the "0 sec / stuck timestamp" bug).
++   - Wrapped item retrieval in `try/catch`: if the item 404s/fails, the orphaned session is cleanly purged from the SQLite database via `db.sessionQueries.delete(...)` and returns `null`. `getSessions` uses `mapNotNull` to gracefully unblock all subsequent active sessions.
++5. **Release Logcat & Observability (`base-proguard-rules.pro`, `RemoteSessionsUpdater.kt`)**:
 +   - Commented out `-assumenosideeffects class android.util.Log { ... }` in `base-proguard-rules.pro`, restoring logcat output in release builds for device diagnostics.
++   - Promoted server session sync logs from `dbark` to `ibark` (`Synced Xs (pos=Ys) into server session <id>`) so periodic sync heartbeats are verifiable in live device logcat.
 +
 +### Modified Files:
 +* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/ServerSessionAttacher.kt`
@@ -718,19 +723,69 @@ index 005378be..0c508b9a 100644
    }
  }
 diff --git a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt
-index 3125af5c..4f9690a0 100644
+index 3125af5c..ae6a54e0 100644
 --- a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt
 +++ b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt
-@@ -154,7 +154,7 @@ class SqlDelightSessionDataSource(
+@@ -34,6 +34,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+ import dev.zacsweers.metro.SingleIn
++import kotlin.coroutines.cancellation.CancellationException
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.milliseconds
+ import kotlin.time.Duration.Companion.seconds
+@@ -91,11 +92,10 @@ class SqlDelightSessionDataSource(
+   }
+ 
+   override suspend fun getSessions(userId: UserId): List<Session> {
+-    return read {
+-      db.sessionQueries.getAll(userId)
+-        .awaitAsList()
+-        .map { hydrateSession(it) }
++    val dbSessions = read {
++      db.sessionQueries.getAll(userId).awaitAsList()
+     }
++    return dbSessions.mapNotNull { hydrateSession(it) }
+   }
+ 
+   /**
+@@ -154,7 +154,8 @@ class SqlDelightSessionDataSource(
              )
            }
          }
 -        return hydrateSession(existingSession)
-+        return hydrateSession(existingSession.copy(isActive = true))
++        val hydrated = hydrateSession(existingSession.copy(isActive = true))
++        if (hydrated != null) return hydrated
        } else {
          ibark {
            "Existing session is too old, creating new. Age [${elapsed.milliseconds}], " +
-@@ -389,6 +389,7 @@ class SqlDelightSessionDataSource(
+@@ -243,6 +244,7 @@ class SqlDelightSessionDataSource(
+ 
+       // Hydrate with latest item
+       hydrateSession(dbSession)
++        ?: error("Failed to hydrate newly created session for $libraryItemId")
+     }
+   }
+ 
+@@ -383,12 +385,23 @@ class SqlDelightSessionDataSource(
+     }
+   }
+ 
+-  private suspend fun hydrateSession(session: DbSession): Session {
+-    val libraryItem = libraryItemRepository.getLibraryItem(session.libraryItemId)
++  private suspend fun hydrateSession(session: DbSession): Session? {
++    val libraryItem = try {
++      libraryItemRepository.getLibraryItem(session.libraryItemId)
++    } catch (e: CancellationException) {
++      throw e
++    } catch (e: Exception) {
++      wbark(throwable = e) { "Failed to get library item ${session.libraryItemId} for session; dropping orphaned session" }
++      write {
++        db.sessionQueries.delete(session.libraryItemId, session.userId, session.episodeId)
++      }
++      return null
++    }
+     return Session(
        id = session.id,
        userId = session.userId,
        isDeleted = session.isDeleted,
@@ -828,7 +883,7 @@ index dcc18434..1ec266c1 100644
  
    companion object {
 diff --git a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt
-index a378250f..865c3e83 100644
+index a378250f..1c217f50 100644
 --- a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt
 +++ b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt
 @@ -51,8 +51,12 @@ class NetworkRemoteSessionsUpdater(
@@ -864,7 +919,14 @@ index a378250f..865c3e83 100644
          duration = session.duration.asSecondsDouble(),
        )
      } else {
-@@ -152,7 +156,11 @@ class NetworkRemoteSessionsUpdater(
+@@ -146,13 +150,17 @@ class NetworkRemoteSessionsUpdater(
+             libraryItemId = session.libraryItem.id,
+             reported = session.reportedTimeListening + delta,
+           )
+-          dbark { "Synced ${delta.inWholeSeconds}s into server session $serverSessionId" }
++          ibark { "Synced ${delta.inWholeSeconds}s (pos=${session.currentTime.inWholeSeconds}s) into server session $serverSessionId" }
+         }
+       }
        .onFailure { error ->
          if ((error as? ApiException)?.statusCode == 404) {
            wbark { "Server session $serverSessionId is gone; row falls back to local sync" }

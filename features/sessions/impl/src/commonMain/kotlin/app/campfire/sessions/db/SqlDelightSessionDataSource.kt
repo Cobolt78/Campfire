@@ -34,6 +34,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -91,11 +92,10 @@ class SqlDelightSessionDataSource(
   }
 
   override suspend fun getSessions(userId: UserId): List<Session> {
-    return read {
-      db.sessionQueries.getAll(userId)
-        .awaitAsList()
-        .map { hydrateSession(it) }
+    val dbSessions = read {
+      db.sessionQueries.getAll(userId).awaitAsList()
     }
+    return dbSessions.mapNotNull { hydrateSession(it) }
   }
 
   /**
@@ -154,7 +154,8 @@ class SqlDelightSessionDataSource(
             )
           }
         }
-        return hydrateSession(existingSession.copy(isActive = true))
+        val hydrated = hydrateSession(existingSession.copy(isActive = true))
+        if (hydrated != null) return hydrated
       } else {
         ibark {
           "Existing session is too old, creating new. Age [${elapsed.milliseconds}], " +
@@ -243,6 +244,7 @@ class SqlDelightSessionDataSource(
 
       // Hydrate with latest item
       hydrateSession(dbSession)
+        ?: error("Failed to hydrate newly created session for $libraryItemId")
     }
   }
 
@@ -383,8 +385,18 @@ class SqlDelightSessionDataSource(
     }
   }
 
-  private suspend fun hydrateSession(session: DbSession): Session {
-    val libraryItem = libraryItemRepository.getLibraryItem(session.libraryItemId)
+  private suspend fun hydrateSession(session: DbSession): Session? {
+    val libraryItem = try {
+      libraryItemRepository.getLibraryItem(session.libraryItemId)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      wbark(throwable = e) { "Failed to get library item ${session.libraryItemId} for session; dropping orphaned session" }
+      write {
+        db.sessionQueries.delete(session.libraryItemId, session.userId, session.episodeId)
+      }
+      return null
+    }
     return Session(
       id = session.id,
       userId = session.userId,
