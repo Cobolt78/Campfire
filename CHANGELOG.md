@@ -19,6 +19,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.22]
+
+### Added
+
+- **Audiobookshelf Real-Time Open Listening Sessions**:
+  - Downloaded books played locally on the device now attach a Direct Play server session when online, displaying real-time listening activity under "Open Listening Sessions" on the Audiobookshelf server dashboard.
+- **Continue Series Downloaded Indicator**:
+  - Added the offline downloaded icon to books in both list and grid cards within the "Continue Series" view, matching the home screen card indicator.
+
+### Changed
+
+- **Eliminated Book Details Back-Navigation Lag**:
+  - Removed heavy shared-element bounds transitions on book cover and title when navigating back from Book Details to the Home screen, providing instant, hitch-free navigation.
+- **Cellular Download Safeguard Fix**:
+  - Reverted cellular download checks to evaluate the active default network, eliminating false-positive "Mobile Data Warning" popups when connected to home Wi-Fi.
+
+### Fixed
+
+- **Audiobookshelf Playback Progress & Session Close Lifecycle**:
+  - Restored real-time progress and listening time reporting to the Audiobookshelf server every 15 seconds.
+  - Fixed an unhandled HTTP 404 crash during database session hydration on purged/removed server items that previously aborted remote session synchronization.
+  - Closed active server sessions immediately on pause, stop, book switch, and completion to prevent lingering zombie sessions on the dashboard.
+- **Tolerant Chapter Metadata Validation**:
+  - Added container tolerance (+2s start, +5s end) to chapter validation, eliminating false-positive "misaligned chapter metadata" warning banners on standard audiobooks with minor container padding differences.
+
 ## [1.2.21]
 
 ### Added

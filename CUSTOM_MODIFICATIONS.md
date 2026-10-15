@@ -47,9 +47,11 @@ This document captures all custom features, bug fixes, and UI improvements added
 40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
 41. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
 42. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1221)
-43. [Downloaded Indicator on Continue Series Cards (v1.2.21)](#43-downloaded-indicator-on-continue-series-cards-v1221)
-44. [Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.21)](#44-eliminate-book-details-to-home-screen-back-navigation-lag-v1221)
-45. [Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.21)](#45-audiobookshelf-playback-progress-sync--server-session-cleanup-v1221)
+43. [Downloaded Indicator on Continue Series Cards (v1.2.22)](#43-downloaded-indicator-on-continue-series-cards-v1221)
+44. [Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.22)](#44-eliminate-book-details-to-home-screen-back-navigation-lag-v1221)
+45. [Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.22)](#45-audiobookshelf-playback-progress-sync--server-session-cleanup-v1221)
+46. [Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.22)](#46-audiobookshelf-real-time-open-listening-sessions--progress-sync-lifecycle-v1221)
+47. [Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.22)](#47-cellular-download-check-simplification--false-positive-warning-resolution-v1221)
 
 ---
 
