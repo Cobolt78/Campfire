@@ -126,13 +126,12 @@ class MediaProgressPlaybackSynchronizer(
       source = MediaProgress.Source.Local,
     )
 
-    // Local mirror only: this keeps the row that drives the sync banner and resume logic
-    // fresh, but never uploads. The server learns playback progress exclusively through
-    // session syncs now (/api/session/{id}/sync while attached, the local-session batch
-    // otherwise — both write server-side MediaProgress), so a parallel PATCH here would be
-    // a redundant second writer of the same position. Explicit finish/unfinish actions
-    // still upload through markFinished/markNotFinished, which this path never handled.
-    component.mediaProgressRepository.updateProgress(updatedProgress, force, skipUpload = true)
+    // Re-enable direct progress sync (skipUpload = false):
+    // ABS server's POST /api/session/local-all has a strict recency guard and only syncs if
+    // timeListening > 5s. Direct unconditional PATCH /api/me/progress/{id} ensures "Continue Listening"
+    // and playback position update immediately and reliably on the server for both local and
+    // streamed playback.
+    component.mediaProgressRepository.updateProgress(updatedProgress, force, skipUpload = false)
   }
 
   companion object {

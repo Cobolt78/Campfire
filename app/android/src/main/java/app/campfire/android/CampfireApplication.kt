@@ -20,11 +20,9 @@ class CampfireApplication : Application() {
 
   override fun onCreate() = Trace.trace("CampfireApplication.onCreate") {
     super.onCreate()
-    if (BuildConfig.DEBUG) {
-      // Local logcat only — keep raw URLs readable for development.
-      LogRedaction.enabled = false
-      Heartwood.grow(AndroidBark())
-    }
+    // Local logcat output for development and device testing
+    LogRedaction.enabled = !BuildConfig.DEBUG
+    Heartwood.grow(AndroidBark())
 
     // Create application component
     val component = Trace.trace(DiTraceSections.APP_GRAPH) {

@@ -18,7 +18,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 @ContributesTo(UserScope::class)
@@ -92,6 +92,16 @@ class LocalSessionUpdateSynchronizer(
     lastKnownOverallTime = overallTime
     val now = fatherTime.nowInEpochMillis()
 
+    // Check if its been too long since we synced listening time
+    if (lastPlayedTime != null) {
+      val elapsed = (now - lastPlayedTime!!).milliseconds
+      if (elapsed >= MAX_TIME_LISTENING_INTERVAL) {
+        ibark { "Timeout adding $elapsed time listening)" }
+        component.sessionsRepository.addTimeListening(libraryItemId, elapsed)
+        lastPlayedTime = now
+      }
+    }
+
     if (now - lastCurrentTimeUpdateMs >= CURRENT_TIME_UPDATE_INTERVAL_MS) {
       lastCurrentTimeUpdateMs = now
       component.sessionsRepository.updateCurrentTime(libraryItemId, overallTime)
@@ -102,20 +112,10 @@ class LocalSessionUpdateSynchronizer(
       // progress PATCH path pushed on this same cadence all along.
       component.remoteSessionsUpdater.update()
     }
-
-    // Check if its been too long since we synced listening time
-    if (lastPlayedTime != null) {
-      val elapsed = (now - lastPlayedTime!!).milliseconds
-      if (elapsed > MAX_TIME_LISTENING_INTERVAL) {
-        ibark { "Timeout adding $elapsed time listening)" }
-        component.sessionsRepository.addTimeListening(libraryItemId, elapsed)
-        lastPlayedTime = now
-      }
-    }
   }
 
   companion object : Corked("LocalSessionUpdateSynchronizer") {
-    private val MAX_TIME_LISTENING_INTERVAL = 1.minutes
+    private val MAX_TIME_LISTENING_INTERVAL = 15.seconds
     private const val CURRENT_TIME_UPDATE_INTERVAL_MS = 5_000L
   }
 }

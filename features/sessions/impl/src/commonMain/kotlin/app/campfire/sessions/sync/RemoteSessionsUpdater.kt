@@ -114,7 +114,7 @@ class NetworkRemoteSessionsUpdater(
   private suspend fun syncServerSession(session: Session) {
     val serverSessionId = session.serverSessionId ?: return
     val delta = session.timeListening - session.reportedTimeListening
-    val isEnded = session.isFinished || session.isDeleted
+    val isEnded = session.isFinished || session.isDeleted || !session.isActive
 
     if (delta <= Duration.ZERO && !isEnded) return
 
@@ -124,7 +124,7 @@ class NetworkRemoteSessionsUpdater(
       api.closePlaybackSession(
         sessionId = serverSessionId,
         currentTime = session.currentTime.asSecondsDouble(),
-        timeListened = delta.asSecondsDouble(),
+        timeListened = maxOf(delta, Duration.ZERO).asSecondsDouble(),
         duration = session.duration.asSecondsDouble(),
       )
     } else {
@@ -152,7 +152,11 @@ class NetworkRemoteSessionsUpdater(
       .onFailure { error ->
         if ((error as? ApiException)?.statusCode == 404) {
           wbark { "Server session $serverSessionId is gone; row falls back to local sync" }
-          sessionDataSource.clearServerSession(session.libraryItem.id)
+          if (isEnded) {
+            sessionDataSource.deleteSession(session.libraryItem.id)
+          } else {
+            sessionDataSource.clearServerSession(session.libraryItem.id)
+          }
         } else {
           ebark(error) { "Failed to sync server session $serverSessionId" }
         }
@@ -187,9 +191,9 @@ class NetworkRemoteSessionsUpdater(
             if (result.success) {
               // Check if session is a completed or deleted session
               val localSession = localSessions.find { it.id.toString() == result.id }
-              if (localSession?.isFinished == true || localSession?.isDeleted == true) {
+              if (localSession?.isFinished == true || localSession?.isDeleted == true || localSession?.isActive == false) {
                 sessionDataSource.deleteSession(localSession.libraryItem.id)
-                ibark { "Completed Local Session Deleted!" }
+                ibark { "Completed/Inactive Local Session Deleted!" }
               }
             }
           }

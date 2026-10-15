@@ -28,12 +28,13 @@ class LibraryItemValidatorImpl : LibraryItemValidator {
       item.media.tracks.sumOf { it.duration.toDouble() },
     ).seconds
 
-    // Check if any chapters exist outside the actual duration of tracks
+    // Check if any chapters exist outside the actual duration of tracks.
+    // Allow a small tolerance (2s on start, 5s on end) to accommodate standard container/metadata rounding differences.
     val invalidChapterIds = mutableSetOf<Int>()
     for (chapter in item.media.chapters) {
       if (
-        chapter.start.seconds > totalDuration ||
-        floor(chapter.end).seconds > totalDuration ||
+        chapter.start.seconds > totalDuration + 2.seconds ||
+        floor(chapter.end).seconds > totalDuration + 5.seconds ||
         chapter.start < 0f
       ) {
         invalidChapterIds += chapter.id

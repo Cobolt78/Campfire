@@ -16,6 +16,7 @@ data class Session(
   val libraryItem: LibraryItem,
   val userId: UserId,
   val isDeleted: Boolean,
+  val isActive: Boolean = false,
 
   // Playback / Device Info
   val playMethod: PlayMethod,

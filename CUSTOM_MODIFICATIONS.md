@@ -45,7 +45,11 @@ This document captures all custom features, bug fixes, and UI improvements added
 38. [Desktop App Stability, Database Concurrency & Session Restore Guard (v1.2.20)](#38-desktop-app-stability-database-concurrency--session-restore-guard-v1220)
 39. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
 40. [Upcoming Releases: 28-Day Freshness Window & Delta Series Scanning (v1.2.20)](#41-upcoming-releases-28-day-freshness-window--delta-series-scanning-client-side)
-41. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1221)
+41. [Audit & Comprehensive Feature Restoration (v1.2.20)](#40-audit--comprehensive-feature-restoration-v1220)
+42. [Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)](#42-audiobookshelf-server-synced-audible-series-tracking--completion-filters-v1221)
+43. [Downloaded Indicator on Continue Series Cards (v1.2.21)](#43-downloaded-indicator-on-continue-series-cards-v1221)
+44. [Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.21)](#44-eliminate-book-details-to-home-screen-back-navigation-lag-v1221)
+45. [Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.21)](#45-audiobookshelf-playback-progress-sync--server-session-cleanup-v1221)
 
 ---
 
@@ -1121,6 +1125,45 @@ Resolved a noticeable 1–3 second freeze/lag when navigating back from a Book D
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt`
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/TitleSlot.kt`
+
+---
+
+## 45. Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.21)
+
+### Summary
+Fixed critical regressions affecting progress tracking, "Continue Listening" visibility on the Audiobookshelf server dashboard, zombie listening sessions on the server, and false-positive chapter metadata error banners.
+
+### Key Details
+1. **Re-Enabled Direct Media Progress Sync (`MediaProgressPlaybackSynchronizer.kt`)**:
+   - Upstream commit `9c5c51ddd` had retired the direct progress PATCH by passing `skipUpload = true` to `mediaProgressRepository.updateProgress`.
+   - For downloaded/local books, the server never opened a streaming `/play` session, relying exclusively on bulk local session batch syncs (`POST /api/session/local-all`).
+   - The ABS server enforces a strict client-clock recency guard on `POST /api/session/local-all`, silently ignoring progress if `userProgressForItem.updatedAt > session.updatedAt`. Furthermore, `local-all` requires `timeListening > 5s`.
+   - Re-enabled direct progress upload (`skipUpload = false`). When paused or during periodic 15-second intervals, the unconditional `PATCH /api/me/progress/{id}` is transmitted to the server, instantly updating the user's progress and displaying the book under "Continue Listening" on the Audiobookshelf web and dashboard interfaces.
+2. **Zombie Server Session Cleanup & Inactive Session End (`RemoteSessionsUpdater.kt`, `Session.kt`, `SqlDelightSessionDataSource.kt`)**:
+   - Added `isActive: Boolean` to the domain `Session` model mapped from `DbSession.isActive`.
+   - In `RemoteSessionsUpdater.syncServerSession`, updated `isEnded` to `val isEnded = session.isFinished || session.isDeleted || !session.isActive`.
+   - When a user stops playback or switches to another book, the previous session becomes inactive (`!session.isActive`). If it has an attached `serverSessionId`, `api.closePlaybackSession` is now reliably dispatched to the server (with any remaining positive `timeListened` delta) and the local session row is deleted from SQLite.
+   - If `api.closePlaybackSession` returns HTTP 404 (session already expired on server), the row is also deleted from the local database.
+   - This eliminates zombie streaming sessions from lingering in the Audiobookshelf server's active "Listening Sessions" list.
+3. **Listening Time Accumulation Interval Alignment (`LocalSessionUpdateSynchronizer.kt`)**:
+   - Reduced `MAX_TIME_LISTENING_INTERVAL` from `1.minutes` to `15.seconds` (matching `syncIntervalUnmetered = 15.seconds`).
+   - Flush accumulated listening time to the database prior to triggering periodic session syncs. Server sessions now smoothly advance their listening time in real-time instead of appearing stuck at 0 seconds for the first minute.
+4. **Chapter Tolerance & False-Positive Banner Fix (`LibraryItemValidatorImpl.kt`)**:
+   - Audiobooks frequently have chapter metadata where the final chapter end timestamp slightly exceeds container audio track duration due to AAC framing, metadata rounding, or container padding.
+   - Previously, `floor(chapter.end).seconds > totalDuration` caused standard, completely valid audiobooks to display a warning banner: *"This item has misaligned chapter metadata and may not play back as expected"*.
+   - Added a standard rounding tolerance (`chapter.start.seconds > totalDuration + 2.seconds || floor(chapter.end).seconds > totalDuration + 5.seconds`), eliminating false-positive warning banners while still catching genuinely corrupt chapter metadata.
+5. **Release Logcat Output (`CampfireApplication.kt`)**:
+   - Enabled `Heartwood.grow(AndroidBark())` in release builds with `LogRedaction.enabled = !BuildConfig.DEBUG`, allowing diagnostic logging in `adb logcat` during device testing.
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/model/Session.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/MediaProgressPlaybackSynchronizer.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/LocalSessionUpdateSynchronizer.kt`
+* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/LibraryItemValidatorImpl.kt`
+* `app/android/src/main/java/app/campfire/android/CampfireApplication.kt`
+
 
 
 

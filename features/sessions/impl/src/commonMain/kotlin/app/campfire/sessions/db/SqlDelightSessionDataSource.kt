@@ -389,6 +389,7 @@ class SqlDelightSessionDataSource(
       id = session.id,
       userId = session.userId,
       isDeleted = session.isDeleted,
+      isActive = session.isActive,
       libraryItem = libraryItem,
       playMethod = session.playMethod,
       mediaPlayer = session.mediaPlayer,
