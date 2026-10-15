@@ -4,7 +4,6 @@
 package app.campfire.libraries.ui.detail
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -67,7 +66,6 @@ import app.campfire.common.compose.theme.colorScheme
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.ErrorListState
 import app.campfire.common.compose.widgets.IconButtonTooltip
-import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
 import app.campfire.common.compose.widgets.LoadingListState
 import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
@@ -109,8 +107,6 @@ import campfire.features.libraries.ui.generated.resources.genres_title
 import campfire.features.libraries.ui.generated.resources.menu_item_delete_podcast
 import campfire.features.libraries.ui.generated.resources.tags_title
 import com.slack.circuit.codegen.annotations.CircuitInject
-import com.slack.circuit.sharedelements.PreviewSharedElementTransitionLayout
-import com.slack.circuit.sharedelements.SharedElementTransitionScope
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -134,14 +130,13 @@ fun LibraryItem(
   }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun LibraryItemContent(
   screen: LibraryItemScreen,
   state: LibraryItemUiState,
   addToCollectionDialog: AddToCollectionDialog,
   modifier: Modifier,
-) = SharedElementTransitionScope {
+) {
   val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
 
   var showAddToCollectionDialog by remember { mutableStateOf(false) }
@@ -253,17 +248,7 @@ fun LibraryItemContent(
         },
       )
     },
-    modifier = modifier
-      .sharedBounds(
-        sharedContentState = rememberSharedContentState(
-          LibraryItemSharedTransitionKey(
-            id = screen.sharedTransitionKey,
-            type = LibraryItemSharedTransitionKey.ElementType.Bounds,
-          ),
-        ),
-        animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
-      )
-      .nestedScroll(scrollBehavior.nestedScrollConnection),
+    modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     contentWindowInsets = CampfireWindowInsets
       .exclude(WindowInsets.statusBars),
   ) { paddingValues ->
@@ -355,10 +340,9 @@ private fun LoadedState(
   }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Preview(heightDp = 2200)
 @Composable
-fun LibraryItemPreview() = PreviewSharedElementTransitionLayout {
+fun LibraryItemPreview() {
   CampfireTheme {
     CompositionLocalProvider(
       LocalWindowSizeClass provides currentWindowSizeClass(),

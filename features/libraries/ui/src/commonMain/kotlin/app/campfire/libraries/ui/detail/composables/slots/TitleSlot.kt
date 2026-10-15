@@ -4,7 +4,6 @@
 package app.campfire.libraries.ui.detail.composables.slots
 
 import androidx.annotation.VisibleForTesting
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,28 +29,25 @@ import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.Schedule
 import app.campfire.common.compose.icons.rounded.Sensors
 import app.campfire.common.compose.theme.PaytoneOneFontFamily
-import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
 import app.campfire.core.extensions.asReadableBytes
 import app.campfire.core.model.LibraryItem
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
 import campfire.features.libraries.ui.generated.resources.Res
 import campfire.features.libraries.ui.generated.resources.streaming_badge_hls
 import campfire.features.libraries.ui.generated.resources.unknown_title
-import com.slack.circuit.sharedelements.SharedElementTransitionScope
 import kotlin.time.Duration.Companion.milliseconds
 import org.jetbrains.compose.resources.stringResource
 
 class TitleSlot(
   private val libraryItem: LibraryItem,
-  private val sharedTransitionKey: String,
+  @Suppress("unused") private val sharedTransitionKey: String = "",
   @get:VisibleForTesting val showHlsBadge: Boolean = false,
 ) : ContentSlot {
 
   override val id: String = "title_author"
 
-  @OptIn(ExperimentalSharedTransitionApi::class)
   @Composable
-  override fun Content(modifier: Modifier, eventSink: (LibraryItemUiEvent) -> Unit) = SharedElementTransitionScope {
+  override fun Content(modifier: Modifier, eventSink: (LibraryItemUiEvent) -> Unit) {
     Column(
       modifier = modifier,
     ) {
@@ -65,15 +61,6 @@ class TitleSlot(
         textAlign = TextAlign.Center,
         modifier = Modifier
           .fillMaxWidth()
-          .sharedBounds(
-            sharedContentState = rememberSharedContentState(
-              LibraryItemSharedTransitionKey(
-                id = sharedTransitionKey,
-                type = LibraryItemSharedTransitionKey.ElementType.Title,
-              ),
-            ),
-            animatedVisibilityScope = requireAnimatedScope(SharedElementTransitionScope.AnimatedScope.Navigation),
-          )
           .padding(horizontal = 16.dp),
       )
 
