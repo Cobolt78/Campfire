@@ -112,23 +112,20 @@ UPDATE session
 SET currentTime = :currentTime,
     updatedAt = :updatedAt
 WHERE libraryItemId = :libraryItemId
-  AND userId = :userId
-  AND isActive = 1;
+  AND userId = :userId;
 
 updateLastPlayed:
 UPDATE session
 SET lastPlayedAt = :lastPlayedAt
 WHERE libraryItemId = :libraryItemId
-  AND userId = :userId
-  AND isActive = 1;
+  AND userId = :userId;
 
 addTimeListening:
 UPDATE session
 SET timeListening = timeListening + :additionalTime,
     updatedAt = :updatedAt
 WHERE libraryItemId = :libraryItemId
-  AND userId = :userId
-  AND isActive = 1;
+  AND userId = :userId;
 
 disable:
 UPDATE session

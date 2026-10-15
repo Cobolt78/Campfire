@@ -66,9 +66,9 @@ class LocalSessionUpdateSynchronizer(
         val elapsed = (fatherTime.nowInEpochMillis() - lastPlayedTime!!).milliseconds
         ibark { "Adding $elapsed time listening for ${sessionId.toHexDashString()})" }
         component.sessionsRepository.addTimeListening(libraryItemId, elapsed)
-        component.remoteSessionsUpdater.update(skipInterval = true)
         lastPlayedTime = null
       }
+      component.remoteSessionsUpdater.update(skipInterval = true)
     }
 
     // Update the sessions last "Played" time. This way we can keep track of when
@@ -93,7 +93,9 @@ class LocalSessionUpdateSynchronizer(
     val now = fatherTime.nowInEpochMillis()
 
     // Check if its been too long since we synced listening time
-    if (lastPlayedTime != null) {
+    if (lastPlayedTime == null) {
+      lastPlayedTime = now
+    } else {
       val elapsed = (now - lastPlayedTime!!).milliseconds
       if (elapsed >= MAX_TIME_LISTENING_INTERVAL) {
         ibark { "Timeout adding $elapsed time listening)" }

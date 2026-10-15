@@ -1162,7 +1162,39 @@ Fixed critical regressions affecting progress tracking, "Continue Listening" vis
 * `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt`
 * `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/LocalSessionUpdateSynchronizer.kt`
 * `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/LibraryItemValidatorImpl.kt`
-* `app/android/src/main/java/app/campfire/android/CampfireApplication.kt`
+---
+
+## 46. Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.21)
+
+### Summary
+Resolved two major Audiobookshelf server integration issues: (1) downloaded playback (e.g. *USS Jefferson*) not appearing under "Open Listening Sessions" on the ABS server dashboard, and (2) streaming sessions (e.g. *The Night Circus*) remaining stuck at `0 sec` listened / static timestamp and failing to close when stopped or when switching books.
+
+### Key Changes
+1. **Downloaded Playback Open Listening Sessions (`ServerSessionAttacher.kt`)**:
+   - Removed the artificial early-exit `if (session.playMethod == PlayMethod.Local) return` in `ServerSessionAttacher.attachAsync`.
+   - Downloaded books played locally now attach a Direct Play server session via `api.startPlaybackSession(..., forceDirectPlay = true)` when online.
+   - The Audiobookshelf server administrator dashboard now displays real-time user activity under "Open Listening Sessions" (`Direct Play | Campfire 1.2.21 | Device | X min | Position | Active`), matching the behavior of apps like ShelfPlayer on iOS.
+   - When offline, `startPlaybackSession` times out or fails gracefully, ensuring offline playback proceeds uninterrupted and falls back to batch sync when reconnected.
+2. **Session Database Update Unblocking (`session.sq`, `SqlDelightSessionDataSource.kt`)**:
+   - Removed `AND isActive = 1;` from `updatePlayback`, `updateLastPlayed`, and `addTimeListening` queries in `session.sq`. Because `(userId, libraryItemId)` is the primary key of the `session` table, requiring `isActive = 1` caused all progress, listening time, and timestamp updates to silently drop whenever a session had its `isActive` flag cleared.
+   - In `SqlDelightSessionDataSource.createOrStartSession`, fixed `hydrateSession(existingSession.copy(isActive = true))` so reused existing sessions return with `isActive = true` rather than retaining a stale `isActive = false` from prior deactivations.
+3. **Session Lifecycle Close & Sync Triggers (`DefaultSessionsRepository.kt`, `LocalSessionUpdateSynchronizer.kt`, `RemoteSessionsUpdater.kt`)**:
+   - In `DefaultSessionsRepository`, injected `RemoteSessionsUpdater` and invoked `remoteSessionsUpdater.update(skipInterval = true)` on `createSession`, `stopSession`, and `markFinished`. This ensures that when a user switches books, stops playback, or finishes an audiobook, the old session is closed immediately on the Audiobookshelf server via `/api/session/{id}/close` and deleted from SQLite, eliminating lingering zombie sessions.
+   - In `LocalSessionUpdateSynchronizer.onStateChanged`, ensured that pausing or stopping playback triggers `remoteSessionsUpdater.update(skipInterval = true)` immediately.
+   - In `LocalSessionUpdateSynchronizer.onOverallTimeChanged`, initialized `lastPlayedTime = now` if it was null, preventing listening time tracking gaps.
+   - In `RemoteSessionsUpdater.update`, if a sync job is already in progress and `skipInterval = true`, calls `currentSyncJob.join()` so session closing requests are never dropped.
+4. **Logcat Stripping Disabled for Release Builds (`base-proguard-rules.pro`)**:
+   - Commented out `-assumenosideeffects class android.util.Log { ... }` in `base-proguard-rules.pro`, restoring logcat output in release builds for device diagnostics.
+
+### Modified Files:
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/ServerSessionAttacher.kt`
+* `data/db/core/src/commonMain/sqldelight/app/campfire/data/session.sq`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/LocalSessionUpdateSynchronizer.kt`
+* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt`
+* `app/android/base-proguard-rules.pro`
+
 
 
 

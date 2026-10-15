@@ -14,6 +14,7 @@ import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.sessions.api.SessionsRepository
 import app.campfire.sessions.api.StreamingRoutePredictor
 import app.campfire.sessions.db.SessionDataSource
+import app.campfire.sessions.sync.RemoteSessionsUpdater
 import app.campfire.sessions.sync.ServerSessionAttacher
 import app.campfire.user.api.MediaProgressRepository
 import dev.zacsweers.metro.ContributesBinding
@@ -33,6 +34,7 @@ class DefaultSessionsRepository(
   private val dataSource: SessionDataSource,
   private val serverSessionAttacher: ServerSessionAttacher,
   private val streamingRoutePredictor: StreamingRoutePredictor,
+  private val remoteSessionsUpdater: RemoteSessionsUpdater,
 ) : SessionsRepository {
 
   override fun observeCurrentSession(): Flow<Session?> {
@@ -86,6 +88,9 @@ class DefaultSessionsRepository(
     // reports through the server session; if not, nothing changes. No-ops for sessions the
     // router already attached (HLS) and for downloads.
     serverSessionAttacher.attachAsync(routed)
+
+    // Flush updater so any deactivated previous sessions are immediately closed on the server
+    remoteSessionsUpdater.update(skipInterval = true)
 
     return routed
   }
@@ -176,9 +181,11 @@ class DefaultSessionsRepository(
 
   override suspend fun stopSession(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
     dataSource.stopSession(libraryItemId, episodeId)
+    remoteSessionsUpdater.update(skipInterval = true)
   }
 
   override suspend fun markFinished(libraryItemId: LibraryItemId, episodeId: PodcastEpisodeId?) {
     dataSource.markFinished(libraryItemId, episodeId)
+    remoteSessionsUpdater.update(skipInterval = true)
   }
 }

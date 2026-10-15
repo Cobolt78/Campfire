@@ -93,8 +93,6 @@ class DefaultServerSessionAttacher(
   }
 
   override fun attachAsync(session: Session) {
-    // Downloads play entirely locally and never open server sessions
-    if (session.playMethod == PlayMethod.Local) return
     if (session.serverSessionId != null) return
 
     val itemId = session.libraryItem.id

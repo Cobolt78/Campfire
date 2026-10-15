@@ -154,7 +154,7 @@ class SqlDelightSessionDataSource(
             )
           }
         }
-        return hydrateSession(existingSession)
+        return hydrateSession(existingSession.copy(isActive = true))
       } else {
         ibark {
           "Existing session is too old, creating new. Age [${elapsed.milliseconds}], " +

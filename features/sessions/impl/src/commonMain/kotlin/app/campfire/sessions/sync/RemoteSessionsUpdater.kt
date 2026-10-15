@@ -51,8 +51,12 @@ class NetworkRemoteSessionsUpdater(
   override suspend fun update(skipInterval: Boolean) = withContext(dispatcherProvider.computation) {
     // Check for running jobs
     if (currentSyncJob != null && currentSyncJob!!.isActive) {
-      wbark { "A sync job is already in progress, skipping" }
-      return@withContext
+      if (skipInterval) {
+        currentSyncJob!!.join()
+      } else {
+        wbark { "A sync job is already in progress, skipping" }
+        return@withContext
+      }
     }
 
     val unmeteredIntervalMs = playbackSettings.syncIntervalUnmetered.inWholeMilliseconds
