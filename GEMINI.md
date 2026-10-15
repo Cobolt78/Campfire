@@ -34,3 +34,15 @@
      - If any file or feature that previously had custom code is untouched in the new version, treat it as an immediate regression alert that must be resolved before cutting a release.
    - **Lockstep Synchronization**:
      - Keep `CUSTOM_MODIFICATIONS.md` and `custom_changes.patch` in 100% sync with the actual repository code at all times.
+
+5. **Refactoring Discipline & 'Propose, Don't Sneak' Invariant**:
+   - **Strict Blast-Radius Discipline**:
+     - When fixing a specific bug or porting an existing feature, touch ONLY what is strictly required to solve that problem.
+     - NEVER rewrite working code, replace proven simple checks with speculative reactive listeners, or make unsolicited architectural changes on a whim.
+     - If code worked reliably in previous versions, port it identically without unrequested "enhancements".
+   - **Freedom to Improve (With Prior User Approval)**:
+     - If a cleaner, simpler, more performant, or more robust approach is identified, PROPOSE it to the user explicitly in chat first.
+     - Explain what the improvement is, why it is better, and what the potential trade-offs or risks are.
+     - Wait for the user's explicit approval before implementing any architectural or logic refactor. Never sneak refactors into unrelated bug fix commits.
+   - **Button-Action Check Principle**:
+     - For one-shot user actions (like pressing "Download" or opening a menu), evaluate system state (such as network connectivity) directly at the moment of the action rather than running persistent background callbacks or listeners that risk desynchronization or background radio conflicts.

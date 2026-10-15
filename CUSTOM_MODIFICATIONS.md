@@ -1200,6 +1200,29 @@ Resolved Audiobookshelf server integration issues: (1) downloaded playback (e.g.
 * `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt`
 * `app/android/base-proguard-rules.pro`
 
+---
+
+## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
+
+### Summary
+Resolved an issue where tapping Download on a book while connected to home Wi-Fi triggered a false-positive "Mobile Data Warning" dialog whenever the phone had mobile data enabled.
+
+### Root Cause
+During the v1.2.21 feature restore (commit `ecac076c`), `rememberIsCellularOrMetered` was refactored with a live `ConnectivityManager.NetworkCallback` using `cm.registerNetworkCallback(request, callback)` with a general `NET_CAPABILITY_INTERNET` request. On modern Android devices (especially Samsung Galaxy devices), the cellular modem maintains an active background standby connection even while connected to Wi-Fi. Because `registerNetworkCallback` scans all active hardware interfaces on the phone rather than the system's active default network, Android dispatched capabilities for the standby cellular radio, falsely setting `isCellularOrMetered = true`.
+
+### Key Changes
+1. **Reverted to Battle-Tested Snapshot Check (`NetworkType.android.kt`)**:
+   - Removed the background `NetworkCallback`, `DisposableEffect`, and `registerNetworkCallback` scanner.
+   - Restored the rock-solid, zero-callback implementation from v1.2.20 that directly inspects `cm.activeNetwork` and its capabilities when evaluated.
+   - Completely eliminates false-positive warnings when connected to home Wi-Fi, produces zero background radio listener overhead, and correctly warns only when the active default connection is cellular or metered.
+2. **Added 'Propose, Don't Sneak' Refactoring Invariant (`GEMINI.md`)**:
+   - Added Section 5 to `GEMINI.md` mandating strict blast-radius discipline during bug fixes and migrations (no unsolicited architectural refactors or rewriting working code without prior user proposal and approval).
+
+### Modified Files:
+* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
+* `GEMINI.md`
+
+
 
 
 

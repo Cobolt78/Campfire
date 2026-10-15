@@ -1,5 +1,5 @@
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index 5017a83d..eb80e49b 100644
+index 5017a83d..1333090e 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -45,7 +45,11 @@ This document captures all custom features, bug fixes, and UI improvements added
@@ -28,7 +28,7 @@ index 5017a83d..eb80e49b 100644
  
  ---
  
-@@ -1068,6 +1078,132 @@ Wired Campfire client to the new Audiobookshelf server Audible series endpoints
+@@ -1068,6 +1078,155 @@ Wired Campfire client to the new Audiobookshelf server Audible series endpoints
  * `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
  * `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
  
@@ -154,6 +154,29 @@ index 5017a83d..eb80e49b 100644
 +* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/sync/RemoteSessionsUpdater.kt`
 +* `app/android/base-proguard-rules.pro`
 +
++---
++
++## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
++
++### Summary
++Resolved an issue where tapping Download on a book while connected to home Wi-Fi triggered a false-positive "Mobile Data Warning" dialog whenever the phone had mobile data enabled.
++
++### Root Cause
++During the v1.2.21 feature restore (commit `ecac076c`), `rememberIsCellularOrMetered` was refactored with a live `ConnectivityManager.NetworkCallback` using `cm.registerNetworkCallback(request, callback)` with a general `NET_CAPABILITY_INTERNET` request. On modern Android devices (especially Samsung Galaxy devices), the cellular modem maintains an active background standby connection even while connected to Wi-Fi. Because `registerNetworkCallback` scans all active hardware interfaces on the phone rather than the system's active default network, Android dispatched capabilities for the standby cellular radio, falsely setting `isCellularOrMetered = true`.
++
++### Key Changes
++1. **Reverted to Battle-Tested Snapshot Check (`NetworkType.android.kt`)**:
++   - Removed the background `NetworkCallback`, `DisposableEffect`, and `registerNetworkCallback` scanner.
++   - Restored the rock-solid, zero-callback implementation from v1.2.20 that directly inspects `cm.activeNetwork` and its capabilities when evaluated.
++   - Completely eliminates false-positive warnings when connected to home Wi-Fi, produces zero background radio listener overhead, and correctly warns only when the active default connection is cellular or metered.
++2. **Added 'Propose, Don't Sneak' Refactoring Invariant (`GEMINI.md`)**:
++   - Added Section 5 to `GEMINI.md` mandating strict blast-radius discipline during bug fixes and migrations (no unsolicited architectural refactors or rewriting working code without prior user proposal and approval).
++
++### Modified Files:
++* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
++* `GEMINI.md`
++
++
 +
 +
 +
@@ -163,10 +186,10 @@ index 5017a83d..eb80e49b 100644
  
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
-index 00000000..00e6e3d1
+index 00000000..abec2288
 --- /dev/null
 +++ b/GEMINI.md
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,48 @@
 +# Antigravity Rules for Campfire (Cobolt78/Campfire)
 +
 +## Workflow & GitHub Integration Invariants
@@ -203,6 +226,18 @@ index 00000000..00e6e3d1
 +     - If any file or feature that previously had custom code is untouched in the new version, treat it as an immediate regression alert that must be resolved before cutting a release.
 +   - **Lockstep Synchronization**:
 +     - Keep `CUSTOM_MODIFICATIONS.md` and `custom_changes.patch` in 100% sync with the actual repository code at all times.
++
++5. **Refactoring Discipline & 'Propose, Don't Sneak' Invariant**:
++   - **Strict Blast-Radius Discipline**:
++     - When fixing a specific bug or porting an existing feature, touch ONLY what is strictly required to solve that problem.
++     - NEVER rewrite working code, replace proven simple checks with speculative reactive listeners, or make unsolicited architectural changes on a whim.
++     - If code worked reliably in previous versions, port it identically without unrequested "enhancements".
++   - **Freedom to Improve (With Prior User Approval)**:
++     - If a cleaner, simpler, more performant, or more robust approach is identified, PROPOSE it to the user explicitly in chat first.
++     - Explain what the improvement is, why it is better, and what the potential trade-offs or risks are.
++     - Wait for the user's explicit approval before implementing any architectural or logic refactor. Never sneak refactors into unrelated bug fix commits.
++   - **Button-Action Check Principle**:
++     - For one-shot user actions (like pressing "Download" or opening a menu), evaluate system state (such as network connectivity) directly at the moment of the action rather than running persistent background callbacks or listeners that risk desynchronization or background radio conflicts.
 diff --git a/app/android/base-proguard-rules.pro b/app/android/base-proguard-rules.pro
 index 29b3616d..b1a745e5 100644
 --- a/app/android/base-proguard-rules.pro
@@ -251,6 +286,89 @@ index ba22d953..0b471beb 100644
  
      // Create application component
      val component = Trace.trace(DiTraceSections.APP_GRAPH) {
+diff --git a/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
+index a42e0df0..9fd3ad95 100644
+--- a/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
++++ b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
+@@ -5,71 +5,23 @@ package app.campfire.common.compose.network
+ 
+ import android.content.Context
+ import android.net.ConnectivityManager
+-import android.net.Network
+ import android.net.NetworkCapabilities
+-import android.net.NetworkRequest
+ import androidx.compose.runtime.Composable
+-import androidx.compose.runtime.DisposableEffect
+-import androidx.compose.runtime.getValue
+-import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+-import androidx.compose.runtime.setValue
+ import androidx.compose.ui.platform.LocalContext
+ 
+ @Composable
+ actual fun rememberIsCellularOrMetered(): Boolean {
+   val context = LocalContext.current
+-
+-  var isCellularOrMetered by remember(context) {
+-    mutableStateOf(checkIsCellularOrMetered(context))
+-  }
+-
+-  DisposableEffect(context) {
+-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+-      ?: return@DisposableEffect onDispose {}
+-
+-    val callback = object : ConnectivityManager.NetworkCallback() {
+-      override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+-        isCellularOrMetered = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+-          !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+-      }
+-
+-      override fun onLost(network: Network) {
+-        isCellularOrMetered = checkIsCellularOrMetered(context)
+-      }
+-    }
+-
+-    val request = NetworkRequest.Builder()
+-      .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+-      .build()
+-
++  return remember(context) {
+     try {
+-      cm.registerNetworkCallback(request, callback)
++      val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++      val activeNetwork = cm?.activeNetwork
++      val capabilities = activeNetwork?.let { cm.getNetworkCapabilities(it) }
++      capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true ||
++        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
+     } catch (_: Throwable) {
+-      // Permission or hardware not available; fall back to the snapshot value
+-    }
+-
+-    onDispose {
+-      try {
+-        cm.unregisterNetworkCallback(callback)
+-      } catch (_: Throwable) {
+-        // Already unregistered or unavailable
+-      }
++      false
+     }
+   }
+-
+-  return isCellularOrMetered
+-}
+-
+-private fun checkIsCellularOrMetered(context: Context): Boolean {
+-  return try {
+-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+-    val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+-    caps != null && (
+-      caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+-        !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+-      )
+-  } catch (_: Throwable) {
+-    false
+-  }
+ }
 diff --git a/core/src/commonMain/kotlin/app/campfire/core/model/Session.kt b/core/src/commonMain/kotlin/app/campfire/core/model/Session.kt
 index f3eba424..a4223887 100644
 --- a/core/src/commonMain/kotlin/app/campfire/core/model/Session.kt
