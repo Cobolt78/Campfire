@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateTo
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.SearchBarScrollBehavior
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -35,16 +36,40 @@ class CampfireNavigationBarState internal constructor(
   initialBottomBarOffset: Float,
   initialShouldHide: Boolean,
 ) {
-  private var scrollBehavior by mutableStateOf<SearchBarScrollBehavior?>(null)
+  private var searchBarScrollBehavior by mutableStateOf<SearchBarScrollBehavior?>(null)
+  private var topAppBarScrollBehavior by mutableStateOf<TopAppBarScrollBehavior?>(null)
+
+  var scrollBehavior: SearchBarScrollBehavior?
+    get() = searchBarScrollBehavior
+    private set(value) { searchBarScrollBehavior = value }
+
   var bottomBarOffset by mutableFloatStateOf(initialBottomBarOffset)
   var scrollOffsetLimit by mutableFloatStateOf(initialOffsetLimit)
 
   private var _scrollOffset by mutableFloatStateOf(initialOffset)
 
+  val currentFraction: Float?
+    get() = when {
+      topAppBarScrollBehavior != null -> {
+        topAppBarScrollBehavior?.state?.collapsedFraction?.coerceIn(0f, 1f)
+      }
+      searchBarScrollBehavior != null -> {
+        val b = searchBarScrollBehavior!!
+        if (b.scrollOffsetLimit < 0f) {
+          (b.scrollOffset / b.scrollOffsetLimit).coerceIn(0f, 1f)
+        } else {
+          0f
+        }
+      }
+      else -> null
+    }
+
   @get:FrequentlyChangingValue
   val scrollOffset by derivedStateOf {
     if (!shouldHide && !isTransitioning) {
-      scrollBehavior?.scrollOffset ?: _scrollOffset
+      currentFraction?.let { fraction ->
+        -fraction * scrollOffsetLimit
+      } ?: _scrollOffset
     } else {
       _scrollOffset
     }
@@ -74,8 +99,9 @@ class CampfireNavigationBarState internal constructor(
           isTransitioning = isRunning
         }
       } else if (!shouldHide) {
+        val target = currentFraction?.let { -it * scrollOffsetLimit } ?: 0f
         AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
-          targetValue = scrollBehavior?.scrollOffset ?: 0f,
+          targetValue = target,
           animationSpec = spring(
             stiffness = Spring.StiffnessMediumLow,
           ),
@@ -103,18 +129,20 @@ class CampfireNavigationBarState internal constructor(
       return computeInternalOffset()
     }
 
-    return scrollBehavior?.let { behavior ->
-      val scrollOffset = (-behavior.scrollOffset)
-        .coerceIn(0f, scrollOffsetLimit)
-
-      val remainingHeight = scrollOffsetLimit - scrollOffset
+    return currentFraction?.let { fraction ->
+      val remainingHeight = (1f - fraction) * scrollOffsetLimit
       remainingHeight.coerceAtLeast(bottomBarOffset)
     } ?: computeInternalOffset()
   }
 
   fun CoroutineScope.installScrollBehavior(behavior: SearchBarScrollBehavior) {
-    val hadPreviousBehavior = scrollBehavior != null
-    scrollBehavior = behavior
+    val hadPreviousBehavior = searchBarScrollBehavior != null || topAppBarScrollBehavior != null
+    searchBarScrollBehavior = behavior
+    topAppBarScrollBehavior = null
+    val targetOffset = if (behavior.scrollOffsetLimit < 0f) {
+      -(behavior.scrollOffset / behavior.scrollOffsetLimit).coerceIn(0f, 1f) * scrollOffsetLimit
+    } else 0f
+
     if (
       isTransitioning &&
       behavior.scrollOffset < 0f &&
@@ -123,13 +151,13 @@ class CampfireNavigationBarState internal constructor(
       transitionJob?.cancel()
       isTransitioning = false
     } else if (
-      behavior.scrollOffset != _scrollOffset &&
+      targetOffset != _scrollOffset &&
       !hadPreviousBehavior &&
       !shouldHide
     ) {
       transitionJob = launch {
         AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
-          targetValue = behavior.scrollOffset,
+          targetValue = targetOffset,
           animationSpec = spring(
             stiffness = Spring.StiffnessMediumLow,
           ),
@@ -139,13 +167,53 @@ class CampfireNavigationBarState internal constructor(
         }
       }
     } else if (hadPreviousBehavior) {
-      _scrollOffset = behavior.scrollOffset
+      _scrollOffset = targetOffset
     }
   }
 
   fun clearScrollBehavior(behavior: SearchBarScrollBehavior) {
-    if (scrollBehavior === behavior) {
-      scrollBehavior = null
+    if (searchBarScrollBehavior === behavior) {
+      searchBarScrollBehavior = null
+    }
+  }
+
+  fun CoroutineScope.installScrollBehavior(behavior: TopAppBarScrollBehavior) {
+    val hadPreviousBehavior = searchBarScrollBehavior != null || topAppBarScrollBehavior != null
+    topAppBarScrollBehavior = behavior
+    searchBarScrollBehavior = null
+    val targetOffset = -behavior.state.collapsedFraction.coerceIn(0f, 1f) * scrollOffsetLimit
+
+    if (
+      isTransitioning &&
+      behavior.state.collapsedFraction > 0f &&
+      transitionJob?.isActive == true
+    ) {
+      transitionJob?.cancel()
+      isTransitioning = false
+    } else if (
+      targetOffset != _scrollOffset &&
+      !hadPreviousBehavior &&
+      !shouldHide
+    ) {
+      transitionJob = launch {
+        AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
+          targetValue = targetOffset,
+          animationSpec = spring(
+            stiffness = Spring.StiffnessMediumLow,
+          ),
+        ) {
+          _scrollOffset = value
+          isTransitioning = isRunning
+        }
+      }
+    } else if (hadPreviousBehavior) {
+      _scrollOffset = targetOffset
+    }
+  }
+
+  fun clearScrollBehavior(behavior: TopAppBarScrollBehavior) {
+    if (topAppBarScrollBehavior === behavior) {
+      topAppBarScrollBehavior = null
     }
   }
 
@@ -192,7 +260,25 @@ fun AttachScrollBehaviorToLocalNavigationBar(scrollBehavior: SearchBarScrollBeha
   val navigationBarState = LocalNavigationBarState.current
 
   if (navigationBarState != null) {
-    DisposableEffect(Unit) {
+    DisposableEffect(scrollBehavior) {
+      with(navigationBarState) {
+        scope.installScrollBehavior(scrollBehavior)
+      }
+
+      onDispose {
+        navigationBarState.clearScrollBehavior(scrollBehavior)
+      }
+    }
+  }
+}
+
+@Composable
+fun AttachScrollBehaviorToLocalNavigationBar(scrollBehavior: TopAppBarScrollBehavior) {
+  val scope = rememberCoroutineScope()
+  val navigationBarState = LocalNavigationBarState.current
+
+  if (navigationBarState != null) {
+    DisposableEffect(scrollBehavior) {
       with(navigationBarState) {
         scope.installScrollBehavior(scrollBehavior)
       }

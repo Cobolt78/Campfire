@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
@@ -66,8 +67,10 @@ import app.campfire.common.compose.widgets.EmptyState
 import app.campfire.common.compose.widgets.ItemImage
 import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.compose.widgets.OfflineStatusIndicator
-import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
+import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 import app.campfire.common.screens.ContinueSeriesScreen
+import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
+import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.Series
@@ -81,7 +84,8 @@ fun ContinueSeries(
   state: ContinueSeriesUiState,
   modifier: Modifier = Modifier,
 ) {
-  val scrollBehavior = adaptiveExitUntilCollapsedScrollBehavior()
+  val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
+  AttachScrollBehaviorToLocalNavigationBar(scrollBehavior)
   var showSortMenu by remember { mutableStateOf(false) }
 
   Scaffold(
@@ -139,7 +143,9 @@ fun ContinueSeries(
       )
     },
     modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
+    contentWindowInsets = CampfireWindowInsets
+      .exclude(OverlappedNavigationBarInsets)
+      .add(CampfireNavigationBarWindowInsets),
   ) { paddingValues ->
     when {
       state.isLoading -> {

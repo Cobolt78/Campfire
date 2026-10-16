@@ -80,6 +80,7 @@ import app.campfire.common.compose.widgets.MarqueeText
 import app.campfire.core.extensions.fluentIf
 import app.campfire.core.extensions.progressOver
 import app.campfire.core.model.Session
+import app.campfire.sessions.ui.composables.ForwardIcon
 import app.campfire.sessions.ui.composables.RewindIcon
 import app.campfire.sessions.ui.playback.AvailableSync
 import app.campfire.sessions.ui.playback.DefaultNonThemedContentColor
@@ -94,6 +95,7 @@ import app.campfire.sessions.ui.playback.collapsed.ActionState.None
 import app.campfire.sessions.ui.playback.collapsed.ActionState.Open
 import app.campfire.sessions.ui.playback.collapsed.composables.PlaybackThumbnail
 import campfire.features.sessions.ui.generated.resources.Res
+import campfire.features.sessions.ui.generated.resources.action_forward
 import campfire.features.sessions.ui.generated.resources.action_pause
 import campfire.features.sessions.ui.generated.resources.action_play
 import campfire.features.sessions.ui.generated.resources.action_rewind
@@ -196,6 +198,9 @@ internal fun <T> T.CollapsedPlaybackBar(
       onRewindClick = {
         playerState.eventSink(PlayerUiEvent.RewindClick)
       },
+      onForwardClick = {
+        playerState.eventSink(PlayerUiEvent.FastForwardClick)
+      },
       sharedTransitionScope = this@CollapsedPlaybackBar,
       animatedVisibilityScope = this@CollapsedPlaybackBar,
     )
@@ -218,6 +223,7 @@ private fun CollapsedPlaybackBarContent(
   onSync: () -> Unit,
   onPlayPauseClick: () -> Unit,
   onRewindClick: () -> Unit,
+  onForwardClick: () -> Unit,
   sharedTransitionScope: SharedTransitionScope,
   animatedVisibilityScope: AnimatedVisibilityScope,
   modifier: Modifier = Modifier,
@@ -305,6 +311,19 @@ private fun CollapsedPlaybackBarContent(
             onClick = onRewindClick,
           ) {
             RewindIcon()
+          }
+        }
+      }
+
+      AnimatedVisibility(
+        visible = dragState.actionState != Dispose && availableSync == null,
+      ) {
+        val forwardLabel = stringResource(Res.string.action_forward)
+        IconButtonTooltip(text = forwardLabel) {
+          IconButton(
+            onClick = onForwardClick,
+          ) {
+            ForwardIcon()
           }
         }
       }

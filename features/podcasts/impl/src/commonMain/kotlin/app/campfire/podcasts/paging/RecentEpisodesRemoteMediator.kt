@@ -34,8 +34,6 @@ fun interface RecentEpisodesRemoteMediatorFactory {
   ): RecentEpisodesRemoteMediator
 }
 
-private const val MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L
-
 @OptIn(ExperimentalPagingApi::class)
 @AssistedInject
 class RecentEpisodesRemoteMediator(
@@ -50,16 +48,7 @@ class RecentEpisodesRemoteMediator(
   override val tag: String = "RecentEpisodesRemoteMediator"
 
   override suspend fun initialize(): InitializeAction {
-    val oldestPage = db.podcastEpisodePageQueries.selectOldestPage(
-      userId = user.id,
-      libraryId = user.selectedLibraryId,
-    ).awaitAsOneOrNull()
-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
-    return if (elapsed > MAX_CACHE_TIME_MS) {
-      InitializeAction.LAUNCH_INITIAL_REFRESH
-    } else {
-      InitializeAction.SKIP_INITIAL_REFRESH
-    }
+    return InitializeAction.LAUNCH_INITIAL_REFRESH
   }
 
   override suspend fun load(

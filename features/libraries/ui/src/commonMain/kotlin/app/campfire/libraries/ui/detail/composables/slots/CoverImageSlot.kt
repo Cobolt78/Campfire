@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.widgets.CoverImage
+import app.campfire.common.compose.widgets.CoverImageSize
 import app.campfire.libraries.ui.detail.LibraryItemUiEvent
 import campfire.features.libraries.ui.generated.resources.Res
 import campfire.features.libraries.ui.generated.resources.placeholder_book
@@ -28,7 +29,7 @@ class CoverImageSlot(
     BoxWithConstraints(
       modifier = modifier.fillMaxWidth(),
     ) {
-      val size = minWidth * 0.75f
+      val size = if (maxWidth > 0.dp) (maxWidth * 0.75f).coerceAtLeast(CoverImageSize) else CoverImageSize
       CoverImage(
         imageUrl = imageUrl,
         contentDescription = contentDescription,

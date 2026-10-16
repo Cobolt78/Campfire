@@ -52,6 +52,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 45. [Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.22)](#45-audiobookshelf-playback-progress-sync--server-session-cleanup-v1221)
 46. [Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.22)](#46-audiobookshelf-real-time-open-listening-sessions--progress-sync-lifecycle-v1221)
 47. [Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.22)](#47-cellular-download-check-simplification--false-positive-warning-resolution-v1221)
+48. [Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)](#48-playback--navigation-bar-refinements-fast-forward-zero-gap--card-clearance-v1223)
+49. [Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)](#49-instant-background-paging-refresh--blank-cover-measurement-fix-v1223)
 
 ---
 
@@ -1223,6 +1225,66 @@ During the v1.2.21 feature restore (commit `ecac076c`), `rememberIsCellularOrMet
 ### Modified Files:
 * `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
 * `GEMINI.md`
+
+---
+
+## 48. Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)
+
+### Summary
+Enhanced the collapsed playback bar and bottom navigation system with three core UI/UX refinements:
+1. Added a user-configured fast-forward button to the mini playback bar.
+2. Eliminated the floating gap under the mini player when scrolling hides the bottom navigation bar.
+3. Unified scroll-to-hide behavior across menus and ensured full clearance so bottom cards are never cut off.
+
+### Key Changes
+1. **Mini Playback Bar Fast-Forward (`CollapsedPlaybackBar.kt`)**:
+   - Added `ForwardIcon` directly adjacent to `RewindIcon` on the mini player: `[Cover] [Title] [Rewind] [Fast Forward] [Play/Pause]`.
+   - Tied directly to user-configured skip intervals (30s / 10s / 5s) and emits `PlayerUiEvent.FastForwardClick`.
+2. **Docked Mini Player & Normalized Fraction Math (`CampfireNavigationBarState.kt`)**:
+   - Replaced raw search bar pixel offsets with a normalized collapse fraction $[0.0, 1.0]$. As scrolling down hides the navigation bar, the mini player smoothly and completely translates to `bottomBarOffset` directly at the bottom of the screen with zero gap.
+3. **Uniform Scroll-to-Hide Navigation Across All Menus**:
+   - Switched `ContinueSeriesUi` and `DownloadsUi` to `adaptiveEnterAlwaysScrollBehavior` and attached them to `LocalNavigationBarState` (with support added for `TopAppBarScrollBehavior`), unifying scroll-to-hide behavior across Home, Library, Downloads, and Continue Series.
+4. **List/Grid Card Clearance at Bottom**:
+   - Added `CampfireNavigationBarWindowInsets` to `contentWindowInsets` on `ContinueSeriesUi`, `DownloadsUi`, and `SeriesUi`, ensuring the final book card in lists or grids has complete padding clearance and is never obscured behind bottom chrome.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt`
+* `ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt`
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt`
+
+---
+
+## 49. Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)
+
+### Summary
+Resolved stale data/book counts when opening "Recently Added" and other paged views, and resolved book detail blank cover art display errors.
+
+### Root Cause
+1. **Stale 24-Hour Paging Cache Lock**:
+   - Upstream commit `93c4027b` introduced a 24-hour cache limit (`MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L`).
+   - If a page had been viewed within 24 hours, `RemoteMediator.initialize()` returned `SKIP_INITIAL_REFRESH`.
+   - When tapping "Recently Added" from Home, Android Paging 3 was prohibited from contacting the network, loading only the stale SQLite database snapshot from hours earlier (e.g. 21,770 books instead of 21,787).
+2. **Unconstrained Dimension Collapse on Book Details**:
+   - `CoverImageSlot` computed cover size as `minWidth * 0.75f`. Inside unconstrained scrollable layouts, `minWidth` could evaluate to `0.dp`, resulting in a collapsed cover measurement and displaying the fallback placeholder.
+
+### Key Changes
+1. **Immediate Background Refresh (`RemoteMediator`)**:
+   - Changed `initialize()` across `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator` to return `InitializeAction.LAUNCH_INITIAL_REFRESH` (Google Jetpack Paging standard).
+   - Local database cache emits in 0ms for instant UI display, while page 0 refreshes asynchronously in the background (~25 KB payload), immediately reflecting newly added books and accurate total counts without requiring manual pull-to-refresh.
+2. **Book Detail Cover Sizing & Click-to-Retry**:
+   - Updated `CoverImageSlot` to calculate size from `maxWidth` clamped to at least `CoverImageSize` (256dp).
+   - Added error logging via `bark` and enabled click-to-retry (`painter.restart()`) on the placeholder image in `CoverImage.kt`.
+
+### Modified Files:
+* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
+* `features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt`
+* `features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt`
+* `features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt`
+
 
 
 

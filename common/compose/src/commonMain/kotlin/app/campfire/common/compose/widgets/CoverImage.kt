@@ -6,11 +6,13 @@ package app.campfire.common.compose.widgets
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import app.campfire.core.logging.bark
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -89,6 +91,16 @@ fun CoverImage(
       }
     }
 
+    val painterState by painter.state.collectAsState()
+    val isError = painterState is AsyncImagePainter.State.Error
+
+    if (isError) {
+      LaunchedEffect(painterState) {
+        val error = (painterState as? AsyncImagePainter.State.Error)?.result?.throwable
+        bark(throwable = error) { "CoverImage failed to load for $imageUrl" }
+      }
+    }
+
     Image(
       painter = painter,
       contentDescription = contentDescription,
@@ -97,14 +109,16 @@ fun CoverImage(
         .fluentIf(size != Dp.Unspecified) {
           size(size)
         }
-        .clip(shape),
+        .clip(shape)
+        .fluentIf(isError) {
+          clickable { painter.restart() }
+        },
     )
 
     // Coil seeds a request with any smaller rendition already in memory, which [Image] above is
     // already drawing — covering that with a spinner is what made arriving on an item detail through
     // a shared-element transition look so abrupt. Only fall back to the loading treatment when there
     // is genuinely nothing on screen yet.
-    val painterState by painter.state.collectAsState()
     val loadingState = painterState as? AsyncImagePainter.State.Loading
     if (loadingState != null && loadingState.painter == null) {
       LoadingCover(

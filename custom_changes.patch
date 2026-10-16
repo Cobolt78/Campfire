@@ -11,13 +11,36 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..89c2a520 100644
+index c0278c85..977f0cb9 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -19,6 +19,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -19,6 +19,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Other Notes & Contributions
  
++## [1.2.23]
++
++### Added
++
++- **Fast-Forward Button on Collapsed Mini-Player**:
++  - Added a dedicated fast-forward button directly to the right of the rewind button on the collapsed playback bar (`[Rewind] [Fast Forward] [Play/Pause]`), using the user-configured forward skip duration.
++
++### Changed
++
++- **Docked Mini-Player & Floating Gap Elimination**:
++  - Normalized scroll collapse fractions in `CampfireNavigationBarState` so the collapsed playback bar smoothly glides all the way down to the bottom of the screen with zero gap when the navigation bar hides.
++- **Uniform Scroll-to-Hide Navigation Across All Menus**:
++  - Switched "Continue Series" and "Downloads" to `adaptiveEnterAlwaysScrollBehavior` and attached them to `LocalNavigationBarState`, making the bottom navigation bar hide on scroll down and reappear on scroll up uniformly across all menus.
++- **Instant Background Library Refresh & Up-to-Date Item Counts**:
++  - Replaced stale 24-hour cache locks with immediate background refresh in `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator`. Opening "Recently Added", "Recent Series", "Newest Authors", or the Library now displays cached items instantly (0ms) while asynchronously fetching fresh data from Audiobookshelf, updating the item count and displaying newly added books immediately.
++
++### Fixed
++
++- **Cut-Off Cards at List and Grid Bottoms**:
++  - Added `CampfireNavigationBarWindowInsets` to `contentWindowInsets` on `ContinueSeriesUi`, `DownloadsUi`, and `SeriesUi`, ensuring the final card in the list or grid is 100% visible and not obstructed behind the bottom navigation or playback bar.
++- **Blank Book Cover Art & Click-to-Retry**:
++  - Fixed an unconstrained `minWidth` measurement collapse in `CoverImageSlot` that could zero out book cover dimensions, sizing with `maxWidth` clamped to `CoverImageSize`. Added error logging and click-to-retry (`painter.restart()`) on placeholder covers.
++
 +## [1.2.22]
 +
 +### Added
@@ -105,10 +128,10 @@ index c0278c85..89c2a520 100644
  ### Added
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..a862ec88
+index 00000000..7d84e857
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1240 @@
+@@ -0,0 +1,1302 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -163,6 +186,8 @@ index 00000000..a862ec88
 +45. [Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.22)](#45-audiobookshelf-playback-progress-sync--server-session-cleanup-v1221)
 +46. [Audiobookshelf Real-Time Open Listening Sessions & Progress Sync Lifecycle (v1.2.22)](#46-audiobookshelf-real-time-open-listening-sessions--progress-sync-lifecycle-v1221)
 +47. [Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.22)](#47-cellular-download-check-simplification--false-positive-warning-resolution-v1221)
++48. [Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)](#48-playback--navigation-bar-refinements-fast-forward-zero-gap--card-clearance-v1223)
++49. [Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)](#49-instant-background-paging-refresh--blank-cover-measurement-fix-v1223)
 +
 +---
 +
@@ -1335,6 +1360,66 @@ index 00000000..a862ec88
 +* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
 +* `GEMINI.md`
 +
++---
++
++## 48. Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)
++
++### Summary
++Enhanced the collapsed playback bar and bottom navigation system with three core UI/UX refinements:
++1. Added a user-configured fast-forward button to the mini playback bar.
++2. Eliminated the floating gap under the mini player when scrolling hides the bottom navigation bar.
++3. Unified scroll-to-hide behavior across menus and ensured full clearance so bottom cards are never cut off.
++
++### Key Changes
++1. **Mini Playback Bar Fast-Forward (`CollapsedPlaybackBar.kt`)**:
++   - Added `ForwardIcon` directly adjacent to `RewindIcon` on the mini player: `[Cover] [Title] [Rewind] [Fast Forward] [Play/Pause]`.
++   - Tied directly to user-configured skip intervals (30s / 10s / 5s) and emits `PlayerUiEvent.FastForwardClick`.
++2. **Docked Mini Player & Normalized Fraction Math (`CampfireNavigationBarState.kt`)**:
++   - Replaced raw search bar pixel offsets with a normalized collapse fraction $[0.0, 1.0]$. As scrolling down hides the navigation bar, the mini player smoothly and completely translates to `bottomBarOffset` directly at the bottom of the screen with zero gap.
++3. **Uniform Scroll-to-Hide Navigation Across All Menus**:
++   - Switched `ContinueSeriesUi` and `DownloadsUi` to `adaptiveEnterAlwaysScrollBehavior` and attached them to `LocalNavigationBarState` (with support added for `TopAppBarScrollBehavior`), unifying scroll-to-hide behavior across Home, Library, Downloads, and Continue Series.
++4. **List/Grid Card Clearance at Bottom**:
++   - Added `CampfireNavigationBarWindowInsets` to `contentWindowInsets` on `ContinueSeriesUi`, `DownloadsUi`, and `SeriesUi`, ensuring the final book card in lists or grids has complete padding clearance and is never obscured behind bottom chrome.
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt`
++* `ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt`
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt`
++
++---
++
++## 49. Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)
++
++### Summary
++Resolved stale data/book counts when opening "Recently Added" and other paged views, and resolved book detail blank cover art display errors.
++
++### Root Cause
++1. **Stale 24-Hour Paging Cache Lock**:
++   - Upstream commit `93c4027b` introduced a 24-hour cache limit (`MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L`).
++   - If a page had been viewed within 24 hours, `RemoteMediator.initialize()` returned `SKIP_INITIAL_REFRESH`.
++   - When tapping "Recently Added" from Home, Android Paging 3 was prohibited from contacting the network, loading only the stale SQLite database snapshot from hours earlier (e.g. 21,770 books instead of 21,787).
++2. **Unconstrained Dimension Collapse on Book Details**:
++   - `CoverImageSlot` computed cover size as `minWidth * 0.75f`. Inside unconstrained scrollable layouts, `minWidth` could evaluate to `0.dp`, resulting in a collapsed cover measurement and displaying the fallback placeholder.
++
++### Key Changes
++1. **Immediate Background Refresh (`RemoteMediator`)**:
++   - Changed `initialize()` across `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator` to return `InitializeAction.LAUNCH_INITIAL_REFRESH` (Google Jetpack Paging standard).
++   - Local database cache emits in 0ms for instant UI display, while page 0 refreshes asynchronously in the background (~25 KB payload), immediately reflecting newly added books and accurate total counts without requiring manual pull-to-refresh.
++2. **Book Detail Cover Sizing & Click-to-Retry**:
++   - Updated `CoverImageSlot` to calculate size from `maxWidth` clamped to at least `CoverImageSize` (256dp).
++   - Added error logging via `bark` and enabled click-to-retry (`painter.restart()`) on the placeholder image in `CoverImage.kt`.
++
++### Modified Files:
++* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
++* `features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt`
++* `features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt`
++* `features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt`
++
++
 +
 +
 +
@@ -1351,7 +1436,7 @@ index 00000000..a862ec88
 +
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
-index 00000000..abec2288
+index 00000000..387259bd
 --- /dev/null
 +++ b/GEMINI.md
 @@ -0,0 +1,48 @@
@@ -1360,7 +1445,7 @@ index 00000000..abec2288
 +## Workflow & GitHub Integration Invariants
 +
 +1. **Automatic Git Tracking & Commits**:
-+   - Every time code changes or fixes are implemented and verified, automatically stage and commit them to the local Git repository on the active custom branch (e.g. `v1.2.21-custom`).
++   - Every time code changes or fixes are implemented and verified, automatically stage and commit them to the local Git repository on the active custom branch (e.g. `v1.2.23-custom`).
 +   - Automatically push commits to GitHub: `git push origin <active-branch>` (`https://github.com/Cobolt78/Campfire.git`).
 +   - Automatically update `CUSTOM_MODIFICATIONS.md` and regenerate `custom_changes.patch` using `git diff <upstream-merge-base> ':!custom_changes.patch' > custom_changes.patch` so that patch files are always 100% in sync with zero drift.
 +
@@ -1969,6 +2054,60 @@ index 00000000..660fd819
 + */
 +@Composable
 +expect fun rememberIsCellularOrMetered(): Boolean
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
+index 9d968200..2927bdde 100644
+--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
+@@ -6,11 +6,13 @@ package app.campfire.common.compose.widgets
+ import androidx.compose.animation.ExperimentalSharedTransitionApi
+ import androidx.compose.foundation.Image
+ import androidx.compose.foundation.background
++import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.size
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material3.CircularProgressIndicator
+ import androidx.compose.material3.MaterialTheme
++import app.campfire.core.logging.bark
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.collectAsState
+@@ -89,6 +91,16 @@ fun CoverImage(
+       }
+     }
+ 
++    val painterState by painter.state.collectAsState()
++    val isError = painterState is AsyncImagePainter.State.Error
++
++    if (isError) {
++      LaunchedEffect(painterState) {
++        val error = (painterState as? AsyncImagePainter.State.Error)?.result?.throwable
++        bark(throwable = error) { "CoverImage failed to load for $imageUrl" }
++      }
++    }
++
+     Image(
+       painter = painter,
+       contentDescription = contentDescription,
+@@ -97,14 +109,16 @@ fun CoverImage(
+         .fluentIf(size != Dp.Unspecified) {
+           size(size)
+         }
+-        .clip(shape),
++        .clip(shape)
++        .fluentIf(isError) {
++          clickable { painter.restart() }
++        },
+     )
+ 
+     // Coil seeds a request with any smaller rendition already in memory, which [Image] above is
+     // already drawing — covering that with a spinner is what made arriving on an item detail through
+     // a shared-element transition look so abrupt. Only fall back to the loading treatment when there
+     // is genuinely nothing on screen yet.
+-    val painterState by painter.state.collectAsState()
+     val loadingState = painterState as? AsyncImagePainter.State.Loading
+     if (loadingState != null && loadingState.painter == null) {
+       LoadingCover(
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
 index d9aeca50..2e557be3 100644
 --- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/LibraryItemCard.kt
@@ -3848,6 +3987,38 @@ index ef48384e..a7b783e3 100644
    @Test
    fun `restoring onto a server that already has an account fails without asking the server`() = runTest {
      serverRepository.all += server(SERVER_URL, userName = "alice")
+diff --git a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt b/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
+index 890fc746..47e37726 100644
+--- a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
++++ b/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
+@@ -34,8 +34,6 @@ fun interface AuthorsRemoteMediatorFactory {
+   ): AuthorsRemoteMediator
+ }
+ 
+-private const val MAX_CACHE_TIME_MS = 7L * 24L * 60L * 60 * 1000L
+-
+ @OptIn(ExperimentalPagingApi::class)
+ @AssistedInject
+ class AuthorsRemoteMediator(
+@@ -51,17 +49,7 @@ class AuthorsRemoteMediator(
+   override val tag: String = "AuthorsRemoteMediator"
+ 
+   override suspend fun initialize(): InitializeAction {
+-    val oldestPage = db.authorsPageQueries.selectOldestPage(
+-      input = input.databaseKey,
+-      userId = user.id,
+-      libraryId = user.selectedLibraryId,
+-    ).awaitAsOneOrNull()
+-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
+-    if (elapsed > MAX_CACHE_TIME_MS) {
+-      return InitializeAction.LAUNCH_INITIAL_REFRESH
+-    } else {
+-      return InitializeAction.SKIP_INITIAL_REFRESH
+-    }
++    return InitializeAction.LAUNCH_INITIAL_REFRESH
+   }
+ 
+   override suspend fun load(
 diff --git a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt b/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
 index 385366ff..fade3c78 100644
 --- a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
@@ -5817,6 +5988,38 @@ index e9e3ff49..0999ae8c 100644
          null -> Unit
        }
  
+diff --git a/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt b/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt
+index 48d78c7d..0ec864f5 100644
+--- a/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt
++++ b/features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt
+@@ -36,8 +36,6 @@ fun interface LibraryItemRemoteMediatorFactory {
+   ): LibraryItemRemoteMediator
+ }
+ 
+-private const val MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L
+-
+ @OptIn(ExperimentalPagingApi::class)
+ @AssistedInject
+ class LibraryItemRemoteMediator(
+@@ -53,17 +51,7 @@ class LibraryItemRemoteMediator(
+   override val tag: String = "LibraryItemRemoteMediator"
+ 
+   override suspend fun initialize(): InitializeAction {
+-    val oldestPage = db.libraryItemPageQueries.selectOldestPage(
+-      input = input.databaseKey,
+-      userId = user.id,
+-      libraryId = user.selectedLibraryId,
+-    ).awaitAsOneOrNull()
+-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
+-    if (elapsed > MAX_CACHE_TIME_MS) {
+-      return InitializeAction.LAUNCH_INITIAL_REFRESH
+-    } else {
+-      return InitializeAction.SKIP_INITIAL_REFRESH
+-    }
++    return InitializeAction.LAUNCH_INITIAL_REFRESH
+   }
+ 
+   override suspend fun load(
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt
 index 5d18a44d..6c742944 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt
@@ -6021,7 +6224,7 @@ index 940021cf..42acd712 100644
            visible = isAccelerated,
          ) {
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
-index 2785a544..fdb0b439 100644
+index 2785a544..4af9bc7b 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt
 @@ -3,7 +3,6 @@
@@ -6032,11 +6235,12 @@ index 2785a544..fdb0b439 100644
  import androidx.compose.foundation.layout.BoxWithConstraints
  import androidx.compose.foundation.layout.fillMaxWidth
  import androidx.compose.foundation.layout.padding
-@@ -11,24 +10,21 @@ import androidx.compose.runtime.Composable
+@@ -11,28 +10,26 @@ import androidx.compose.runtime.Composable
  import androidx.compose.ui.Modifier
  import androidx.compose.ui.unit.dp
  import app.campfire.common.compose.widgets.CoverImage
 -import app.campfire.common.compose.widgets.LibraryItemSharedTransitionKey
++import app.campfire.common.compose.widgets.CoverImageSize
  import app.campfire.libraries.ui.detail.LibraryItemUiEvent
  import campfire.features.libraries.ui.generated.resources.Res
  import campfire.features.libraries.ui.generated.resources.placeholder_book
@@ -6059,7 +6263,12 @@ index 2785a544..fdb0b439 100644
      BoxWithConstraints(
        modifier = modifier.fillMaxWidth(),
      ) {
-@@ -43,17 +39,8 @@ class CoverImageSlot(
+-      val size = minWidth * 0.75f
++      val size = if (maxWidth > 0.dp) (maxWidth * 0.75f).coerceAtLeast(CoverImageSize) else CoverImageSize
+       CoverImage(
+         imageUrl = imageUrl,
+         contentDescription = contentDescription,
+@@ -43,17 +40,8 @@ class CoverImageSlot(
            .padding(
              vertical = 16.dp,
            ),
@@ -6619,10 +6828,10 @@ index 00000000..aab8c51e
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 new file mode 100644
-index 00000000..2625a62b
+index 00000000..c1c5c85b
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,209 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -6634,6 +6843,7 @@ index 00000000..2625a62b
 +import androidx.compose.foundation.layout.PaddingValues
 +import androidx.compose.foundation.layout.Row
 +import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.add
 +import androidx.compose.foundation.layout.exclude
 +import androidx.compose.foundation.layout.fillMaxSize
 +import androidx.compose.foundation.layout.fillMaxWidth
@@ -6671,9 +6881,11 @@ index 00000000..2625a62b
 +import app.campfire.common.compose.widgets.EmptyState
 +import app.campfire.common.compose.widgets.LibraryItemListItem
 +import app.campfire.common.compose.widgets.NavigationBackButton
-+import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
++import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 +import app.campfire.common.screens.DownloadsScreen
 +import app.campfire.core.di.UserScope
++import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
++import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 +import com.slack.circuit.codegen.annotations.CircuitInject
 +import kotlin.math.roundToInt
 +
@@ -6684,7 +6896,8 @@ index 00000000..2625a62b
 +  state: DownloadsUiState,
 +  modifier: Modifier = Modifier,
 +) {
-+  val scrollBehavior = adaptiveExitUntilCollapsedScrollBehavior()
++  val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
++  AttachScrollBehaviorToLocalNavigationBar(scrollBehavior)
 +  var showSortMenu by remember { mutableStateOf(false) }
 +
 +  Scaffold(
@@ -6754,7 +6967,9 @@ index 00000000..2625a62b
 +      )
 +    },
 +    modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-+    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
++    contentWindowInsets = CampfireWindowInsets
++      .exclude(OverlappedNavigationBarInsets)
++      .add(CampfireNavigationBarWindowInsets),
 +  ) { paddingValues ->
 +    when {
 +      state.isLoading -> {
@@ -6969,6 +7184,37 @@ index 892c2b37..77d9f612 100644
      genres = genres,
      feedUrl = feedUrl,
      imageUrl = coverUrl,
+diff --git a/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt b/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt
+index fd4031b1..e8274f7d 100644
+--- a/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt
++++ b/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt
+@@ -34,8 +34,6 @@ fun interface RecentEpisodesRemoteMediatorFactory {
+   ): RecentEpisodesRemoteMediator
+ }
+ 
+-private const val MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L
+-
+ @OptIn(ExperimentalPagingApi::class)
+ @AssistedInject
+ class RecentEpisodesRemoteMediator(
+@@ -50,16 +48,7 @@ class RecentEpisodesRemoteMediator(
+   override val tag: String = "RecentEpisodesRemoteMediator"
+ 
+   override suspend fun initialize(): InitializeAction {
+-    val oldestPage = db.podcastEpisodePageQueries.selectOldestPage(
+-      userId = user.id,
+-      libraryId = user.selectedLibraryId,
+-    ).awaitAsOneOrNull()
+-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
+-    return if (elapsed > MAX_CACHE_TIME_MS) {
+-      InitializeAction.LAUNCH_INITIAL_REFRESH
+-    } else {
+-      InitializeAction.SKIP_INITIAL_REFRESH
+-    }
++    return InitializeAction.LAUNCH_INITIAL_REFRESH
+   }
+ 
+   override suspend fun load(
 diff --git a/features/podcasts/impl/src/commonTest/kotlin/app/campfire/podcasts/mapping/PodcastSearchMappingTest.kt b/features/podcasts/impl/src/commonTest/kotlin/app/campfire/podcasts/mapping/PodcastSearchMappingTest.kt
 new file mode 100644
 index 00000000..910f0bc5
@@ -7225,6 +7471,38 @@ index 1ec7cd64..7cf7ebd6 100644
 +
 +  override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
  }
+diff --git a/features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt b/features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt
+index a32545b2..7bf86e56 100644
+--- a/features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt
++++ b/features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt
+@@ -37,8 +37,6 @@ fun interface SeriesRemoteMediatorFactory {
+   ): SeriesRemoteMediator
+ }
+ 
+-private const val MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L
+-
+ @OptIn(ExperimentalPagingApi::class)
+ @AssistedInject
+ class SeriesRemoteMediator(
+@@ -53,17 +51,7 @@ class SeriesRemoteMediator(
+   override val tag: String = "SeriesRemoteMediator"
+ 
+   override suspend fun initialize(): InitializeAction {
+-    val oldestPage = db.seriesPageQueries.selectOldestPage(
+-      input = input.databaseKey,
+-      userId = user.id,
+-      libraryId = user.selectedLibraryId,
+-    ).awaitAsOneOrNull()
+-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
+-    if (elapsed > MAX_CACHE_TIME_MS) {
+-      return InitializeAction.LAUNCH_INITIAL_REFRESH
+-    } else {
+-      return InitializeAction.SKIP_INITIAL_REFRESH
+-    }
++    return InitializeAction.LAUNCH_INITIAL_REFRESH
+   }
+ 
+   override suspend fun load(
 diff --git a/features/series/impl/src/commonMain/kotlin/app/campfire/series/store/SeriesSourceOfTruthFactory.kt b/features/series/impl/src/commonMain/kotlin/app/campfire/series/store/SeriesSourceOfTruthFactory.kt
 index 9ef25851..0d5b5c8c 100644
 --- a/features/series/impl/src/commonMain/kotlin/app/campfire/series/store/SeriesSourceOfTruthFactory.kt
@@ -7532,10 +7810,10 @@ index 00000000..a78c8d59
 +}
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
 new file mode 100644
-index 00000000..5992af4c
+index 00000000..c9aefacd
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
-@@ -0,0 +1,445 @@
+@@ -0,0 +1,451 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -7550,6 +7828,7 @@ index 00000000..5992af4c
 +import androidx.compose.foundation.layout.PaddingValues
 +import androidx.compose.foundation.layout.Row
 +import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.add
 +import androidx.compose.foundation.layout.aspectRatio
 +import androidx.compose.foundation.layout.exclude
 +import androidx.compose.foundation.layout.fillMaxSize
@@ -7604,8 +7883,10 @@ index 00000000..5992af4c
 +import app.campfire.common.compose.widgets.ItemImage
 +import app.campfire.common.compose.widgets.NavigationBackButton
 +import app.campfire.common.compose.widgets.OfflineStatusIndicator
-+import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
++import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 +import app.campfire.common.screens.ContinueSeriesScreen
++import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
++import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 +import app.campfire.core.di.UserScope
 +import app.campfire.core.model.LibraryItem
 +import app.campfire.core.model.Series
@@ -7619,7 +7900,8 @@ index 00000000..5992af4c
 +  state: ContinueSeriesUiState,
 +  modifier: Modifier = Modifier,
 +) {
-+  val scrollBehavior = adaptiveExitUntilCollapsedScrollBehavior()
++  val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
++  AttachScrollBehaviorToLocalNavigationBar(scrollBehavior)
 +  var showSortMenu by remember { mutableStateOf(false) }
 +
 +  Scaffold(
@@ -7677,7 +7959,9 @@ index 00000000..5992af4c
 +      )
 +    },
 +    modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-+    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
++    contentWindowInsets = CampfireWindowInsets
++      .exclude(OverlappedNavigationBarInsets)
++      .add(CampfireNavigationBarWindowInsets),
 +  ) { paddingValues ->
 +    when {
 +      state.isLoading -> {
@@ -8224,6 +8508,37 @@ index 3b486b20..85b9e12c 100644
          }
  
          SeriesUiEvent.ToggleDisplayState -> {
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt
+index 034a7c60..492e07c1 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt
+@@ -6,6 +6,7 @@ package app.campfire.series.ui.list
+ import androidx.compose.foundation.ExperimentalFoundationApi
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.PaddingValues
++import androidx.compose.foundation.layout.add
+ import androidx.compose.foundation.layout.exclude
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.lazy.grid.GridCells
+@@ -50,6 +51,7 @@ import app.campfire.filters.ContentFilterUi
+ import app.campfire.filters.SortModeUi
+ import app.campfire.ui.appbar.CampfireAppBar
+ import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
++import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
+ import campfire.features.series.ui.generated.resources.Res
+ import campfire.features.series.ui.generated.resources.empty_series_items_message
+ import campfire.features.series.ui.generated.resources.filter_bar_series_count
+@@ -84,7 +86,9 @@ fun Series(
+       )
+     },
+     modifier = modifier.nestedScroll(appBarBehavior.nestedScrollConnection),
+-    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
++    contentWindowInsets = CampfireWindowInsets
++      .exclude(OverlappedNavigationBarInsets)
++      .add(CampfireNavigationBarWindowInsets),
+   ) { paddingValues ->
+     LoadedState(
+       totalCount = state.totalCount,
 diff --git a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt
 index 005378be..0c508b9a 100644
 --- a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt
@@ -8630,6 +8945,64 @@ index e852e895..46afc77a 100644
      if (session.serverSessionId != null) return
  
      val itemId = session.libraryItem.id
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt
+index 331fdd56..cc4de3b0 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/collapsed/CollapsedPlaybackBar.kt
+@@ -80,6 +80,7 @@ import app.campfire.common.compose.widgets.MarqueeText
+ import app.campfire.core.extensions.fluentIf
+ import app.campfire.core.extensions.progressOver
+ import app.campfire.core.model.Session
++import app.campfire.sessions.ui.composables.ForwardIcon
+ import app.campfire.sessions.ui.composables.RewindIcon
+ import app.campfire.sessions.ui.playback.AvailableSync
+ import app.campfire.sessions.ui.playback.DefaultNonThemedContentColor
+@@ -94,6 +95,7 @@ import app.campfire.sessions.ui.playback.collapsed.ActionState.None
+ import app.campfire.sessions.ui.playback.collapsed.ActionState.Open
+ import app.campfire.sessions.ui.playback.collapsed.composables.PlaybackThumbnail
+ import campfire.features.sessions.ui.generated.resources.Res
++import campfire.features.sessions.ui.generated.resources.action_forward
+ import campfire.features.sessions.ui.generated.resources.action_pause
+ import campfire.features.sessions.ui.generated.resources.action_play
+ import campfire.features.sessions.ui.generated.resources.action_rewind
+@@ -196,6 +198,9 @@ internal fun <T> T.CollapsedPlaybackBar(
+       onRewindClick = {
+         playerState.eventSink(PlayerUiEvent.RewindClick)
+       },
++      onForwardClick = {
++        playerState.eventSink(PlayerUiEvent.FastForwardClick)
++      },
+       sharedTransitionScope = this@CollapsedPlaybackBar,
+       animatedVisibilityScope = this@CollapsedPlaybackBar,
+     )
+@@ -218,6 +223,7 @@ private fun CollapsedPlaybackBarContent(
+   onSync: () -> Unit,
+   onPlayPauseClick: () -> Unit,
+   onRewindClick: () -> Unit,
++  onForwardClick: () -> Unit,
+   sharedTransitionScope: SharedTransitionScope,
+   animatedVisibilityScope: AnimatedVisibilityScope,
+   modifier: Modifier = Modifier,
+@@ -309,6 +315,19 @@ private fun CollapsedPlaybackBarContent(
+         }
+       }
+ 
++      AnimatedVisibility(
++        visible = dragState.actionState != Dispose && availableSync == null,
++      ) {
++        val forwardLabel = stringResource(Res.string.action_forward)
++        IconButtonTooltip(text = forwardLabel) {
++          IconButton(
++            onClick = onForwardClick,
++          ) {
++            ForwardIcon()
++          }
++        }
++      }
++
+       AnimatedVisibility(
+         visible = dragState.actionState != Dispose && availableSync != null,
+       ) {
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
 index 4b7fc2d1..a8096a07 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
@@ -9493,7 +9866,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..3c238c6f 100644
+index f41126a7..43d6391f 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9501,13 +9874,13 @@ index f41126a7..3c238c6f 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.22
++campfire.version=1.2.23
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022299
++campfire.versionCode=1022399
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -10655,6 +11028,200 @@ index def256e2..6bbe94e4 100644
 +  actual val high: Double = 12.5
 +  actual val veryHigh: Double = 11.0 // Light flick triggers it
  }
+diff --git a/ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt b/ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt
+index eb5de418..5335edbb 100644
+--- a/ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt
++++ b/ui/navigation/api/src/commonMain/kotlin/app/campfire/ui/navigation/bar/CampfireNavigationBarState.kt
+@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateTo
+ import androidx.compose.animation.core.spring
+ import androidx.compose.foundation.layout.WindowInsets
+ import androidx.compose.material3.SearchBarScrollBehavior
++import androidx.compose.material3.TopAppBarScrollBehavior
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
+ import androidx.compose.runtime.Stable
+@@ -35,16 +36,40 @@ class CampfireNavigationBarState internal constructor(
+   initialBottomBarOffset: Float,
+   initialShouldHide: Boolean,
+ ) {
+-  private var scrollBehavior by mutableStateOf<SearchBarScrollBehavior?>(null)
++  private var searchBarScrollBehavior by mutableStateOf<SearchBarScrollBehavior?>(null)
++  private var topAppBarScrollBehavior by mutableStateOf<TopAppBarScrollBehavior?>(null)
++
++  var scrollBehavior: SearchBarScrollBehavior?
++    get() = searchBarScrollBehavior
++    private set(value) { searchBarScrollBehavior = value }
++
+   var bottomBarOffset by mutableFloatStateOf(initialBottomBarOffset)
+   var scrollOffsetLimit by mutableFloatStateOf(initialOffsetLimit)
+ 
+   private var _scrollOffset by mutableFloatStateOf(initialOffset)
+ 
++  val currentFraction: Float?
++    get() = when {
++      topAppBarScrollBehavior != null -> {
++        topAppBarScrollBehavior?.state?.collapsedFraction?.coerceIn(0f, 1f)
++      }
++      searchBarScrollBehavior != null -> {
++        val b = searchBarScrollBehavior!!
++        if (b.scrollOffsetLimit < 0f) {
++          (b.scrollOffset / b.scrollOffsetLimit).coerceIn(0f, 1f)
++        } else {
++          0f
++        }
++      }
++      else -> null
++    }
++
+   @get:FrequentlyChangingValue
+   val scrollOffset by derivedStateOf {
+     if (!shouldHide && !isTransitioning) {
+-      scrollBehavior?.scrollOffset ?: _scrollOffset
++      currentFraction?.let { fraction ->
++        -fraction * scrollOffsetLimit
++      } ?: _scrollOffset
+     } else {
+       _scrollOffset
+     }
+@@ -74,8 +99,9 @@ class CampfireNavigationBarState internal constructor(
+           isTransitioning = isRunning
+         }
+       } else if (!shouldHide) {
++        val target = currentFraction?.let { -it * scrollOffsetLimit } ?: 0f
+         AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
+-          targetValue = scrollBehavior?.scrollOffset ?: 0f,
++          targetValue = target,
+           animationSpec = spring(
+             stiffness = Spring.StiffnessMediumLow,
+           ),
+@@ -103,18 +129,20 @@ class CampfireNavigationBarState internal constructor(
+       return computeInternalOffset()
+     }
+ 
+-    return scrollBehavior?.let { behavior ->
+-      val scrollOffset = (-behavior.scrollOffset)
+-        .coerceIn(0f, scrollOffsetLimit)
+-
+-      val remainingHeight = scrollOffsetLimit - scrollOffset
++    return currentFraction?.let { fraction ->
++      val remainingHeight = (1f - fraction) * scrollOffsetLimit
+       remainingHeight.coerceAtLeast(bottomBarOffset)
+     } ?: computeInternalOffset()
+   }
+ 
+   fun CoroutineScope.installScrollBehavior(behavior: SearchBarScrollBehavior) {
+-    val hadPreviousBehavior = scrollBehavior != null
+-    scrollBehavior = behavior
++    val hadPreviousBehavior = searchBarScrollBehavior != null || topAppBarScrollBehavior != null
++    searchBarScrollBehavior = behavior
++    topAppBarScrollBehavior = null
++    val targetOffset = if (behavior.scrollOffsetLimit < 0f) {
++      -(behavior.scrollOffset / behavior.scrollOffsetLimit).coerceIn(0f, 1f) * scrollOffsetLimit
++    } else 0f
++
+     if (
+       isTransitioning &&
+       behavior.scrollOffset < 0f &&
+@@ -123,13 +151,13 @@ class CampfireNavigationBarState internal constructor(
+       transitionJob?.cancel()
+       isTransitioning = false
+     } else if (
+-      behavior.scrollOffset != _scrollOffset &&
++      targetOffset != _scrollOffset &&
+       !hadPreviousBehavior &&
+       !shouldHide
+     ) {
+       transitionJob = launch {
+         AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
+-          targetValue = behavior.scrollOffset,
++          targetValue = targetOffset,
+           animationSpec = spring(
+             stiffness = Spring.StiffnessMediumLow,
+           ),
+@@ -139,13 +167,53 @@ class CampfireNavigationBarState internal constructor(
+         }
+       }
+     } else if (hadPreviousBehavior) {
+-      _scrollOffset = behavior.scrollOffset
++      _scrollOffset = targetOffset
+     }
+   }
+ 
+   fun clearScrollBehavior(behavior: SearchBarScrollBehavior) {
+-    if (scrollBehavior === behavior) {
+-      scrollBehavior = null
++    if (searchBarScrollBehavior === behavior) {
++      searchBarScrollBehavior = null
++    }
++  }
++
++  fun CoroutineScope.installScrollBehavior(behavior: TopAppBarScrollBehavior) {
++    val hadPreviousBehavior = searchBarScrollBehavior != null || topAppBarScrollBehavior != null
++    topAppBarScrollBehavior = behavior
++    searchBarScrollBehavior = null
++    val targetOffset = -behavior.state.collapsedFraction.coerceIn(0f, 1f) * scrollOffsetLimit
++
++    if (
++      isTransitioning &&
++      behavior.state.collapsedFraction > 0f &&
++      transitionJob?.isActive == true
++    ) {
++      transitionJob?.cancel()
++      isTransitioning = false
++    } else if (
++      targetOffset != _scrollOffset &&
++      !hadPreviousBehavior &&
++      !shouldHide
++    ) {
++      transitionJob = launch {
++        AnimationState(_scrollOffset, initialVelocity = 0f).animateTo(
++          targetValue = targetOffset,
++          animationSpec = spring(
++            stiffness = Spring.StiffnessMediumLow,
++          ),
++        ) {
++          _scrollOffset = value
++          isTransitioning = isRunning
++        }
++      }
++    } else if (hadPreviousBehavior) {
++      _scrollOffset = targetOffset
++    }
++  }
++
++  fun clearScrollBehavior(behavior: TopAppBarScrollBehavior) {
++    if (topAppBarScrollBehavior === behavior) {
++      topAppBarScrollBehavior = null
+     }
+   }
+ 
+@@ -192,7 +260,25 @@ fun AttachScrollBehaviorToLocalNavigationBar(scrollBehavior: SearchBarScrollBeha
+   val navigationBarState = LocalNavigationBarState.current
+ 
+   if (navigationBarState != null) {
+-    DisposableEffect(Unit) {
++    DisposableEffect(scrollBehavior) {
++      with(navigationBarState) {
++        scope.installScrollBehavior(scrollBehavior)
++      }
++
++      onDispose {
++        navigationBarState.clearScrollBehavior(scrollBehavior)
++      }
++    }
++  }
++}
++
++@Composable
++fun AttachScrollBehaviorToLocalNavigationBar(scrollBehavior: TopAppBarScrollBehavior) {
++  val scope = rememberCoroutineScope()
++  val navigationBarState = LocalNavigationBarState.current
++
++  if (navigationBarState != null) {
++    DisposableEffect(scrollBehavior) {
+       with(navigationBarState) {
+         scope.installScrollBehavior(scrollBehavior)
+       }
 diff --git a/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml b/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml
 index b381cad4..136b0607 100644
 --- a/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml

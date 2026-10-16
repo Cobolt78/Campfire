@@ -19,6 +19,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.23]
+
+### Added
+
+- **Fast-Forward Button on Collapsed Mini-Player**:
+  - Added a dedicated fast-forward button directly to the right of the rewind button on the collapsed playback bar (`[Rewind] [Fast Forward] [Play/Pause]`), using the user-configured forward skip duration.
+
+### Changed
+
+- **Docked Mini-Player & Floating Gap Elimination**:
+  - Normalized scroll collapse fractions in `CampfireNavigationBarState` so the collapsed playback bar smoothly glides all the way down to the bottom of the screen with zero gap when the navigation bar hides.
+- **Uniform Scroll-to-Hide Navigation Across All Menus**:
+  - Switched "Continue Series" and "Downloads" to `adaptiveEnterAlwaysScrollBehavior` and attached them to `LocalNavigationBarState`, making the bottom navigation bar hide on scroll down and reappear on scroll up uniformly across all menus.
+- **Instant Background Library Refresh & Up-to-Date Item Counts**:
+  - Replaced stale 24-hour cache locks with immediate background refresh in `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator`. Opening "Recently Added", "Recent Series", "Newest Authors", or the Library now displays cached items instantly (0ms) while asynchronously fetching fresh data from Audiobookshelf, updating the item count and displaying newly added books immediately.
+
+### Fixed
+
+- **Cut-Off Cards at List and Grid Bottoms**:
+  - Added `CampfireNavigationBarWindowInsets` to `contentWindowInsets` on `ContinueSeriesUi`, `DownloadsUi`, and `SeriesUi`, ensuring the final card in the list or grid is 100% visible and not obstructed behind the bottom navigation or playback bar.
+- **Blank Book Cover Art & Click-to-Retry**:
+  - Fixed an unconstrained `minWidth` measurement collapse in `CoverImageSlot` that could zero out book cover dimensions, sizing with `maxWidth` clamped to `CoverImageSize`. Added error logging and click-to-retry (`painter.restart()`) on placeholder covers.
+
 ## [1.2.22]
 
 ### Added

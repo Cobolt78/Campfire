@@ -6,6 +6,7 @@ package app.campfire.series.ui.list
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -50,6 +51,7 @@ import app.campfire.filters.ContentFilterUi
 import app.campfire.filters.SortModeUi
 import app.campfire.ui.appbar.CampfireAppBar
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
+import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 import campfire.features.series.ui.generated.resources.Res
 import campfire.features.series.ui.generated.resources.empty_series_items_message
 import campfire.features.series.ui.generated.resources.filter_bar_series_count
@@ -84,7 +86,9 @@ fun Series(
       )
     },
     modifier = modifier.nestedScroll(appBarBehavior.nestedScrollConnection),
-    contentWindowInsets = CampfireWindowInsets.exclude(OverlappedNavigationBarInsets),
+    contentWindowInsets = CampfireWindowInsets
+      .exclude(OverlappedNavigationBarInsets)
+      .add(CampfireNavigationBarWindowInsets),
   ) { paddingValues ->
     LoadedState(
       totalCount = state.totalCount,

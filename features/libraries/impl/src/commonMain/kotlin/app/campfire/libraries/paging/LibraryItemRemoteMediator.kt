@@ -36,8 +36,6 @@ fun interface LibraryItemRemoteMediatorFactory {
   ): LibraryItemRemoteMediator
 }
 
-private const val MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L
-
 @OptIn(ExperimentalPagingApi::class)
 @AssistedInject
 class LibraryItemRemoteMediator(
@@ -53,17 +51,7 @@ class LibraryItemRemoteMediator(
   override val tag: String = "LibraryItemRemoteMediator"
 
   override suspend fun initialize(): InitializeAction {
-    val oldestPage = db.libraryItemPageQueries.selectOldestPage(
-      input = input.databaseKey,
-      userId = user.id,
-      libraryId = user.selectedLibraryId,
-    ).awaitAsOneOrNull()
-    val elapsed = fatherTime.nowInEpochMillis() - (oldestPage?.updatedAt ?: 0)
-    if (elapsed > MAX_CACHE_TIME_MS) {
-      return InitializeAction.LAUNCH_INITIAL_REFRESH
-    } else {
-      return InitializeAction.SKIP_INITIAL_REFRESH
-    }
+    return InitializeAction.LAUNCH_INITIAL_REFRESH
   }
 
   override suspend fun load(

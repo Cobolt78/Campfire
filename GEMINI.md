@@ -3,7 +3,7 @@
 ## Workflow & GitHub Integration Invariants
 
 1. **Automatic Git Tracking & Commits**:
-   - Every time code changes or fixes are implemented and verified, automatically stage and commit them to the local Git repository on the active custom branch (e.g. `v1.2.21-custom`).
+   - Every time code changes or fixes are implemented and verified, automatically stage and commit them to the local Git repository on the active custom branch (e.g. `v1.2.23-custom`).
    - Automatically push commits to GitHub: `git push origin <active-branch>` (`https://github.com/Cobolt78/Campfire.git`).
    - Automatically update `CUSTOM_MODIFICATIONS.md` and regenerate `custom_changes.patch` using `git diff <upstream-merge-base> ':!custom_changes.patch' > custom_changes.patch` so that patch files are always 100% in sync with zero drift.
 
