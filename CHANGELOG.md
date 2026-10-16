@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
+## [1.2.24-RC1]
+
+### Fixed
+
+- **Multi-Device Sync False-Positive Suppression & 20s Tolerance Threshold (`PlaybackPresenter.kt`)**:
+  - Implemented a 20-second significance threshold for server playback synchronization prompts (`delta.absoluteValue >= 20.seconds`), eliminating the 2–4 second flashing "Sync available" popups caused by minor timestamp rounding and network latency.
+  - Added active playback echo suppression: when the player is actively in `AudioPlayer.State.Playing`, server progress updates lagging behind local playback (`delta < 0`) are recognized as server echoes of our own periodic syncs and suppressed. Genuine multi-device progress differences (20+ seconds ahead or behind while paused) continue to prompt as expected.
+
 ## [1.2.23]
 
 ### Added

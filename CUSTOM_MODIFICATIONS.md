@@ -1285,6 +1285,31 @@ Resolved stale data/book counts when opening "Recently Added" and other paged vi
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
 * `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt`
 
+---
+
+## 50. Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24-RC1)
+
+### Summary
+Resolved an issue where the mini-player and expanded player intermittently displayed a "Sync available" popup ("Update to mm:ss (-00:02)") that vanished within 2–4 seconds during active playback.
+
+### Root Cause
+1. In v1.2.21, real-time Audiobookshelf session tracking and progress reporting were restored (`skipUpload = false`, `MAX_TIME_LISTENING_INTERVAL = 15.seconds`). Every 15 seconds during active playback, the phone sends current progress to the server.
+2. The Audiobookshelf server broadcasts `user_item_progress_updated` over WebSockets back to all user clients, including the sending device.
+3. In `PlaybackPresenter.kt`, upstream's `derivedStateOf` evaluated `sessionValue.currentTime.inWholeSeconds != mediaProgress.currentTime.seconds.inWholeSeconds` with zero tolerance.
+4. Due to network transit time (1–2 seconds round-trip), local playback had continuously advanced 1–2 seconds ahead of the position reported in the echoed packet. This minor 1–2 second difference was falsely flagged as a remote multi-device desync, turning the collapsed playback bar green and flashing the sync prompt until the next local database tick cleared it.
+
+### Key Changes
+1. **20-Second Significance Threshold (`PlaybackPresenter.kt`)**:
+   - Replaced zero-tolerance inequality check with `delta.absoluteValue >= 20.seconds`. Minor timestamp rounding and network latency differences under 20 seconds are ignored.
+2. **Active Playback Echo Suppression (`PlaybackPresenter.kt`)**:
+   - Passed `playerState: AudioPlayer.State` to `observeSyncState`. When `playerState == AudioPlayer.State.Playing`, any server progress update lagging behind local playback (`delta < 0`) is suppressed as an own-device echo.
+   - Legitimate multi-device progress differences (20+ seconds ahead, or 20+ seconds behind while paused) continue to prompt for sync as intended.
+3. **Unit Test Verification (`PlaybackPresenterTest.kt`)**:
+   - Added unit test cases verifying that progress differences below 20 seconds produce no sync prompt, that playing state suppresses lagging remote progress, and that differences $\ge$ 20 seconds ahead successfully surface `AvailableSync`.
+4. **Version Bump to v1.2.24-RC1 (`gradle.properties`, `CHANGELOG.md`)**:
+   - Bumped `campfire.version` to `1.2.24-RC1` and `campfire.versionCode` to `1022401`.
+
+
 
 
 

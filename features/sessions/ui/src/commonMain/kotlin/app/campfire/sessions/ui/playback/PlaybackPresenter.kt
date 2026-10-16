@@ -85,7 +85,7 @@ class PlaybackPresenter(
 
     val playerState = observePlayerState(currentSession)
     val queueState = observeQueueState()
-    val syncState = observeSyncState(currentSession, expanded)
+    val syncState = observeSyncState(currentSession, playerState.state, expanded)
     val themeState = observeThemeState(currentSession)
     val itemValidation = observeItemValidation(currentSession)
     val playbackHistoryEnabled by remember { playbackSettings.observePlaybackHistoryEnabled() }.collectAsState()
@@ -404,6 +404,7 @@ class PlaybackPresenter(
   @Composable
   private fun observeSyncState(
     session: State<Session?>,
+    playerState: AudioPlayer.State,
     expanded: Boolean,
   ): SyncUiState {
     val scope = rememberCoroutineScope()
@@ -430,22 +431,39 @@ class PlaybackPresenter(
         }
     }.collectAsState(null)
 
-    val availableSync by remember {
+    val availableSync by remember(playerState) {
       derivedStateOf {
         val sessionValue = session.value
+        val progress = mediaProgress
         if (
           syncEnabled &&
-          sessionValue != null && mediaProgress != null &&
-          mediaProgress?.source != MediaProgress.Source.Local &&
-          (sessionValue.lastPlayedAt?.epochMilliseconds ?: 0L) < mediaProgress!!.lastUpdate &&
-          sessionValue.currentTime.inWholeSeconds != mediaProgress!!.currentTime.seconds.inWholeSeconds
+          sessionValue != null && progress != null &&
+          progress.source != MediaProgress.Source.Local &&
+          (sessionValue.lastPlayedAt?.epochMilliseconds ?: 0L) < progress.lastUpdate
         ) {
-          AvailableSync(
-            itemId = sessionValue.libraryItem.id,
-            currentTime = sessionValue.currentTime,
-            targetTime = mediaProgress!!.currentTime.seconds,
-            syncTimeInMillis = mediaProgress!!.lastUpdate,
-          )
+          val isPlaying = playerState == AudioPlayer.State.Playing
+          val delta = progress.currentTime.seconds - sessionValue.currentTime
+          // Ignore own server-echoes and minor drift during active playback or small offsets:
+          // 1. Require a meaningful progress difference of at least 20 seconds (|delta| >= 20s).
+          // 2. If the local player is actively playing and the remote progress lags behind
+          //    the current position (delta < 0, e.g. server echoing a position from seconds ago),
+          //    suppress the prompt entirely.
+          val isSignificant = if (isPlaying && delta < Duration.ZERO) {
+            false
+          } else {
+            delta.absoluteValue >= SYNC_TOLERANCE_THRESHOLD
+          }
+
+          if (isSignificant) {
+            AvailableSync(
+              itemId = sessionValue.libraryItem.id,
+              currentTime = sessionValue.currentTime,
+              targetTime = progress.currentTime.seconds,
+              syncTimeInMillis = progress.lastUpdate,
+            )
+          } else {
+            null
+          }
         } else {
           null
         }
@@ -555,5 +573,9 @@ class PlaybackPresenter(
     }.collectAsState(LibraryItemValidation.Success)
 
     return itemValidation
+  }
+
+  companion object {
+    private val SYNC_TOLERANCE_THRESHOLD = 20.seconds
   }
 }

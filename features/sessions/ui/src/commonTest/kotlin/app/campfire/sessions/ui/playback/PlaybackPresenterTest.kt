@@ -4,12 +4,15 @@
 package app.campfire.sessions.ui.playback
 
 import app.campfire.audioplayer.AudioDevice
+import app.campfire.audioplayer.AudioPlayer
 import app.campfire.audioplayer.test.FakeAudioOutputController
 import app.campfire.audioplayer.test.FakeAudioPlayer
 import app.campfire.audioplayer.test.FakeAudioPlayerHolder
 import app.campfire.audioplayer.test.FakePlaybackController
+import app.campfire.common.test.mediaProgress
 import app.campfire.common.test.session
 import app.campfire.core.model.Bookmark
+import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.preview.libraryItem
 import app.campfire.libraries.test.FakeLibraryItemValidator
 import app.campfire.sessions.test.FakeSessionQueue
@@ -28,6 +31,7 @@ import assertk.assertions.isNull
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 
@@ -221,6 +225,88 @@ class PlaybackPresenterTest {
       presenter.present(expanded = false)
     }.test {
       assertThat(awaitItem().outputDevices).isNull()
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun `availableSync is null when remote progress difference is below 20 seconds threshold`() = runTest {
+    val item = libraryItem()
+    playbackSettings.syncEnabled = true
+    sessionsRepository.currentSessionFlow.value = session(
+      libraryItem = item,
+      currentTime = 100.seconds,
+      lastPlayedAt = null,
+    )
+    // Server progress is 5 seconds ahead (e.g. 105s vs 100s)
+    mediaProgressRepository.progressFlow.value = mediaProgress(
+      libraryItemId = item.id,
+      currentTime = 105f,
+      source = MediaProgress.Source.Remote,
+      lastUpdate = 1000L,
+    )
+
+    moleculeFlow(RecompositionMode.Immediate) {
+      presenter.present(expanded = false)
+    }.test {
+      val state = awaitItemMatching { it.session != null }
+      assertThat(state.syncUiState.availableSync).isNull()
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun `availableSync is null when playing and remote progress lags behind local position`() = runTest {
+    val item = libraryItem()
+    playbackSettings.syncEnabled = true
+    sessionsRepository.currentSessionFlow.value = session(
+      libraryItem = item,
+      currentTime = 100.seconds,
+      lastPlayedAt = null,
+    )
+    val player = FakeAudioPlayer()
+    player.state.value = AudioPlayer.State.Playing
+    audioPlayerHolder.setCurrentPlayer(player)
+
+    // Server progress is 30 seconds behind while playing (e.g. 70s vs 100s)
+    mediaProgressRepository.progressFlow.value = mediaProgress(
+      libraryItemId = item.id,
+      currentTime = 70f,
+      source = MediaProgress.Source.Remote,
+      lastUpdate = 1000L,
+    )
+
+    moleculeFlow(RecompositionMode.Immediate) {
+      presenter.present(expanded = false)
+    }.test {
+      val state = awaitItemMatching { it.session != null }
+      assertThat(state.syncUiState.availableSync).isNull()
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun `availableSync is present when remote progress difference is at least 20 seconds ahead`() = runTest {
+    val item = libraryItem()
+    playbackSettings.syncEnabled = true
+    sessionsRepository.currentSessionFlow.value = session(
+      libraryItem = item,
+      currentTime = 100.seconds,
+      lastPlayedAt = null,
+    )
+    // Server progress is 30 seconds ahead (e.g. 130s vs 100s)
+    mediaProgressRepository.progressFlow.value = mediaProgress(
+      libraryItemId = item.id,
+      currentTime = 130f,
+      source = MediaProgress.Source.Remote,
+      lastUpdate = 1000L,
+    )
+
+    moleculeFlow(RecompositionMode.Immediate) {
+      presenter.present(expanded = false)
+    }.test {
+      val state = awaitItemMatching { it.syncUiState.availableSync != null }
+      assertThat(state.syncUiState.availableSync?.targetTime).isEqualTo(130.seconds)
       cancelAndIgnoreRemainingEvents()
     }
   }
