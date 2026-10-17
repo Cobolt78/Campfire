@@ -17,7 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-### Other Notes & Contributions
+## [1.2.24-RC4]
+
+### Fixed
+
+- **Recently Added & Library Sort Order Restoration (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
+  - Reverted the 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`) and page-0 retention check, restoring unconditional `InitializeAction.LAUNCH_INITIAL_REFRESH` and immediate page invalidation on refresh across all remote mediators.
+  - Fixes the sorting discrepancy where tapping "Recently Added" or navigating library sort views displayed stale cached records in out-of-sync order instead of the live server-sorted date-added order.
 
 ## [1.2.24-RC3]
 

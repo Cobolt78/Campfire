@@ -57,7 +57,6 @@ This document captures all custom features, bug fixes, and UI improvements added
 50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
 51. [Listen Again: Sort by Last Listened (v1.2.24)](#51-listen-again-sort-by-last-listened-v1224)
 52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
-53. [Jetpack Paging Stabilization & Scroll Jump / Card Shuffle Elimination (v1.2.24)](#53-jetpack-paging-stabilization--scroll-jump--card-shuffle-elimination-v1224)
 
 ---
 
@@ -412,10 +411,10 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/libraries/ui/.../LibraryPresenter.kt` | Keyed `rememberRetainedSaveable(screen)` for reliable sort/filter adoption |
 | `core/.../image/CoverUrls.kt` | Added `CoverUrls.raw(url)` raw cover URL generator |
 | `app/common/.../image/CoverSizingInterceptor.kt` | Multi-tier fallback for thumbnail covers (sized -> original -> raw) |
-| `features/libraries/impl/.../LibraryItemRemoteMediator.kt` | Cache freshness window & Page 0 smart check preventing scroll jumps |
-| `features/series/impl/.../SeriesRemoteMediator.kt` | Cache freshness window (2 minutes) |
-| `features/author/impl/.../AuthorsRemoteMediatorFactory.kt` | Cache freshness window (2 minutes) |
-| `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Cache freshness window (2 minutes) |
+| `features/libraries/impl/.../LibraryItemRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
+| `features/series/impl/.../SeriesRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
+| `features/author/impl/.../AuthorsRemoteMediatorFactory.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
+| `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
 | `features/sessions/ui/.../PlaybackPresenter.kt` | 20s sync threshold & playing state echo suppression |
 
 ---
@@ -1384,32 +1383,7 @@ Fixed an issue where book cover thumbnails (e.g. *Blood Is Thicker than Lots of 
 * `app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt`
 * `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
 
----
 
-## 53. Jetpack Paging Stabilization & Scroll Jump / Card Shuffle Elimination (v1.2.24)
-
-### Summary
-Fixed an intermittent issue where scrolling long lists (e.g. "Recently Added" or "Listen Again") caused the list to abruptly jump upward or cards to shuffle/re-animate across the screen.
-
-### Root Cause
-1. In v1.2.23, `initialize()` in `RemoteMediator` was configured to return `LAUNCH_INITIAL_REFRESH`.
-2. When the user opened a list, SQLite cached records immediately rendered. As the user scrolled down past item 50, the background page 0 network response completed.
-3. The refresh handler unconditionally executed `db.libraryItemPageQueries.deleteByInput(...)`, wiping all pages from SQLite.
-4. When Paging 3 received the invalidated database state, the total loaded item count collapsed from >100 down to 50 items. This forced the LazyGrid/LazyColumn to clamp its scroll offset (causing the sudden upward jump), and Compose's `Modifier.animateItem()` animated the visible cards sliding across the screen to their clamped positions (the "card shuffle").
-
-### Key Changes
-1. **Cache Freshness Window (`CACHE_FRESHNESS_WINDOW_MS`)**:
-   - Implemented a 2-minute freshness window across `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator`.
-   - If the database was updated within the last 2 minutes, `initialize()` returns `InitializeAction.SKIP_INITIAL_REFRESH`.
-2. **Page 0 Smart Validation on Refresh (`LibraryItemRemoteMediator.kt`)**:
-   - On `LoadType.REFRESH`, the mediator queries existing Page 0 items and compares item IDs and total count against the newly arrived Page 0 response.
-   - If identical (no new books added or removed at the top), `updatedAt` is refreshed in-place without deleting subsequent pages (`deleteByInput`), completely eliminating list collapse, scroll jumps, and card shuffle animations.
-
-### Modified Files:
-* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
-* `features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt`
-* `features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt`
-* `features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt`
 
 
 

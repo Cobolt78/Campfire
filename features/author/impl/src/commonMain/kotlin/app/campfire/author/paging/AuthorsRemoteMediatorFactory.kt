@@ -46,24 +46,10 @@ class AuthorsRemoteMediator(
   private val fatherTime: FatherTime,
 ) : RemoteMediator<Int, Author>(), Cork {
 
-  companion object {
-    private const val CACHE_FRESHNESS_WINDOW_MS = 2L * 60L * 1000L // 2 minutes
-  }
-
   override val tag: String = "AuthorsRemoteMediator"
 
   override suspend fun initialize(): InitializeAction {
-    val latestPage = db.authorsPageQueries.selectOldestPage(
-      input = input.databaseKey,
-      userId = user.id,
-      libraryId = user.selectedLibraryId,
-    ).awaitAsOneOrNull()
-    val elapsed = fatherTime.nowInEpochMillis() - (latestPage?.updatedAt ?: 0)
-    return if (latestPage == null || elapsed > CACHE_FRESHNESS_WINDOW_MS) {
-      InitializeAction.LAUNCH_INITIAL_REFRESH
-    } else {
-      InitializeAction.SKIP_INITIAL_REFRESH
-    }
+    return InitializeAction.LAUNCH_INITIAL_REFRESH
   }
 
   override suspend fun load(

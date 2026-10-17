@@ -21,7 +21,6 @@ import app.campfire.network.AudioBookShelfApi
 import app.campfire.network.models.LibraryItemFilter
 import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.nextPage
-import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import dev.zacsweers.metro.Assisted
@@ -36,8 +35,6 @@ fun interface LibraryItemRemoteMediatorFactory {
     input: LibraryItemPagingInput,
   ): LibraryItemRemoteMediator
 }
-
-private const val CACHE_FRESHNESS_WINDOW_MS = 2L * 60L * 1000L // 2 minutes
 
 @OptIn(ExperimentalPagingApi::class)
 @AssistedInject
@@ -54,17 +51,7 @@ class LibraryItemRemoteMediator(
   override val tag: String = "LibraryItemRemoteMediator"
 
   override suspend fun initialize(): InitializeAction {
-    val latestPage = db.libraryItemPageQueries.selectOldestPage(
-      input = input.databaseKey,
-      userId = user.id,
-      libraryId = user.selectedLibraryId,
-    ).awaitAsOneOrNull()
-    val elapsed = fatherTime.nowInEpochMillis() - (latestPage?.updatedAt ?: 0)
-    return if (latestPage == null || elapsed > CACHE_FRESHNESS_WINDOW_MS) {
-      InitializeAction.LAUNCH_INITIAL_REFRESH
-    } else {
-      InitializeAction.SKIP_INITIAL_REFRESH
-    }
+    return InitializeAction.LAUNCH_INITIAL_REFRESH
   }
 
   override suspend fun load(
@@ -116,40 +103,6 @@ class LibraryItemRemoteMediator(
 
           db.transaction {
             if (loadType == LoadType.REFRESH) {
-              val existingPage0 = db.libraryItemPageQueries.selectPage(
-                input = input.databaseKey,
-                page = pagedResponse.page,
-                userId = user.id,
-                libraryId = user.selectedLibraryId,
-              ).awaitAsOneOrNull()
-
-              val isPage0Unchanged = if (existingPage0 != null && existingPage0.total == pagedResponse.total) {
-                val existingItems = db.libraryItemPageQueries.selectLibraryItemsForPage(
-                  pageId = existingPage0.id,
-                  userId = user.id,
-                ).awaitAsList()
-                val existingIds = existingItems.map { it.id }
-                val newIds = pagedResponse.data.map { it.id }
-                existingIds == newIds
-              } else {
-                false
-              }
-
-              if (isPage0Unchanged && existingPage0 != null) {
-                // Page 0 items and total count are identical; update timestamp without wiping subsequent pages
-                db.libraryItemPageQueries.insertPage(
-                  id = existingPage0.id,
-                  input = existingPage0.input,
-                  page = existingPage0.page,
-                  nextPage = existingPage0.nextPage,
-                  total = existingPage0.total,
-                  libraryId = existingPage0.libraryId,
-                  userId = existingPage0.userId,
-                  updatedAt = fatherTime.nowInEpochMillis(),
-                )
-                return@transaction
-              }
-
               db.libraryItemPageQueries.deleteByInput(
                 input = input.databaseKey,
                 userId = user.id,
