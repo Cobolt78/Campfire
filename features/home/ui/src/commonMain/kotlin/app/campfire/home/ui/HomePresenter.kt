@@ -248,7 +248,13 @@ class HomePresenter(
 
             event.shelfId.startsWith(ShelfIds.ListenAgain) -> {
               analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.ListenAgain))
-              navigator.goTo(LibraryScreen(filter = ContentFilter.Progress(ContentFilter.Progress.Type.Finished)))
+              navigator.goTo(
+                LibraryScreen(
+                  filter = ContentFilter.Progress(ContentFilter.Progress.Type.Finished),
+                  sortMode = ContentSortMode.FinishedAt,
+                  sortDirection = SortDirection.Descending,
+                ),
+              )
             }
 
             event.shelfId.startsWith(ShelfIds.RecentlyAdded) -> {

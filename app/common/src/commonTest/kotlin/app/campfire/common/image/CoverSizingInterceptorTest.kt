@@ -6,11 +6,13 @@ package app.campfire.common.image
 import app.campfire.core.image.CoverUrls
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import assertk.assertions.isInstanceOf
 import assertk.assertions.isNull
 import coil3.Image
 import coil3.PlatformContext
 import coil3.intercept.Interceptor
 import coil3.network.httpHeaders
+import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
@@ -69,6 +71,30 @@ class CoverSizingInterceptorTest {
     assertThat(chain.proceedCount).isEqualTo(1)
   }
 
+  @Test
+  fun falls_back_to_default_url_when_sized_fails() = runTest {
+    val chain = FakeChain(
+      request(cover),
+      Size(Dimension(200), Dimension(200)),
+      shouldFail = { it.data.toString().contains("width=") },
+    )
+    val result = interceptor.intercept(chain)
+    assertThat(result).isInstanceOf<SuccessResult>()
+    assertThat((result as SuccessResult).request.data).isEqualTo(cover)
+  }
+
+  @Test
+  fun falls_back_to_raw_when_both_sized_and_default_fail() = runTest {
+    val chain = FakeChain(
+      request(cover),
+      Size(Dimension(200), Dimension(200)),
+      shouldFail = { !it.data.toString().contains("raw=1") },
+    )
+    val result = interceptor.intercept(chain)
+    assertThat(result).isInstanceOf<SuccessResult>()
+    assertThat((result as SuccessResult).request.data).isEqualTo("$cover&raw=1")
+  }
+
   private fun request(url: String) = ImageRequest.Builder(PlatformContext.INSTANCE).data(url).build()
 
   /** Records the request handed to [proceed] after [withRequest]; null when proceeded with the original. */
@@ -76,22 +102,27 @@ class CoverSizingInterceptorTest {
     override val request: ImageRequest,
     override val size: Size,
     private val replaced: Boolean = false,
+    private val shouldFail: (ImageRequest) -> Boolean = { false },
   ) : Interceptor.Chain {
     var proceeded: ImageRequest? = null
     var proceedCount = 0
     private var parent: FakeChain? = null
 
     override fun withRequest(request: ImageRequest): Interceptor.Chain =
-      FakeChain(request, size, replaced = true).also { it.parent = this }
+      FakeChain(request, size, replaced = true, shouldFail = shouldFail).also { it.parent = this }
 
     override fun withSize(size: Size): Interceptor.Chain =
-      FakeChain(request, size, replaced).also { it.parent = parent }
+      FakeChain(request, size, replaced, shouldFail = shouldFail).also { it.parent = parent }
 
     override suspend fun proceed(): ImageResult {
       val root = generateSequence(this) { it.parent }.last()
       root.proceedCount++
       if (replaced) root.proceeded = request
-      return SuccessResult(image = NoopImage, request = request)
+      return if (shouldFail(request)) {
+        ErrorResult(image = null, request = request, throwable = RuntimeException("Failed"))
+      } else {
+        SuccessResult(image = NoopImage, request = request)
+      }
     }
   }
 

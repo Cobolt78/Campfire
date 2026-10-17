@@ -31,6 +31,7 @@ import campfire.features.filters.ui.generated.resources.Res
 import campfire.features.filters.ui.generated.resources.sort_mode_addedat
 import campfire.features.filters.ui.generated.resources.sort_mode_author_fl
 import campfire.features.filters.ui.generated.resources.sort_mode_author_lf
+import campfire.features.filters.ui.generated.resources.sort_mode_completed_date
 import campfire.features.filters.ui.generated.resources.sort_mode_duration
 import campfire.features.filters.ui.generated.resources.sort_mode_last_book_added
 import campfire.features.filters.ui.generated.resources.sort_mode_last_book_updated
@@ -160,6 +161,7 @@ val ContentSortMode.displayName
     ContentSortMode.AuthorLF -> stringResource(Res.string.sort_mode_author_lf)
     ContentSortMode.PublishYear -> stringResource(Res.string.sort_mode_publishyear)
     ContentSortMode.AddedAt -> stringResource(Res.string.sort_mode_addedat)
+    ContentSortMode.FinishedAt -> stringResource(Res.string.sort_mode_completed_date)
     ContentSortMode.Size -> stringResource(Res.string.sort_mode_size)
     ContentSortMode.Duration -> stringResource(Res.string.sort_mode_duration)
     ContentSortMode.UpdatedAt -> stringResource(Res.string.sort_mode_updatedat)

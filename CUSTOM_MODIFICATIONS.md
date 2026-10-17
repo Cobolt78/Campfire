@@ -54,6 +54,10 @@ This document captures all custom features, bug fixes, and UI improvements added
 47. [Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.22)](#47-cellular-download-check-simplification--false-positive-warning-resolution-v1221)
 48. [Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)](#48-playback--navigation-bar-refinements-fast-forward-zero-gap--card-clearance-v1223)
 49. [Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)](#49-instant-background-paging-refresh--blank-cover-measurement-fix-v1223)
+50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
+51. [Listen Again: Sort by Completed Date (v1.2.24)](#51-listen-again-sort-by-completed-date-v1224)
+52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
+53. [Jetpack Paging Stabilization & Scroll Jump / Card Shuffle Elimination (v1.2.24)](#53-jetpack-paging-stabilization--scroll-jump--card-shuffle-elimination-v1224)
 
 ---
 
@@ -403,6 +407,15 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/libraries/ui/.../LibraryItemUi.kt` | Removed SharedElementTransitionScope & sharedBounds for instant back navigation |
 | `features/libraries/ui/.../CoverImageSlot.kt` | Removed SharedElementTransitionScope & sharedElement for instant back navigation |
 | `features/libraries/ui/.../TitleSlot.kt` | Removed SharedElementTransitionScope & sharedBounds for instant back navigation |
+| `core/.../settings/ContentSortMode.kt` | Added `FinishedAt` ("Completed Date") sort mode |
+| `features/filters/ui/.../SortModeBottomSheet.kt` | Mapped `FinishedAt` to "Completed Date" string resource |
+| `core/.../image/CoverUrls.kt` | Added `CoverUrls.raw(url)` raw cover URL generator |
+| `app/common/.../image/CoverSizingInterceptor.kt` | Multi-tier fallback for thumbnail covers (sized -> original -> raw) |
+| `features/libraries/impl/.../LibraryItemRemoteMediator.kt` | Cache freshness window & Page 0 smart check preventing scroll jumps |
+| `features/series/impl/.../SeriesRemoteMediator.kt` | Cache freshness window (2 minutes) |
+| `features/author/impl/.../AuthorsRemoteMediatorFactory.kt` | Cache freshness window (2 minutes) |
+| `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Cache freshness window (2 minutes) |
+| `features/sessions/ui/.../PlaybackPresenter.kt` | 20s sync threshold & playing state echo suppression |
 
 ---
 
@@ -1287,7 +1300,7 @@ Resolved stale data/book counts when opening "Recently Added" and other paged vi
 
 ---
 
-## 50. Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24-RC1)
+## 50. Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)
 
 ### Summary
 Resolved an issue where the mini-player and expanded player intermittently displayed a "Sync available" popup ("Update to mm:ss (-00:02)") that vanished within 2–4 seconds during active playback.
@@ -1306,8 +1319,92 @@ Resolved an issue where the mini-player and expanded player intermittently displ
    - Legitimate multi-device progress differences (20+ seconds ahead, or 20+ seconds behind while paused) continue to prompt for sync as intended.
 3. **Unit Test Verification (`PlaybackPresenterTest.kt`)**:
    - Added unit test cases verifying that progress differences below 20 seconds produce no sync prompt, that playing state suppresses lagging remote progress, and that differences $\ge$ 20 seconds ahead successfully surface `AvailableSync`.
-4. **Version Bump to v1.2.24-RC1 (`gradle.properties`, `CHANGELOG.md`)**:
-   - Bumped `campfire.version` to `1.2.24-RC1` and `campfire.versionCode` to `1022401`.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt`
+
+---
+
+## 51. Listen Again: Sort by Completed Date (v1.2.24)
+
+### Summary
+Added a "Completed Date" sort mode to the Library view and wired the Home screen "Listen Again" shelf header to open the completed books list sorted by completed date in descending order (most recently finished books first).
+
+### Key Changes
+1. **Sort Mode Definition (`ContentSortMode.kt`)**:
+   - Added `ContentSortMode.FinishedAt("finished-at", "progress.finishedAt", Mode.Numerical)` to core settings.
+   - Added `FinishedAt` to `LibraryItemSortModes.availableModes`.
+2. **Audiobookshelf Backend Mapping**:
+   - Audiobookshelf's server natively parses `progress.finishedAt` in `libraryItemsBookFilters.js` lines 295-296 (`mediaProgresses.finishedAt ${dir} NULLS LAST`), ensuring seamless server-side paging and sorting without server schema adjustments.
+3. **UI Localization & Selection (`filters_ui_strings.xml`, `SortModeBottomSheet.kt`)**:
+   - Added string resource `<string name="sort_mode_completed_date">Completed Date</string>`.
+   - Added mapping in `SortModeBottomSheet` to display and select "Completed Date".
+4. **Home "Listen Again" Shelf Header Navigation (`HomePresenter.kt`)**:
+   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.FinishedAt`, and `sortDirection = SortDirection.Descending`.
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
+* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
+* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+
+---
+
+## 52. Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)
+
+### Summary
+Fixed an issue where book cover thumbnails (e.g. *Blood Is Thicker than Lots of Stuff*) appeared blank or as placeholder icons in library lists, search results, and mini players despite rendering properly on the book detail screen.
+
+### Root Cause
+1. In `CoverSizingInterceptor.kt`, image URLs were modified to request server-resized WebP images (e.g. `?width=200&format=webp`).
+2. Audiobookshelf's server stores pre-resized image caches (`_200.webp`, `_800.webp`, `_1200.webp`). When sharp resize errors or cache corruption occur on specific dimension variants on the server, the server returns HTTP 500 or 0 bytes for that specific thumbnail size.
+3. Detail views succeeded because they requested `width=1200` (which was cached and intact on the server). Because the interceptor had no fallback mechanism, failure of the `width=200` request resulted in an unhandled Coil error, leaving thumbnail covers completely blank.
+
+### Key Changes
+1. **Raw Cover URL Helper (`CoverUrls.kt`)**:
+   - Implemented `CoverUrls.raw(url)` which strips dimension/format query parameters and appends `raw=1` (Audiobookshelf's raw uncompressed image endpoint).
+2. **Multi-Tier Interceptor Fallback (`CoverSizingInterceptor.kt`)**:
+   - Sized request (`?width=...&format=webp`) is attempted first.
+   - If the sized request fails with an HTTP error status code or empty body:
+     - Fallback 1: Retries with the original un-sized URL (`chain.proceed(originalRequest)`).
+     - Fallback 2: If the un-sized URL also fails, retries with the raw endpoint (`CoverUrls.raw(url)`).
+3. **Unit Tests (`CoverUrlsTest.kt`, `CoverSizingInterceptorTest.kt`)**:
+   - Verified that sized, un-sized, and raw fallbacks execute properly in sequential error scenarios.
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/image/CoverUrls.kt`
+* `core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt`
+* `app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt`
+* `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
+
+---
+
+## 53. Jetpack Paging Stabilization & Scroll Jump / Card Shuffle Elimination (v1.2.24)
+
+### Summary
+Fixed an intermittent issue where scrolling long lists (e.g. "Recently Added" or "Listen Again") caused the list to abruptly jump upward or cards to shuffle/re-animate across the screen.
+
+### Root Cause
+1. In v1.2.23, `initialize()` in `RemoteMediator` was configured to return `LAUNCH_INITIAL_REFRESH`.
+2. When the user opened a list, SQLite cached records immediately rendered. As the user scrolled down past item 50, the background page 0 network response completed.
+3. The refresh handler unconditionally executed `db.libraryItemPageQueries.deleteByInput(...)`, wiping all pages from SQLite.
+4. When Paging 3 received the invalidated database state, the total loaded item count collapsed from >100 down to 50 items. This forced the LazyGrid/LazyColumn to clamp its scroll offset (causing the sudden upward jump), and Compose's `Modifier.animateItem()` animated the visible cards sliding across the screen to their clamped positions (the "card shuffle").
+
+### Key Changes
+1. **Cache Freshness Window (`CACHE_FRESHNESS_WINDOW_MS`)**:
+   - Implemented a 2-minute freshness window across `LibraryItemRemoteMediator`, `SeriesRemoteMediator`, `AuthorsRemoteMediatorFactory`, and `RecentEpisodesRemoteMediator`.
+   - If the database was updated within the last 2 minutes, `initialize()` returns `InitializeAction.SKIP_INITIAL_REFRESH`.
+2. **Page 0 Smart Validation on Refresh (`LibraryItemRemoteMediator.kt`)**:
+   - On `LoadType.REFRESH`, the mediator queries existing Page 0 items and compares item IDs and total count against the newly arrived Page 0 response.
+   - If identical (no new books added or removed at the top), `updatedAt` is refreshed in-place without deleting subsequent pages (`deleteByInput`), completely eliminating list collapse, scroll jumps, and card shuffle animations.
+
+### Modified Files:
+* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
+* `features/series/impl/src/commonMain/kotlin/app/campfire/series/paging/SeriesRemoteMediator.kt`
+* `features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt`
+* `features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt`
+
 
 
 

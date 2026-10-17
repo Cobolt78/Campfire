@@ -12,6 +12,7 @@
   <string name="sort_mode_name">Name</string>
   <string name="sort_mode_last_book_added">Last book added</string>
   <string name="sort_mode_last_book_updated">Last book updated</string>
+  <string name="sort_mode_completed_date">Completed Date</string>
 
   <plurals name="genres_title">
     <item quantity="one">Genre</item>

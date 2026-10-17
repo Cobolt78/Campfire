@@ -84,4 +84,14 @@ class CoverUrlsTest {
   fun sized_uses_artwork_width_when_size_is_unknown() {
     assertThat(CoverUrls.sized(itemCover, null)).isEqualTo("$itemCover?width=${CoverUrls.ARTWORK_WIDTH}")
   }
+
+  @Test
+  fun raw_appends_raw_param_and_strips_size() {
+    assertThat(CoverUrls.raw(itemCover)).isEqualTo("$itemCover?raw=1")
+    assertThat(CoverUrls.raw("$itemCover?ts=1700000000")).isEqualTo("$itemCover?ts=1700000000&raw=1")
+    assertThat(CoverUrls.raw("$itemCover?ts=1700000000&width=800")).isEqualTo("$itemCover?ts=1700000000&raw=1")
+    assertThat(CoverUrls.raw("$authorImage#frag")).isEqualTo("$authorImage?raw=1#frag")
+    val external = "https://cdn.example.com/cover.jpg"
+    assertThat(CoverUrls.raw(external)).isEqualTo(external)
+  }
 }

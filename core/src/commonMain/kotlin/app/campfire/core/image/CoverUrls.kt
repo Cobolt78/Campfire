@@ -51,4 +51,30 @@ object CoverUrls {
     val query = url.substring(queryStart + 1).substringBefore('#')
     return query.split('&').any { it.substringBefore('=') in SIZE_PARAMS }
   }
+
+  /**
+   * Returns [url] with a `raw=1` query parameter, removing any width/height size parameters,
+   * or [url] unchanged when it is not a server image URL.
+   * This instructs the Audiobookshelf server to serve the raw original file directly, bypassing
+   * sharp/ffmpeg resize and thumbnail cache processing.
+   */
+  fun raw(url: String): String {
+    if (!isServerImageUrl(url)) return url
+    val fragmentIndex = url.indexOf('#')
+    val base = if (fragmentIndex >= 0) url.substring(0, fragmentIndex) else url
+    val fragment = if (fragmentIndex >= 0) url.substring(fragmentIndex) else ""
+    val queryStart = base.indexOf('?')
+    val cleanedBase = if (queryStart < 0) {
+      base
+    } else {
+      val path = base.substring(0, queryStart)
+      val query = base.substring(queryStart + 1)
+        .split('&')
+        .filterNot { it.substringBefore('=') in SIZE_PARAMS }
+        .joinToString("&")
+      if (query.isEmpty()) path else "$path?$query"
+    }
+    val separator = if ('?' in cleanedBase) "&" else "?"
+    return "$cleanedBase${separator}raw=1$fragment"
+  }
 }

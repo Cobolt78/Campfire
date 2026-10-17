@@ -35,6 +35,7 @@ enum class ContentSortMode(
     Mode.Numerical,
   ),
   AddedAt("added-at", "addedAt", Mode.Numerical),
+  FinishedAt("finished-at", "progress.finishedAt", Mode.Numerical),
 
   // Artist
   UpdatedAt("updated-at", "updatedAt", Mode.Numerical),
@@ -91,6 +92,7 @@ object LibraryItemSortModes : SortModeConfig {
     ContentSortMode.Size,
     ContentSortMode.Duration,
     ContentSortMode.AddedAt,
+    ContentSortMode.FinishedAt,
   )
 }
 

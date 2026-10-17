@@ -6,7 +6,9 @@ package app.campfire.common.image
 import app.campfire.core.image.CoverUrls
 import coil3.intercept.Interceptor
 import coil3.network.httpHeaders
+import coil3.request.ErrorResult
 import coil3.request.ImageResult
+import coil3.request.SuccessResult
 import coil3.size.pxOrElse
 
 /**
@@ -17,6 +19,10 @@ import coil3.size.pxOrElse
  * grid request a small width while the expanded player requests a large one — no call-site changes
  * needed. The rewritten URL becomes the memory/disk cache key, so each rendition is cached independently
  * and [CoverUrls.sized] is the single source of truth for anyone that needs to look an entry up directly.
+ *
+ * If the server fails to serve the requested sized/WebP rendition (e.g. sharp resize or cache file
+ * corruption on the server for that specific width), it falls back gracefully to the un-sized default
+ * request, and then to `raw=1` (bypassing server-side thumbnail generation completely).
  */
 class CoverSizingInterceptor : Interceptor {
 
@@ -33,7 +39,24 @@ class CoverSizingInterceptor : Interceptor {
       .data(sizedUrl)
       .httpHeaders(headers)
       .build()
-    return chain.withRequest(request).proceed()
+    val result = chain.withRequest(request).proceed()
+    if (result is SuccessResult) return result
+
+    // 1st Fallback: try un-sized original URL (handles server WebP or specific dimension cache failures)
+    val defaultResult = chain.proceed()
+    if (defaultResult is SuccessResult) return defaultResult
+
+    // 2nd Fallback: request raw=1 to bypass server thumbnail cache / sharp resize failures
+    val rawUrl = CoverUrls.raw(url)
+    if (rawUrl != url) {
+      val rawRequest = chain.request.newBuilder()
+        .data(rawUrl)
+        .build()
+      val rawResult = chain.withRequest(rawRequest).proceed()
+      if (rawResult is SuccessResult) return rawResult
+    }
+
+    return result
   }
 
   internal companion object {
