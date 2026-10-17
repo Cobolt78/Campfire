@@ -35,7 +35,7 @@ enum class ContentSortMode(
     Mode.Numerical,
   ),
   AddedAt("added-at", "addedAt", Mode.Numerical),
-  FinishedAt("finished-at", "progress.finishedAt", Mode.Numerical),
+  LastListened("last-listened", "progress", Mode.Numerical),
 
   // Artist
   UpdatedAt("updated-at", "updatedAt", Mode.Numerical),
@@ -63,6 +63,7 @@ enum class ContentSortMode(
     val LibraryItemSortMode = object : EnumSettingProvider<ContentSortMode> {
       val Default = AuthorFL
       override fun fromStorageKey(key: String?): ContentSortMode {
+        if (key == "finished-at") return LastListened
         return entries.find { it.storageKey == key } ?: Default
       }
     }
@@ -92,7 +93,7 @@ object LibraryItemSortModes : SortModeConfig {
     ContentSortMode.Size,
     ContentSortMode.Duration,
     ContentSortMode.AddedAt,
-    ContentSortMode.FinishedAt,
+    ContentSortMode.LastListened,
   )
 }
 

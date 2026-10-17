@@ -55,7 +55,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 48. [Playback & Navigation Bar Refinements: Fast Forward, Zero Gap & Card Clearance (v1.2.23)](#48-playback--navigation-bar-refinements-fast-forward-zero-gap--card-clearance-v1223)
 49. [Instant Background Paging Refresh & Blank Cover Measurement Fix (v1.2.23)](#49-instant-background-paging-refresh--blank-cover-measurement-fix-v1223)
 50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
-51. [Listen Again: Sort by Completed Date (v1.2.24)](#51-listen-again-sort-by-completed-date-v1224)
+51. [Listen Again: Sort by Last Listened (v1.2.24)](#51-listen-again-sort-by-last-listened-v1224)
 52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
 53. [Jetpack Paging Stabilization & Scroll Jump / Card Shuffle Elimination (v1.2.24)](#53-jetpack-paging-stabilization--scroll-jump--card-shuffle-elimination-v1224)
 
@@ -407,8 +407,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/libraries/ui/.../LibraryItemUi.kt` | Removed SharedElementTransitionScope & sharedBounds for instant back navigation |
 | `features/libraries/ui/.../CoverImageSlot.kt` | Removed SharedElementTransitionScope & sharedElement for instant back navigation |
 | `features/libraries/ui/.../TitleSlot.kt` | Removed SharedElementTransitionScope & sharedBounds for instant back navigation |
-| `core/.../settings/ContentSortMode.kt` | Added `FinishedAt` ("Completed Date") sort mode |
-| `features/filters/ui/.../SortModeBottomSheet.kt` | Mapped `FinishedAt` to "Completed Date" string resource |
+| `core/.../settings/ContentSortMode.kt` | Added `LastListened` ("Last Listened", mapping to `progress`) |
+| `features/filters/ui/.../SortModeBottomSheet.kt` | Mapped `LastListened` to "Last Listened" string resource |
+| `features/libraries/ui/.../LibraryPresenter.kt` | Keyed `rememberRetainedSaveable(screen)` for reliable sort/filter adoption |
 | `core/.../image/CoverUrls.kt` | Added `CoverUrls.raw(url)` raw cover URL generator |
 | `app/common/.../image/CoverSizingInterceptor.kt` | Multi-tier fallback for thumbnail covers (sized -> original -> raw) |
 | `features/libraries/impl/.../LibraryItemRemoteMediator.kt` | Cache freshness window & Page 0 smart check preventing scroll jumps |
@@ -1326,28 +1327,33 @@ Resolved an issue where the mini-player and expanded player intermittently displ
 
 ---
 
-## 51. Listen Again: Sort by Completed Date (v1.2.24)
+## 51. Listen Again: Sort by Last Listened (v1.2.24)
 
 ### Summary
-Added a "Completed Date" sort mode to the Library view and wired the Home screen "Listen Again" shelf header to open the completed books list sorted by completed date in descending order (most recently finished books first).
+Added a "Last Listened" sort mode to the Library view and wired the Home screen "Listen Again" shelf header to open the completed books list sorted by last listened date in descending order (most recently listened/finished books first, down to the oldest listened books).
 
 ### Key Changes
 1. **Sort Mode Definition (`ContentSortMode.kt`)**:
-   - Added `ContentSortMode.FinishedAt("finished-at", "progress.finishedAt", Mode.Numerical)` to core settings.
-   - Added `FinishedAt` to `LibraryItemSortModes.availableModes`.
+   - Added `ContentSortMode.LastListened("last-listened", "progress", Mode.Numerical)` to core settings.
+   - Added `LastListened` to `LibraryItemSortModes.availableModes`.
+   - Backward-compatible deserialization maps `"finished-at"` to `LastListened`.
 2. **Audiobookshelf Backend Mapping**:
-   - Audiobookshelf's server natively parses `progress.finishedAt` in `libraryItemsBookFilters.js` lines 295-296 (`mediaProgresses.finishedAt ${dir} NULLS LAST`), ensuring seamless server-side paging and sorting without server schema adjustments.
+   - Audiobookshelf's server natively parses `progress` in `libraryItemsBookFilters.js` line 291 (`mediaProgresses.updatedAt ${dir} NULLS LAST`).
+   - This matches Audiobookshelf's own implementation of the "Listen Again" shelf in `libraryFilters.js` (`sortBy = 'progress'`, `sortDesc = true`), sorting from the most recently listened-to book down to the oldest listened-to book without depending on nullable `finishedAt` fields.
 3. **UI Localization & Selection (`filters_ui_strings.xml`, `SortModeBottomSheet.kt`)**:
-   - Added string resource `<string name="sort_mode_completed_date">Completed Date</string>`.
-   - Added mapping in `SortModeBottomSheet` to display and select "Completed Date".
+   - Added string resource `<string name="sort_mode_last_listened">Last Listened</string>`.
+   - Added mapping in `SortModeBottomSheet` to display and select "Last Listened".
 4. **Home "Listen Again" Shelf Header Navigation (`HomePresenter.kt`)**:
-   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.FinishedAt`, and `sortDirection = SortDirection.Descending`.
+   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.LastListened`, and `sortDirection = SortDirection.Descending`.
+5. **Screen-Scoped Retained State (`LibraryPresenter.kt`)**:
+   - Keyed `rememberRetainedSaveable(screen)` to guarantee that screen navigation arguments (`sortMode`, `sortDirection`, `filter`) are reliably applied when transitioning from Home shelf headers.
 
 ### Modified Files:
 * `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
 * `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
 * `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
 * `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt`
 
 ---
 

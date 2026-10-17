@@ -19,13 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other Notes & Contributions
 
-## [1.2.24-RC2]
+## [1.2.24-RC3]
 
 ### Added
 
-- **Listen Again: Sort by Completed Date (`ContentSortMode.kt`, `HomePresenter.kt`, `SortModeBottomSheet.kt`)**:
-  - Added a new sort mode "Completed Date" (`FinishedAt`), mapping natively to Audiobookshelf's backend `progress.finishedAt` sorting.
-  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted by Completed Date in descending order (most recently finished books first).
+- **Listen Again: Sort by Last Listened (`ContentSortMode.kt`, `HomePresenter.kt`, `SortModeBottomSheet.kt`, `LibraryPresenter.kt`)**:
+  - Added "Last Listened" sort mode (`LastListened`), mapping natively to Audiobookshelf's backend `progress` sort key (`mediaProgresses.updatedAt DESC`).
+  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted from last listened to to oldest listened to, matching the exact order on the home screen shelf.
+  - Keyed `rememberRetainedSaveable(screen)` in `LibraryPresenter.kt` to guarantee screen-specified sort modes and filters are adopted upon navigation.
 
 ### Fixed
 

@@ -64,15 +64,15 @@ class LibraryPresenter(
       repository.observeCurrentLibrary()
     }.collectAsState(null)
 
-    var itemFilter by rememberRetainedSaveable {
+    var itemFilter by rememberRetainedSaveable(screen) {
       mutableStateOf(screen.filter)
     }
 
-    var overrideSortMode by rememberRetainedSaveable {
+    var overrideSortMode by rememberRetainedSaveable(screen) {
       mutableStateOf(screen.sortMode)
     }
 
-    var overrideSortDirection by rememberRetainedSaveable {
+    var overrideSortDirection by rememberRetainedSaveable(screen) {
       mutableStateOf(screen.sortDirection)
     }
 

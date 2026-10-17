@@ -251,7 +251,7 @@ class HomePresenter(
               navigator.goTo(
                 LibraryScreen(
                   filter = ContentFilter.Progress(ContentFilter.Progress.Type.Finished),
-                  sortMode = ContentSortMode.FinishedAt,
+                  sortMode = ContentSortMode.LastListened,
                   sortDirection = SortDirection.Descending,
                 ),
               )
