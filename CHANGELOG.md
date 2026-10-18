@@ -21,8 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Paging Stabilization & Card Reshuffle Removal (`LibraryUi.kt`)**:
+  - Removed `Modifier.animateItem()` from library grid cards and list rows to prevent card sliding animations and stutter during scrolling.
+- **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
+  - Check if Page 0 is unchanged on background refresh to avoid clearing SQLite cache and prevent invalidation churn.
+  - If Page 0 changed while scrolled down, update only Page 0 instead of wiping subsequent pages from under the user.
 - **Recently Added & Library Sort Order Restoration (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
-  - Reverted the 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`) and page-0 retention check, restoring unconditional `InitializeAction.LAUNCH_INITIAL_REFRESH` and immediate page invalidation on refresh across all remote mediators.
+  - Reverted the 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`), restoring unconditional `InitializeAction.LAUNCH_INITIAL_REFRESH`.
   - Fixes the sorting discrepancy where tapping "Recently Added" or navigating library sort views displayed stale cached records in out-of-sync order instead of the live server-sorted date-added order.
 
 ## [1.2.24-RC3]

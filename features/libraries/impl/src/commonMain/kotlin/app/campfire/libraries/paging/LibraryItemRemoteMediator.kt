@@ -21,6 +21,7 @@ import app.campfire.network.AudioBookShelfApi
 import app.campfire.network.models.LibraryItemFilter
 import app.campfire.network.models.LibraryItemMinified
 import app.campfire.network.nextPage
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import dev.zacsweers.metro.Assisted
@@ -103,11 +104,47 @@ class LibraryItemRemoteMediator(
 
           db.transaction {
             if (loadType == LoadType.REFRESH) {
-              db.libraryItemPageQueries.deleteByInput(
+              val existingPage0 = db.libraryItemPageQueries.selectPage(
                 input = input.databaseKey,
+                page = pagedResponse.page,
                 userId = user.id,
                 libraryId = user.selectedLibraryId,
-              )
+              ).awaitAsOneOrNull()
+
+              val isPage0Unchanged = if (existingPage0 != null && existingPage0.total == pagedResponse.total) {
+                val existingItems = db.libraryItemPageQueries.selectLibraryItemsForPage(
+                  pageId = existingPage0.id,
+                  userId = user.id,
+                ).awaitAsList()
+                val existingIds = existingItems.map { it.id }
+                val newIds = pagedResponse.data.map { it.id }
+                existingIds == newIds
+              } else {
+                false
+              }
+
+              if (isPage0Unchanged && existingPage0 != null) {
+                // Page 0 items and total count are identical; do nothing to preserve cached pages and prevent invalidation
+                return@transaction
+              }
+
+              // If Page 0 changed:
+              // If user is scrolled past page 0, only replace page 0 so subsequent pages currently visible are not wiped out
+              val isScrolledPastPage0 = state.anchorPosition != null && state.anchorPosition!! >= state.config.pageSize
+              if (isScrolledPastPage0) {
+                db.libraryItemPageQueries.deletePage(
+                  input = input.databaseKey,
+                  page = pagedResponse.page,
+                  userId = user.id,
+                  libraryId = user.selectedLibraryId,
+                )
+              } else {
+                db.libraryItemPageQueries.deleteByInput(
+                  input = input.databaseKey,
+                  userId = user.id,
+                  libraryId = user.selectedLibraryId,
+                )
+              }
             }
 
             pagedResponse.data.forEach { item ->

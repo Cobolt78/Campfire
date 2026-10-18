@@ -315,7 +315,6 @@ private fun ContentPagingScaffoldScope.LibraryGrid(
           item = item,
           offlineStatus = offlineStatus.asWidgetStatus(),
           onClick = { onItemClick(item) },
-          modifier = Modifier.animateItem(),
           showInformation = itemDisplayState != ItemDisplayState.GridDense,
           shape = when (itemDisplayState) {
             ItemDisplayState.GridDense -> MaterialTheme.shapes.medium
@@ -390,11 +389,9 @@ private fun ContentPagingScaffoldScope.LibraryList(
             onItemClick(item)
           },
           offlineStatus = offlineStatus,
-          modifier = Modifier
-            .padding(
-              horizontal = 16.dp,
-            )
-            .animateItem(),
+          modifier = Modifier.padding(
+            horizontal = 16.dp,
+          ),
         )
       }
     }

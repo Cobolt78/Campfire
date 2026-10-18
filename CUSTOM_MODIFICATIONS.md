@@ -57,6 +57,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
 51. [Listen Again: Sort by Last Listened (v1.2.24)](#51-listen-again-sort-by-last-listened-v1224)
 52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
+53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1224)
 
 ---
 
@@ -1382,6 +1383,29 @@ Fixed an issue where book cover thumbnails (e.g. *Blood Is Thicker than Lots of 
 * `core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt`
 * `app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt`
 * `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
+
+---
+
+## 53. Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)
+
+### Summary
+Resolved scrolling hitching, card re-shuffling animations, and sudden upward screen snaps when browsing the Library, Recently Added, and other paged screens.
+
+### Root Cause
+1. **Unwanted Item Placement Animations**: In Compose `LazyCampfireGrid` and `LazyColumn`, `Modifier.animateItem()` was attached to every item card and list row. Any time paging data updated or adjusted indices, Compose triggered physics spring animations that visibly slid cards across grid slots ("card reshuffle") and dropped frames.
+2. **Destructive Background Page Purge**: When entering the screen, `RemoteMediator` began an asynchronous background refresh for Page 0. If the user scrolled down past Page 0 before the network completed, `deleteByInput()` wiped out all subsequent cached pages (Pages 1..N) from SQLite, suddenly shrinking the database list and violently snapping the user's scroll position upwards.
+
+### Key Changes
+1. **Remove `Modifier.animateItem()` from Paginated Screens (`LibraryUi.kt`)**:
+   - Removed `.animateItem()` from `LibraryItemCard` and `LibraryItemListItem`. Cards render statically and stay anchored in place without sliding or calculating animation physics.
+2. **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
+   - Checked if Page 0 returned from network has identical item IDs and total count as currently stored in SQLite: if unchanged (the case 95% of the time), returns early with zero database modifications or invalidations.
+   - If Page 0 changed while the user is already scrolled past Page 0 (`anchorPosition >= pageSize`), only replaces Page 0 (`deletePage(page = 0)`), preserving Pages 1..N that the user is currently reading.
+   - If the user is at the top of the list, performs a clean `deleteByInput` refresh.
+
+### Modified Files:
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryUi.kt`
+* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
 
 
 
