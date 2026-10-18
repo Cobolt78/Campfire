@@ -1510,7 +1510,16 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
    - Fully compatible with Android Auto and media notifications via AndroidX Media3 (official 15-second icons are natively mapped in `MediaSessionCallback.kt`, with smooth fallback to standard system icons for other values).
    - Preserved `QuickSkipJumps` for `trackResetThreshold` so reset threshold functionality remains completely intact.
 
+3. **Consistent Circular Skip Arrow Icons & 15s Icon Badges**:
+   - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
+   - Added dedicated `Forward15` and `Replay15` vector ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
+   - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
+
 ### Modified Files:
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt`
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt`
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Replay15.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt`
 * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt`
 * `CHANGELOG.md`
 * `gradle.properties`

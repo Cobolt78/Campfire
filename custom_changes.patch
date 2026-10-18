@@ -11,14 +11,23 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..58f5cdf7 100644
+index c0278c85..65cda537 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,168 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.27-RC2]
++
++### Fixed
++
++- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`, `Forward15.kt`, `Replay15.kt`)**:
++  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
++  - Added dedicated `Forward15` and `Replay15` ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
++  - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
++
 +## [1.2.27-RC1]
 +
 +### Added
@@ -177,10 +186,10 @@ index c0278c85..58f5cdf7 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..430a2bdb
+index 00000000..6fab1738
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1537 @@
+@@ -0,0 +1,1546 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -1693,7 +1702,16 @@ index 00000000..430a2bdb
 +   - Fully compatible with Android Auto and media notifications via AndroidX Media3 (official 15-second icons are natively mapped in `MediaSessionCallback.kt`, with smooth fallback to standard system icons for other values).
 +   - Preserved `QuickSkipJumps` for `trackResetThreshold` so reset threshold functionality remains completely intact.
 +
++3. **Consistent Circular Skip Arrow Icons & 15s Icon Badges**:
++   - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
++   - Added dedicated `Forward15` and `Replay15` vector ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
++   - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
++
 +### Modified Files:
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt`
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt`
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Replay15.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt`
 +* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt`
 +* `CHANGELOG.md`
 +* `gradle.properties`
@@ -2450,6 +2468,332 @@ index 00000000..7c6e9709
 +
 +@Composable
 +actual fun rememberIsCellularOrMetered(): Boolean = false
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt
+index 93993495..c80ad233 100644
+--- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt
+@@ -17,56 +17,47 @@ val CampfireIcons.Rounded.Forward: ImageVector by lazy(LazyThreadSafetyMode.NONE
+     defaultHeight = 24.dp,
+     viewportWidth = 960f,
+     viewportHeight = 960f,
+-    autoMirror = true,
+   ).apply {
+     path(fill = SolidColor(Color.Black)) {
+-      moveTo(767f, 440f)
+-      lineTo(612f, 285f)
+-      quadToRelative(-12f, -12f, -12f, -28.5f)
+-      reflectiveQuadToRelative(12f, -28.5f)
+-      quadToRelative(12f, -11f, 28.5f, -11f)
+-      reflectiveQuadToRelative(27.5f, 11f)
+-      lineToRelative(184f, 184f)
+-      quadToRelative(6f, 6f, 8.5f, 13f)
+-      reflectiveQuadToRelative(2.5f, 15f)
+-      quadToRelative(0f, 8f, -2.5f, 15f)
+-      reflectiveQuadToRelative(-8.5f, 13f)
+-      lineTo(668f, 652f)
+-      quadToRelative(-12f, 12f, -28f, 11.5f)
+-      reflectiveQuadTo(612f, 652f)
+-      quadToRelative(-12f, -12f, -12.5f, -28f)
++      moveTo(339.5f, 851.5f)
++      quadToRelative(-65.5f, -28.5f, -114f, -77f)
++      reflectiveQuadToRelative(-77f, -114f)
++      quadTo(120f, 595f, 120f, 520f)
++      reflectiveQuadToRelative(28.5f, -140.5f)
++      quadToRelative(28.5f, -65.5f, 77f, -114f)
++      reflectiveQuadToRelative(114f, -77f)
++      quadTo(405f, 160f, 480f, 160f)
++      horizontalLineToRelative(6f)
++      lineToRelative(-34f, -34f)
++      quadToRelative(-12f, -12f, -11.5f, -28f)
+       reflectiveQuadToRelative(11.5f, -28f)
+-      lineToRelative(156f, -156f)
+-      close()
+-      moveTo(527f, 480f)
+-      lineTo(280f, 480f)
+-      quadToRelative(-50f, 0f, -85f, 35f)
+-      reflectiveQuadToRelative(-35f, 85f)
+-      verticalLineToRelative(120f)
+-      quadToRelative(0f, 17f, -11.5f, 28.5f)
+-      reflectiveQuadTo(120f, 760f)
+-      quadToRelative(-17f, 0f, -28.5f, -11.5f)
+-      reflectiveQuadTo(80f, 720f)
+-      verticalLineToRelative(-120f)
+-      quadToRelative(0f, -83f, 58.5f, -141.5f)
+-      reflectiveQuadTo(280f, 400f)
+-      horizontalLineToRelative(247f)
+-      lineTo(412f, 285f)
+-      quadToRelative(-12f, -12f, -12f, -28.5f)
+-      reflectiveQuadToRelative(12f, -28.5f)
+-      quadToRelative(12f, -11f, 28.5f, -11f)
+-      reflectiveQuadToRelative(27.5f, 11f)
+-      lineToRelative(184f, 184f)
+-      quadToRelative(6f, 6f, 8.5f, 13f)
+-      reflectiveQuadToRelative(2.5f, 15f)
+-      quadToRelative(0f, 8f, -2.5f, 15f)
+-      reflectiveQuadToRelative(-8.5f, 13f)
+-      lineTo(468f, 652f)
+-      quadToRelative(-12f, 12f, -28f, 11.5f)
+-      reflectiveQuadTo(412f, 652f)
+-      quadToRelative(-12f, -12f, -12.5f, -28f)
++      quadToRelative(12f, -12f, 28.5f, -12.5f)
++      reflectiveQuadTo(509f, 69f)
++      lineToRelative(103f, 103f)
++      quadToRelative(12f, 12f, 12f, 28f)
++      reflectiveQuadToRelative(-12f, 28f)
++      lineTo(509f, 331f)
++      quadToRelative(-12f, 12f, -28.5f, 11.5f)
++      reflectiveQuadTo(452f, 330f)
++      quadToRelative(-11f, -12f, -11.5f, -28f)
+       reflectiveQuadToRelative(11.5f, -28f)
+-      lineToRelative(116f, -116f)
++      lineToRelative(34f, -34f)
++      horizontalLineToRelative(-6f)
++      quadToRelative(-117f, 0f, -198.5f, 81.5f)
++      reflectiveQuadTo(200f, 520f)
++      quadToRelative(0f, 117f, 81.5f, 198.5f)
++      reflectiveQuadTo(480f, 800f)
++      quadToRelative(117f, 0f, 198.5f, -81.5f)
++      reflectiveQuadTo(760f, 520f)
++      quadToRelative(0f, -17f, 11.5f, -28.5f)
++      reflectiveQuadTo(800f, 480f)
++      quadToRelative(17f, 0f, 28.5f, 11.5f)
++      reflectiveQuadTo(840f, 520f)
++      quadToRelative(0f, 75f, -28.5f, 140.5f)
++      reflectiveQuadToRelative(-77f, 114f)
++      quadToRelative(-48.5f, 48.5f, -114f, 77f)
++      reflectiveQuadTo(480f, 880f)
++      quadToRelative(-75f, 0f, -140.5f, -28.5f)
+       close()
+     }
+   }.build()
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt
+new file mode 100644
+index 00000000..f6e18618
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt
+@@ -0,0 +1,108 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.icons.rounded
++
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.SolidColor
++import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.graphics.vector.path
++import androidx.compose.ui.unit.dp
++import app.campfire.common.compose.icons.CampfireIcons
++
++val CampfireIcons.Rounded.Forward15: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
++  ImageVector.Builder(
++    name = "Forward15",
++    defaultWidth = 24.dp,
++    defaultHeight = 24.dp,
++    viewportWidth = 960f,
++    viewportHeight = 960f,
++  ).apply {
++    path(fill = SolidColor(Color.Black)) {
++      moveTo(339.5f, 851.5f)
++      quadToRelative(-65.5f, -28.5f, -114f, -77f)
++      reflectiveQuadToRelative(-77f, -114f)
++      quadTo(120f, 595f, 120f, 520f)
++      reflectiveQuadToRelative(28.5f, -140.5f)
++      quadToRelative(28.5f, -65.5f, 77f, -114f)
++      reflectiveQuadToRelative(114f, -77f)
++      quadTo(405f, 160f, 480f, 160f)
++      horizontalLineToRelative(6f)
++      lineToRelative(-34f, -34f)
++      quadToRelative(-12f, -12f, -11.5f, -28f)
++      reflectiveQuadToRelative(11.5f, -28f)
++      quadToRelative(12f, -12f, 28.5f, -12.5f)
++      reflectiveQuadTo(509f, 69f)
++      lineToRelative(103f, 103f)
++      quadToRelative(12f, 12f, 12f, 28f)
++      reflectiveQuadToRelative(-12f, 28f)
++      lineTo(509f, 331f)
++      quadToRelative(-12f, 12f, -28.5f, 11.5f)
++      reflectiveQuadTo(452f, 330f)
++      quadToRelative(-11f, -12f, -11.5f, -28f)
++      reflectiveQuadToRelative(11.5f, -28f)
++      lineToRelative(34f, -34f)
++      horizontalLineToRelative(-6f)
++      quadToRelative(-117f, 0f, -198.5f, 81.5f)
++      reflectiveQuadTo(200f, 520f)
++      quadToRelative(0f, 117f, 81.5f, 198.5f)
++      reflectiveQuadTo(480f, 800f)
++      quadToRelative(117f, 0f, 198.5f, -81.5f)
++      reflectiveQuadTo(760f, 520f)
++      quadToRelative(0f, -17f, 11.5f, -28.5f)
++      reflectiveQuadTo(800f, 480f)
++      quadToRelative(17f, 0f, 28.5f, 11.5f)
++      reflectiveQuadTo(840f, 520f)
++      quadToRelative(0f, 75f, -28.5f, 140.5f)
++      reflectiveQuadToRelative(-77f, 114f)
++      quadToRelative(-48.5f, 48.5f, -114f, 77f)
++      reflectiveQuadTo(480f, 880f)
++      quadToRelative(-75f, 0f, -140.5f, -28.5f)
++      close()
++      moveTo(360f, 460f)
++      horizontalLineToRelative(-30f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(300f, 430f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(330f, 400f)
++      horizontalLineToRelative(60f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(420f, 430f)
++      verticalLineToRelative(180f)
++      quadToRelative(0f, 13f, -8.5f, 21.5f)
++      reflectiveQuadTo(390f, 640f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(360f, 610f)
++      verticalLineToRelative(-150f)
++      close()
++      moveTo(610f, 640f)
++      lineTo(500f, 640f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(470f, 610f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(500f, 580f)
++      horizontalLineToRelative(90f)
++      verticalLineToRelative(-40f)
++      horizontalLineToRelative(-90f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(470f, 510f)
++      verticalLineToRelative(-80f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(500f, 400f)
++      horizontalLineToRelative(120f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(650f, 430f)
++      quadToRelative(0f, 13f, -8.5f, 21.5f)
++      reflectiveQuadTo(620f, 460f)
++      horizontalLineToRelative(-90f)
++      verticalLineToRelative(40f)
++      horizontalLineToRelative(90f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(650f, 530f)
++      verticalLineToRelative(70f)
++      quadToRelative(0f, 17f, -11.5f, 28.5f)
++      reflectiveQuadTo(610f, 640f)
++      close()
++    }
++  }.build()
++}
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Replay15.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Replay15.kt
+new file mode 100644
+index 00000000..ce3a2960
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Replay15.kt
+@@ -0,0 +1,108 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.icons.rounded
++
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.SolidColor
++import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.graphics.vector.path
++import androidx.compose.ui.unit.dp
++import app.campfire.common.compose.icons.CampfireIcons
++
++val CampfireIcons.Rounded.Replay15: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
++  ImageVector.Builder(
++    name = "Replay15",
++    defaultWidth = 24.dp,
++    defaultHeight = 24.dp,
++    viewportWidth = 960f,
++    viewportHeight = 960f,
++  ).apply {
++    path(fill = SolidColor(Color.Black)) {
++      moveTo(360f, 460f)
++      horizontalLineToRelative(-30f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(300f, 430f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(330f, 400f)
++      horizontalLineToRelative(60f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(420f, 430f)
++      verticalLineToRelative(180f)
++      quadToRelative(0f, 13f, -8.5f, 21.5f)
++      reflectiveQuadTo(390f, 640f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(360f, 610f)
++      verticalLineToRelative(-150f)
++      close()
++      moveTo(610f, 640f)
++      lineTo(500f, 640f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(470f, 610f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(500f, 580f)
++      horizontalLineToRelative(90f)
++      verticalLineToRelative(-40f)
++      horizontalLineToRelative(-90f)
++      quadToRelative(-13f, 0f, -21.5f, -8.5f)
++      reflectiveQuadTo(470f, 510f)
++      verticalLineToRelative(-80f)
++      quadToRelative(0f, -13f, 8.5f, -21.5f)
++      reflectiveQuadTo(500f, 400f)
++      horizontalLineToRelative(120f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(650f, 430f)
++      quadToRelative(0f, 13f, -8.5f, 21.5f)
++      reflectiveQuadTo(620f, 460f)
++      horizontalLineToRelative(-90f)
++      verticalLineToRelative(40f)
++      horizontalLineToRelative(90f)
++      quadToRelative(13f, 0f, 21.5f, 8.5f)
++      reflectiveQuadTo(650f, 530f)
++      verticalLineToRelative(70f)
++      quadToRelative(0f, 17f, -11.5f, 28.5f)
++      reflectiveQuadTo(610f, 640f)
++      close()
++      moveTo(339.5f, 851.5f)
++      quadToRelative(-65.5f, -28.5f, -114f, -77f)
++      reflectiveQuadToRelative(-77f, -114f)
++      quadTo(120f, 595f, 120f, 520f)
++      quadToRelative(0f, -17f, 11.5f, -28.5f)
++      reflectiveQuadTo(160f, 480f)
++      quadToRelative(17f, 0f, 28.5f, 11.5f)
++      reflectiveQuadTo(200f, 520f)
++      quadToRelative(0f, 117f, 81.5f, 198.5f)
++      reflectiveQuadTo(480f, 800f)
++      quadToRelative(117f, 0f, 198.5f, -81.5f)
++      reflectiveQuadTo(760f, 520f)
++      quadToRelative(0f, -117f, -81.5f, -198.5f)
++      reflectiveQuadTo(480f, 240f)
++      horizontalLineToRelative(-6f)
++      lineToRelative(34f, 34f)
++      quadToRelative(12f, 12f, 11.5f, 28f)
++      reflectiveQuadTo(508f, 330f)
++      quadToRelative(-12f, 12f, -28.5f, 12.5f)
++      reflectiveQuadTo(451f, 331f)
++      lineTo(348f, 228f)
++      quadToRelative(-12f, -12f, -12f, -28f)
++      reflectiveQuadToRelative(12f, -28f)
++      lineToRelative(103f, -103f)
++      quadToRelative(12f, -12f, 28.5f, -11.5f)
++      reflectiveQuadTo(508f, 70f)
++      quadToRelative(11f, 12f, 11.5f, 28f)
++      reflectiveQuadTo(508f, 126f)
++      lineToRelative(-34f, 34f)
++      horizontalLineToRelative(6f)
++      quadToRelative(75f, 0f, 140.5f, 28.5f)
++      reflectiveQuadToRelative(114f, 77f)
++      quadToRelative(48.5f, 48.5f, 77f, 114f)
++      reflectiveQuadTo(840f, 520f)
++      quadToRelative(0f, 75f, -28.5f, 140.5f)
++      reflectiveQuadToRelative(-77f, 114f)
++      quadToRelative(-48.5f, 48.5f, -114f, 77f)
++      reflectiveQuadTo(480f, 880f)
++      quadToRelative(-75f, 0f, -140.5f, -28.5f)
++      close()
++    }
++  }.build()
++}
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
 new file mode 100644
 index 00000000..660fd819
@@ -9625,6 +9969,39 @@ index 20f60c09..f3b0cfa8 100644
    <string name="equalizer_unavailable_casting">The equalizer isn't available while casting</string>
    <string name="equalizer_band_gain_cd">%1$s equalizer band gain</string>
    <string name="timer_bottomsheet_title">Sleep Timer</string>
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt
+index 58b35f55..08d3ac8a 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt
+@@ -13,10 +13,12 @@ import app.campfire.common.compose.di.rememberComponent
+ import app.campfire.common.compose.icons.CampfireIcons
+ import app.campfire.common.compose.icons.rounded.Forward
+ import app.campfire.common.compose.icons.rounded.Forward10
++import app.campfire.common.compose.icons.rounded.Forward15
+ import app.campfire.common.compose.icons.rounded.Forward30
+ import app.campfire.common.compose.icons.rounded.Forward5
+ import app.campfire.common.compose.icons.rounded.Replay
+ import app.campfire.common.compose.icons.rounded.Replay10
++import app.campfire.common.compose.icons.rounded.Replay15
+ import app.campfire.common.compose.icons.rounded.Replay30
+ import app.campfire.common.compose.icons.rounded.Replay5
+ import app.campfire.core.di.AppScope
+@@ -51,6 +53,7 @@ internal fun ForwardIcon(
+ private fun Long.asForwardImageVector(): ImageVector = when (this) {
+   5000L -> CampfireIcons.Rounded.Forward5
+   10_000L -> CampfireIcons.Rounded.Forward10
++  15_000L -> CampfireIcons.Rounded.Forward15
+   30_000L -> CampfireIcons.Rounded.Forward30
+   else -> CampfireIcons.Rounded.Forward
+ }
+@@ -74,6 +77,7 @@ internal fun RewindIcon(
+ private fun Long.asReplayImageVector(): ImageVector = when (this) {
+   5000L -> CampfireIcons.Rounded.Replay5
+   10_000L -> CampfireIcons.Rounded.Replay10
++  15_000L -> CampfireIcons.Rounded.Replay15
+   30_000L -> CampfireIcons.Rounded.Replay30
+   else -> CampfireIcons.Rounded.Replay
+ }
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt
 index 1297195e..b54c6dda 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt
@@ -11111,7 +11488,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..2a7b95d9 100644
+index f41126a7..a7b90bb4 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11119,13 +11496,13 @@ index f41126a7..2a7b95d9 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.27-RC1
++campfire.version=1.2.27-RC2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022701
++campfire.versionCode=1022702
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

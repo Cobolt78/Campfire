@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.27-RC2]
+
+### Fixed
+
+- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`, `Forward15.kt`, `Replay15.kt`)**:
+  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
+  - Added dedicated `Forward15` and `Replay15` ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
+  - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
+
 ## [1.2.27-RC1]
 
 ### Added

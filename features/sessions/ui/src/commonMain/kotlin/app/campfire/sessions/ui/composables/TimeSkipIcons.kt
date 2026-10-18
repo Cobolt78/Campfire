@@ -13,10 +13,12 @@ import app.campfire.common.compose.di.rememberComponent
 import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.Forward
 import app.campfire.common.compose.icons.rounded.Forward10
+import app.campfire.common.compose.icons.rounded.Forward15
 import app.campfire.common.compose.icons.rounded.Forward30
 import app.campfire.common.compose.icons.rounded.Forward5
 import app.campfire.common.compose.icons.rounded.Replay
 import app.campfire.common.compose.icons.rounded.Replay10
+import app.campfire.common.compose.icons.rounded.Replay15
 import app.campfire.common.compose.icons.rounded.Replay30
 import app.campfire.common.compose.icons.rounded.Replay5
 import app.campfire.core.di.AppScope
@@ -51,6 +53,7 @@ internal fun ForwardIcon(
 private fun Long.asForwardImageVector(): ImageVector = when (this) {
   5000L -> CampfireIcons.Rounded.Forward5
   10_000L -> CampfireIcons.Rounded.Forward10
+  15_000L -> CampfireIcons.Rounded.Forward15
   30_000L -> CampfireIcons.Rounded.Forward30
   else -> CampfireIcons.Rounded.Forward
 }
@@ -74,6 +77,7 @@ internal fun RewindIcon(
 private fun Long.asReplayImageVector(): ImageVector = when (this) {
   5000L -> CampfireIcons.Rounded.Replay5
   10_000L -> CampfireIcons.Rounded.Replay10
+  15_000L -> CampfireIcons.Rounded.Replay15
   30_000L -> CampfireIcons.Rounded.Replay30
   else -> CampfireIcons.Rounded.Replay
 }
