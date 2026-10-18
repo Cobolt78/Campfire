@@ -11,46 +11,39 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..bcf38573 100644
+index c0278c85..7df3c448 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.24-RC4]
-+
-+### Fixed
-+
-+- **Paging Stabilization & Card Reshuffle Removal (`LibraryUi.kt`)**:
-+  - Removed `Modifier.animateItem()` from library grid cards and list rows to prevent card sliding animations and stutter during scrolling.
-+- **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
-+  - Check if Page 0 is unchanged on background refresh to avoid clearing SQLite cache and prevent invalidation churn.
-+  - If Page 0 changed while scrolled down, update only Page 0 instead of wiping subsequent pages from under the user.
-+- **Recently Added & Library Sort Order Restoration (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
-+  - Reverted the 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`), restoring unconditional `InitializeAction.LAUNCH_INITIAL_REFRESH`.
-+  - Fixes the sorting discrepancy where tapping "Recently Added" or navigating library sort views displayed stale cached records in out-of-sync order instead of the live server-sorted date-added order.
-+
-+## [1.2.24-RC3]
++## [1.2.25]
 +
 +### Added
 +
 +- **Listen Again: Sort by Last Listened (`ContentSortMode.kt`, `HomePresenter.kt`, `SortModeBottomSheet.kt`, `LibraryPresenter.kt`)**:
-+  - Added "Last Listened" sort mode (`LastListened`), mapping natively to Audiobookshelf's backend `progress` sort key (`mediaProgresses.updatedAt DESC`).
-+  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted from last listened to to oldest listened to, matching the exact order on the home screen shelf.
++  - Added "Last Listened" sort mode, mapping natively to Audiobookshelf's backend `progress` sort key (`mediaProgresses.updatedAt DESC`).
++  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted from last listened to oldest listened to, matching the exact order on the home screen shelf.
 +  - Keyed `rememberRetainedSaveable(screen)` in `LibraryPresenter.kt` to guarantee screen-specified sort modes and filters are adopted upon navigation.
 +
 +### Fixed
 +
++- **Paging Stabilization & Card Reshuffle Removal (`LibraryUi.kt`)**:
++  - Removed `Modifier.animateItem()` from library grid cards and list rows to prevent card sliding animations and micro-stutter during scrolling.
++- **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
++  - Check if Page 0 is unchanged on background refresh to avoid clearing SQLite cache and prevent invalidation churn.
++  - If Page 0 changed while scrolled down, update only Page 0 instead of wiping subsequent pages from under the user, preventing sudden upward screen snaps.
++- **Home Shelf Auto-Scroll on Update (`ShelfListItem.kt`)**:
++  - Automatically resets horizontal scroll position to index 0 when new items arrive on "Recently Added", "Recent Series", "Continue Listening", and "Listen Again", so new books appear immediately at the start instead of being hidden off-screen to the left.
 +- **Multi-Device Sync False-Positive Suppression & 20s Tolerance Threshold (`PlaybackPresenter.kt`)**:
 +  - Implemented a 20-second significance threshold for server playback synchronization prompts (`delta.absoluteValue >= 20.seconds`), eliminating the 2–4 second flashing "Sync available" popups caused by minor timestamp rounding and network latency.
-+  - Added active playback echo suppression: when the player is actively in `AudioPlayer.State.Playing`, server progress updates lagging behind local playback (`delta < 0`) are recognized as server echoes of our own periodic syncs and suppressed. Genuine multi-device progress differences (20+ seconds ahead or behind while paused) continue to prompt as expected.
++  - Added active playback echo suppression: when the player is actively playing, server progress updates lagging behind local playback (`delta < 0`) are recognized as server echoes of our own periodic syncs and suppressed. Genuine multi-device progress differences (20+ seconds ahead or behind while paused) continue to prompt as expected.
 +- **Blank Thumbnail Cover Art Multi-Tier Fallback (`CoverSizingInterceptor.kt`, `CoverUrls.kt`)**:
 +  - Added a resilient multi-tier fallback pipeline for book and podcast cover thumbnails. If the Audiobookshelf server's sized image rendering (`_200.webp` or `_400.webp`) fails with an HTTP error or zero bytes, the Coil interceptor automatically falls back to the un-sized original image URL, and if that also fails, falls back to the raw uncompressed cover endpoint (`raw=1`). Prevents books with corrupted server-side thumbnail caches from appearing blank in search, library lists, and the mini-player.
-+- **Paging Scroll Stabilization & Elimination of List Jump / Card Shuffle (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
-+  - Introduced a 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`) to prevent Jetpack Paging from initiating redundant initial refreshes during active browsing.
-+  - In `LibraryItemRemoteMediator`, smart verification now checks if Page 0 items and total count match existing cache before purging SQLite page records on `LoadType.REFRESH`. This prevents Android Paging 3 from momentarily clamping scroll offsets or re-animating/shuffling visible cards across the screen while scrolling through long lists like "Recently Added" or "Listen Again".
++- **Live Server Sorting Preservation**:
++  - Maintained live, immediate background refresh on screen entry without artificial delay windows, guaranteeing live server date-added sorting remains 100% accurate.
 +
 +## [1.2.23]
 +
@@ -161,10 +154,10 @@ index c0278c85..bcf38573 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..a6896a07
+index 00000000..da372dd0
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1428 @@
+@@ -0,0 +1,1449 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -224,7 +217,8 @@ index 00000000..a6896a07
 +50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
 +51. [Listen Again: Sort by Last Listened (v1.2.24)](#51-listen-again-sort-by-last-listened-v1224)
 +52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
-+53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1224)
++53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
++54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
 +
 +---
 +
@@ -1573,6 +1567,26 @@ index 00000000..a6896a07
 +### Modified Files:
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryUi.kt`
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
++
++---
++
++## 54. Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)
++
++### Summary
++Resolved an issue where newly added books or updated shelf content on the Home screen ("Recently Added", "Recent Series", "Continue Listening", "Listen Again") did not display at the beginning of the shelf and appeared hidden off-screen to the left until manually swiped.
++
++### Root Cause
++1. **Compose LazyRow Key Anchoring**: Each card in a horizontal shelf is keyed by entity ID. When a user was viewing index 0 (Book A), and a new book was prepended at the server (`[New Book, Book A, ...]`), Compose anchored the scroll offset to Book A's key. This shifted `firstVisibleItemIndex` from 0 to 1, pushing `New Book` off-screen to the left.
++2. **Shelf-Specific Reset Restriction**: `ShelfListItem.kt` had a scroll reset listener (`scrollToItem(0)`) restricted only to `isDiscover`. Other chronological shelves did not reset their scroll positions when fresh items arrived.
++
++### Key Changes
++1. **Multi-Shelf Scroll Reset (`ShelfListItem.kt`)**:
++   - Extended `shouldResetOnUpdate` to cover `RecentlyAdded`, `RecentSeries`, `ContinueListening`, and `ListenAgain`.
++   - When shelf entities update and the shelf is scrolled (`firstVisibleItemIndex > 0`), automatically scrolls back to index 0 (`listState.scrollToItem(0)`).
++   - The newest books and series immediately render at the front (far left) of the shelf upon arrival.
++
++### Modified Files:
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 +
 +
 +
@@ -5982,7 +5996,7 @@ index 585f6e98..183c951a 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
-index c6c916b9..b24bf886 100644
+index c6c916b9..4d05326e 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 @@ -4,13 +4,17 @@
@@ -6003,7 +6017,7 @@ index c6c916b9..b24bf886 100644
  import app.campfire.home.ui.UiShelf
  
  @Composable
-@@ -20,18 +24,60 @@ fun ShelfListItem(
+@@ -20,18 +24,66 @@ fun ShelfListItem(
    progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
    onItemClick: (Any) -> Unit,
    onViewAllUpcomingClick: () -> Unit,
@@ -6027,7 +6041,13 @@ index c6c916b9..b24bf886 100644
 +
 +  val listState = rememberLazyListState()
 +
-+  if (isDiscover) {
++  val shouldResetOnUpdate = isDiscover ||
++    shelf.id.startsWith(ShelfIds.RecentlyAdded) ||
++    shelf.id.startsWith(ShelfIds.RecentSeries) ||
++    shelf.id.startsWith(ShelfIds.ContinueListening) ||
++    shelf.id.startsWith(ShelfIds.ListenAgain)
++
++  if (shouldResetOnUpdate) {
 +    val entityIds = shelf.entities.dataOrNull?.map { entity ->
 +      when (entity) {
 +        is LibraryItem -> entity.id
@@ -10550,7 +10570,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..c526b87a 100644
+index f41126a7..6fcecfc2 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -10558,13 +10578,13 @@ index f41126a7..c526b87a 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.24-RC4
++campfire.version=1.2.25
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022404
++campfire.versionCode=1022599
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

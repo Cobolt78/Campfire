@@ -44,7 +44,13 @@ fun ShelfListItem(
 
   val listState = rememberLazyListState()
 
-  if (isDiscover) {
+  val shouldResetOnUpdate = isDiscover ||
+    shelf.id.startsWith(ShelfIds.RecentlyAdded) ||
+    shelf.id.startsWith(ShelfIds.RecentSeries) ||
+    shelf.id.startsWith(ShelfIds.ContinueListening) ||
+    shelf.id.startsWith(ShelfIds.ListenAgain)
+
+  if (shouldResetOnUpdate) {
     val entityIds = shelf.entities.dataOrNull?.map { entity ->
       when (entity) {
         is LibraryItem -> entity.id

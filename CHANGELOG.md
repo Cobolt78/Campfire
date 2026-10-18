@@ -17,38 +17,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.24-RC4]
-
-### Fixed
-
-- **Paging Stabilization & Card Reshuffle Removal (`LibraryUi.kt`)**:
-  - Removed `Modifier.animateItem()` from library grid cards and list rows to prevent card sliding animations and stutter during scrolling.
-- **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
-  - Check if Page 0 is unchanged on background refresh to avoid clearing SQLite cache and prevent invalidation churn.
-  - If Page 0 changed while scrolled down, update only Page 0 instead of wiping subsequent pages from under the user.
-- **Recently Added & Library Sort Order Restoration (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
-  - Reverted the 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`), restoring unconditional `InitializeAction.LAUNCH_INITIAL_REFRESH`.
-  - Fixes the sorting discrepancy where tapping "Recently Added" or navigating library sort views displayed stale cached records in out-of-sync order instead of the live server-sorted date-added order.
-
-## [1.2.24-RC3]
+## [1.2.25]
 
 ### Added
 
 - **Listen Again: Sort by Last Listened (`ContentSortMode.kt`, `HomePresenter.kt`, `SortModeBottomSheet.kt`, `LibraryPresenter.kt`)**:
-  - Added "Last Listened" sort mode (`LastListened`), mapping natively to Audiobookshelf's backend `progress` sort key (`mediaProgresses.updatedAt DESC`).
-  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted from last listened to to oldest listened to, matching the exact order on the home screen shelf.
+  - Added "Last Listened" sort mode, mapping natively to Audiobookshelf's backend `progress` sort key (`mediaProgresses.updatedAt DESC`).
+  - Tapping the "Listen Again" shelf header on the home screen now opens the completed books list sorted from last listened to oldest listened to, matching the exact order on the home screen shelf.
   - Keyed `rememberRetainedSaveable(screen)` in `LibraryPresenter.kt` to guarantee screen-specified sort modes and filters are adopted upon navigation.
 
 ### Fixed
 
+- **Paging Stabilization & Card Reshuffle Removal (`LibraryUi.kt`)**:
+  - Removed `Modifier.animateItem()` from library grid cards and list rows to prevent card sliding animations and micro-stutter during scrolling.
+- **Non-Destructive Background Refresh (`LibraryItemRemoteMediator.kt`)**:
+  - Check if Page 0 is unchanged on background refresh to avoid clearing SQLite cache and prevent invalidation churn.
+  - If Page 0 changed while scrolled down, update only Page 0 instead of wiping subsequent pages from under the user, preventing sudden upward screen snaps.
+- **Home Shelf Auto-Scroll on Update (`ShelfListItem.kt`)**:
+  - Automatically resets horizontal scroll position to index 0 when new items arrive on "Recently Added", "Recent Series", "Continue Listening", and "Listen Again", so new books appear immediately at the start instead of being hidden off-screen to the left.
 - **Multi-Device Sync False-Positive Suppression & 20s Tolerance Threshold (`PlaybackPresenter.kt`)**:
   - Implemented a 20-second significance threshold for server playback synchronization prompts (`delta.absoluteValue >= 20.seconds`), eliminating the 2–4 second flashing "Sync available" popups caused by minor timestamp rounding and network latency.
-  - Added active playback echo suppression: when the player is actively in `AudioPlayer.State.Playing`, server progress updates lagging behind local playback (`delta < 0`) are recognized as server echoes of our own periodic syncs and suppressed. Genuine multi-device progress differences (20+ seconds ahead or behind while paused) continue to prompt as expected.
+  - Added active playback echo suppression: when the player is actively playing, server progress updates lagging behind local playback (`delta < 0`) are recognized as server echoes of our own periodic syncs and suppressed. Genuine multi-device progress differences (20+ seconds ahead or behind while paused) continue to prompt as expected.
 - **Blank Thumbnail Cover Art Multi-Tier Fallback (`CoverSizingInterceptor.kt`, `CoverUrls.kt`)**:
   - Added a resilient multi-tier fallback pipeline for book and podcast cover thumbnails. If the Audiobookshelf server's sized image rendering (`_200.webp` or `_400.webp`) fails with an HTTP error or zero bytes, the Coil interceptor automatically falls back to the un-sized original image URL, and if that also fails, falls back to the raw uncompressed cover endpoint (`raw=1`). Prevents books with corrupted server-side thumbnail caches from appearing blank in search, library lists, and the mini-player.
-- **Paging Scroll Stabilization & Elimination of List Jump / Card Shuffle (`LibraryItemRemoteMediator.kt`, `SeriesRemoteMediator.kt`, etc.)**:
-  - Introduced a 2-minute cache freshness window (`CACHE_FRESHNESS_WINDOW_MS`) to prevent Jetpack Paging from initiating redundant initial refreshes during active browsing.
-  - In `LibraryItemRemoteMediator`, smart verification now checks if Page 0 items and total count match existing cache before purging SQLite page records on `LoadType.REFRESH`. This prevents Android Paging 3 from momentarily clamping scroll offsets or re-animating/shuffling visible cards across the screen while scrolling through long lists like "Recently Added" or "Listen Again".
+- **Live Server Sorting Preservation**:
+  - Maintained live, immediate background refresh on screen entry without artificial delay windows, guaranteeing live server date-added sorting remains 100% accurate.
 
 ## [1.2.23]
 

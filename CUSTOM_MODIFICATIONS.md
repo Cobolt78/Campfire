@@ -57,7 +57,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 50. [Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)](#50-multi-device-playback-sync-false-positive-suppression--tolerance-threshold-v1224)
 51. [Listen Again: Sort by Last Listened (v1.2.24)](#51-listen-again-sort-by-last-listened-v1224)
 52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
-53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1224)
+53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
+54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
 
 ---
 
@@ -1406,6 +1407,26 @@ Resolved scrolling hitching, card re-shuffling animations, and sudden upward scr
 ### Modified Files:
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryUi.kt`
 * `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
+
+---
+
+## 54. Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)
+
+### Summary
+Resolved an issue where newly added books or updated shelf content on the Home screen ("Recently Added", "Recent Series", "Continue Listening", "Listen Again") did not display at the beginning of the shelf and appeared hidden off-screen to the left until manually swiped.
+
+### Root Cause
+1. **Compose LazyRow Key Anchoring**: Each card in a horizontal shelf is keyed by entity ID. When a user was viewing index 0 (Book A), and a new book was prepended at the server (`[New Book, Book A, ...]`), Compose anchored the scroll offset to Book A's key. This shifted `firstVisibleItemIndex` from 0 to 1, pushing `New Book` off-screen to the left.
+2. **Shelf-Specific Reset Restriction**: `ShelfListItem.kt` had a scroll reset listener (`scrollToItem(0)`) restricted only to `isDiscover`. Other chronological shelves did not reset their scroll positions when fresh items arrived.
+
+### Key Changes
+1. **Multi-Shelf Scroll Reset (`ShelfListItem.kt`)**:
+   - Extended `shouldResetOnUpdate` to cover `RecentlyAdded`, `RecentSeries`, `ContinueListening`, and `ListenAgain`.
+   - When shelf entities update and the shelf is scrolled (`firstVisibleItemIndex > 0`), automatically scrolls back to index 0 (`listState.scrollToItem(0)`).
+   - The newest books and series immediately render at the front (far left) of the shelf upon arrival.
+
+### Modified Files:
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 
 
 
