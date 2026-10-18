@@ -17,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.28]
+
+### Added
+
+- **Wired Headset & Earbud Multi-Click Controls (`MediaSessionCallback.kt`)**:
+  - Implemented a dedicated multi-tap detector for `KEYCODE_HEADSETHOOK` on 3.5mm wired headsets and USB-C audio adapters.
+  - Full single, double, and triple-click recognition:
+    - **Single Click**: Toggles Play/Pause (with cold-start session resumption support).
+    - **Double Click**: Skips forward (time-seek or chapter skip depending on user settings).
+    - **Triple Click**: Skips backward (time-seek or chapter skip depending on user settings).
+  - Eliminates the AndroidX Media3 bug where triple-click was prematurely dispatched as a double-click forward skip.
+  - Automatically preserves long-press gestures for Google Assistant.
+
+### Fixed
+
+- **Navigation Drawer "What's New" Typo (`ui_drawer_strings.xml`, `audioplayer_ui_strings.xml`)**:
+  - Removed unnecessary backslash escape sequences in Compose Multiplatform string resources that caused the menu item to literally render as `"What\'s New"`.
+
 ## [1.2.27]
 
 ### Added

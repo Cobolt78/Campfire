@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.ViewConfiguration
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.CommandButton
@@ -32,6 +33,9 @@ import com.google.common.util.concurrent.ListenableFuture
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
@@ -49,6 +53,11 @@ internal class MediaSessionCallback(
   private val cycleSpeedCommand = SessionCommand(WidgetSessionCommand.CYCLE_SPEED, Bundle.EMPTY)
   private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
   private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
+
+  private var headsetHookClickCount = 0
+  private var headsetHookJob: Job? = null
+  private var lastHeadsetHookDownTime = 0L
+  private var isHeadsetHookLongPress = false
 
   fun bindSession(mediaSession: MediaSession) {
     serviceScope.launch {
@@ -246,6 +255,48 @@ internal class MediaSessionCallback(
           }
           return true
         }
+        KeyEvent.KEYCODE_HEADSETHOOK -> {
+          if (!isAuto && !isNotification) {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+              if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
+                isHeadsetHookLongPress = true
+                headsetHookJob?.cancel()
+                headsetHookClickCount = 0
+                return super.onMediaButtonEvent(session, controllerInfo, intent)
+              }
+              lastHeadsetHookDownTime = keyEvent.eventTime
+              return true
+            } else if (keyEvent.action == KeyEvent.ACTION_UP) {
+              if (isHeadsetHookLongPress) {
+                isHeadsetHookLongPress = false
+                return super.onMediaButtonEvent(session, controllerInfo, intent)
+              }
+              val pressDuration = keyEvent.eventTime - lastHeadsetHookDownTime
+              if (pressDuration >= ViewConfiguration.getLongPressTimeout()) {
+                return super.onMediaButtonEvent(session, controllerInfo, intent)
+              }
+
+              headsetHookClickCount++
+              headsetHookJob?.cancel()
+
+              if (headsetHookClickCount >= 3) {
+                headsetHookClickCount = 0
+                handleHeadsetSkipBackward()
+              } else {
+                headsetHookJob = serviceScope.launch(Dispatchers.Main) {
+                  delay(HEADSET_MULTI_CLICK_TIMEOUT_MS)
+                  val count = headsetHookClickCount
+                  headsetHookClickCount = 0
+                  when (count) {
+                    1 -> handleHeadsetPlayPause()
+                    2 -> handleHeadsetSkipForward()
+                  }
+                }
+              }
+              return true
+            }
+          }
+        }
         KeyEvent.KEYCODE_MEDIA_NEXT -> {
           // In Android Auto and system notification, there are dedicated jump buttons,
           // so next/prev should always skip chapters.
@@ -268,6 +319,42 @@ internal class MediaSessionCallback(
       }
     }
     return super.onMediaButtonEvent(session, controllerInfo, intent)
+  }
+
+  private fun handleHeadsetPlayPause() {
+    if (player.preparedSession != null) {
+      player.playPause()
+    } else {
+      serviceScope.launch {
+        try {
+          userComponent.sessionsRepository.getCurrentSession()?.let { session ->
+            userComponent.playbackSessionManager.startSession(
+              libraryItemId = session.libraryItem.id,
+              playImmediately = true,
+              episodeId = session.episodeId,
+            )
+          }
+        } catch (e: Exception) {
+          bark(LogPriority.ERROR, throwable = e) { "Failed to resume playback on headset click" }
+        }
+      }
+    }
+  }
+
+  private fun handleHeadsetSkipForward() {
+    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
+      player.skipToNext()
+    } else {
+      player.seekForward()
+    }
+  }
+
+  private fun handleHeadsetSkipBackward() {
+    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
+      player.skipToPrevious()
+    } else {
+      player.seekBackward()
+    }
   }
 
   override fun onGetLibraryRoot(
@@ -391,5 +478,9 @@ internal class MediaSessionCallback(
     } else {
       error("Media items contain an unplayable item!")
     }
+  }
+
+  private companion object {
+    private const val HEADSET_MULTI_CLICK_TIMEOUT_MS = 350L
   }
 }

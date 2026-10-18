@@ -11,14 +11,32 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..e388032e 100644
+index c0278c85..e66b2cd3 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,167 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,185 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.28]
++
++### Added
++
++- **Wired Headset & Earbud Multi-Click Controls (`MediaSessionCallback.kt`)**:
++  - Implemented a dedicated multi-tap detector for `KEYCODE_HEADSETHOOK` on 3.5mm wired headsets and USB-C audio adapters.
++  - Full single, double, and triple-click recognition:
++    - **Single Click**: Toggles Play/Pause (with cold-start session resumption support).
++    - **Double Click**: Skips forward (time-seek or chapter skip depending on user settings).
++    - **Triple Click**: Skips backward (time-seek or chapter skip depending on user settings).
++  - Eliminates the AndroidX Media3 bug where triple-click was prematurely dispatched as a double-click forward skip.
++  - Automatically preserves long-press gestures for Google Assistant.
++
++### Fixed
++
++- **Navigation Drawer "What's New" Typo (`ui_drawer_strings.xml`, `audioplayer_ui_strings.xml`)**:
++  - Removed unnecessary backslash escape sequences in Compose Multiplatform string resources that caused the menu item to literally render as `"What\'s New"`.
++
 +## [1.2.27]
 +
 +### Added
@@ -185,10 +203,10 @@ index c0278c85..e388032e 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..fac11455
+index 00000000..3044dc03
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1550 @@
+@@ -0,0 +1,1580 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -253,6 +271,7 @@ index 00000000..fac11455
 +55. [Voice Pitch Adjustment in Equalizer (v1.2.26)](#55-voice-pitch-adjustment-in-equalizer-v1226)
 +56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 +57. [Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)](#57-granular-playback-skip-forward--backward-duration-sliders-v1227)
++58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
 +
 +---
 +
@@ -1718,6 +1737,35 @@ index 00000000..fac11455
 +* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt`
 +* `CHANGELOG.md`
 +* `gradle.properties`
++
++---
++
++## 58. Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)
++
++### Problem Description
++1. Users using wired earbuds/headphones with a 3.5mm jack (or USB-C to 3.5mm analog adapters) reported that triple-pressing the inline button did not skip backward, and both double and triple button presses would only skip forward.
++   - **Root Cause**: On 3.5mm headsets, the single physical button shorting the mic line to ground emits `KeyEvent.KEYCODE_HEADSETHOOK`. In AndroidX Media3 (`MediaSessionImpl`), the framework eagerly intercepts double-clicks and immediately dispatches `onSkipToNext()`, while completely lacking any triple-click logic. When the 3rd click arrives, the double-click has already executed forward skip and the 3rd click is treated as a separate stray click.
++2. In the navigation drawer, the "What's New" menu item was rendered with an escaped backslash as `"What\'s New"`.
++   - **Root Cause**: Jetpack Compose Multiplatform string resource generator does not treat `\'` as an escape sequence, rendering the backslash literally.
++
++### Solution & Key Implementation Details
++1. **Wired Headset Multi-Click State Machine (`MediaSessionCallback.kt`)**:
++   - Intercepted `KeyEvent.KEYCODE_HEADSETHOOK` inside `onMediaButtonEvent()`.
++   - Built a high-precision multi-click detection state machine:
++     - **Single Click**: Toggles Play/Pause (with cold-start session resumption support).
++     - **Double Click**: Dispatches Skip Forward (either custom time-seek via `player.seekForward()` or chapter advance via `player.skipToNext()` based on `remoteNextPrevSkipsChapters`).
++     - **Triple Click**: Dispatches Skip Backward immediately on the 3rd release without delay (either custom time-seek via `player.seekBackward()` or chapter return via `player.skipToPrevious()` based on `remoteNextPrevSkipsChapters`).
++     - **Long-Press Passthrough**: Uses `ViewConfiguration.getLongPressTimeout()` and `repeatCount` detection to cleanly pass long-presses to Google Assistant.
++2. **String Resource Fix (`ui_drawer_strings.xml`, `audioplayer_ui_strings.xml`)**:
++   - Replaced `What\'s New` with `What's New` and `Couldn\'t connect` with `Couldn't connect`.
++
++### Modified Files:
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
++* `ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml`
++* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
++* `CHANGELOG.md`
++* `gradle.properties`
++
 +
 +
 +
@@ -11491,7 +11539,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..1ef5f4de 100644
+index f41126a7..015e53c5 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11499,13 +11547,13 @@ index f41126a7..1ef5f4de 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.27
++campfire.version=1.2.28
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022799
++campfire.versionCode=1022899
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -11772,13 +11820,24 @@ index 3d75ff1a..48ac7aee 100644
  }
  
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-index a22d7695..72c9b304 100644
+index a22d7695..7d8ed0a0 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-@@ -32,7 +32,10 @@ import com.google.common.util.concurrent.ListenableFuture
+@@ -8,6 +8,7 @@ import android.content.Context
+ import android.content.Intent
+ import android.os.Bundle
+ import android.view.KeyEvent
++import android.view.ViewConfiguration
+ import androidx.media3.common.MediaItem
+ import androidx.media3.common.Player
+ import androidx.media3.session.CommandButton
+@@ -32,7 +33,13 @@ import com.google.common.util.concurrent.ListenableFuture
  import kotlin.time.Duration.Companion.minutes
  import kotlinx.coroutines.CancellationException
  import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.delay
 +import kotlinx.coroutines.flow.combine
  import kotlinx.coroutines.guava.future
 +import kotlinx.coroutines.launch
@@ -11786,10 +11845,15 @@ index a22d7695..72c9b304 100644
  
  @SuppressLint("UnsafeOptInUsageError")
  internal class MediaSessionCallback(
-@@ -47,6 +50,67 @@ internal class MediaSessionCallback(
+@@ -47,6 +54,72 @@ internal class MediaSessionCallback(
    private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
    private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
  
++  private var headsetHookClickCount = 0
++  private var headsetHookJob: Job? = null
++  private var lastHeadsetHookDownTime = 0L
++  private var isHeadsetHookLongPress = false
++
 +  fun bindSession(mediaSession: MediaSession) {
 +    serviceScope.launch {
 +      combine(
@@ -11854,7 +11918,7 @@ index a22d7695..72c9b304 100644
    override fun onConnect(
      session: MediaSession,
      controller: MediaSession.ControllerInfo,
-@@ -61,25 +125,11 @@ internal class MediaSessionCallback(
+@@ -61,25 +134,11 @@ internal class MediaSessionCallback(
  
      if (
        session.isMediaNotificationController(controller) ||
@@ -11882,7 +11946,7 @@ index a22d7695..72c9b304 100644
          .build()
      } else {
        return AcceptedResultBuilder(session)
-@@ -172,20 +222,46 @@ internal class MediaSessionCallback(
+@@ -172,20 +231,88 @@ internal class MediaSessionCallback(
        component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
      }
  
@@ -11920,6 +11984,48 @@ index a22d7695..72c9b304 100644
 +          }
 +          return true
 +        }
++        KeyEvent.KEYCODE_HEADSETHOOK -> {
++          if (!isAuto && !isNotification) {
++            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
++              if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
++                isHeadsetHookLongPress = true
++                headsetHookJob?.cancel()
++                headsetHookClickCount = 0
++                return super.onMediaButtonEvent(session, controllerInfo, intent)
++              }
++              lastHeadsetHookDownTime = keyEvent.eventTime
++              return true
++            } else if (keyEvent.action == KeyEvent.ACTION_UP) {
++              if (isHeadsetHookLongPress) {
++                isHeadsetHookLongPress = false
++                return super.onMediaButtonEvent(session, controllerInfo, intent)
++              }
++              val pressDuration = keyEvent.eventTime - lastHeadsetHookDownTime
++              if (pressDuration >= ViewConfiguration.getLongPressTimeout()) {
++                return super.onMediaButtonEvent(session, controllerInfo, intent)
++              }
++
++              headsetHookClickCount++
++              headsetHookJob?.cancel()
++
++              if (headsetHookClickCount >= 3) {
++                headsetHookClickCount = 0
++                handleHeadsetSkipBackward()
++              } else {
++                headsetHookJob = serviceScope.launch(Dispatchers.Main) {
++                  delay(HEADSET_MULTI_CLICK_TIMEOUT_MS)
++                  val count = headsetHookClickCount
++                  headsetHookClickCount = 0
++                  when (count) {
++                    1 -> handleHeadsetPlayPause()
++                    2 -> handleHeadsetSkipForward()
++                  }
++                }
++              }
++              return true
++            }
++          }
++        }
 +        KeyEvent.KEYCODE_MEDIA_NEXT -> {
 +          // In Android Auto and system notification, there are dedicated jump buttons,
 +          // so next/prev should always skip chapters.
@@ -11939,11 +12045,53 @@ index a22d7695..72c9b304 100644
              return true
            }
          }
-@@ -316,50 +392,4 @@ internal class MediaSessionCallback(
-       error("Media items contain an unplayable item!")
+@@ -194,6 +321,42 @@ internal class MediaSessionCallback(
+     return super.onMediaButtonEvent(session, controllerInfo, intent)
+   }
+ 
++  private fun handleHeadsetPlayPause() {
++    if (player.preparedSession != null) {
++      player.playPause()
++    } else {
++      serviceScope.launch {
++        try {
++          userComponent.sessionsRepository.getCurrentSession()?.let { session ->
++            userComponent.playbackSessionManager.startSession(
++              libraryItemId = session.libraryItem.id,
++              playImmediately = true,
++              episodeId = session.episodeId,
++            )
++          }
++        } catch (e: Exception) {
++          bark(LogPriority.ERROR, throwable = e) { "Failed to resume playback on headset click" }
++        }
++      }
++    }
++  }
++
++  private fun handleHeadsetSkipForward() {
++    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
++      player.skipToNext()
++    } else {
++      player.seekForward()
++    }
++  }
++
++  private fun handleHeadsetSkipBackward() {
++    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
++      player.skipToPrevious()
++    } else {
++      player.seekBackward()
++    }
++  }
++
+   override fun onGetLibraryRoot(
+     session: MediaLibrarySession,
+     browser: MediaSession.ControllerInfo,
+@@ -317,49 +480,7 @@ internal class MediaSessionCallback(
      }
    }
--
+ 
 -  private fun createCustomLayoutCommandButtons(): List<CommandButton> {
 -    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
 -      5_000L -> CommandButton.ICON_SKIP_BACK_5
@@ -11974,7 +12122,7 @@ index a22d7695..72c9b304 100644
 -    )
 -  }
 -
--  private companion object {
+   private companion object {
 -    /**
 -     * List of known package names used by bluetooth devices
 -     */
@@ -11988,7 +12136,8 @@ index a22d7695..72c9b304 100644
 -      // Android Auto sometimes sends the media events to the device.
 -      "com.google.android.projection.gearhead",
 -    )
--  }
++    private const val HEADSET_MULTI_CLICK_TIMEOUT_MS = 350L
+   }
  }
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 index 3933cdd1..3f629d35 100644
@@ -12587,6 +12736,19 @@ index 4feda46f..12e72235 100644
    }
  
    @Test
+diff --git a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
+index 1b4d4dda..f361ba31 100644
+--- a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
++++ b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
+@@ -9,7 +9,7 @@
+   <string name="label_connecting">Connecting…</string>
+   <string name="media_route_dialog_title">Devices</string>
+   <string name="action_cast">Cast</string>
+-  <string name="label_couldnt_connect">Couldn\'t connect</string>
++  <string name="label_couldnt_connect">Couldn't connect</string>
+   <string name="action_allow_local_network">Allow local network access</string>
+   <string name="label_local_network_rationale">Needed to find cast devices on your network</string>
+ 
 diff --git a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt b/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
 index f43c61cc..0cbf2a28 100644
 --- a/infra/shake/src/androidMain/kotlin/app/campfire/shake/SeismicShakeDetector.kt
@@ -12880,14 +13042,14 @@ index eb5de418..5335edbb 100644
          scope.installScrollBehavior(scrollBehavior)
        }
 diff --git a/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml b/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml
-index b381cad4..136b0607 100644
+index b381cad4..098a11c2 100644
 --- a/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml
 +++ b/ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml
 @@ -36,6 +36,9 @@
    <string name="nav_downloads_label">Downloads</string>
    <string name="nav_downloads_content_description">The offline downloaded content for the current user</string>
  
-+  <string name="nav_whats_new_label">What\'s New</string>
++  <string name="nav_whats_new_label">What's New</string>
 +  <string name="nav_whats_new_content_description">View what is new</string>
 +
    <string name="action_change_theme">Change theme</string>

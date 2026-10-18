@@ -62,6 +62,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 55. [Voice Pitch Adjustment in Equalizer (v1.2.26)](#55-voice-pitch-adjustment-in-equalizer-v1226)
 56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 57. [Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)](#57-granular-playback-skip-forward--backward-duration-sliders-v1227)
+58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
 
 ---
 
@@ -1527,6 +1528,35 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt`
 * `CHANGELOG.md`
 * `gradle.properties`
+
+---
+
+## 58. Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)
+
+### Problem Description
+1. Users using wired earbuds/headphones with a 3.5mm jack (or USB-C to 3.5mm analog adapters) reported that triple-pressing the inline button did not skip backward, and both double and triple button presses would only skip forward.
+   - **Root Cause**: On 3.5mm headsets, the single physical button shorting the mic line to ground emits `KeyEvent.KEYCODE_HEADSETHOOK`. In AndroidX Media3 (`MediaSessionImpl`), the framework eagerly intercepts double-clicks and immediately dispatches `onSkipToNext()`, while completely lacking any triple-click logic. When the 3rd click arrives, the double-click has already executed forward skip and the 3rd click is treated as a separate stray click.
+2. In the navigation drawer, the "What's New" menu item was rendered with an escaped backslash as `"What\'s New"`.
+   - **Root Cause**: Jetpack Compose Multiplatform string resource generator does not treat `\'` as an escape sequence, rendering the backslash literally.
+
+### Solution & Key Implementation Details
+1. **Wired Headset Multi-Click State Machine (`MediaSessionCallback.kt`)**:
+   - Intercepted `KeyEvent.KEYCODE_HEADSETHOOK` inside `onMediaButtonEvent()`.
+   - Built a high-precision multi-click detection state machine:
+     - **Single Click**: Toggles Play/Pause (with cold-start session resumption support).
+     - **Double Click**: Dispatches Skip Forward (either custom time-seek via `player.seekForward()` or chapter advance via `player.skipToNext()` based on `remoteNextPrevSkipsChapters`).
+     - **Triple Click**: Dispatches Skip Backward immediately on the 3rd release without delay (either custom time-seek via `player.seekBackward()` or chapter return via `player.skipToPrevious()` based on `remoteNextPrevSkipsChapters`).
+     - **Long-Press Passthrough**: Uses `ViewConfiguration.getLongPressTimeout()` and `repeatCount` detection to cleanly pass long-presses to Google Assistant.
+2. **String Resource Fix (`ui_drawer_strings.xml`, `audioplayer_ui_strings.xml`)**:
+   - Replaced `What\'s New` with `What's New` and `Couldn\'t connect` with `Couldn't connect`.
+
+### Modified Files:
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
+* `ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml`
+* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
+* `CHANGELOG.md`
+* `gradle.properties`
+
 
 
 
