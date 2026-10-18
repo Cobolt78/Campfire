@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.27-RC1]
+
+### Added
+
+- **Granular Skip Forward & Backward Duration Sliders (`PlaybackPane.kt`)**:
+  - Replaced the 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times.
+  - Granular 5-second steps spanning from 5s to 60s (`5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`).
+  - Seamlessly integrates with existing playback engines, notification shade, and Android Auto.
+
 ## [1.2.26]
 
 ### Added

@@ -61,6 +61,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
 55. [Voice Pitch Adjustment in Equalizer (v1.2.26)](#55-voice-pitch-adjustment-in-equalizer-v1226)
 56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
+57. [Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)](#57-granular-playback-skip-forward--backward-duration-sliders-v1227)
 
 ---
 
@@ -420,6 +421,7 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/author/impl/.../AuthorsRemoteMediatorFactory.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
 | `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
 | `features/sessions/ui/.../PlaybackPresenter.kt` | 20s sync threshold & playing state echo suppression |
+| `features/settings/ui/.../PlaybackPane.kt` | Granular DurationSliderSetting for forward and backward skip times |
 
 ---
 
@@ -1490,6 +1492,29 @@ Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Play
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt`
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt`
 * `gradle.properties`
+
+---
+
+## 57. Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)
+
+### Summary
+Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Playback Settings with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times, giving users full granular control across 5-second increments from 5s to 60s.
+
+### Key Changes
+1. **Interactive Duration Sliders**:
+   - Replaced `TimeJumpSetting` with `DurationSliderSetting` in `PlaybackPane.kt` for forward skip and backward skip times.
+   - Configured with `valueRange = 5.seconds..60.seconds` and `stepSeconds = 5`, providing 12 discrete, granular steps: `5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`.
+   - Displays real-time exact second labels (`"${it.inWholeSeconds}s"`).
+2. **System & Playback Engine Compatibility**:
+   - Seamlessly works with existing audio player engines (`ExoPlayerAudioPlayer`, `DesktopAudioPlayer`, `IosAudioPlayer`) which already accept arbitrary millisecond skip durations.
+   - Fully compatible with Android Auto and media notifications via AndroidX Media3 (official 15-second icons are natively mapped in `MediaSessionCallback.kt`, with smooth fallback to standard system icons for other values).
+   - Preserved `QuickSkipJumps` for `trackResetThreshold` so reset threshold functionality remains completely intact.
+
+### Modified Files:
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt`
+* `CHANGELOG.md`
+* `gradle.properties`
+
 
 
 

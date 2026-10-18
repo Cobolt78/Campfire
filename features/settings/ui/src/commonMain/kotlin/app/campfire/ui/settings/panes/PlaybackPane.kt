@@ -86,24 +86,28 @@ internal fun PlaybackPane(
     onBackClick = onBackClick,
     modifier = modifier,
   ) {
-    TimeJumpSetting(
-      time = state.playbackSettings.forwardTime,
-      onTimeChange = {
+    DurationSliderSetting(
+      title = stringResource(Res.string.setting_playback_forward_title),
+      subtitle = stringResource(Res.string.setting_playback_forward_subtitle),
+      value = state.playbackSettings.forwardTime,
+      valueRange = SkipTimeRange,
+      stepSeconds = 5,
+      valueLabel = { "${it.inWholeSeconds}s" },
+      onValueChange = {
         state.eventSink(PlaybackSettingEvent.ForwardTime(it))
       },
-      jumps = QuickSkipJumps,
-      headlineContent = { Text(stringResource(Res.string.setting_playback_forward_title)) },
-      supportingContent = { Text(stringResource(Res.string.setting_playback_forward_subtitle)) },
     )
 
-    TimeJumpSetting(
-      time = state.playbackSettings.backwardTime,
-      onTimeChange = {
+    DurationSliderSetting(
+      title = stringResource(Res.string.setting_playback_backward_title),
+      subtitle = stringResource(Res.string.setting_playback_backward_subtitle),
+      value = state.playbackSettings.backwardTime,
+      valueRange = SkipTimeRange,
+      stepSeconds = 5,
+      valueLabel = { "${it.inWholeSeconds}s" },
+      onValueChange = {
         state.eventSink(PlaybackSettingEvent.BackwardTime(it))
       },
-      jumps = QuickSkipJumps,
-      headlineContent = { Text(stringResource(Res.string.setting_playback_backward_title)) },
-      supportingContent = { Text(stringResource(Res.string.setting_playback_backward_subtitle)) },
     )
 
     TimeJumpSetting(
@@ -328,6 +332,8 @@ internal fun PlaybackPane(
     )
   }
 }
+
+private val SkipTimeRange: ClosedRange<Duration> = 5.seconds..60.seconds
 
 enum class QuickSkipJumps(val duration: Duration) {
   Small(5.seconds),
