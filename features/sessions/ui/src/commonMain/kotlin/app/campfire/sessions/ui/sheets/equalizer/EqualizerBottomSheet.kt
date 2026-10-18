@@ -22,6 +22,9 @@ import androidx.compose.material.rememberModalBottomSheetState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -80,6 +83,8 @@ import campfire.features.sessions.ui.generated.resources.equalizer_preset_treble
 import campfire.features.sessions.ui.generated.resources.equalizer_preset_voice_boost
 import campfire.features.sessions.ui.generated.resources.equalizer_preset_warm
 import campfire.features.sessions.ui.generated.resources.equalizer_unavailable_casting
+import campfire.features.sessions.ui.generated.resources.session_scope_global
+import campfire.features.sessions.ui.generated.resources.session_scope_per_book
 import com.slack.circuit.overlay.OverlayHost
 import dev.zacsweers.metro.ContributesTo
 import kotlin.math.roundToInt
@@ -222,25 +227,6 @@ internal fun EqualizerSheet(
   SessionSheetLayout(
     modifier = modifier,
     title = { Text(stringResource(Res.string.equalizer_bottomsheet_title)) },
-    trailingContent = {
-      Switch(
-        checked = perBookEnabled,
-        onCheckedChange = onPerBookChange,
-        enabled = available,
-        thumbContent = {
-          Icon(
-            imageVector = if (perBookEnabled) {
-              CampfireIcons.Rounded.Book
-            } else {
-              CampfireIcons.Rounded.Globe
-            },
-            modifier = Modifier.size(16.dp),
-            contentDescription = stringResource(Res.string.equalizer_per_book_toggle),
-          )
-        },
-        modifier = Modifier.align(Alignment.CenterEnd),
-      )
-    },
   ) {
     // Ten vertical faders plus the presets and the two sliders come to more height than a short
     // sheet has, and the body was simply clipped there — the loudness and bass sliders were off
@@ -260,6 +246,43 @@ internal fun EqualizerSheet(
         )
         Spacer(Modifier.height(8.dp))
       }
+
+      SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp),
+      ) {
+        SegmentedButton(
+          selected = !perBookEnabled,
+          onClick = { onPerBookChange(false) },
+          shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+          enabled = available,
+          icon = {
+            Icon(
+              imageVector = CampfireIcons.Rounded.Globe,
+              contentDescription = null,
+              modifier = Modifier.size(16.dp),
+            )
+          },
+          label = { Text(stringResource(Res.string.session_scope_global)) },
+        )
+        SegmentedButton(
+          selected = perBookEnabled,
+          onClick = { onPerBookChange(true) },
+          shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+          enabled = available,
+          icon = {
+            Icon(
+              imageVector = CampfireIcons.Rounded.Book,
+              contentDescription = null,
+              modifier = Modifier.size(16.dp),
+            )
+          },
+          label = { Text(stringResource(Res.string.session_scope_per_book)) },
+        )
+      }
+
+      Spacer(Modifier.height(12.dp))
 
       Row(
         verticalAlignment = Alignment.CenterVertically,

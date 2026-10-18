@@ -60,6 +60,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
 54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
 55. [Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)](#55-voice-pitch-adjustment-in-equalizer-v1226-rc1)
+56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226-rc2)
 
 ---
 
@@ -1462,6 +1463,32 @@ Added a user-facing **Voice Pitch** slider to the Equalizer bottom sheet (`Equal
 * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/EqualizerSettingsImpl.kt`
 * `features/settings/impl/src/commonTest/kotlin/app/campfire/settings/EqualizerSettingsTest.kt`
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `gradle.properties`
+
+---
+
+## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)
+
+### Summary
+Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`. This establishes an identical, self-explanatory UI pattern across both screens: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.
+
+### Key Changes
+1. **Removed Mystery Trailing Switches**:
+   - Stripped the icon-only toggle switch (`CampfireIcons.Rounded.Book` / `Globe`) from the top header bar of `EqualizerBottomSheet.kt` and `PlaybackSpeedBottomSheet.kt`.
+   - Titles ("Equalizer" and "Playback speed") now render cleanly centered without confusing adjacent controls.
+2. **Prominent Material 3 Segmented Pill Selector**:
+   - Added `SingleChoiceSegmentedButtonRow` across the top of both sheets:
+     - **`🌐 All Books (Global)`**: Edits or views the app-wide default profile/speed.
+     - **`📖 This Book Only`**: Creates, edits, or deletes dedicated per-book overrides.
+   - In Equalizer, only one single toggle switch remains on the screen: **"Enable equalizer"** (the master DSP audio effects power switch).
+   - In Playback Speed, the scope selector sits cleanly above the preset speed buttons and slider.
+3. **Strings**:
+   - Added reusable `session_scope_global` ("All Books (Global)") and `session_scope_per_book` ("This Book Only") to `sessions_ui_strings.xml`.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt`
 * `gradle.properties`
 
 

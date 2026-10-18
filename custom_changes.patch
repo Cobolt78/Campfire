@@ -154,10 +154,10 @@ index c0278c85..7df3c448 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..4422533e
+index 00000000..ae27e71b
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1485 @@
+@@ -0,0 +1,1512 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -220,6 +220,7 @@ index 00000000..4422533e
 +53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
 +54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
 +55. [Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)](#55-voice-pitch-adjustment-in-equalizer-v1226-rc1)
++56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226-rc2)
 +
 +---
 +
@@ -1622,6 +1623,32 @@ index 00000000..4422533e
 +* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/EqualizerSettingsImpl.kt`
 +* `features/settings/impl/src/commonTest/kotlin/app/campfire/settings/EqualizerSettingsTest.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
++* `gradle.properties`
++
++---
++
++## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)
++
++### Summary
++Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`. This establishes an identical, self-explanatory UI pattern across both screens: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.
++
++### Key Changes
++1. **Removed Mystery Trailing Switches**:
++   - Stripped the icon-only toggle switch (`CampfireIcons.Rounded.Book` / `Globe`) from the top header bar of `EqualizerBottomSheet.kt` and `PlaybackSpeedBottomSheet.kt`.
++   - Titles ("Equalizer" and "Playback speed") now render cleanly centered without confusing adjacent controls.
++2. **Prominent Material 3 Segmented Pill Selector**:
++   - Added `SingleChoiceSegmentedButtonRow` across the top of both sheets:
++     - **`🌐 All Books (Global)`**: Edits or views the app-wide default profile/speed.
++     - **`📖 This Book Only`**: Creates, edits, or deletes dedicated per-book overrides.
++   - In Equalizer, only one single toggle switch remains on the screen: **"Enable equalizer"** (the master DSP audio effects power switch).
++   - In Playback Speed, the scope selector sits cleanly above the preset speed buttons and slider.
++3. **Strings**:
++   - Added reusable `session_scope_global` ("All Books (Global)") and `session_scope_per_book` ("This Book Only") to `sessions_ui_strings.xml`.
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt`
 +* `gradle.properties`
 +
 +
@@ -9530,10 +9557,19 @@ index e852e895..46afc77a 100644
  
      val itemId = session.libraryItem.id
 diff --git a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-index 20f60c09..20e0c611 100644
+index 20f60c09..f3b0cfa8 100644
 --- a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 +++ b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-@@ -31,6 +31,7 @@
+@@ -16,6 +16,8 @@
+   <string name="speed_bottomsheet_title">Playback speed</string>
+   <string name="speed_custom_open">Enter custom speed</string>
+   <string name="speed_per_book_toggle">Use a separate playback speed for this book</string>
++  <string name="session_scope_global">All Books (Global)</string>
++  <string name="session_scope_per_book">This Book Only</string>
+ 
+   <string name="equalizer_bottomsheet_title">Equalizer</string>
+   <string name="action_equalizer">Equalizer</string>
+@@ -31,6 +33,7 @@
    <string name="equalizer_preset_custom">Custom</string>
    <string name="equalizer_loudness_label">Loudness</string>
    <string name="equalizer_bass_label">Bass</string>
@@ -9681,10 +9717,20 @@ index 331fdd56..cc4de3b0 100644
          visible = dragState.actionState != Dispose && availableSync != null,
        ) {
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
-index 4b7fc2d1..b66b1894 100644
+index 4b7fc2d1..2de5ecc3 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
-@@ -70,6 +70,7 @@ import campfire.features.sessions.ui.generated.resources.equalizer_bottomsheet_t
+@@ -22,6 +22,9 @@ import androidx.compose.material.rememberModalBottomSheetState
+ import androidx.compose.material3.FilterChip
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.SegmentedButton
++import androidx.compose.material3.SegmentedButtonDefaults
++import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+ import androidx.compose.material3.Slider
+ import androidx.compose.material3.Switch
+ import androidx.compose.material3.Text
+@@ -70,6 +73,7 @@ import campfire.features.sessions.ui.generated.resources.equalizer_bottomsheet_t
  import campfire.features.sessions.ui.generated.resources.equalizer_enabled_toggle
  import campfire.features.sessions.ui.generated.resources.equalizer_loudness_label
  import campfire.features.sessions.ui.generated.resources.equalizer_per_book_toggle
@@ -9692,7 +9738,16 @@ index 4b7fc2d1..b66b1894 100644
  import campfire.features.sessions.ui.generated.resources.equalizer_preset_bass_boost
  import campfire.features.sessions.ui.generated.resources.equalizer_preset_custom
  import campfire.features.sessions.ui.generated.resources.equalizer_preset_flat
-@@ -184,6 +185,9 @@ private fun EqualizerBottomSheet(
+@@ -79,6 +83,8 @@ import campfire.features.sessions.ui.generated.resources.equalizer_preset_treble
+ import campfire.features.sessions.ui.generated.resources.equalizer_preset_voice_boost
+ import campfire.features.sessions.ui.generated.resources.equalizer_preset_warm
+ import campfire.features.sessions.ui.generated.resources.equalizer_unavailable_casting
++import campfire.features.sessions.ui.generated.resources.session_scope_global
++import campfire.features.sessions.ui.generated.resources.session_scope_per_book
+ import com.slack.circuit.overlay.OverlayHost
+ import dev.zacsweers.metro.ContributesTo
+ import kotlin.math.roundToInt
+@@ -184,6 +190,9 @@ private fun EqualizerBottomSheet(
      onBassBoostChange = { bassBoost ->
        pushProfile(profile.copy(bassBoost = bassBoost))
      },
@@ -9702,7 +9757,7 @@ index 4b7fc2d1..b66b1894 100644
      onPerBookChange = { enabled ->
        Analytics.send(PlaybackActionEvent(Equalizer, Changed, extras = mapOf("perBook" to enabled)))
        if (enabled) {
-@@ -209,6 +213,7 @@ internal fun EqualizerSheet(
+@@ -209,6 +218,7 @@ internal fun EqualizerSheet(
    onBandGainChange: (Int, Float) -> Unit,
    onLoudnessChange: (Float) -> Unit,
    onBassBoostChange: (Float) -> Unit,
@@ -9710,7 +9765,77 @@ index 4b7fc2d1..b66b1894 100644
    onPerBookChange: (Boolean) -> Unit,
    modifier: Modifier = Modifier,
  ) {
-@@ -310,6 +315,25 @@ internal fun EqualizerSheet(
+@@ -217,25 +227,6 @@ internal fun EqualizerSheet(
+   SessionSheetLayout(
+     modifier = modifier,
+     title = { Text(stringResource(Res.string.equalizer_bottomsheet_title)) },
+-    trailingContent = {
+-      Switch(
+-        checked = perBookEnabled,
+-        onCheckedChange = onPerBookChange,
+-        enabled = available,
+-        thumbContent = {
+-          Icon(
+-            imageVector = if (perBookEnabled) {
+-              CampfireIcons.Rounded.Book
+-            } else {
+-              CampfireIcons.Rounded.Globe
+-            },
+-            modifier = Modifier.size(16.dp),
+-            contentDescription = stringResource(Res.string.equalizer_per_book_toggle),
+-          )
+-        },
+-        modifier = Modifier.align(Alignment.CenterEnd),
+-      )
+-    },
+   ) {
+     // Ten vertical faders plus the presets and the two sliders come to more height than a short
+     // sheet has, and the body was simply clipped there — the loudness and bass sliders were off
+@@ -256,6 +247,43 @@ internal fun EqualizerSheet(
+         Spacer(Modifier.height(8.dp))
+       }
+ 
++      SingleChoiceSegmentedButtonRow(
++        modifier = Modifier
++          .fillMaxWidth()
++          .padding(horizontal = 16.dp),
++      ) {
++        SegmentedButton(
++          selected = !perBookEnabled,
++          onClick = { onPerBookChange(false) },
++          shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
++          enabled = available,
++          icon = {
++            Icon(
++              imageVector = CampfireIcons.Rounded.Globe,
++              contentDescription = null,
++              modifier = Modifier.size(16.dp),
++            )
++          },
++          label = { Text(stringResource(Res.string.session_scope_global)) },
++        )
++        SegmentedButton(
++          selected = perBookEnabled,
++          onClick = { onPerBookChange(true) },
++          shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
++          enabled = available,
++          icon = {
++            Icon(
++              imageVector = CampfireIcons.Rounded.Book,
++              contentDescription = null,
++              modifier = Modifier.size(16.dp),
++            )
++          },
++          label = { Text(stringResource(Res.string.session_scope_per_book)) },
++        )
++      }
++
++      Spacer(Modifier.height(12.dp))
++
+       Row(
+         verticalAlignment = Alignment.CenterVertically,
+         modifier = Modifier
+@@ -310,6 +338,25 @@ internal fun EqualizerSheet(
          onValueChange = { onBassBoostChange((it * 20).roundToInt() / 20f) },
        )
  
@@ -9736,7 +9861,7 @@ index 4b7fc2d1..b66b1894 100644
        Spacer(Modifier.height(24.dp))
      }
    }
-@@ -420,6 +444,7 @@ private fun LabeledSlider(
+@@ -420,6 +467,7 @@ private fun LabeledSlider(
    valueRange: ClosedFloatingPointRange<Float>,
    valueText: String,
    enabled: Boolean,
@@ -9744,7 +9869,7 @@ index 4b7fc2d1..b66b1894 100644
    onValueChange: (Float) -> Unit,
    modifier: Modifier = Modifier,
  ) {
-@@ -432,11 +457,12 @@ private fun LabeledSlider(
+@@ -432,11 +480,12 @@ private fun LabeledSlider(
      Text(
        text = label,
        style = MaterialTheme.typography.bodyMedium,
@@ -9758,7 +9883,7 @@ index 4b7fc2d1..b66b1894 100644
        enabled = enabled,
        onValueChange = onValueChange,
        modifier = Modifier.weight(1f),
-@@ -519,6 +545,7 @@ private fun EqualizerSheetPreview() {
+@@ -519,6 +568,7 @@ private fun EqualizerSheetPreview() {
            },
            onLoudnessChange = { profile = profile.copy(loudnessGainDb = it) },
            onBassBoostChange = { profile = profile.copy(bassBoost = it) },
@@ -9786,6 +9911,84 @@ index 278dcf20..efba7ae3 100644
              override var shakeSensitivity: SleepSettings.ShakeSensitivity
                get() = TODO("Not yet implemented")
                set(value) {}
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
+index 792e8267..41976fe9 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
+@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.Spacer
+ import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.navigationBarsPadding
+ import androidx.compose.foundation.layout.padding
+@@ -61,6 +62,8 @@ import app.campfire.core.model.LibraryItemId
+ import app.campfire.sessions.ui.sheets.SessionSheetLayout
+ import app.campfire.settings.api.PlaybackSettings
+ import campfire.features.sessions.ui.generated.resources.Res
++import campfire.features.sessions.ui.generated.resources.session_scope_global
++import campfire.features.sessions.ui.generated.resources.session_scope_per_book
+ import campfire.features.sessions.ui.generated.resources.speed_bottomsheet_title
+ import campfire.features.sessions.ui.generated.resources.speed_custom_open
+ import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
+@@ -173,25 +176,42 @@ internal fun PlaybackSpeedSheet(
+   SessionSheetLayout(
+     modifier = modifier,
+     title = { Text(stringResource(Res.string.speed_bottomsheet_title)) },
+-    trailingContent = {
+-      Switch(
+-        checked = perBookSpeedEnabled,
+-        onCheckedChange = onPerBookSpeedChange,
+-        thumbContent = {
++  ) {
++    Spacer(Modifier.height(8.dp))
++
++    SingleChoiceSegmentedButtonRow(
++      modifier = Modifier
++        .fillMaxWidth()
++        .padding(horizontal = 16.dp),
++    ) {
++      SegmentedButton(
++        selected = !perBookSpeedEnabled,
++        onClick = { onPerBookSpeedChange(false) },
++        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
++        icon = {
+           Icon(
+-            imageVector = if (perBookSpeedEnabled) {
+-              CampfireIcons.Rounded.Book
+-            } else {
+-              CampfireIcons.Rounded.Globe
+-            },
++            imageVector = CampfireIcons.Rounded.Globe,
++            contentDescription = null,
+             modifier = Modifier.size(16.dp),
+-            contentDescription = stringResource(Res.string.speed_per_book_toggle),
+           )
+         },
+-        modifier = Modifier.align(Alignment.CenterEnd),
++        label = { Text(stringResource(Res.string.session_scope_global)) },
+       )
+-    },
+-  ) {
++      SegmentedButton(
++        selected = perBookSpeedEnabled,
++        onClick = { onPerBookSpeedChange(true) },
++        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
++        icon = {
++          Icon(
++            imageVector = CampfireIcons.Rounded.Book,
++            contentDescription = null,
++            modifier = Modifier.size(16.dp),
++          )
++        },
++        label = { Text(stringResource(Res.string.session_scope_per_book)) },
++      )
++    }
++
+     Spacer(Modifier.height(16.dp))
+ 
+     SingleChoiceSegmentedButtonRow(
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
 index 299f5180..71fb7375 100644
 --- a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
@@ -10806,7 +11009,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..226dd112 100644
+index f41126a7..bc192e1b 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -10814,13 +11017,13 @@ index f41126a7..226dd112 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.26-RC1
++campfire.version=1.2.26-RC2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022601
++campfire.versionCode=1022602
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

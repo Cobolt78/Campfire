@@ -16,6 +16,8 @@
   <string name="speed_bottomsheet_title">Playback speed</string>
   <string name="speed_custom_open">Enter custom speed</string>
   <string name="speed_per_book_toggle">Use a separate playback speed for this book</string>
+  <string name="session_scope_global">All Books (Global)</string>
+  <string name="session_scope_per_book">This Book Only</string>
 
   <string name="equalizer_bottomsheet_title">Equalizer</string>
   <string name="action_equalizer">Equalizer</string>

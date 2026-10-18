@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -61,6 +62,8 @@ import app.campfire.core.model.LibraryItemId
 import app.campfire.sessions.ui.sheets.SessionSheetLayout
 import app.campfire.settings.api.PlaybackSettings
 import campfire.features.sessions.ui.generated.resources.Res
+import campfire.features.sessions.ui.generated.resources.session_scope_global
+import campfire.features.sessions.ui.generated.resources.session_scope_per_book
 import campfire.features.sessions.ui.generated.resources.speed_bottomsheet_title
 import campfire.features.sessions.ui.generated.resources.speed_custom_open
 import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
@@ -173,25 +176,42 @@ internal fun PlaybackSpeedSheet(
   SessionSheetLayout(
     modifier = modifier,
     title = { Text(stringResource(Res.string.speed_bottomsheet_title)) },
-    trailingContent = {
-      Switch(
-        checked = perBookSpeedEnabled,
-        onCheckedChange = onPerBookSpeedChange,
-        thumbContent = {
+  ) {
+    Spacer(Modifier.height(8.dp))
+
+    SingleChoiceSegmentedButtonRow(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp),
+    ) {
+      SegmentedButton(
+        selected = !perBookSpeedEnabled,
+        onClick = { onPerBookSpeedChange(false) },
+        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+        icon = {
           Icon(
-            imageVector = if (perBookSpeedEnabled) {
-              CampfireIcons.Rounded.Book
-            } else {
-              CampfireIcons.Rounded.Globe
-            },
+            imageVector = CampfireIcons.Rounded.Globe,
+            contentDescription = null,
             modifier = Modifier.size(16.dp),
-            contentDescription = stringResource(Res.string.speed_per_book_toggle),
           )
         },
-        modifier = Modifier.align(Alignment.CenterEnd),
+        label = { Text(stringResource(Res.string.session_scope_global)) },
       )
-    },
-  ) {
+      SegmentedButton(
+        selected = perBookSpeedEnabled,
+        onClick = { onPerBookSpeedChange(true) },
+        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+        icon = {
+          Icon(
+            imageVector = CampfireIcons.Rounded.Book,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+          )
+        },
+        label = { Text(stringResource(Res.string.session_scope_per_book)) },
+      )
+    }
+
     Spacer(Modifier.height(16.dp))
 
     SingleChoiceSegmentedButtonRow(
