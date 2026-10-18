@@ -59,8 +59,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
 53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
 54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
-55. [Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)](#55-voice-pitch-adjustment-in-equalizer-v1226-rc1)
-56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226-rc2)
+55. [Voice Pitch Adjustment in Equalizer (v1.2.26)](#55-voice-pitch-adjustment-in-equalizer-v1226)
+56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 
 ---
 
@@ -1432,7 +1432,7 @@ Resolved an issue where newly added books or updated shelf content on the Home s
 
 ---
 
-## 55. Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)
+## 55. Voice Pitch Adjustment in Equalizer (v1.2.26)
 
 ### Summary
 Added a user-facing **Voice Pitch** slider to the Equalizer bottom sheet (`EqualizerBottomSheet.kt`), allowing listeners to alter the narrator's pitch (making their voice deeper or higher) independently of playback speed.
@@ -1467,7 +1467,7 @@ Added a user-facing **Voice Pitch** slider to the Equalizer bottom sheet (`Equal
 
 ---
 
-## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)
+## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)
 
 ### Summary
 Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`. This establishes an identical, self-explanatory UI pattern across both screens: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.

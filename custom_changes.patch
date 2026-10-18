@@ -11,14 +11,28 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..7df3c448 100644
+index c0278c85..a558288b 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,150 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.26]
++
++### Added
++
++- **Voice Pitch Adjustment (`Equalizer.kt`, `ExoPlayerAudioPlayer.kt`, `EqualizerBottomSheet.kt`)**:
++  - Added a dedicated "Voice Pitch" slider to the Equalizer bottom sheet with 9 discrete semitone stops (-4 to +4 semitones with "Normal" at 0).
++  - Uses equal-temperament frequency calculation ($2.0^{\frac{\text{semitones}}{12.0}}$) coupled to Media3 ExoPlayer's native Sonic AudioProcessor, shifting narrator voice pitch higher or deeper in real time without altering playback speed or tempo.
++  - Linked to the Equalizer master switch and preserved across speed adjustments, session starts, and per-book overrides.
++  - Full backward-compatible persistence for both legacy 5-field profiles and new 6-field profiles in `EqualizerSettingsImpl.kt`.
++- **Uniform Segmented Scope Selector (Global vs. This Book) (`EqualizerBottomSheet.kt`, `PlaybackSpeedBottomSheet.kt`)**:
++  - Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.
++  - Clearly distinguishes between app-wide global default settings and book-specific overrides.
++  - In Equalizer, leaves only one single toggle switch on the screen: "Enable equalizer" (the master DSP power switch).
++
 +## [1.2.25]
 +
 +### Added
@@ -154,7 +168,7 @@ index c0278c85..7df3c448 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..ae27e71b
+index 00000000..230b81f8
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -0,0 +1,1512 @@
@@ -219,8 +233,8 @@ index 00000000..ae27e71b
 +52. [Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)](#52-multi-tier-resilient-fallback-for-cover-thumbnails-v1224)
 +53. [Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.25)](#53-paging-stabilization-card-reshuffle-removal--non-destructive-background-refresh-v1225)
 +54. [Home Shelf Auto-Scroll Reset on Content Update (v1.2.25)](#54-home-shelf-auto-scroll-reset-on-content-update-v1225)
-+55. [Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)](#55-voice-pitch-adjustment-in-equalizer-v1226-rc1)
-+56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226-rc2)
++55. [Voice Pitch Adjustment in Equalizer (v1.2.26)](#55-voice-pitch-adjustment-in-equalizer-v1226)
++56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 +
 +---
 +
@@ -1592,7 +1606,7 @@ index 00000000..ae27e71b
 +
 +---
 +
-+## 55. Voice Pitch Adjustment in Equalizer (v1.2.26-RC1)
++## 55. Voice Pitch Adjustment in Equalizer (v1.2.26)
 +
 +### Summary
 +Added a user-facing **Voice Pitch** slider to the Equalizer bottom sheet (`EqualizerBottomSheet.kt`), allowing listeners to alter the narrator's pitch (making their voice deeper or higher) independently of playback speed.
@@ -1627,7 +1641,7 @@ index 00000000..ae27e71b
 +
 +---
 +
-+## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26-RC2)
++## 56. Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)
 +
 +### Summary
 +Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`. This establishes an identical, self-explanatory UI pattern across both screens: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.
@@ -11009,7 +11023,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..bc192e1b 100644
+index f41126a7..9541bf94 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11017,13 +11031,13 @@ index f41126a7..bc192e1b 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.26-RC2
++campfire.version=1.2.26
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022602
++campfire.versionCode=1022699
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

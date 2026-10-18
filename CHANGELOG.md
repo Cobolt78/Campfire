@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.26]
+
+### Added
+
+- **Voice Pitch Adjustment (`Equalizer.kt`, `ExoPlayerAudioPlayer.kt`, `EqualizerBottomSheet.kt`)**:
+  - Added a dedicated "Voice Pitch" slider to the Equalizer bottom sheet with 9 discrete semitone stops (-4 to +4 semitones with "Normal" at 0).
+  - Uses equal-temperament frequency calculation ($2.0^{\frac{\text{semitones}}{12.0}}$) coupled to Media3 ExoPlayer's native Sonic AudioProcessor, shifting narrator voice pitch higher or deeper in real time without altering playback speed or tempo.
+  - Linked to the Equalizer master switch and preserved across speed adjustments, session starts, and per-book overrides.
+  - Full backward-compatible persistence for both legacy 5-field profiles and new 6-field profiles in `EqualizerSettingsImpl.kt`.
+- **Uniform Segmented Scope Selector (Global vs. This Book) (`EqualizerBottomSheet.kt`, `PlaybackSpeedBottomSheet.kt`)**:
+  - Replaced the ambiguous, unlabeled trailing switch in both the Equalizer and Playback Speed bottom sheets with a prominent Material 3 `SingleChoiceSegmentedButtonRow`: `[ 🌐 All Books (Global) | 📖 This Book Only ]`.
+  - Clearly distinguishes between app-wide global default settings and book-specific overrides.
+  - In Equalizer, leaves only one single toggle switch on the screen: "Enable equalizer" (the master DSP power switch).
+
 ## [1.2.25]
 
 ### Added
