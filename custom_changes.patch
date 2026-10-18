@@ -11,31 +11,30 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..65cda537 100644
+index c0278c85..e388032e 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,168 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,167 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.27-RC2]
-+
-+### Fixed
-+
-+- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`, `Forward15.kt`, `Replay15.kt`)**:
-+  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
-+  - Added dedicated `Forward15` and `Replay15` ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
-+  - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
-+
-+## [1.2.27-RC1]
++## [1.2.27]
 +
 +### Added
 +
 +- **Granular Skip Forward & Backward Duration Sliders (`PlaybackPane.kt`)**:
-+  - Replaced the 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times.
-+  - Granular 5-second steps spanning from 5s to 60s (`5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`).
++  - Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Playback Settings with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times.
++  - Granular 5-second steps spanning from 5s to 60s (`5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`) with real-time exact second readouts.
 +  - Seamlessly integrates with existing playback engines, notification shade, and Android Auto.
++- **Dedicated 15s Skip Badges (`Forward15.kt`, `Replay15.kt`, `TimeSkipIcons.kt`)**:
++  - Added dedicated `Forward15` and `Replay15` vector ImageVectors so the popular 15-second skip duration renders with clear "15" digit badges matching 5s, 10s, and 30s.
++
++### Fixed
++
++- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`)**:
++  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
++  - All non-badged duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
 +
 +## [1.2.26]
 +
@@ -186,10 +185,10 @@ index c0278c85..65cda537 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..6fab1738
+index 00000000..fac11455
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1546 @@
+@@ -0,0 +1,1550 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -614,6 +613,10 @@ index 00000000..6fab1738
 +| `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
 +| `features/sessions/ui/.../PlaybackPresenter.kt` | 20s sync threshold & playing state echo suppression |
 +| `features/settings/ui/.../PlaybackPane.kt` | Granular DurationSliderSetting for forward and backward skip times |
++| `common/compose/.../Forward.kt` | Symmetrical clockwise circular arrow loop matching Replay |
++| `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
++| `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
++| `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
 +
 +---
 +
@@ -11488,7 +11491,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..a7b90bb4 100644
+index f41126a7..1ef5f4de 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11496,13 +11499,13 @@ index f41126a7..a7b90bb4 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.27-RC2
++campfire.version=1.2.27
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022702
++campfire.versionCode=1022799
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

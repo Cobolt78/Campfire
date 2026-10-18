@@ -422,6 +422,10 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/podcasts/impl/.../RecentEpisodesRemoteMediator.kt` | Instant background paging refresh (`LAUNCH_INITIAL_REFRESH`) |
 | `features/sessions/ui/.../PlaybackPresenter.kt` | 20s sync threshold & playing state echo suppression |
 | `features/settings/ui/.../PlaybackPane.kt` | Granular DurationSliderSetting for forward and backward skip times |
+| `common/compose/.../Forward.kt` | Symmetrical clockwise circular arrow loop matching Replay |
+| `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
+| `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
+| `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
 
 ---
 

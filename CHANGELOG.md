@@ -17,23 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.27-RC2]
-
-### Fixed
-
-- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`, `Forward15.kt`, `Replay15.kt`)**:
-  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
-  - Added dedicated `Forward15` and `Replay15` ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
-  - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
-
-## [1.2.27-RC1]
+## [1.2.27]
 
 ### Added
 
 - **Granular Skip Forward & Backward Duration Sliders (`PlaybackPane.kt`)**:
-  - Replaced the 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times.
-  - Granular 5-second steps spanning from 5s to 60s (`5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`).
+  - Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Playback Settings with interactive `DurationSliderSetting` sliders for both Forward and Backward skip times.
+  - Granular 5-second steps spanning from 5s to 60s (`5s, 10s, 15s, 20s, 25s, 30s, 35s, 40s, 45s, 50s, 55s, 60s`) with real-time exact second readouts.
   - Seamlessly integrates with existing playback engines, notification shade, and Android Auto.
+- **Dedicated 15s Skip Badges (`Forward15.kt`, `Replay15.kt`, `TimeSkipIcons.kt`)**:
+  - Added dedicated `Forward15` and `Replay15` vector ImageVectors so the popular 15-second skip duration renders with clear "15" digit badges matching 5s, 10s, and 30s.
+
+### Fixed
+
+- **Consistent Circular Skip Arrow Icons (`Forward.kt`, `TimeSkipIcons.kt`)**:
+  - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
+  - All non-badged duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
 
 ## [1.2.26]
 
