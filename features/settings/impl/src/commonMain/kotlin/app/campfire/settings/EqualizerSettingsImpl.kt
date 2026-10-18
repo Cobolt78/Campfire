@@ -63,18 +63,21 @@ class EqualizerSettingsImpl(
     bandGainsDb.joinToString(EQUALIZER_GAINS_SEPARATOR),
     loudnessGainDb.toString(),
     bassBoost.toString(),
+    pitchSemitones.toString(),
   ).joinToString(EQUALIZER_FIELD_SEPARATOR)
 
   private fun String.asEqualizerProfile(): EqualizerProfile? {
     val fields = split(EQUALIZER_FIELD_SEPARATOR)
-    if (fields.size != 5) return null
-    val (enabled, presetId, gains, loudness, bass) = fields
+    if (fields.size != 5 && fields.size != 6) return null
+    val (enabled, presetId, gains, loudness, bass) = fields.take(5)
+    val pitch = fields.getOrNull(5)?.toFloatOrNull() ?: 0f
     return EqualizerProfile(
       enabled = enabled == "1",
       presetId = presetId.ifEmpty { return null },
       bandGainsDb = gains.asBandGains() ?: return null,
       loudnessGainDb = loudness.toFloatOrNull() ?: return null,
       bassBoost = bass.toFloatOrNull() ?: return null,
+      pitchSemitones = pitch,
     )
   }
 

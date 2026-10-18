@@ -29,9 +29,26 @@ class EqualizerSettingsTest {
       bandGainsDb = listOf(-4f, -3f, -1f, 0f, 2f, 4f, 4f, 2f, 0f, -1f),
       loudnessGainDb = 6.5f,
       bassBoost = 0.25f,
+      pitchSemitones = 2f,
     )
     settings.equalizerProfile = profile
     assertThat(settings.equalizerProfile).isEqualTo(profile)
+  }
+
+  @Test
+  fun `legacy 5-field profile strings parse with default pitch`() {
+    val backing = MapSettings()
+    val settings = EqualizerSettingsImpl(backing, settingsScope)
+    backing.putString(PREF_EQUALIZER_PROFILE, "1|voice_boost|0,0,0,0,0,0,0,0,0,0|6.0|0.25")
+    val expected = EqualizerProfile(
+      enabled = true,
+      presetId = EqualizerPresets.VOICE_BOOST_ID,
+      bandGainsDb = List(10) { 0f },
+      loudnessGainDb = 6.0f,
+      bassBoost = 0.25f,
+      pitchSemitones = 0f,
+    )
+    assertThat(settings.equalizerProfile).isEqualTo(expected)
   }
 
   @Test

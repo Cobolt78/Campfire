@@ -94,6 +94,7 @@ class EqualizerSideSheetRenderTest {
                 onBandGainChange = { _, _ -> },
                 onLoudnessChange = {},
                 onBassBoostChange = {},
+                onPitchChange = {},
                 onPerBookChange = {},
               )
             },

@@ -70,6 +70,7 @@ import campfire.features.sessions.ui.generated.resources.equalizer_bottomsheet_t
 import campfire.features.sessions.ui.generated.resources.equalizer_enabled_toggle
 import campfire.features.sessions.ui.generated.resources.equalizer_loudness_label
 import campfire.features.sessions.ui.generated.resources.equalizer_per_book_toggle
+import campfire.features.sessions.ui.generated.resources.equalizer_pitch_label
 import campfire.features.sessions.ui.generated.resources.equalizer_preset_bass_boost
 import campfire.features.sessions.ui.generated.resources.equalizer_preset_custom
 import campfire.features.sessions.ui.generated.resources.equalizer_preset_flat
@@ -184,6 +185,9 @@ private fun EqualizerBottomSheet(
     onBassBoostChange = { bassBoost ->
       pushProfile(profile.copy(bassBoost = bassBoost))
     },
+    onPitchChange = { pitchSemitones ->
+      pushProfile(profile.copy(pitchSemitones = pitchSemitones))
+    },
     onPerBookChange = { enabled ->
       Analytics.send(PlaybackActionEvent(Equalizer, Changed, extras = mapOf("perBook" to enabled)))
       if (enabled) {
@@ -209,6 +213,7 @@ internal fun EqualizerSheet(
   onBandGainChange: (Int, Float) -> Unit,
   onLoudnessChange: (Float) -> Unit,
   onBassBoostChange: (Float) -> Unit,
+  onPitchChange: (Float) -> Unit,
   onPerBookChange: (Boolean) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -308,6 +313,25 @@ internal fun EqualizerSheet(
         valueText = "${(profile.bassBoost * 100).roundToInt()}%",
         enabled = controlsEnabled,
         onValueChange = { onBassBoostChange((it * 20).roundToInt() / 20f) },
+      )
+
+      LabeledSlider(
+        label = stringResource(Res.string.equalizer_pitch_label),
+        value = profile.pitchSemitones,
+        valueRange = EqualizerBands.PitchSemitonesRange,
+        steps = 7,
+        valueText = when {
+          profile.pitchSemitones > 0 -> "+${profile.pitchSemitones.roundToInt()}"
+          profile.pitchSemitones < 0 -> "${profile.pitchSemitones.roundToInt()}"
+          else -> "Normal"
+        },
+        enabled = controlsEnabled,
+        onValueChange = { raw ->
+          val snapped = raw.roundToInt().toFloat()
+          if (snapped != profile.pitchSemitones) {
+            onPitchChange(snapped)
+          }
+        },
       )
 
       Spacer(Modifier.height(24.dp))
@@ -420,6 +444,7 @@ private fun LabeledSlider(
   valueRange: ClosedFloatingPointRange<Float>,
   valueText: String,
   enabled: Boolean,
+  steps: Int = 0,
   onValueChange: (Float) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -437,6 +462,7 @@ private fun LabeledSlider(
     Slider(
       value = value,
       valueRange = valueRange,
+      steps = steps,
       enabled = enabled,
       onValueChange = onValueChange,
       modifier = Modifier.weight(1f),
@@ -519,6 +545,7 @@ private fun EqualizerSheetPreview() {
           },
           onLoudnessChange = { profile = profile.copy(loudnessGainDb = it) },
           onBassBoostChange = { profile = profile.copy(bassBoost = it) },
+          onPitchChange = { profile = profile.copy(pitchSemitones = it) },
           onPerBookChange = { perBook = it },
         )
       },

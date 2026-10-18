@@ -10,6 +10,7 @@ import androidx.media3.common.C
 import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_DEVICE_INFO_CHANGED
 import androidx.media3.common.Player.EVENT_IS_PLAYING_CHANGED
@@ -358,8 +359,9 @@ class ExoPlayerAudioPlayer(
       // Set the media list
       setMediaItems(mediaItems, true)
 
-      // Set the playback speed
-      setPlaybackSpeed(playbackSpeed.value)
+      // Set the playback speed and pitch
+      val effectivePitch = if (currentEqualizerProfile.enabled) currentEqualizerProfile.pitchFactor else 1.0f
+      setPlaybackParameters(PlaybackParameters(playbackSpeed.value, effectivePitch))
 
       // Seek the media player
       if (podcastEpisode != null) {
@@ -658,7 +660,8 @@ class ExoPlayerAudioPlayer(
   override fun setPlaybackSpeed(speed: Float) {
     playbackSpeed.value = speed
     settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
-    player.setPlaybackSpeed(speed)
+    val effectivePitch = if (currentEqualizerProfile.enabled) currentEqualizerProfile.pitchFactor else 1.0f
+    player.setPlaybackParameters(PlaybackParameters(speed, effectivePitch))
     updatePlaylistMetadata()
   }
 
@@ -678,6 +681,8 @@ class ExoPlayerAudioPlayer(
     } else {
       equalizer.value = EqualizerState.Available(profile)
       audioEffects.apply(profile)
+      val effectivePitch = if (profile.enabled) profile.pitchFactor else 1.0f
+      player.setPlaybackParameters(PlaybackParameters(playbackSpeed.value, effectivePitch))
     }
   }
 

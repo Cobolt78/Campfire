@@ -3,6 +3,8 @@
 
 package app.campfire.core.audio
 
+import kotlin.math.pow
+
 /**
  * The fixed band layout shared by every equalizer engine. The center frequencies match
  * VLC's 10 ISO bands so the desktop (libvlc) equalizer maps index-for-index and the
@@ -16,6 +18,7 @@ object EqualizerBands {
   val BandGainRangeDb = -12f..12f
   val LoudnessGainRangeDb = 0f..15f
   val BassBoostRange = 0f..1f
+  val PitchSemitonesRange = -4f..4f
 }
 
 /**
@@ -26,6 +29,7 @@ object EqualizerBands {
  * @param bandGainsDb Gain in dB for each of the [EqualizerBands.BAND_COUNT] bands.
  * @param loudnessGainDb Extra loudness gain in dB, within [EqualizerBands.LoudnessGainRangeDb].
  * @param bassBoost Normalized bass boost strength, within [EqualizerBands.BassBoostRange].
+ * @param pitchSemitones Vocal pitch adjustment in semitones, within [EqualizerBands.PitchSemitonesRange].
  */
 data class EqualizerProfile(
   val enabled: Boolean = false,
@@ -33,7 +37,11 @@ data class EqualizerProfile(
   val bandGainsDb: List<Float> = List(EqualizerBands.BAND_COUNT) { 0f },
   val loudnessGainDb: Float = 0f,
   val bassBoost: Float = 0f,
-)
+  val pitchSemitones: Float = 0f,
+) {
+  val pitchFactor: Float
+    get() = if (pitchSemitones == 0f) 1.0f else 2.0.pow(pitchSemitones / 12.0).toFloat()
+}
 
 data class EqualizerPreset(
   val id: String,
