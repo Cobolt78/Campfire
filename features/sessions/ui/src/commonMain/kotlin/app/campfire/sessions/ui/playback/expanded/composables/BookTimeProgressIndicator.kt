@@ -48,11 +48,10 @@ internal fun ColumnScope.BookTimeProgressIndicator(
 
     Spacer(Modifier.height(4.dp))
 
-    TimeRemainingText(
+    BookTimeReadouts(
       bookDuration = bookDuration,
       bookTime = playerState.bookTime,
       playbackSpeed = playerState.speed,
-      modifier = Modifier.align(Alignment.CenterHorizontally),
     )
   } else {
     LinearProgressIndicator(
@@ -64,15 +63,26 @@ internal fun ColumnScope.BookTimeProgressIndicator(
 }
 
 @Composable
-private fun TimeRemainingText(
+private fun BookTimeReadouts(
   bookDuration: Duration,
   bookTime: Duration,
   playbackSpeed: Float,
   modifier: Modifier = Modifier,
 ) {
   Row(
-    modifier = modifier,
+    modifier = modifier
+      .fillMaxWidth()
+      .padding(horizontal = 32.dp),
+    verticalAlignment = Alignment.CenterVertically,
   ) {
+    val elapsedLabel = if (bookTime.inWholeSeconds == 0L) "0s" else bookTime.readoutFormat()
+    Text(
+      text = elapsedLabel,
+      style = MaterialTheme.typography.labelSmall,
+    )
+
+    Spacer(Modifier.weight(1f))
+
     val isAccelerated = playbackSpeed != 1f
     AnimatedVisibility(
       visible = isAccelerated,
@@ -86,8 +96,13 @@ private fun TimeRemainingText(
     }
 
     val currentRemainingDuration = (bookDuration - bookTime).div(playbackSpeed.toDouble())
+    val remainingLabel = if (currentRemainingDuration.inWholeSeconds == 0L) {
+      "0s left"
+    } else {
+      "${currentRemainingDuration.readoutFormat()} left"
+    }
     Text(
-      text = "${currentRemainingDuration.readoutFormat()} left",
+      text = remainingLabel,
       style = MaterialTheme.typography.labelSmall.fluentIf(isAccelerated) {
         copy(
           fontWeight = FontWeight.Bold,

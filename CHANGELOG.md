@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.29]
+
+### Added
+
+- **Player Book Time Dual Readout (`BookTimeProgressIndicator.kt`)**:
+  - Shows elapsed listening time on the far left (e.g., `1h 45m`) and remaining duration on the far right (e.g., `7h 3m 58s left`) across the full width of the whole-book progress indicator.
+  - Automatically accounts for speed-adjusted countdown when playback speed is accelerated.
+
+### Fixed
+
+- **Action Row Button Alignment & Sizing (`PlaybackSpeedAction.kt`, `RunningTimerAction.kt`)**:
+  - Replaced fixed-width box constraints with standard `IconButton` integration to guarantee uniform vertical alignment and centering across all player tools.
+  - Formatted playback speed indicator (`1.25x`) and End-of-Chapter countdown to bold `16.sp` on a single line, eliminating text wrapping, container clipping, and vertical displacement.
+
 ## [1.2.28]
 
 ### Added

@@ -11,14 +11,28 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..e66b2cd3 100644
+index c0278c85..b047a000 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,185 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,199 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.29]
++
++### Added
++
++- **Player Book Time Dual Readout (`BookTimeProgressIndicator.kt`)**:
++  - Shows elapsed listening time on the far left (e.g., `1h 45m`) and remaining duration on the far right (e.g., `7h 3m 58s left`) across the full width of the whole-book progress indicator.
++  - Automatically accounts for speed-adjusted countdown when playback speed is accelerated.
++
++### Fixed
++
++- **Action Row Button Alignment & Sizing (`PlaybackSpeedAction.kt`, `RunningTimerAction.kt`)**:
++  - Replaced fixed-width box constraints with standard `IconButton` integration to guarantee uniform vertical alignment and centering across all player tools.
++  - Formatted playback speed indicator (`1.25x`) and End-of-Chapter countdown to bold `16.sp` on a single line, eliminating text wrapping, container clipping, and vertical displacement.
++
 +## [1.2.28]
 +
 +### Added
@@ -203,10 +217,10 @@ index c0278c85..e66b2cd3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..3044dc03
+index 00000000..e165e92f
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1580 @@
+@@ -0,0 +1,1611 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -636,6 +650,9 @@ index 00000000..3044dc03
 +| `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
 +| `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
 +| `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
++| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts with elapsed on left and remaining on right |
++| `features/sessions/ui/.../PlaybackSpeedAction.kt` | Standard IconButton alignment with single-line 16sp Bold speed text |
++| `features/sessions/ui/.../RunningTimerAction.kt` | Standard IconButton alignment with single-line 16sp Bold timer text |
 +
 +---
 +
@@ -1765,6 +1782,34 @@ index 00000000..3044dc03
 +* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 +* `CHANGELOG.md`
 +* `gradle.properties`
++
++---
++
++## 59. Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)
++
++### Problem Description
++1. In the expanded audiobook player, the whole-book progress indicator previously only showed the remaining time centered beneath the progress bar, omitting the elapsed listening time.
++2. In the player bottom action row, the playback speed action button (`PlaybackSpeedAction.kt`) and end-of-chapter timer (`RunningTimerAction.kt`) were implemented as hardcoded 96dp wide boxes with unconstrained 18sp extra bold text. When multiple player tools were present, the ~48dp action slot caused the speed text (`"1.25x"`) to wrap into two lines, pushing `"1.25"` upwards and clipping `"x"` at the bottom container edge.
++
++### Solution & Key Implementation Details
++1. **Dual Book-Time Readouts (`BookTimeProgressIndicator.kt`)**:
++   - Replaced centered single-text readout with a full-width row (`BookTimeReadouts`) containing:
++     - Elapsed listening time formatted on the far left (e.g. `16s`, `1h 45m`).
++     - Real-time speed-adjusted remaining countdown on the far right (e.g. `7h 3m 58s left`).
++   - Seamlessly integrates with animated acceleration indicator when playback speed > 1.0x.
++2. **Unified Standard `IconButton` Integration (`PlaybackSpeedAction.kt`, `RunningTimerAction.kt`)**:
++   - Replaced custom fixed-width box layouts with standard `IconButtonTooltip` and `IconButton` containers.
++   - Formatted speed and end-of-chapter timer text with `fontSize = 16.sp`, `fontWeight = FontWeight.Bold`, `maxLines = 1`, `softWrap = false`, and `overflow = TextOverflow.Visible`.
++   - Guaranteed identical vertical alignment, touch targets, and baseline centering across all player action buttons.
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++* `gradle.properties`
++
 +
 +
 +
@@ -10020,6 +10065,166 @@ index 20f60c09..f3b0cfa8 100644
    <string name="equalizer_unavailable_casting">The equalizer isn't available while casting</string>
    <string name="equalizer_band_gain_cd">%1$s equalizer band gain</string>
    <string name="timer_bottomsheet_title">Sleep Timer</string>
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
+index 820bbfd4..3dc1071b 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
+@@ -3,20 +3,13 @@
+ 
+ package app.campfire.sessions.ui.composables
+ 
+-import androidx.compose.foundation.clickable
+-import androidx.compose.foundation.layout.Box
+-import androidx.compose.foundation.layout.height
+-import androidx.compose.foundation.layout.width
+-import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+-import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.text.font.FontWeight
+-import androidx.compose.ui.unit.dp
++import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.sp
+ import app.campfire.common.compose.icons.CampfireIcons
+ import app.campfire.common.compose.icons.rounded.Speed
+@@ -32,32 +25,26 @@ fun PlaybackSpeedAction(
+   onClick: () -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+-  if (playbackSpeed == 1f) {
+-    val label = stringResource(Res.string.action_playback_speed)
+-    IconButtonTooltip(
+-      text = label,
+-      modifier = modifier,
++  val label = stringResource(Res.string.action_playback_speed)
++  IconButtonTooltip(
++    text = label,
++    modifier = modifier,
++  ) {
++    IconButton(
++      onClick = onClick,
+     ) {
+-      IconButton(
+-        onClick = onClick,
+-      ) {
++      if (playbackSpeed == 1f) {
+         Icon(CampfireIcons.Rounded.Speed, contentDescription = label)
++      } else {
++        Text(
++          text = "${playbackSpeed.readableHundredths}x",
++          fontSize = 16.sp,
++          fontWeight = FontWeight.Bold,
++          maxLines = 1,
++          softWrap = false,
++          overflow = TextOverflow.Visible,
++        )
+       }
+     }
+-  } else {
+-    Box(
+-      modifier = modifier
+-        .clip(RoundedCornerShape(16.dp))
+-        .width(96.dp)
+-        .height(48.dp)
+-        .clickable(onClick = onClick),
+-      contentAlignment = Alignment.Center,
+-    ) {
+-      Text(
+-        text = "${playbackSpeed.readableHundredths}x",
+-        fontSize = 18.sp,
+-        fontWeight = FontWeight.ExtraBold,
+-      )
+-    }
+   }
+ }
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt
+index b099d7bd..87696955 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt
+@@ -3,20 +3,13 @@
+ 
+ package app.campfire.sessions.ui.composables
+ 
+-import androidx.compose.foundation.clickable
+-import androidx.compose.foundation.layout.Box
+-import androidx.compose.foundation.layout.height
+-import androidx.compose.foundation.layout.width
+-import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.IconButton
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+-import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.text.font.FontWeight
+-import androidx.compose.ui.unit.dp
++import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.sp
+ import app.campfire.audioplayer.model.PlaybackTimer
+ import app.campfire.audioplayer.model.RunningTimer
+@@ -39,15 +32,15 @@ fun RunningTimerAction(
+   onClick: () -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+-  if (runningTimer?.timer !is PlaybackTimer.EndOfChapter) {
+-    val label = stringResource(Res.string.action_sleep_timer)
+-    IconButtonTooltip(
+-      text = label,
+-      modifier = modifier,
++  val label = stringResource(Res.string.action_sleep_timer)
++  IconButtonTooltip(
++    text = label,
++    modifier = modifier,
++  ) {
++    IconButton(
++      onClick = onClick,
+     ) {
+-      IconButton(
+-        onClick = onClick,
+-      ) {
++      if (runningTimer?.timer !is PlaybackTimer.EndOfChapter) {
+         if (runningTimer != null) {
+           Icon(
+             AnimatedTimerPainter,
+@@ -59,23 +52,17 @@ fun RunningTimerAction(
+             contentDescription = label,
+           )
+         }
++      } else {
++        val remaining = (currentDuration - currentTime).div(playbackSpeed.toDouble())
++        Text(
++          text = remaining.thresholdReadoutFormat(),
++          fontSize = 16.sp,
++          fontWeight = FontWeight.Bold,
++          maxLines = 1,
++          softWrap = false,
++          overflow = TextOverflow.Visible,
++        )
+       }
+     }
+-  } else {
+-    Box(
+-      modifier = modifier
+-        .clip(RoundedCornerShape(16.dp))
+-        .width(96.dp)
+-        .height(48.dp)
+-        .clickable(onClick = onClick),
+-      contentAlignment = Alignment.Center,
+-    ) {
+-      val remaining = (currentDuration - currentTime).div(playbackSpeed.toDouble())
+-      Text(
+-        text = remaining.thresholdReadoutFormat(),
+-        fontSize = 18.sp,
+-        fontWeight = FontWeight.ExtraBold,
+-      )
+-    }
+   }
+ }
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt
 index 58b35f55..08d3ac8a 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/TimeSkipIcons.kt
@@ -10192,6 +10397,67 @@ index 331fdd56..cc4de3b0 100644
        AnimatedVisibility(
          visible = dragState.actionState != Dispose && availableSync != null,
        ) {
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
+index ea2a2a3e..2336eae3 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
+@@ -48,11 +48,10 @@ internal fun ColumnScope.BookTimeProgressIndicator(
+ 
+     Spacer(Modifier.height(4.dp))
+ 
+-    TimeRemainingText(
++    BookTimeReadouts(
+       bookDuration = bookDuration,
+       bookTime = playerState.bookTime,
+       playbackSpeed = playerState.speed,
+-      modifier = Modifier.align(Alignment.CenterHorizontally),
+     )
+   } else {
+     LinearProgressIndicator(
+@@ -64,15 +63,26 @@ internal fun ColumnScope.BookTimeProgressIndicator(
+ }
+ 
+ @Composable
+-private fun TimeRemainingText(
++private fun BookTimeReadouts(
+   bookDuration: Duration,
+   bookTime: Duration,
+   playbackSpeed: Float,
+   modifier: Modifier = Modifier,
+ ) {
+   Row(
+-    modifier = modifier,
++    modifier = modifier
++      .fillMaxWidth()
++      .padding(horizontal = 32.dp),
++    verticalAlignment = Alignment.CenterVertically,
+   ) {
++    val elapsedLabel = if (bookTime.inWholeSeconds == 0L) "0s" else bookTime.readoutFormat()
++    Text(
++      text = elapsedLabel,
++      style = MaterialTheme.typography.labelSmall,
++    )
++
++    Spacer(Modifier.weight(1f))
++
+     val isAccelerated = playbackSpeed != 1f
+     AnimatedVisibility(
+       visible = isAccelerated,
+@@ -86,8 +96,13 @@ private fun TimeRemainingText(
+     }
+ 
+     val currentRemainingDuration = (bookDuration - bookTime).div(playbackSpeed.toDouble())
++    val remainingLabel = if (currentRemainingDuration.inWholeSeconds == 0L) {
++      "0s left"
++    } else {
++      "${currentRemainingDuration.readoutFormat()} left"
++    }
+     Text(
+-      text = "${currentRemainingDuration.readoutFormat()} left",
++      text = remainingLabel,
+       style = MaterialTheme.typography.labelSmall.fluentIf(isAccelerated) {
+         copy(
+           fontWeight = FontWeight.Bold,
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
 index 4b7fc2d1..2de5ecc3 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
@@ -11539,7 +11805,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..015e53c5 100644
+index f41126a7..584afe1a 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11547,13 +11813,13 @@ index f41126a7..015e53c5 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.28
++campfire.version=1.2.29
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022899
++campfire.versionCode=1022999
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

@@ -427,6 +427,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
 | `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
 | `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
+| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts with elapsed on left and remaining on right |
+| `features/sessions/ui/.../PlaybackSpeedAction.kt` | Standard IconButton alignment with single-line 16sp Bold speed text |
+| `features/sessions/ui/.../RunningTimerAction.kt` | Standard IconButton alignment with single-line 16sp Bold timer text |
 
 ---
 
@@ -1556,6 +1559,34 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 * `CHANGELOG.md`
 * `gradle.properties`
+
+---
+
+## 59. Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)
+
+### Problem Description
+1. In the expanded audiobook player, the whole-book progress indicator previously only showed the remaining time centered beneath the progress bar, omitting the elapsed listening time.
+2. In the player bottom action row, the playback speed action button (`PlaybackSpeedAction.kt`) and end-of-chapter timer (`RunningTimerAction.kt`) were implemented as hardcoded 96dp wide boxes with unconstrained 18sp extra bold text. When multiple player tools were present, the ~48dp action slot caused the speed text (`"1.25x"`) to wrap into two lines, pushing `"1.25"` upwards and clipping `"x"` at the bottom container edge.
+
+### Solution & Key Implementation Details
+1. **Dual Book-Time Readouts (`BookTimeProgressIndicator.kt`)**:
+   - Replaced centered single-text readout with a full-width row (`BookTimeReadouts`) containing:
+     - Elapsed listening time formatted on the far left (e.g. `16s`, `1h 45m`).
+     - Real-time speed-adjusted remaining countdown on the far right (e.g. `7h 3m 58s left`).
+   - Seamlessly integrates with animated acceleration indicator when playback speed > 1.0x.
+2. **Unified Standard `IconButton` Integration (`PlaybackSpeedAction.kt`, `RunningTimerAction.kt`)**:
+   - Replaced custom fixed-width box layouts with standard `IconButtonTooltip` and `IconButton` containers.
+   - Formatted speed and end-of-chapter timer text with `fontSize = 16.sp`, `fontWeight = FontWeight.Bold`, `maxLines = 1`, `softWrap = false`, and `overflow = TextOverflow.Visible`.
+   - Guaranteed identical vertical alignment, touch targets, and baseline centering across all player action buttons.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/RunningTimerAction.kt`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+* `gradle.properties`
+
 
 
 
