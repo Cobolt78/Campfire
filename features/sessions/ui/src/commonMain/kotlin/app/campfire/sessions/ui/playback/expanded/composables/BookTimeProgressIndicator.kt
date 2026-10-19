@@ -75,10 +75,15 @@ private fun BookTimeReadouts(
       .padding(horizontal = 32.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
+    val baseReadoutStyle = MaterialTheme.typography.labelSmall.copy(
+      fontSize = 13.2.sp,
+      lineHeight = 18.sp,
+    )
+
     val elapsedLabel = if (bookTime.inWholeSeconds == 0L) "0s" else bookTime.readoutFormat()
     Text(
       text = elapsedLabel,
-      style = MaterialTheme.typography.labelSmall,
+      style = baseReadoutStyle,
     )
 
     Spacer(Modifier.weight(1f))
@@ -103,12 +108,12 @@ private fun BookTimeReadouts(
     }
     Text(
       text = remainingLabel,
-      style = MaterialTheme.typography.labelSmall.fluentIf(isAccelerated) {
+      style = baseReadoutStyle.fluentIf(isAccelerated) {
         copy(
           fontWeight = FontWeight.Bold,
           fontStyle = FontStyle.Italic,
           color = MaterialTheme.colorScheme.secondary,
-          fontSize = 12.sp,
+          fontSize = 14.sp,
         )
       },
     )

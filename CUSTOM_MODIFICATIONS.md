@@ -63,6 +63,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 57. [Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)](#57-granular-playback-skip-forward--backward-duration-sliders-v1227)
 58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
+59. [Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)](#59-dual-book-time-readouts--action-row-alignment-fix-v1229)
+60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
 
 ---
 
@@ -427,9 +429,12 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
 | `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
 | `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
-| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts with elapsed on left and remaining on right |
+| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts enlarged by 20% to 13.2sp base and 14sp accelerated |
 | `features/sessions/ui/.../PlaybackSpeedAction.kt` | Standard IconButton alignment with single-line 16sp Bold speed text |
 | `features/sessions/ui/.../RunningTimerAction.kt` | Standard IconButton alignment with single-line 16sp Bold timer text |
+| `app/android/src/main/res/xml/shortcuts.xml` | App Actions voice capabilities for Google Assistant & Gemini |
+| `app/android/src/main/java/app/campfire/android/MainActivity.kt` | Handle MEDIA_PLAY_FROM_SEARCH voice intents and bind MediaController |
+| `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Voice search query resolution against mediaTree & playback resumption |
 
 ---
 
@@ -1586,6 +1591,42 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
 * `gradle.properties`
+
+---
+
+## 60. Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)
+
+### Problem Description
+1. Users holding the phone power button (launching Google Gemini / Assistant) or saying *"Hey Google"* previously could not control Campfire hands-free (play, pause, next chapter, rewind, or open and play an audiobook).
+2. The whole-book elapsed and remaining duration labels beneath the expanded player progress bar (`BookTimeProgressIndicator.kt`) were rendered at 11sp (`MaterialTheme.typography.labelSmall`), which was slightly small to read at a glance or while in motion.
+
+### Solution & Key Implementation Details
+1. **Official Android App Actions Capabilities (`shortcuts.xml`)**:
+   - Defined capabilities for `actions.intent.PLAY_MEDIA`, `actions.intent.RESUME_MEDIA`, `actions.intent.PAUSE_MEDIA`, and `actions.intent.STOP_MEDIA` mapping to `android.media.action.MEDIA_PLAY_FROM_SEARCH`.
+   - Registered `shortcuts.xml` in `app/android/src/main/AndroidManifest.xml` via `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
+2. **System Voice Intent Handling (`MainActivity.kt` & `AudioPlayerService`)**:
+   - Registered `android.media.action.MEDIA_PLAY_FROM_SEARCH` intent filters in both `app/android/src/main/AndroidManifest.xml` and `infra/audioplayer/impl/src/androidMain/AndroidManifest.xml`.
+   - In `MainActivity.kt`, added `handleVoiceIntent()` to connect asynchronously via Media3's `MediaController` and dispatch playback, search queries, or pause toggles directly.
+   - Upgraded `media3.session` dependency in `app/android/build.gradle.kts` from `debugImplementation` to `implementation` for release build support.
+3. **Voice Search & Playback Session Resolution (`MediaSessionCallback.kt`)**:
+   - In `onSetMediaItems`, added support for empty media items (voice resume signals) and search queries (`search:<query>` or `item.requestMetadata.searchQuery`).
+   - Resolves search queries directly against `mediaTree.search(query)` and starts immediate playback on the top match, or seamlessly falls back to resuming the active session.
+4. **20% Enlarged Whole-Book Time Readouts (`BookTimeProgressIndicator.kt`)**:
+   - Increased elapsed and remaining text sizing by 20% from 11sp to 13.2sp (`lineHeight = 18.sp`).
+   - Scaled speed-accelerated remaining text from 12sp to 14sp bold/italic, perfectly complementing the 16dp double-arrow indicator.
+
+### Modified Files:
+* `app/android/build.gradle.kts`
+* `app/android/src/main/AndroidManifest.xml`
+* `app/android/src/main/res/xml/shortcuts.xml`
+* `app/android/src/main/java/app/campfire/android/MainActivity.kt`
+* `infra/audioplayer/impl/src/androidMain/AndroidManifest.xml`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+* `gradle.properties`
+
 
 
 

@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.30]
+
+### Added
+
+- **Google Assistant & Gemini Hands-Free Voice Controls**:
+  - Registered Android App Actions capabilities (`shortcuts.xml`) for `PLAY_MEDIA`, `RESUME_MEDIA`, `PAUSE_MEDIA`, and `STOP_MEDIA`.
+  - Added intent-filter for `android.media.action.MEDIA_PLAY_FROM_SEARCH` across `MainActivity` and `AudioPlayerService`.
+  - Enables hands-free voice commands via *"Hey Google"* or long-pressing the power button to launch Gemini (e.g. *"Play Campfire"*, *"Pause"*, *"Next chapter"*, *"Rewind 30 seconds"*, *"Resume my audiobook"*).
+  - Enhanced `MediaSessionCallback` to resolve voice search queries against the media tree and seamlessly resume active playback sessions.
+
+### Changed
+
+- **Enlarged Whole-Book Elapsed & Remaining Readouts (`BookTimeProgressIndicator.kt`)**:
+  - Increased font size by 20% from 11sp (`labelSmall`) to 13.2sp (and 14sp when speed-accelerated) with 18sp line height for enhanced readability without disturbing the expanded player layout.
+
 ## [1.2.29]
 
 ### Added

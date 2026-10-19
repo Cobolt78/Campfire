@@ -254,5 +254,5 @@ dependencies {
   debugImplementation(libs.livewire.plugin.recomposition)
 
   debugImplementation(libs.androidx.lifecycle.process)
-  debugImplementation(libs.media3.session)
+  implementation(libs.media3.session)
 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026, Drew Heavner and the Campfire project contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Play media voice intent (Google Assistant / Gemini) -->
+  <capability android:name="actions.intent.PLAY_MEDIA">
+    <intent
+      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
+      android:targetPackage="app.campfire.android"
+      android:targetClass="app.campfire.android.MainActivity">
+      <parameter
+        android:name="media.name"
+        android:key="query" />
+    </intent>
+  </capability>
+
+  <!-- Resume media voice intent -->
+  <capability android:name="actions.intent.RESUME_MEDIA">
+    <intent
+      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
+      android:targetPackage="app.campfire.android"
+      android:targetClass="app.campfire.android.MainActivity" />
+  </capability>
+
+  <!-- Pause media voice intent -->
+  <capability android:name="actions.intent.PAUSE_MEDIA">
+    <intent
+      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
+      android:targetPackage="app.campfire.android"
+      android:targetClass="app.campfire.android.MainActivity">
+      <parameter
+        android:name="media.name"
+        android:key="action_pause" />
+    </intent>
+  </capability>
+
+  <!-- Stop media voice intent -->
+  <capability android:name="actions.intent.STOP_MEDIA">
+    <intent
+      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
+      android:targetPackage="app.campfire.android"
+      android:targetClass="app.campfire.android.MainActivity">
+      <parameter
+        android:name="media.name"
+        android:key="action_pause" />
+    </intent>
+  </capability>
+</shortcuts>

@@ -439,17 +439,71 @@ internal class MediaSessionCallback(
     startIndex: Int,
     startPositionMs: Long,
   ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-    if (mediaItems.size == 1) {
+    if (mediaItems.isEmpty()) {
       return serviceScope.future {
-        // Podcast episode entries from the media tree encode their episode id into the
-        // mediaId, so decode it to start the session against the right episode.
-        val browseId = BrowseMediaId.decode(mediaItems.first().mediaId)
-        userComponent.playbackSessionManager.startSession(
-          libraryItemId = browseId.libraryItemId,
-          episodeId = browseId.episodeId,
-        )
+        userComponent.sessionsRepository.getCurrentSession()?.let { session ->
+          userComponent.playbackSessionManager.startSession(
+            libraryItemId = session.libraryItem.id,
+            playImmediately = true,
+            episodeId = session.episodeId,
+          )
+        }
+        error("Deliberately not return here")
+      }
+    } else if (mediaItems.size == 1) {
+      return serviceScope.future {
+        val item = mediaItems.first()
+        val searchQuery = item.requestMetadata.searchQuery?.takeIf { it.isNotBlank() }
+        val searchPrefix = if (item.mediaId.startsWith("search:")) {
+          item.mediaId.removePrefix("search:").trim().takeIf { it.isNotBlank() }
+        } else {
+          null
+        }
+        val query = searchQuery ?: searchPrefix
 
-        // Return an error from this response as we've take responsibility for starting playback and
+        if (query != null) {
+          bark(LogPriority.INFO) { "MediaSessionCallback: Voice search query received: '$query'" }
+          val results = userComponent.mediaTree.search(query)
+          val playableItem = results.firstOrNull { it.mediaMetadata.isPlayable == true }
+            ?: results.firstOrNull()
+
+          if (playableItem != null) {
+            val browseId = BrowseMediaId.decode(playableItem.mediaId)
+            userComponent.playbackSessionManager.startSession(
+              libraryItemId = browseId.libraryItemId,
+              playImmediately = true,
+              episodeId = browseId.episodeId,
+            )
+          } else {
+            bark(LogPriority.WARN) { "MediaSessionCallback: No results for voice query '$query', resuming current" }
+            userComponent.sessionsRepository.getCurrentSession()?.let { session ->
+              userComponent.playbackSessionManager.startSession(
+                libraryItemId = session.libraryItem.id,
+                playImmediately = true,
+                episodeId = session.episodeId,
+              )
+            }
+          }
+        } else if (item.mediaId.isBlank() || item.mediaId == "root-campfire" || item.mediaId == "home-campfire") {
+          userComponent.sessionsRepository.getCurrentSession()?.let { session ->
+            userComponent.playbackSessionManager.startSession(
+              libraryItemId = session.libraryItem.id,
+              playImmediately = true,
+              episodeId = session.episodeId,
+            )
+          }
+        } else {
+          // Podcast episode entries from the media tree encode their episode id into the
+          // mediaId, so decode it to start the session against the right episode.
+          val browseId = BrowseMediaId.decode(item.mediaId)
+          userComponent.playbackSessionManager.startSession(
+            libraryItemId = browseId.libraryItemId,
+            playImmediately = true,
+            episodeId = browseId.episodeId,
+          )
+        }
+
+        // Return an error from this response as we've taken responsibility for starting playback and
         // resolving / setting the media item(s).
         error("Deliberately not return here")
       }

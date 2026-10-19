@@ -4,12 +4,21 @@
 package app.campfire.android
 
 import android.app.Application
+import android.app.SearchManager
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import app.campfire.audioplayer.impl.AudioPlayerService
+import app.campfire.core.logging.LogPriority
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,8 +83,11 @@ class MainActivity : ComponentActivity() {
       component.localNetworkPermission.requestIfNeeded(serverUrl)
     }
 
-    // Parse Deeplink
-    intent?.let { updateDeepLink(it) }
+    // Parse Deeplink & Voice Intent
+    intent?.let {
+      updateDeepLink(it)
+      handleVoiceIntent(it)
+    }
 
     // Configure toaster
     val toaster = AndroidToast(this)
@@ -112,6 +124,58 @@ class MainActivity : ComponentActivity() {
     super.onNewIntent(intent)
 
     updateDeepLink(intent)
+    handleVoiceIntent(intent)
+  }
+
+  private fun handleVoiceIntent(intent: Intent?) {
+    if (intent == null) return
+    val action = intent.action
+    if (action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) {
+      val query = intent.getStringExtra(SearchManager.QUERY)
+        ?: intent.getStringExtra("query")
+      val isPause = intent.getBooleanExtra("action_pause", false) ||
+        intent.getStringExtra("query") == "action_pause"
+
+      bark(LogPriority.INFO) { "MainActivity: handling voice MEDIA_PLAY_FROM_SEARCH (query='$query', isPause=$isPause)" }
+      lifecycleScope.launch {
+        try {
+          val sessionToken = SessionToken(
+            this@MainActivity,
+            ComponentName(this@MainActivity, AudioPlayerService::class.java),
+          )
+          val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
+          controllerFuture.addListener(
+            {
+              try {
+                val controller = controllerFuture.get()
+                if (isPause) {
+                  controller.pause()
+                } else if (!query.isNullOrBlank()) {
+                  val mediaItem = MediaItem.Builder()
+                    .setMediaId("search:$query")
+                    .setRequestMetadata(
+                      MediaItem.RequestMetadata.Builder()
+                        .setSearchQuery(query)
+                        .build(),
+                    )
+                    .build()
+                  controller.setMediaItem(mediaItem)
+                  controller.prepare()
+                  controller.play()
+                } else {
+                  controller.play()
+                }
+              } catch (e: Exception) {
+                bark(LogPriority.ERROR, throwable = e) { "Failed to execute voice playback command" }
+              }
+            },
+            ContextCompat.getMainExecutor(this@MainActivity),
+          )
+        } catch (e: Exception) {
+          bark(LogPriority.ERROR, throwable = e) { "Failed to bind media controller for voice intent" }
+        }
+      }
+    }
   }
 
   private fun updateDeepLink(intent: Intent) {

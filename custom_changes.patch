@@ -11,14 +11,29 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..b047a000 100644
+index c0278c85..4c12b8d0 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,199 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,214 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.30]
++
++### Added
++
++- **Google Assistant & Gemini Hands-Free Voice Controls**:
++  - Registered Android App Actions capabilities (`shortcuts.xml`) for `PLAY_MEDIA`, `RESUME_MEDIA`, `PAUSE_MEDIA`, and `STOP_MEDIA`.
++  - Added intent-filter for `android.media.action.MEDIA_PLAY_FROM_SEARCH` across `MainActivity` and `AudioPlayerService`.
++  - Enables hands-free voice commands via *"Hey Google"* or long-pressing the power button to launch Gemini (e.g. *"Play Campfire"*, *"Pause"*, *"Next chapter"*, *"Rewind 30 seconds"*, *"Resume my audiobook"*).
++  - Enhanced `MediaSessionCallback` to resolve voice search queries against the media tree and seamlessly resume active playback sessions.
++
++### Changed
++
++- **Enlarged Whole-Book Elapsed & Remaining Readouts (`BookTimeProgressIndicator.kt`)**:
++  - Increased font size by 20% from 11sp (`labelSmall`) to 13.2sp (and 14sp when speed-accelerated) with 18sp line height for enhanced readability without disturbing the expanded player layout.
++
 +## [1.2.29]
 +
 +### Added
@@ -217,10 +232,10 @@ index c0278c85..b047a000 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..e165e92f
+index 00000000..595b967f
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1611 @@
+@@ -0,0 +1,1652 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -286,6 +301,8 @@ index 00000000..e165e92f
 +56. [Uniform Segmented Scope Selector (Global vs. This Book) in Equalizer & Speed (v1.2.26)](#56-uniform-segmented-scope-selector-global-vs-this-book-in-equalizer--speed-v1226)
 +57. [Granular Playback Skip Forward & Backward Duration Sliders (v1.2.27)](#57-granular-playback-skip-forward--backward-duration-sliders-v1227)
 +58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
++59. [Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)](#59-dual-book-time-readouts--action-row-alignment-fix-v1229)
++60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
 +
 +---
 +
@@ -650,9 +667,12 @@ index 00000000..e165e92f
 +| `common/compose/.../Forward15.kt` | Dedicated 15s forward circular loop vector icon |
 +| `common/compose/.../Replay15.kt` | Dedicated 15s rewind circular loop vector icon |
 +| `features/sessions/ui/.../TimeSkipIcons.kt` | Added Forward15 and Replay15 mappings |
-+| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts with elapsed on left and remaining on right |
++| `features/sessions/ui/.../BookTimeProgressIndicator.kt` | Dual book-time readouts enlarged by 20% to 13.2sp base and 14sp accelerated |
 +| `features/sessions/ui/.../PlaybackSpeedAction.kt` | Standard IconButton alignment with single-line 16sp Bold speed text |
 +| `features/sessions/ui/.../RunningTimerAction.kt` | Standard IconButton alignment with single-line 16sp Bold timer text |
++| `app/android/src/main/res/xml/shortcuts.xml` | App Actions voice capabilities for Google Assistant & Gemini |
++| `app/android/src/main/java/app/campfire/android/MainActivity.kt` | Handle MEDIA_PLAY_FROM_SEARCH voice intents and bind MediaController |
++| `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Voice search query resolution against mediaTree & playback resumption |
 +
 +---
 +
@@ -1810,6 +1830,42 @@ index 00000000..e165e92f
 +* `CUSTOM_MODIFICATIONS.md`
 +* `gradle.properties`
 +
++---
++
++## 60. Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)
++
++### Problem Description
++1. Users holding the phone power button (launching Google Gemini / Assistant) or saying *"Hey Google"* previously could not control Campfire hands-free (play, pause, next chapter, rewind, or open and play an audiobook).
++2. The whole-book elapsed and remaining duration labels beneath the expanded player progress bar (`BookTimeProgressIndicator.kt`) were rendered at 11sp (`MaterialTheme.typography.labelSmall`), which was slightly small to read at a glance or while in motion.
++
++### Solution & Key Implementation Details
++1. **Official Android App Actions Capabilities (`shortcuts.xml`)**:
++   - Defined capabilities for `actions.intent.PLAY_MEDIA`, `actions.intent.RESUME_MEDIA`, `actions.intent.PAUSE_MEDIA`, and `actions.intent.STOP_MEDIA` mapping to `android.media.action.MEDIA_PLAY_FROM_SEARCH`.
++   - Registered `shortcuts.xml` in `app/android/src/main/AndroidManifest.xml` via `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
++2. **System Voice Intent Handling (`MainActivity.kt` & `AudioPlayerService`)**:
++   - Registered `android.media.action.MEDIA_PLAY_FROM_SEARCH` intent filters in both `app/android/src/main/AndroidManifest.xml` and `infra/audioplayer/impl/src/androidMain/AndroidManifest.xml`.
++   - In `MainActivity.kt`, added `handleVoiceIntent()` to connect asynchronously via Media3's `MediaController` and dispatch playback, search queries, or pause toggles directly.
++   - Upgraded `media3.session` dependency in `app/android/build.gradle.kts` from `debugImplementation` to `implementation` for release build support.
++3. **Voice Search & Playback Session Resolution (`MediaSessionCallback.kt`)**:
++   - In `onSetMediaItems`, added support for empty media items (voice resume signals) and search queries (`search:<query>` or `item.requestMetadata.searchQuery`).
++   - Resolves search queries directly against `mediaTree.search(query)` and starts immediate playback on the top match, or seamlessly falls back to resuming the active session.
++4. **20% Enlarged Whole-Book Time Readouts (`BookTimeProgressIndicator.kt`)**:
++   - Increased elapsed and remaining text sizing by 20% from 11sp to 13.2sp (`lineHeight = 18.sp`).
++   - Scaled speed-accelerated remaining text from 12sp to 14sp bold/italic, perfectly complementing the 16dp double-arrow indicator.
++
++### Modified Files:
++* `app/android/build.gradle.kts`
++* `app/android/src/main/AndroidManifest.xml`
++* `app/android/src/main/res/xml/shortcuts.xml`
++* `app/android/src/main/java/app/campfire/android/MainActivity.kt`
++* `infra/audioplayer/impl/src/androidMain/AndroidManifest.xml`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++* `gradle.properties`
++
++
 +
 +
 +
@@ -1916,7 +1972,7 @@ index 29b3616d..b1a745e5 100644
  # Don't obfuscate the MainActivity name since we use a string literal in our Widget
  # to launch it when the DI graph is not available
 diff --git a/app/android/build.gradle.kts b/app/android/build.gradle.kts
-index f96bd971..a7d1aefc 100644
+index f96bd971..d05be36c 100644
 --- a/app/android/build.gradle.kts
 +++ b/app/android/build.gradle.kts
 @@ -231,6 +231,7 @@ dependencies {
@@ -1927,6 +1983,13 @@ index f96bd971..a7d1aefc 100644
  
    implementation(libs.circuit.runtime)
    implementation(libs.circuit.foundation)
+@@ -253,5 +254,5 @@ dependencies {
+   debugImplementation(libs.livewire.plugin.recomposition)
+ 
+   debugImplementation(libs.androidx.lifecycle.process)
+-  debugImplementation(libs.media3.session)
++  implementation(libs.media3.session)
+ }
 diff --git a/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt b/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt
 index 5f36eb58..78496c6d 100644
 --- a/app/android/src/debug/java/app/campfire/android/updates/DebugAppUpdateSource.kt
@@ -1941,7 +2004,7 @@ index 5f36eb58..78496c6d 100644
  class DebugAppUpdateSource(
    private val fake: FakeAppUpdateSource,
 diff --git a/app/android/src/main/AndroidManifest.xml b/app/android/src/main/AndroidManifest.xml
-index 0e30e5db..a155898e 100644
+index 0e30e5db..8941dffa 100644
 --- a/app/android/src/main/AndroidManifest.xml
 +++ b/app/android/src/main/AndroidManifest.xml
 @@ -12,6 +12,7 @@
@@ -1952,8 +2015,17 @@ index 0e30e5db..a155898e 100644
  
    <application
      android:name=".CampfireApplication"
-@@ -41,6 +42,17 @@
+@@ -39,8 +40,26 @@
+         <category android:name="android.intent.category.INFO" />
+         <category android:name="android.intent.category.LAUNCHER" />
        </intent-filter>
++      <intent-filter>
++        <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
++        <category android:name="android.intent.category.DEFAULT" />
++      </intent-filter>
++      <meta-data
++        android:name="android.app.shortcuts"
++        android:resource="@xml/shortcuts" />
      </activity>
  
 +    <!-- FileProvider for GitHub in-app APK installer -->
@@ -1989,6 +2061,105 @@ index ba22d953..0b471beb 100644
  
      // Create application component
      val component = Trace.trace(DiTraceSections.APP_GRAPH) {
+diff --git a/app/android/src/main/java/app/campfire/android/MainActivity.kt b/app/android/src/main/java/app/campfire/android/MainActivity.kt
+index 7f090139..6b19aaae 100644
+--- a/app/android/src/main/java/app/campfire/android/MainActivity.kt
++++ b/app/android/src/main/java/app/campfire/android/MainActivity.kt
+@@ -4,12 +4,21 @@
+ package app.campfire.android
+ 
+ import android.app.Application
++import android.app.SearchManager
++import android.content.ComponentName
+ import android.content.Intent
+ import android.os.Bundle
++import android.provider.MediaStore
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.setContent
+ import androidx.activity.enableEdgeToEdge
+ import androidx.browser.customtabs.CustomTabsIntent
++import androidx.core.content.ContextCompat
++import androidx.media3.common.MediaItem
++import androidx.media3.session.MediaController
++import androidx.media3.session.SessionToken
++import app.campfire.audioplayer.impl.AudioPlayerService
++import app.campfire.core.logging.LogPriority
+ import androidx.compose.runtime.CompositionLocalProvider
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+@@ -74,8 +83,11 @@ class MainActivity : ComponentActivity() {
+       component.localNetworkPermission.requestIfNeeded(serverUrl)
+     }
+ 
+-    // Parse Deeplink
+-    intent?.let { updateDeepLink(it) }
++    // Parse Deeplink & Voice Intent
++    intent?.let {
++      updateDeepLink(it)
++      handleVoiceIntent(it)
++    }
+ 
+     // Configure toaster
+     val toaster = AndroidToast(this)
+@@ -112,6 +124,58 @@ class MainActivity : ComponentActivity() {
+     super.onNewIntent(intent)
+ 
+     updateDeepLink(intent)
++    handleVoiceIntent(intent)
++  }
++
++  private fun handleVoiceIntent(intent: Intent?) {
++    if (intent == null) return
++    val action = intent.action
++    if (action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) {
++      val query = intent.getStringExtra(SearchManager.QUERY)
++        ?: intent.getStringExtra("query")
++      val isPause = intent.getBooleanExtra("action_pause", false) ||
++        intent.getStringExtra("query") == "action_pause"
++
++      bark(LogPriority.INFO) { "MainActivity: handling voice MEDIA_PLAY_FROM_SEARCH (query='$query', isPause=$isPause)" }
++      lifecycleScope.launch {
++        try {
++          val sessionToken = SessionToken(
++            this@MainActivity,
++            ComponentName(this@MainActivity, AudioPlayerService::class.java),
++          )
++          val controllerFuture = MediaController.Builder(this@MainActivity, sessionToken).buildAsync()
++          controllerFuture.addListener(
++            {
++              try {
++                val controller = controllerFuture.get()
++                if (isPause) {
++                  controller.pause()
++                } else if (!query.isNullOrBlank()) {
++                  val mediaItem = MediaItem.Builder()
++                    .setMediaId("search:$query")
++                    .setRequestMetadata(
++                      MediaItem.RequestMetadata.Builder()
++                        .setSearchQuery(query)
++                        .build(),
++                    )
++                    .build()
++                  controller.setMediaItem(mediaItem)
++                  controller.prepare()
++                  controller.play()
++                } else {
++                  controller.play()
++                }
++              } catch (e: Exception) {
++                bark(LogPriority.ERROR, throwable = e) { "Failed to execute voice playback command" }
++              }
++            },
++            ContextCompat.getMainExecutor(this@MainActivity),
++          )
++        } catch (e: Exception) {
++          bark(LogPriority.ERROR, throwable = e) { "Failed to bind media controller for voice intent" }
++        }
++      }
++    }
+   }
+ 
+   private fun updateDeepLink(intent: Intent) {
 diff --git a/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 new file mode 100644
 index 00000000..caf3062c
@@ -2288,6 +2459,60 @@ index 00000000..caf3062c
 +    }
 +  }
 +}
+diff --git a/app/android/src/main/res/xml/shortcuts.xml b/app/android/src/main/res/xml/shortcuts.xml
+new file mode 100644
+index 00000000..15a0de5f
+--- /dev/null
++++ b/app/android/src/main/res/xml/shortcuts.xml
+@@ -0,0 +1,48 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright 2026, Drew Heavner and the Campfire project contributors -->
++<!-- SPDX-License-Identifier: GPL-3.0-only -->
++<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
++  <!-- Play media voice intent (Google Assistant / Gemini) -->
++  <capability android:name="actions.intent.PLAY_MEDIA">
++    <intent
++      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
++      android:targetPackage="app.campfire.android"
++      android:targetClass="app.campfire.android.MainActivity">
++      <parameter
++        android:name="media.name"
++        android:key="query" />
++    </intent>
++  </capability>
++
++  <!-- Resume media voice intent -->
++  <capability android:name="actions.intent.RESUME_MEDIA">
++    <intent
++      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
++      android:targetPackage="app.campfire.android"
++      android:targetClass="app.campfire.android.MainActivity" />
++  </capability>
++
++  <!-- Pause media voice intent -->
++  <capability android:name="actions.intent.PAUSE_MEDIA">
++    <intent
++      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
++      android:targetPackage="app.campfire.android"
++      android:targetClass="app.campfire.android.MainActivity">
++      <parameter
++        android:name="media.name"
++        android:key="action_pause" />
++    </intent>
++  </capability>
++
++  <!-- Stop media voice intent -->
++  <capability android:name="actions.intent.STOP_MEDIA">
++    <intent
++      android:action="android.media.action.MEDIA_PLAY_FROM_SEARCH"
++      android:targetPackage="app.campfire.android"
++      android:targetClass="app.campfire.android.MainActivity">
++      <parameter
++        android:name="media.name"
++        android:key="action_pause" />
++    </intent>
++  </capability>
++</shortcuts>
 diff --git a/app/android/src/main/res/xml/update_file_paths.xml b/app/android/src/main/res/xml/update_file_paths.xml
 new file mode 100644
 index 00000000..c9cc2571
@@ -10398,7 +10623,7 @@ index 331fdd56..cc4de3b0 100644
          visible = dragState.actionState != Dispose && availableSync != null,
        ) {
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
-index ea2a2a3e..2336eae3 100644
+index ea2a2a3e..de11276a 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
 @@ -48,11 +48,10 @@ internal fun ColumnScope.BookTimeProgressIndicator(
@@ -10414,7 +10639,7 @@ index ea2a2a3e..2336eae3 100644
      )
    } else {
      LinearProgressIndicator(
-@@ -64,15 +63,26 @@ internal fun ColumnScope.BookTimeProgressIndicator(
+@@ -64,15 +63,31 @@ internal fun ColumnScope.BookTimeProgressIndicator(
  }
  
  @Composable
@@ -10432,10 +10657,15 @@ index ea2a2a3e..2336eae3 100644
 +      .padding(horizontal = 32.dp),
 +    verticalAlignment = Alignment.CenterVertically,
    ) {
++    val baseReadoutStyle = MaterialTheme.typography.labelSmall.copy(
++      fontSize = 13.2.sp,
++      lineHeight = 18.sp,
++    )
++
 +    val elapsedLabel = if (bookTime.inWholeSeconds == 0L) "0s" else bookTime.readoutFormat()
 +    Text(
 +      text = elapsedLabel,
-+      style = MaterialTheme.typography.labelSmall,
++      style = baseReadoutStyle,
 +    )
 +
 +    Spacer(Modifier.weight(1f))
@@ -10443,7 +10673,7 @@ index ea2a2a3e..2336eae3 100644
      val isAccelerated = playbackSpeed != 1f
      AnimatedVisibility(
        visible = isAccelerated,
-@@ -86,8 +96,13 @@ private fun TimeRemainingText(
+@@ -86,14 +101,19 @@ private fun TimeRemainingText(
      }
  
      val currentRemainingDuration = (bookDuration - bookTime).div(playbackSpeed.toDouble())
@@ -10454,10 +10684,18 @@ index ea2a2a3e..2336eae3 100644
 +    }
      Text(
 -      text = "${currentRemainingDuration.readoutFormat()} left",
+-      style = MaterialTheme.typography.labelSmall.fluentIf(isAccelerated) {
 +      text = remainingLabel,
-       style = MaterialTheme.typography.labelSmall.fluentIf(isAccelerated) {
++      style = baseReadoutStyle.fluentIf(isAccelerated) {
          copy(
            fontWeight = FontWeight.Bold,
+           fontStyle = FontStyle.Italic,
+           color = MaterialTheme.colorScheme.secondary,
+-          fontSize = 12.sp,
++          fontSize = 14.sp,
+         )
+       },
+     )
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
 index 4b7fc2d1..2de5ecc3 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
@@ -11805,7 +12043,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..584afe1a 100644
+index f41126a7..5255b711 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11813,13 +12051,13 @@ index f41126a7..584afe1a 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.29
++campfire.version=1.2.30
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1022999
++campfire.versionCode=1023099
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -11843,6 +12081,18 @@ index 270a7c16..325e3566 100644
  
 -private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
 +private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-(rc|test)(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
+diff --git a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml b/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
+index 8c91c0a0..e03c0efd 100644
+--- a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
++++ b/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
+@@ -19,6 +19,7 @@
+       <intent-filter>
+         <action android:name="androidx.media3.session.MediaSessionService"/>
+         <action android:name="android.media.browse.MediaBrowserService"/>
++        <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH"/>
+       </intent-filter>
+     </service>
+ 
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
 index 7647cac8..6d3caac5 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
@@ -12086,7 +12336,7 @@ index 3d75ff1a..48ac7aee 100644
  }
  
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-index a22d7695..7d8ed0a0 100644
+index a22d7695..c4766e35 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 @@ -8,6 +8,7 @@ import android.content.Context
@@ -12354,7 +12604,88 @@ index a22d7695..7d8ed0a0 100644
    override fun onGetLibraryRoot(
      session: MediaLibrarySession,
      browser: MediaSession.ControllerInfo,
-@@ -317,49 +480,7 @@ internal class MediaSessionCallback(
+@@ -276,17 +439,71 @@ internal class MediaSessionCallback(
+     startIndex: Int,
+     startPositionMs: Long,
+   ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+-    if (mediaItems.size == 1) {
++    if (mediaItems.isEmpty()) {
+       return serviceScope.future {
+-        // Podcast episode entries from the media tree encode their episode id into the
+-        // mediaId, so decode it to start the session against the right episode.
+-        val browseId = BrowseMediaId.decode(mediaItems.first().mediaId)
+-        userComponent.playbackSessionManager.startSession(
+-          libraryItemId = browseId.libraryItemId,
+-          episodeId = browseId.episodeId,
+-        )
++        userComponent.sessionsRepository.getCurrentSession()?.let { session ->
++          userComponent.playbackSessionManager.startSession(
++            libraryItemId = session.libraryItem.id,
++            playImmediately = true,
++            episodeId = session.episodeId,
++          )
++        }
++        error("Deliberately not return here")
++      }
++    } else if (mediaItems.size == 1) {
++      return serviceScope.future {
++        val item = mediaItems.first()
++        val searchQuery = item.requestMetadata.searchQuery?.takeIf { it.isNotBlank() }
++        val searchPrefix = if (item.mediaId.startsWith("search:")) {
++          item.mediaId.removePrefix("search:").trim().takeIf { it.isNotBlank() }
++        } else {
++          null
++        }
++        val query = searchQuery ?: searchPrefix
+ 
+-        // Return an error from this response as we've take responsibility for starting playback and
++        if (query != null) {
++          bark(LogPriority.INFO) { "MediaSessionCallback: Voice search query received: '$query'" }
++          val results = userComponent.mediaTree.search(query)
++          val playableItem = results.firstOrNull { it.mediaMetadata.isPlayable == true }
++            ?: results.firstOrNull()
++
++          if (playableItem != null) {
++            val browseId = BrowseMediaId.decode(playableItem.mediaId)
++            userComponent.playbackSessionManager.startSession(
++              libraryItemId = browseId.libraryItemId,
++              playImmediately = true,
++              episodeId = browseId.episodeId,
++            )
++          } else {
++            bark(LogPriority.WARN) { "MediaSessionCallback: No results for voice query '$query', resuming current" }
++            userComponent.sessionsRepository.getCurrentSession()?.let { session ->
++              userComponent.playbackSessionManager.startSession(
++                libraryItemId = session.libraryItem.id,
++                playImmediately = true,
++                episodeId = session.episodeId,
++              )
++            }
++          }
++        } else if (item.mediaId.isBlank() || item.mediaId == "root-campfire" || item.mediaId == "home-campfire") {
++          userComponent.sessionsRepository.getCurrentSession()?.let { session ->
++            userComponent.playbackSessionManager.startSession(
++              libraryItemId = session.libraryItem.id,
++              playImmediately = true,
++              episodeId = session.episodeId,
++            )
++          }
++        } else {
++          // Podcast episode entries from the media tree encode their episode id into the
++          // mediaId, so decode it to start the session against the right episode.
++          val browseId = BrowseMediaId.decode(item.mediaId)
++          userComponent.playbackSessionManager.startSession(
++            libraryItemId = browseId.libraryItemId,
++            playImmediately = true,
++            episodeId = browseId.episodeId,
++          )
++        }
++
++        // Return an error from this response as we've taken responsibility for starting playback and
+         // resolving / setting the media item(s).
+         error("Deliberately not return here")
+       }
+@@ -317,49 +534,7 @@ internal class MediaSessionCallback(
      }
    }
  
