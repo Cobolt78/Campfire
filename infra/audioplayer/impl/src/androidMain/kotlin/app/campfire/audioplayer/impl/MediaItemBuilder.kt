@@ -13,6 +13,7 @@ import androidx.media3.common.MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER
 import androidx.media3.common.util.UnstableApi
 import app.campfire.audioplayer.impl.content.coverContentUriForItem
 import app.campfire.audioplayer.impl.mediaitem.MediaItem
+import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
 
 /**
  * Convert our common [MediaItem] data class/holder into the Android
@@ -45,16 +46,20 @@ fun MediaItem.asPlatformMediaItem(context: Context): PlatformMediaItem {
         val artworkUri = metadata.libraryItemId
           ?.let { coverContentUriForItem(context, it) }
           ?: metadata.artworkUri?.toUri()
+        val bookTitle = metadata.albumTitle.orEmpty()
+        val authorName = metadata.artist.orEmpty()
+        val rawChapter = metadata.subtitle.orEmpty()
+        val chapterWithBook = MediaItemBuilder.formatChapterWithBookTitle(rawChapter, bookTitle)
         setMediaMetadata(
           MediaMetadata.Builder()
             // Line 1: Dual Progress (e.g. "4h 15m played • 3h 45m left")
             .setTitle(metadata.title)
             // Line 2: Chapter + Book Title (e.g. "Chapter 4 - The Way of Kings")
-            .setArtist(metadata.artist)
-            .setSubtitle(metadata.subtitle)
+            .setArtist(chapterWithBook)
+            .setSubtitle(chapterWithBook)
             // Line 3: Author Name (e.g. "Brandon Sanderson")
-            .setAlbumTitle(metadata.albumTitle)
-            .setAlbumArtist(metadata.albumTitle)
+            .setAlbumTitle(authorName.ifBlank { bookTitle })
+            .setAlbumArtist(authorName)
             .setMediaType(MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
             .setDescription(metadata.description)
             .setArtworkUri(artworkUri)

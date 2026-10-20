@@ -234,6 +234,9 @@ class ExoPlayerAudioPlayer(
 
       override fun remainingFormatted(): String = remainingBookTimeFormatted()
       override fun elapsedFormatted(): String = elapsedBookTimeFormatted()
+      override fun bookTitle(): String = preparedSession?.libraryItem?.media?.metadata?.title.orEmpty()
+      override fun authorName(): String = (preparedSession?.libraryItem?.media?.metadata?.authorName
+        ?: preparedSession?.libraryItem?.media?.metadata?.author).orEmpty()
     },
   )
 
@@ -1021,8 +1024,11 @@ class ExoPlayerAudioPlayer(
     val currentItem = exoPlayer.currentMediaItem ?: return
     val session = preparedSession ?: return
     val bookTitle = session.libraryItem.media.metadata.title
-    val authorName = session.libraryItem.media.metadata.authorName ?: ""
-    val rawChapterTitle = currentItem.mediaMetadata.subtitle?.toString()
+    val authorName = (session.libraryItem.media.metadata.authorName
+      ?: session.libraryItem.media.metadata.author).orEmpty()
+    val rawChapterTitle = session.episode?.title
+      ?: chapterTimeline?.chapterAt(overallTime.value)?.title
+      ?: currentItem.mediaMetadata.subtitle?.toString()
       ?: currentItem.mediaMetadata.title?.toString()
       ?: ""
 

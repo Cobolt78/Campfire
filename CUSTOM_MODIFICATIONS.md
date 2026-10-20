@@ -66,6 +66,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 59. [Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)](#59-dual-book-time-readouts--action-row-alignment-fix-v1229)
 60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
 61. [Android Auto & Notification Dual Progress Hierarchy (v1.2.31)](#61-android-auto--notification-dual-progress-hierarchy-v1231)
+62. [Android Auto Single-File Chaptered Book Title Restoration (v1.2.32)](#62-android-auto-single-file-chaptered-book-title-restoration-v1232)
 
 ---
 
@@ -1651,6 +1652,39 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 4. **Multi-Track & Podcast Unification (MediaItemBuilder.kt)**:
    - Unified formatting through `formatDualProgressTitle()` and `formatChapterWithBookTitle()`.
    - Applied symmetrically across HLS streams, podcast episodes, chaptered audiobooks, and multi-track audiobooks.
+
+### Modified Files:
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+* `gradle.properties`
+
+---
+
+## 62. Android Auto Single-File Chaptered Book Title Restoration (v1.2.32)
+
+### Problem Description
+1. In Android Auto and system media notifications for single-file audiobooks with embedded chapter markers (e.g. Audible M4B/MP3s), Line 2 displayed the author name (`029 - Dennis E. Taylor`) instead of the book title (`029 - The Singularity Trap`).
+2. This occurred because `ChapterWindowForwardingPlayer` extracted `bookTitle` from `baseItem.mediaMetadata.albumTitle`. After the v1.2.31 metadata reorganization moved the author name to Line 3 (`albumTitle`), `baseItem.mediaMetadata.albumTitle` was populated with the author name, causing `ChapterWindowForwardingPlayer` to mistakenly treat the author as the book title.
+3. Minute-by-minute dynamic metadata updates in `ExoPlayerAudioPlayer.updatePlaylistMetadata()` also lacked direct access to the raw chapter title from the timeline, risking string corruption.
+
+### Solution & Key Implementation Details
+1. **Direct Session & Model Access via Host Interface (`ChapterWindowForwardingPlayer.kt`)**:
+   - Added `bookTitle(): String` and `authorName(): String` to the `ChapterWindowForwardingPlayer.Host` interface.
+   - Implemented in `ExoPlayerAudioPlayer.kt` to query `preparedSession?.libraryItem?.media?.metadata?.title` and `authorName` directly from the active session model, eliminating reliance on platform metadata slots.
+2. **Clean Domain Semantics vs. Platform Slot Projection (`MediaItemBuilder.kt`)**:
+   - Restored pure domain semantics in `MediaItem.Metadata` (`commonMain`): `albumTitle` represents the book title, `artist` represents the author, and `subtitle` represents the chapter title.
+   - Isolated platform slot mapping inside `asPlatformMediaItem(context)` (`androidMain`):
+     - **Line 1 (`setTitle`)**: Dual Progress countdown (`3h 43m played • 6h 7m left`).
+     - **Line 2 (`setArtist` & `setSubtitle`)**: Chapter and Book title (`029 - The Singularity Trap`).
+     - **Line 3 (`setAlbumTitle` & `setAlbumArtist`)**: Author name (`Dennis E. Taylor`).
+3. **Timeline-Driven Dynamic Metadata Updates (`ExoPlayerAudioPlayer.kt`)**:
+   - `updatePlaylistMetadata()` now resolves the unformatted chapter title from `session.episode?.title ?: chapterTimeline?.chapterAt(overallTime.value)?.title`, ensuring real-time progress ticks keep the chapter and book title in sync.
+4. **Defensive Title Deduplication (`MediaItemBuilder.formatChapterWithBookTitle`)**:
+   - Added checks to prevent duplicate book titles if the chapter metadata already has the book title embedded (e.g. avoiding `Chapter 1 - Title - Title`).
 
 ### Modified Files:
 * `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`

@@ -53,12 +53,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
   ): String {
     val cleanChapter = cleanChapterTitle(chapterTitle)
     val cleanBook = bookTitle?.trim().orEmpty()
-    return when {
-      cleanChapter.isNotBlank() && cleanBook.isNotBlank() && !cleanChapter.equals(cleanBook, ignoreCase = true) ->
-        "$cleanChapter - $cleanBook"
-      cleanChapter.isNotBlank() -> cleanChapter
-      else -> cleanBook
+    if (cleanBook.isBlank()) return cleanChapter
+    if (cleanChapter.isBlank() || cleanChapter.equals(cleanBook, ignoreCase = true)) return cleanBook
+
+    // Defensive check: if chapter title already ends with the book title, do not repeat it
+    if (cleanChapter.endsWith(" - $cleanBook", ignoreCase = true) ||
+      cleanChapter.endsWith(" • $cleanBook", ignoreCase = true) ||
+      cleanChapter.endsWith(": $cleanBook", ignoreCase = true)
+    ) {
+      return cleanChapter
     }
+
+    return "$cleanChapter - $cleanBook"
   }
 
   fun formatChapterTitleWithCountdown(
@@ -121,10 +127,10 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
       metadata = MediaItem.Metadata(
         id = 0,
         title = titleWithCountdown,
-        artist = bookTitle,
+        artist = authorName.ifBlank { bookTitle },
         description = media.metadata.description ?: "",
-        subtitle = bookTitle,
-        albumTitle = authorName.ifBlank { bookTitle },
+        subtitle = media.metadata.subtitle ?: bookTitle,
+        albumTitle = bookTitle,
         artworkUri = media.coverImageUrl,
         durationMs = session.duration.inWholeMilliseconds,
         libraryItemId = session.libraryItem.id,
@@ -156,10 +162,10 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
         metadata = MediaItem.Metadata(
           id = 0,
           title = titleWithCountdown,
-          artist = episodeWithPodcast,
+          artist = podcastAuthor,
           description = episode.description ?: "",
-          subtitle = episodeWithPodcast,
-          albumTitle = podcastAuthor,
+          subtitle = episode.title,
+          albumTitle = item.media.metadata.title,
           artworkUri = item.media.coverImageUrl,
           durationMs = episode.durationInMillis,
           libraryItemId = item.id,
@@ -349,16 +355,15 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
     val elapsedFormatted = chapter.start.seconds.inWholeMilliseconds.milliseconds.formatHoursAndMinutes()
     val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
-    val chapterWithBook = formatChapterWithBookTitle(chapter.title, media.metadata.title)
     val authorName = media.metadata.authorName ?: media.metadata.title
 
     return MediaItem.Metadata(
       id = chapter.id,
       title = titleWithCountdown,
-      artist = chapterWithBook,
+      artist = authorName,
       description = media.metadata.description ?: "",
-      subtitle = chapterWithBook,
-      albumTitle = authorName,
+      subtitle = chapter.title,
+      albumTitle = media.metadata.title,
       artworkUri = media.coverImageUrl,
       durationMs = chapter.duration.inWholeMilliseconds,
       libraryItemId = libraryItemId,
@@ -378,16 +383,15 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     val elapsedFormatted = track.startOffset.seconds.inWholeMilliseconds.milliseconds.formatHoursAndMinutes()
     val trackTitle = track.taggedTitle.ifBlank { "Track ${track.index}" }
     val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
-    val trackWithBook = formatChapterWithBookTitle(trackTitle, media.metadata.title)
     val authorName = media.metadata.authorName ?: media.metadata.title
 
     return MediaItem.Metadata(
       id = track.index,
       title = titleWithCountdown,
-      artist = trackWithBook,
+      artist = authorName,
       description = media.metadata.description ?: "",
-      subtitle = trackWithBook,
-      albumTitle = authorName,
+      subtitle = trackTitle,
+      albumTitle = media.metadata.title,
       artworkUri = media.coverImageUrl,
       durationMs = track.duration.seconds.inWholeMilliseconds,
       libraryItemId = libraryItemId,

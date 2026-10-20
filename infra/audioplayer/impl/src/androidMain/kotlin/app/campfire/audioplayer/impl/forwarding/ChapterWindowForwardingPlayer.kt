@@ -65,6 +65,12 @@ class ChapterWindowForwardingPlayer(
 
     /** Format elapsed listening time for the whole book. */
     fun elapsedFormatted(): String = ""
+
+    /** The book title. */
+    fun bookTitle(): String = ""
+
+    /** The author name. */
+    fun authorName(): String = ""
   }
 
   /** Set after session creation, to identify the controller a command came from. */
@@ -190,12 +196,12 @@ class ChapterWindowForwardingPlayer(
     }
 
     val timeLine = MediaItemBuilder.formatDualProgressTitle(elapsed, remaining)
-    val bookTitle = baseItem.mediaMetadata.albumTitle?.toString()
-      ?: baseItem.mediaMetadata.title?.toString()
-      ?: ""
-    val authorName = baseItem.mediaMetadata.albumArtist?.toString()
-      ?: baseItem.mediaMetadata.artist?.toString()
-      ?: ""
+    val bookTitle = host.bookTitle().ifBlank {
+      baseItem.mediaMetadata.albumTitle?.toString().orEmpty()
+    }
+    val authorName = host.authorName().ifBlank {
+      baseItem.mediaMetadata.albumArtist?.toString().orEmpty()
+    }
 
     return chapters.map { chapter ->
       val line2 = MediaItemBuilder.formatChapterWithBookTitle(chapter.title, bookTitle)

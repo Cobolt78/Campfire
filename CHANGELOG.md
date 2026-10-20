@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.32]
+
+### Fixed
+
+- **Android Auto Single-File Chaptered Book Title Restoration**:
+  - Fixed an issue where single-file audiobooks with embedded chapters (e.g. Audible M4B/MP3s) displayed the author name on Line 2 (e.g. `029 - Dennis E. Taylor`) instead of the book title (`029 - The Singularity Trap`).
+  - `ChapterWindowForwardingPlayer` now resolves the true book title and author name directly from the active `Session` and library metadata via the `Host` interface rather than deriving them from platform media item slots.
+  - Restored clean domain semantics in `MediaItem.Metadata` across `commonMain` while cleanly handling platform slot mapping in `asPlatformMediaItem` (`androidMain`).
+  - Updated `updatePlaylistMetadata()` to retrieve the raw chapter title from `chapterTimeline` so dynamic updates on minute boundaries preserve the chapter and book title.
+  - Added defensive deduplication to `formatChapterWithBookTitle()` so chapter titles already containing the book title are never redundantly repeated.
+
 ## [1.2.31]
 
 ### Added
