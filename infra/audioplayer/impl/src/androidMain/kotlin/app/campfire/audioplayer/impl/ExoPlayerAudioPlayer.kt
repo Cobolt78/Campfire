@@ -233,6 +233,7 @@ class ExoPlayerAudioPlayer(
       override fun seekBackward() = this@ExoPlayerAudioPlayer.seekBackward()
 
       override fun remainingFormatted(): String = remainingBookTimeFormatted()
+      override fun elapsedFormatted(): String = elapsedBookTimeFormatted()
     },
   )
 
@@ -994,6 +995,12 @@ class ExoPlayerAudioPlayer(
     updatePlaylistMetadata()
   }
 
+  internal fun elapsedBookTimeFormatted(): String {
+    val session = preparedSession ?: return ""
+    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
+    return currentPositionMs.milliseconds.formatHoursAndMinutes()
+  }
+
   internal fun remainingBookTimeFormatted(): String {
     val session = preparedSession ?: return ""
     val media = session.libraryItem.media
@@ -1007,16 +1014,30 @@ class ExoPlayerAudioPlayer(
   }
 
   internal fun updatePlaylistMetadata() {
-    val formatted = remainingBookTimeFormatted()
-    if (formatted.isBlank()) return
+    val remaining = remainingBookTimeFormatted()
+    val elapsed = elapsedBookTimeFormatted()
+    if (remaining.isBlank() && elapsed.isBlank()) return
 
     val currentItem = exoPlayer.currentMediaItem ?: return
-    val rawChapterTitle = currentItem.mediaMetadata.title?.toString() ?: ""
-    val targetTitle = MediaItemBuilder.formatChapterTitleWithCountdown(rawChapterTitle, formatted)
+    val session = preparedSession ?: return
+    val bookTitle = session.libraryItem.media.metadata.title
+    val authorName = session.libraryItem.media.metadata.authorName ?: ""
+    val rawChapterTitle = currentItem.mediaMetadata.subtitle?.toString()
+      ?: currentItem.mediaMetadata.title?.toString()
+      ?: ""
 
-    if (currentItem.mediaMetadata.title?.toString() != targetTitle) {
+    val targetTitle = MediaItemBuilder.formatDualProgressTitle(elapsed, remaining)
+    val targetArtist = MediaItemBuilder.formatChapterWithBookTitle(rawChapterTitle, bookTitle)
+
+    if (currentItem.mediaMetadata.title?.toString() != targetTitle ||
+      currentItem.mediaMetadata.artist?.toString() != targetArtist
+    ) {
       val newMetadata = currentItem.mediaMetadata.buildUpon()
         .setTitle(targetTitle)
+        .setArtist(targetArtist)
+        .setSubtitle(targetArtist)
+        .setAlbumTitle(authorName.ifBlank { bookTitle })
+        .setAlbumArtist(authorName)
         .build()
       val newItem = currentItem.buildUpon()
         .setMediaMetadata(newMetadata)

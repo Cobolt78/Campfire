@@ -65,6 +65,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
 59. [Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)](#59-dual-book-time-readouts--action-row-alignment-fix-v1229)
 60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
+61. [Android Auto & Notification Dual Progress Hierarchy (v1.2.31)](#61-android-auto--notification-dual-progress-hierarchy-v1231)
 
 ---
 
@@ -1627,26 +1628,35 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `CUSTOM_MODIFICATIONS.md`
 * `gradle.properties`
 
+---
 
+## 61. Android Auto & Notification Dual Progress Hierarchy (v1.2.31)
 
+### Problem Description
+1. In Android Auto and the phone lock screen media notification, drivers previously had to view the chapter title with only a single remaining countdown on Line 1 (e.g. "Chapter 4 - 3h 45m left"), with the author or book title occupying secondary lines.
+2. In Android Auto split-screen (Coolwalk dashboard with Google Maps/Waze), Line 3 is completely suppressed by Android Automotive OS to fit transport controls, meaning any metadata placed on Line 3 vanishes during navigation.
+3. Drivers prioritize seeing their total listening progress ("4h 15m played • 3h 45m left") prominently without distraction or having it truncated by long chapter/book titles.
 
+### Solution & Key Implementation Details
+1. **Reorganized Metadata Hierarchy for Android Auto & System Notifications**:
+   - **Line 1 (title)**: Dual listening progress ("4h 15m played • 3h 45m left"). Rendered in large bold text on car head units and phone lock screens, providing high-contrast, instant at-a-glance visibility.
+   - **Line 2 (artist / subtitle)**: Combined chapter and book title ("Chapter 4 - The Way of Kings"). Rendered in regular (non-bold) medium font, fitting ~40% more characters to comfortably display both chapter and book without truncation.
+   - **Line 3 (albumTitle)**: Author name ("Brandon Sanderson"). Visible in full-screen mode and safely deprioritized during split-screen navigation.
+2. **Speed-Adjusted Real-Time Updates**:
+   - `ExoPlayerAudioPlayer.kt` dynamically computes both `elapsedBookTimeFormatted()` and speed-adjusted `remainingBookTimeFormatted()`.
+   - On every progress tick / minute boundary, `updatePlaylistMetadata()` updates the active media item metadata to advance the displayed minutes.
+3. **Coarse Window Projection Integration (ChapterWindowForwardingPlayer.kt)**:
+   - Enhanced `Host` interface with `elapsedFormatted(): String`.
+   - Updated `chapterPlaylist` to project the dual progress line and chapter/book title across all chapter items, caching on minute changes.
+4. **Multi-Track & Podcast Unification (MediaItemBuilder.kt)**:
+   - Unified formatting through `formatDualProgressTitle()` and `formatChapterWithBookTitle()`.
+   - Applied symmetrically across HLS streams, podcast episodes, chaptered audiobooks, and multi-track audiobooks.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Modified Files:
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+* `gradle.properties`

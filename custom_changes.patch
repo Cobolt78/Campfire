@@ -11,14 +11,25 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..4c12b8d0 100644
+index c0278c85..2744d610 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,214 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,225 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.31]
++
++### Added
++
++- **Android Auto & System Notification Dual Progress Layout**:
++  - Reorganized Android Auto and system media notification metadata hierarchy:
++    - **Line 1 (Headline, Bold)**: Dual listening progress (e.g. 4h 15m played • 3h 45m left, speed-adjusted).
++    - **Line 2 (Regular Font)**: Chapter and book title (e.g. Chapter 4 - The Way of Kings).
++    - **Line 3 (Full-Screen)**: Author name (e.g. Brandon Sanderson).
++  - Guarantees 100% visibility of listening progress and chapter/book context across all Android Auto screen modes (including split-screen Coolwalk navigation alongside Google Maps) and the Android lock screen notification.
++
 +## [1.2.30]
 +
 +### Added
@@ -232,10 +243,10 @@ index c0278c85..4c12b8d0 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..595b967f
+index 00000000..aeda50fa
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1652 @@
+@@ -0,0 +1,1662 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -303,6 +314,7 @@ index 00000000..595b967f
 +58. [Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)](#58-wired-headset-35mm-multi-click-detection--navigation-drawer-string-fix-v1228)
 +59. [Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)](#59-dual-book-time-readouts--action-row-alignment-fix-v1229)
 +60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
++61. [Android Auto & Notification Dual Progress Hierarchy (v1.2.31)](#61-android-auto--notification-dual-progress-hierarchy-v1231)
 +
 +---
 +
@@ -1865,29 +1877,38 @@ index 00000000..595b967f
 +* `CUSTOM_MODIFICATIONS.md`
 +* `gradle.properties`
 +
++---
 +
++## 61. Android Auto & Notification Dual Progress Hierarchy (v1.2.31)
 +
++### Problem Description
++1. In Android Auto and the phone lock screen media notification, drivers previously had to view the chapter title with only a single remaining countdown on Line 1 (e.g. "Chapter 4 - 3h 45m left"), with the author or book title occupying secondary lines.
++2. In Android Auto split-screen (Coolwalk dashboard with Google Maps/Waze), Line 3 is completely suppressed by Android Automotive OS to fit transport controls, meaning any metadata placed on Line 3 vanishes during navigation.
++3. Drivers prioritize seeing their total listening progress ("4h 15m played • 3h 45m left") prominently without distraction or having it truncated by long chapter/book titles.
 +
++### Solution & Key Implementation Details
++1. **Reorganized Metadata Hierarchy for Android Auto & System Notifications**:
++   - **Line 1 (title)**: Dual listening progress ("4h 15m played • 3h 45m left"). Rendered in large bold text on car head units and phone lock screens, providing high-contrast, instant at-a-glance visibility.
++   - **Line 2 (artist / subtitle)**: Combined chapter and book title ("Chapter 4 - The Way of Kings"). Rendered in regular (non-bold) medium font, fitting ~40% more characters to comfortably display both chapter and book without truncation.
++   - **Line 3 (albumTitle)**: Author name ("Brandon Sanderson"). Visible in full-screen mode and safely deprioritized during split-screen navigation.
++2. **Speed-Adjusted Real-Time Updates**:
++   - `ExoPlayerAudioPlayer.kt` dynamically computes both `elapsedBookTimeFormatted()` and speed-adjusted `remainingBookTimeFormatted()`.
++   - On every progress tick / minute boundary, `updatePlaylistMetadata()` updates the active media item metadata to advance the displayed minutes.
++3. **Coarse Window Projection Integration (ChapterWindowForwardingPlayer.kt)**:
++   - Enhanced `Host` interface with `elapsedFormatted(): String`.
++   - Updated `chapterPlaylist` to project the dual progress line and chapter/book title across all chapter items, caching on minute changes.
++4. **Multi-Track & Podcast Unification (MediaItemBuilder.kt)**:
++   - Unified formatting through `formatDualProgressTitle()` and `formatChapterWithBookTitle()`.
++   - Applied symmetrically across HLS streams, podcast episodes, chaptered audiobooks, and multi-track audiobooks.
 +
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
++### Modified Files:
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++* `gradle.properties`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -12043,7 +12064,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..5255b711 100644
+index f41126a7..109cf4fd 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12051,13 +12072,13 @@ index f41126a7..5255b711 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.30
++campfire.version=1.2.31
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1023099
++campfire.versionCode=1023199
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -12139,7 +12160,7 @@ index 7647cac8..6d3caac5 100644
      AudioPlayerDebugHooks.Holder.hooks.onSessionCreated(session!!)
  
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
-index 3d75ff1a..48ac7aee 100644
+index 3d75ff1a..91cce8ae 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 @@ -10,6 +10,7 @@ import androidx.media3.common.C
@@ -12209,7 +12230,7 @@ index 3d75ff1a..48ac7aee 100644
      settings = settings,
      appPackageName = context.packageName,
      host = object : ChapterWindowForwardingPlayer.Host {
-@@ -225,6 +227,12 @@ class ExoPlayerAudioPlayer(
+@@ -225,6 +227,13 @@ class ExoPlayerAudioPlayer(
        override fun skipToNextChapter() = skipToNext()
  
        override fun skipToPreviousChapter() = skipToPrevious()
@@ -12219,10 +12240,11 @@ index 3d75ff1a..48ac7aee 100644
 +      override fun seekBackward() = this@ExoPlayerAudioPlayer.seekBackward()
 +
 +      override fun remainingFormatted(): String = remainingBookTimeFormatted()
++      override fun elapsedFormatted(): String = elapsedBookTimeFormatted()
      },
    )
  
-@@ -330,7 +338,7 @@ class ExoPlayerAudioPlayer(
+@@ -330,7 +339,7 @@ class ExoPlayerAudioPlayer(
      _error.value = null
      state.value = AudioPlayer.State.Initializing
  
@@ -12231,7 +12253,7 @@ index 3d75ff1a..48ac7aee 100644
  
      ibark {
        """
-@@ -351,8 +359,9 @@ class ExoPlayerAudioPlayer(
+@@ -351,8 +360,9 @@ class ExoPlayerAudioPlayer(
        // Set the media list
        setMediaItems(mediaItems, true)
  
@@ -12243,7 +12265,7 @@ index 3d75ff1a..48ac7aee 100644
  
        // Seek the media player
        if (podcastEpisode != null) {
-@@ -493,6 +502,7 @@ class ExoPlayerAudioPlayer(
+@@ -493,6 +503,7 @@ class ExoPlayerAudioPlayer(
        // Set when to play, and prepare
        playWhenReady = playImmediately
        prepare()
@@ -12251,7 +12273,7 @@ index 3d75ff1a..48ac7aee 100644
      }
    }
  
-@@ -650,7 +660,9 @@ class ExoPlayerAudioPlayer(
+@@ -650,7 +661,9 @@ class ExoPlayerAudioPlayer(
    override fun setPlaybackSpeed(speed: Float) {
      playbackSpeed.value = speed
      settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
@@ -12262,7 +12284,7 @@ index 3d75ff1a..48ac7aee 100644
    }
  
    override fun setEqualizer(profile: EqualizerProfile) {
-@@ -669,6 +681,8 @@ class ExoPlayerAudioPlayer(
+@@ -669,6 +682,8 @@ class ExoPlayerAudioPlayer(
      } else {
        equalizer.value = EqualizerState.Available(profile)
        audioEffects.apply(profile)
@@ -12271,7 +12293,7 @@ index 3d75ff1a..48ac7aee 100644
      }
    }
  
-@@ -878,8 +892,11 @@ class ExoPlayerAudioPlayer(
+@@ -878,8 +893,11 @@ class ExoPlayerAudioPlayer(
      // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
      // stop the playback. Coarse queues (remote per-track, single item) transition on tracks
      // or never, so there the boundary detection in updateProgress owns this signal instead.
@@ -12285,7 +12307,7 @@ index 3d75ff1a..48ac7aee 100644
      }
    }
  
-@@ -921,6 +938,7 @@ class ExoPlayerAudioPlayer(
+@@ -921,6 +939,7 @@ class ExoPlayerAudioPlayer(
      currentTime.value = player.currentPosition.milliseconds
      currentDuration.value = player.duration.milliseconds
      overallTime.value = player.overallPosition.milliseconds
@@ -12293,11 +12315,17 @@ index 3d75ff1a..48ac7aee 100644
    }
  
    /**
-@@ -973,6 +991,41 @@ class ExoPlayerAudioPlayer(
+@@ -973,6 +992,61 @@ class ExoPlayerAudioPlayer(
      if (play) {
        player.play()
      }
 +    updatePlaylistMetadata()
++  }
++
++  internal fun elapsedBookTimeFormatted(): String {
++    val session = preparedSession ?: return ""
++    val currentPositionMs = if (session.episode != null) player.currentPosition else player.overallPosition
++    return currentPositionMs.milliseconds.formatHoursAndMinutes()
 +  }
 +
 +  internal fun remainingBookTimeFormatted(): String {
@@ -12313,16 +12341,30 @@ index 3d75ff1a..48ac7aee 100644
 +  }
 +
 +  internal fun updatePlaylistMetadata() {
-+    val formatted = remainingBookTimeFormatted()
-+    if (formatted.isBlank()) return
++    val remaining = remainingBookTimeFormatted()
++    val elapsed = elapsedBookTimeFormatted()
++    if (remaining.isBlank() && elapsed.isBlank()) return
 +
 +    val currentItem = exoPlayer.currentMediaItem ?: return
-+    val rawChapterTitle = currentItem.mediaMetadata.title?.toString() ?: ""
-+    val targetTitle = MediaItemBuilder.formatChapterTitleWithCountdown(rawChapterTitle, formatted)
++    val session = preparedSession ?: return
++    val bookTitle = session.libraryItem.media.metadata.title
++    val authorName = session.libraryItem.media.metadata.authorName ?: ""
++    val rawChapterTitle = currentItem.mediaMetadata.subtitle?.toString()
++      ?: currentItem.mediaMetadata.title?.toString()
++      ?: ""
 +
-+    if (currentItem.mediaMetadata.title?.toString() != targetTitle) {
++    val targetTitle = MediaItemBuilder.formatDualProgressTitle(elapsed, remaining)
++    val targetArtist = MediaItemBuilder.formatChapterWithBookTitle(rawChapterTitle, bookTitle)
++
++    if (currentItem.mediaMetadata.title?.toString() != targetTitle ||
++      currentItem.mediaMetadata.artist?.toString() != targetArtist
++    ) {
 +      val newMetadata = currentItem.mediaMetadata.buildUpon()
 +        .setTitle(targetTitle)
++        .setArtist(targetArtist)
++        .setSubtitle(targetArtist)
++        .setAlbumTitle(authorName.ifBlank { bookTitle })
++        .setAlbumArtist(authorName)
 +        .build()
 +      val newItem = currentItem.buildUpon()
 +        .setMediaMetadata(newMetadata)
@@ -12335,6 +12377,34 @@ index 3d75ff1a..48ac7aee 100644
    }
  }
  
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt
+index 21246ae6..ce8831e4 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt
+@@ -47,16 +47,16 @@ fun MediaItem.asPlatformMediaItem(context: Context): PlatformMediaItem {
+           ?: metadata.artworkUri?.toUri()
+         setMediaMetadata(
+           MediaMetadata.Builder()
++            // Line 1: Dual Progress (e.g. "4h 15m played • 3h 45m left")
+             .setTitle(metadata.title)
+-            // Android Auto and the system media notification only render title + artist,
+-            // so surface the book/podcast name in the artist slot (instead of the author)
+-            // and keep the real author in albumArtist for hosts that show album metadata.
+-            .setArtist(metadata.albumTitle ?: metadata.artist)
+-            .setAlbumArtist(metadata.artist)
+-            .setMediaType(MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
+-            .setDescription(metadata.description)
++            // Line 2: Chapter + Book Title (e.g. "Chapter 4 - The Way of Kings")
++            .setArtist(metadata.artist)
+             .setSubtitle(metadata.subtitle)
++            // Line 3: Author Name (e.g. "Brandon Sanderson")
+             .setAlbumTitle(metadata.albumTitle)
++            .setAlbumArtist(metadata.albumTitle)
++            .setMediaType(MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
++            .setDescription(metadata.description)
+             .setArtworkUri(artworkUri)
+             .setDurationMs(metadata.durationMs)
+             .build(),
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 index a22d7695..c4766e35 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
@@ -12737,7 +12807,7 @@ index a22d7695..c4766e35 100644
    }
  }
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
-index 3933cdd1..3f629d35 100644
+index 3933cdd1..c6ed09c1 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 @@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
@@ -12748,7 +12818,7 @@ index 3933cdd1..3f629d35 100644
  import app.campfire.core.extensions.seconds
  import app.campfire.core.model.Chapter
  import app.campfire.settings.api.PlaybackSettings
-@@ -52,6 +53,15 @@ class ChapterWindowForwardingPlayer(
+@@ -52,6 +53,18 @@ class ChapterWindowForwardingPlayer(
  
      /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
      fun skipToPreviousChapter()
@@ -12761,18 +12831,22 @@ index 3933cdd1..3f629d35 100644
 +
 +    /** Format speed-adjusted remaining time for the whole book. */
 +    fun remainingFormatted(): String = ""
++
++    /** Format elapsed listening time for the whole book. */
++    fun elapsedFormatted(): String = ""
    }
  
    /** Set after session creation, to identify the controller a command came from. */
-@@ -60,6 +70,7 @@ class ChapterWindowForwardingPlayer(
+@@ -60,6 +73,8 @@ class ChapterWindowForwardingPlayer(
    private val wrapped: Player = player
  
    private var cachedChapters: List<Chapter>? = null
-+  private var cachedFormatted: String? = null
++  private var cachedRemaining: String? = null
++  private var cachedElapsed: String? = null
    private var cachedPlaylist: List<MediaItemData> = emptyList()
  
    /** Re-derives state; called from the audio player's progress tick while windowing is active. */
-@@ -94,6 +105,8 @@ class ChapterWindowForwardingPlayer(
+@@ -94,6 +109,8 @@ class ChapterWindowForwardingPlayer(
              Player.COMMAND_SEEK_TO_PREVIOUS,
              Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
              Player.COMMAND_SEEK_TO_MEDIA_ITEM,
@@ -12781,7 +12855,7 @@ index 3933cdd1..3f629d35 100644
            )
            .build(),
        )
-@@ -123,15 +136,29 @@ class ChapterWindowForwardingPlayer(
+@@ -123,15 +140,29 @@ class ChapterWindowForwardingPlayer(
        Player.COMMAND_SEEK_TO_NEXT,
        Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
        -> {
@@ -12815,17 +12889,27 @@ index 3933cdd1..3f629d35 100644
        }
  
        else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
-@@ -152,15 +179,19 @@ class ChapterWindowForwardingPlayer(
+@@ -152,16 +183,33 @@ class ChapterWindowForwardingPlayer(
    }
  
    private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
 -    cachedPlaylist.takeIf { chapters === cachedChapters }?.let { return it }
-+    val formatted = host.remainingFormatted()
-+    if (chapters === cachedChapters && formatted == cachedFormatted) {
++    val remaining = host.remainingFormatted()
++    val elapsed = host.elapsedFormatted()
++    if (chapters === cachedChapters && remaining == cachedRemaining && elapsed == cachedElapsed) {
 +      return cachedPlaylist
 +    }
++
++    val timeLine = MediaItemBuilder.formatDualProgressTitle(elapsed, remaining)
++    val bookTitle = baseItem.mediaMetadata.albumTitle?.toString()
++      ?: baseItem.mediaMetadata.title?.toString()
++      ?: ""
++    val authorName = baseItem.mediaMetadata.albumArtist?.toString()
++      ?: baseItem.mediaMetadata.artist?.toString()
++      ?: ""
++
      return chapters.map { chapter ->
-+      val title = MediaItemBuilder.formatChapterTitleWithCountdown(chapter.title, formatted)
++      val line2 = MediaItemBuilder.formatChapterWithBookTitle(chapter.title, bookTitle)
        MediaItemData.Builder("chapter_${chapter.id}")
          .setMediaItem(
            baseItem.buildUpon()
@@ -12833,15 +12917,21 @@ index 3933cdd1..3f629d35 100644
              .setMediaMetadata(
                baseItem.mediaMetadata.buildUpon()
 -                .setTitle(chapter.title)
-+                .setTitle(title)
-                 .setSubtitle(baseItem.mediaMetadata.title)
+-                .setSubtitle(baseItem.mediaMetadata.title)
++                .setTitle(timeLine.ifBlank { line2 })
++                .setArtist(line2)
++                .setSubtitle(line2)
++                .setAlbumTitle(authorName.ifBlank { bookTitle })
++                .setAlbumArtist(authorName)
                  .setDurationMs(chapter.durationMs)
                  .build(),
-@@ -172,6 +203,7 @@ class ChapterWindowForwardingPlayer(
+             )
+@@ -172,6 +220,8 @@ class ChapterWindowForwardingPlayer(
          .build()
      }.also {
        cachedChapters = chapters
-+      cachedFormatted = formatted
++      cachedRemaining = remaining
++      cachedElapsed = elapsed
        cachedPlaylist = it
      }
    }
@@ -12896,7 +12986,7 @@ index da6ec972..0a609b88 100644
 +  return true
  }
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
-index bf0c0272..a3ea1c29 100644
+index bf0c0272..e04be4a9 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
 +++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
 @@ -3,6 +3,7 @@
@@ -12907,7 +12997,7 @@ index bf0c0272..a3ea1c29 100644
  import app.campfire.core.extensions.seconds
  import app.campfire.core.logging.Corked
  import app.campfire.core.model.AudioTrack
-@@ -15,22 +16,46 @@ import app.campfire.crashreporting.CrashReporter
+@@ -15,22 +16,75 @@ import app.campfire.crashreporting.CrashReporter
  import kotlin.math.abs
  import kotlin.math.max
  import kotlin.math.min
@@ -12926,6 +13016,35 @@ index bf0c0272..a3ea1c29 100644
 +    if (rawTitle.isNullOrBlank()) return ""
 +    val stripped = rawTitle.replace(TrailingDurationRegex, "").trim()
 +    return stripped.ifBlank { rawTitle }
++  }
++
++  fun formatDualProgressTitle(
++    elapsedFormatted: String,
++    remainingFormatted: String,
++  ): String {
++    return when {
++      elapsedFormatted.isNotBlank() && remainingFormatted.isNotBlank() ->
++        "$elapsedFormatted played • $remainingFormatted left"
++      remainingFormatted.isNotBlank() ->
++        "$remainingFormatted left"
++      elapsedFormatted.isNotBlank() ->
++        "$elapsedFormatted played"
++      else -> ""
++    }
++  }
++
++  fun formatChapterWithBookTitle(
++    chapterTitle: String?,
++    bookTitle: String?,
++  ): String {
++    val cleanChapter = cleanChapterTitle(chapterTitle)
++    val cleanBook = bookTitle?.trim().orEmpty()
++    return when {
++      cleanChapter.isNotBlank() && cleanBook.isNotBlank() && !cleanChapter.equals(cleanBook, ignoreCase = true) ->
++        "$cleanChapter - $cleanBook"
++      cleanChapter.isNotBlank() -> cleanChapter
++      else -> cleanBook
++    }
 +  }
 +
 +  fun formatChapterTitleWithCountdown(
@@ -12958,7 +13077,7 @@ index bf0c0272..a3ea1c29 100644
    }
  
    /**
-@@ -47,21 +72,47 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -47,21 +101,53 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      return item.media.tracks.size == 1 && item.media.chapters.size > 1
    }
  
@@ -12972,7 +13091,10 @@ index bf0c0272..a3ea1c29 100644
 +    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
 +    val effectiveRemainingMs = (session.duration.inWholeMilliseconds / speed).toLong()
 +    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-+    val titleWithCountdown = formatChapterTitleWithCountdown(media.metadata.title, remainingFormatted)
++    val elapsedFormatted = 0L.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
++    val bookTitle = media.metadata.title
++    val authorName = media.metadata.authorName ?: ""
      return MediaItem(
        id = "${media.id}_hls",
        uri = streamUrl,
@@ -12981,10 +13103,10 @@ index bf0c0272..a3ea1c29 100644
 +      metadata = MediaItem.Metadata(
 +        id = 0,
 +        title = titleWithCountdown,
-+        artist = media.metadata.authorName,
++        artist = bookTitle,
 +        description = media.metadata.description ?: "",
-+        subtitle = media.metadata.subtitle,
-+        albumTitle = media.metadata.title,
++        subtitle = bookTitle,
++        albumTitle = authorName.ifBlank { bookTitle },
 +        artworkUri = media.coverImageUrl,
 +        durationMs = session.duration.inWholeMilliseconds,
 +        libraryItemId = session.libraryItem.id,
@@ -13005,20 +13127,30 @@ index bf0c0272..a3ea1c29 100644
 +    val speed = playbackSpeed.takeIf { it > 0f } ?: 1.0f
 +    val effectiveRemainingMs = (episode.durationInMillis / speed).toLong()
 +    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-+    val titleWithCountdown = formatChapterTitleWithCountdown(episode.title, remainingFormatted)
++    val elapsedFormatted = 0L.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
++    val episodeWithPodcast = formatChapterWithBookTitle(episode.title, item.media.metadata.title)
++    val podcastAuthor = item.media.metadata.author ?: item.media.metadata.title
      return listOf(
        MediaItem(
          id = "${item.media.id}_${episode.id}",
-@@ -69,7 +120,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -69,11 +155,11 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
          mimeType = track.mimeType,
          metadata = MediaItem.Metadata(
            id = 0,
 -          title = episode.title,
+-          artist = item.media.metadata.author ?: item.media.metadata.title,
 +          title = titleWithCountdown,
-           artist = item.media.metadata.author ?: item.media.metadata.title,
++          artist = episodeWithPodcast,
            description = episode.description ?: "",
-           subtitle = episode.subtitle,
-@@ -88,19 +139,19 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+-          subtitle = episode.subtitle,
+-          albumTitle = item.media.metadata.title,
++          subtitle = episodeWithPodcast,
++          albumTitle = podcastAuthor,
+           artworkUri = item.media.coverImageUrl,
+           durationMs = episode.durationInMillis,
+           libraryItemId = item.id,
+@@ -88,19 +174,19 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
     * (receivers don't honor clipping), so the remote queue is whole files and chapter semantics
     * are re-derived from the absolute position.
     */
@@ -13044,7 +13176,7 @@ index bf0c0272..a3ea1c29 100644
      val chapters = media.chapters
      val audioTracks = media.tracks
  
-@@ -108,7 +159,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -108,7 +194,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      // items from its audio tracks.
      if (chapters.isEmpty()) {
        return audioTracks.map { track ->
@@ -13053,7 +13185,7 @@ index bf0c0272..a3ea1c29 100644
        }
      }
  
-@@ -117,7 +168,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -117,7 +203,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      if (chapters.size == audioTracks.size) {
        return audioTracks.mapIndexed { index, track ->
          val chapter = chapters[index]
@@ -13062,7 +13194,7 @@ index bf0c0272..a3ea1c29 100644
        }
      }
  
-@@ -133,7 +184,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -133,7 +219,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
            id = "${media.id}_${track.index}",
            uri = track.contentUrl,
            mimeType = track.mimeType,
@@ -13071,7 +13203,7 @@ index bf0c0272..a3ea1c29 100644
          ),
        )
      }
-@@ -160,18 +211,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -160,18 +246,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
            // If the chapter fail to fully cover the track, then just return the track and let the user fix
            // their item on the server
            recordMediaItemException("Remaining track after last chapter is too long", item)
@@ -13093,7 +13225,7 @@ index bf0c0272..a3ea1c29 100644
        }
      }
    }
-@@ -193,6 +244,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -193,6 +279,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      clipAudio: Boolean,
      media: Media,
      libraryItemId: String,
@@ -13101,7 +13233,7 @@ index bf0c0272..a3ea1c29 100644
    ): MediaItem {
      return MediaItem(
        id = "${media.id}_${chapter.id}",
-@@ -214,7 +266,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -214,7 +301,7 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
        } else {
          null
        },
@@ -13110,7 +13242,7 @@ index bf0c0272..a3ea1c29 100644
      )
    }
  
-@@ -222,12 +274,13 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -222,12 +309,13 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      track: AudioTrack,
      media: Media,
      libraryItemId: String,
@@ -13125,7 +13257,7 @@ index bf0c0272..a3ea1c29 100644
      )
    }
  
-@@ -253,10 +306,17 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+@@ -253,14 +341,24 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      chapter: Chapter,
      media: Media,
      libraryItemId: String,
@@ -13135,16 +13267,26 @@ index bf0c0272..a3ea1c29 100644
 +    val rawRemainingMs = (media.durationInMillis - chapter.start.seconds.inWholeMilliseconds).coerceAtLeast(0L)
 +    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
 +    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
-+    val titleWithCountdown = formatChapterTitleWithCountdown(chapter.title, remainingFormatted)
++    val elapsedFormatted = chapter.start.seconds.inWholeMilliseconds.milliseconds.formatHoursAndMinutes()
++    val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
++    val chapterWithBook = formatChapterWithBookTitle(chapter.title, media.metadata.title)
++    val authorName = media.metadata.authorName ?: media.metadata.title
 +
      return MediaItem.Metadata(
        id = chapter.id,
 -      title = chapter.title,
+-      artist = media.metadata.authorName,
 +      title = titleWithCountdown,
-       artist = media.metadata.authorName,
++      artist = chapterWithBook,
        description = media.metadata.description ?: "",
-       subtitle = media.metadata.subtitle,
-@@ -271,10 +331,18 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
+-      subtitle = media.metadata.subtitle,
+-      albumTitle = media.metadata.title,
++      subtitle = chapterWithBook,
++      albumTitle = authorName,
+       artworkUri = media.coverImageUrl,
+       durationMs = chapter.duration.inWholeMilliseconds,
+       libraryItemId = libraryItemId,
+@@ -271,14 +369,25 @@ object MediaItemBuilder : Corked("MediaItemBuilders") {
      track: AudioTrack,
      media: Media,
      libraryItemId: String,
@@ -13154,16 +13296,26 @@ index bf0c0272..a3ea1c29 100644
 +    val rawRemainingMs = (media.durationInMillis - track.startOffset.seconds.inWholeMilliseconds).coerceAtLeast(0L)
 +    val effectiveRemainingMs = (rawRemainingMs / speed).toLong()
 +    val remainingFormatted = effectiveRemainingMs.milliseconds.formatHoursAndMinutes()
++    val elapsedFormatted = track.startOffset.seconds.inWholeMilliseconds.milliseconds.formatHoursAndMinutes()
 +    val trackTitle = track.taggedTitle.ifBlank { "Track ${track.index}" }
-+    val titleWithCountdown = formatChapterTitleWithCountdown(trackTitle, remainingFormatted)
++    val titleWithCountdown = formatDualProgressTitle(elapsedFormatted, remainingFormatted)
++    val trackWithBook = formatChapterWithBookTitle(trackTitle, media.metadata.title)
++    val authorName = media.metadata.authorName ?: media.metadata.title
 +
      return MediaItem.Metadata(
        id = track.index,
 -      title = track.taggedTitle,
+-      artist = media.metadata.authorName,
 +      title = titleWithCountdown,
-       artist = media.metadata.authorName,
++      artist = trackWithBook,
        description = media.metadata.description ?: "",
-       subtitle = media.metadata.subtitle,
+-      subtitle = media.metadata.subtitle,
+-      albumTitle = media.metadata.title,
++      subtitle = trackWithBook,
++      albumTitle = authorName,
+       artworkUri = media.coverImageUrl,
+       durationMs = track.duration.seconds.inWholeMilliseconds,
+       libraryItemId = libraryItemId,
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 index 5a85d185..af74ad1b 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt

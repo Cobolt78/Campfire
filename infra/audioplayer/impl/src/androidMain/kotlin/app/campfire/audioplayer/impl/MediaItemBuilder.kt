@@ -47,16 +47,16 @@ fun MediaItem.asPlatformMediaItem(context: Context): PlatformMediaItem {
           ?: metadata.artworkUri?.toUri()
         setMediaMetadata(
           MediaMetadata.Builder()
+            // Line 1: Dual Progress (e.g. "4h 15m played • 3h 45m left")
             .setTitle(metadata.title)
-            // Android Auto and the system media notification only render title + artist,
-            // so surface the book/podcast name in the artist slot (instead of the author)
-            // and keep the real author in albumArtist for hosts that show album metadata.
-            .setArtist(metadata.albumTitle ?: metadata.artist)
-            .setAlbumArtist(metadata.artist)
+            // Line 2: Chapter + Book Title (e.g. "Chapter 4 - The Way of Kings")
+            .setArtist(metadata.artist)
+            .setSubtitle(metadata.subtitle)
+            // Line 3: Author Name (e.g. "Brandon Sanderson")
+            .setAlbumTitle(metadata.albumTitle)
+            .setAlbumArtist(metadata.albumTitle)
             .setMediaType(MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
             .setDescription(metadata.description)
-            .setSubtitle(metadata.subtitle)
-            .setAlbumTitle(metadata.albumTitle)
             .setArtworkUri(artworkUri)
             .setDurationMs(metadata.durationMs)
             .build(),

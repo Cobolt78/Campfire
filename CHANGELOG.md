@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.31]
+
+### Added
+
+- **Android Auto & System Notification Dual Progress Layout**:
+  - Reorganized Android Auto and system media notification metadata hierarchy:
+    - **Line 1 (Headline, Bold)**: Dual listening progress (e.g. 4h 15m played • 3h 45m left, speed-adjusted).
+    - **Line 2 (Regular Font)**: Chapter and book title (e.g. Chapter 4 - The Way of Kings).
+    - **Line 3 (Full-Screen)**: Author name (e.g. Brandon Sanderson).
+  - Guarantees 100% visibility of listening progress and chapter/book context across all Android Auto screen modes (including split-screen Coolwalk navigation alongside Google Maps) and the Android lock screen notification.
+
 ## [1.2.30]
 
 ### Added

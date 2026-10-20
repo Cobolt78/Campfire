@@ -62,6 +62,9 @@ class ChapterWindowForwardingPlayer(
 
     /** Format speed-adjusted remaining time for the whole book. */
     fun remainingFormatted(): String = ""
+
+    /** Format elapsed listening time for the whole book. */
+    fun elapsedFormatted(): String = ""
   }
 
   /** Set after session creation, to identify the controller a command came from. */
@@ -70,7 +73,8 @@ class ChapterWindowForwardingPlayer(
   private val wrapped: Player = player
 
   private var cachedChapters: List<Chapter>? = null
-  private var cachedFormatted: String? = null
+  private var cachedRemaining: String? = null
+  private var cachedElapsed: String? = null
   private var cachedPlaylist: List<MediaItemData> = emptyList()
 
   /** Re-derives state; called from the audio player's progress tick while windowing is active. */
@@ -179,20 +183,33 @@ class ChapterWindowForwardingPlayer(
   }
 
   private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
-    val formatted = host.remainingFormatted()
-    if (chapters === cachedChapters && formatted == cachedFormatted) {
+    val remaining = host.remainingFormatted()
+    val elapsed = host.elapsedFormatted()
+    if (chapters === cachedChapters && remaining == cachedRemaining && elapsed == cachedElapsed) {
       return cachedPlaylist
     }
+
+    val timeLine = MediaItemBuilder.formatDualProgressTitle(elapsed, remaining)
+    val bookTitle = baseItem.mediaMetadata.albumTitle?.toString()
+      ?: baseItem.mediaMetadata.title?.toString()
+      ?: ""
+    val authorName = baseItem.mediaMetadata.albumArtist?.toString()
+      ?: baseItem.mediaMetadata.artist?.toString()
+      ?: ""
+
     return chapters.map { chapter ->
-      val title = MediaItemBuilder.formatChapterTitleWithCountdown(chapter.title, formatted)
+      val line2 = MediaItemBuilder.formatChapterWithBookTitle(chapter.title, bookTitle)
       MediaItemData.Builder("chapter_${chapter.id}")
         .setMediaItem(
           baseItem.buildUpon()
             .setMediaId("${baseItem.mediaId}_chapter_${chapter.id}")
             .setMediaMetadata(
               baseItem.mediaMetadata.buildUpon()
-                .setTitle(title)
-                .setSubtitle(baseItem.mediaMetadata.title)
+                .setTitle(timeLine.ifBlank { line2 })
+                .setArtist(line2)
+                .setSubtitle(line2)
+                .setAlbumTitle(authorName.ifBlank { bookTitle })
+                .setAlbumArtist(authorName)
                 .setDurationMs(chapter.durationMs)
                 .build(),
             )
@@ -203,7 +220,8 @@ class ChapterWindowForwardingPlayer(
         .build()
     }.also {
       cachedChapters = chapters
-      cachedFormatted = formatted
+      cachedRemaining = remaining
+      cachedElapsed = elapsed
       cachedPlaylist = it
     }
   }
