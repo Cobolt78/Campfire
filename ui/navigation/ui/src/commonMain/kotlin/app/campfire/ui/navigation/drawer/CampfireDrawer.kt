@@ -65,6 +65,15 @@ import app.campfire.ui.navigation.HomeNavigationItem
 import app.campfire.ui.navigation.NavigationPresenterFactory
 import app.campfire.ui.theming.api.screen.ThemePickerScreen
 import app.campfire.updates.AppUpdateWidget
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import app.campfire.common.compose.icons.rounded.Sync
+import app.campfire.core.toast.GlobalToaster
+import app.campfire.core.toast.Toast
+import app.campfire.updates.source.AppUpdateSource
+import app.campfire.updates.source.CheckUpdateResult
 import app.campfire.whatsnew.api.WhatsNewWidgetProvider
 import app.campfire.whatsnew.api.screen.ChangelogScreen
 import campfire.ui.navigation.ui.generated.resources.Res
@@ -80,6 +89,7 @@ import org.jetbrains.compose.resources.stringResource
 interface CampfireDrawerComponent {
   val whatsNewWidget: WhatsNewWidgetProvider
   val appUpdateWidget: AppUpdateWidget
+  val appUpdateSource: AppUpdateSource
   val navigationPresenterFactory: NavigationPresenterFactory
 }
 
@@ -93,6 +103,7 @@ fun CampfireDrawer(
   component: CampfireDrawerComponent = rememberComponent(),
 ) {
   val scope = rememberCoroutineScope()
+  var isCheckingForUpdates by remember { mutableStateOf(false) }
   val presenter = remember(component) {
     component.navigationPresenterFactory()
   }
@@ -146,6 +157,66 @@ fun CampfireDrawer(
       Spacer(Modifier.height(8.dp))
 
       state.navigationItems.forEach { item ->
+        if (item.screen == ChangelogScreen) {
+          NavigationDrawerItem(
+            icon = {
+              if (isCheckingForUpdates) {
+                CircularProgressIndicator(
+                  modifier = Modifier.size(24.dp),
+                  strokeWidth = 2.dp,
+                )
+              } else {
+                Icon(
+                  imageVector = CampfireIcons.Rounded.Sync,
+                  contentDescription = "Check for updates",
+                )
+              }
+            },
+            label = { Text(text = "Check for updates") },
+            selected = false,
+            onClick = {
+              if (!isCheckingForUpdates) {
+                isCheckingForUpdates = true
+                scope.launch {
+                  try {
+                    val result = component.appUpdateSource.checkForUpdates(force = true)
+                    when (result) {
+                      is CheckUpdateResult.Available -> {
+                        GlobalToaster.show(
+                          "Update available: ${result.update.versionName}",
+                          Toast.Duration.LONG,
+                        )
+                      }
+                      is CheckUpdateResult.UpToDate -> {
+                        GlobalToaster.show(
+                          "Campfire is up to date (v${state.appVersion})",
+                          Toast.Duration.SHORT,
+                        )
+                      }
+                      is CheckUpdateResult.Error -> {
+                        GlobalToaster.show(
+                          "Couldn't connect to GitHub",
+                          Toast.Duration.SHORT,
+                        )
+                      }
+                    }
+                  } catch (e: Exception) {
+                    GlobalToaster.show(
+                      "Couldn't connect to GitHub",
+                      Toast.Duration.SHORT,
+                    )
+                  } finally {
+                    isCheckingForUpdates = false
+                  }
+                }
+              }
+            },
+            modifier = Modifier.padding(
+              horizontal = 16.dp,
+            ),
+          )
+        }
+
         DestinationListItem(
           item = item,
           selected = item.screen == selectedScreen,

@@ -12,6 +12,7 @@ import app.campfire.core.ComponentActivityPlugin
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.UiScope
 import app.campfire.core.permission.LocalNetworkPermissionController
+import app.campfire.updates.source.AppUpdateSource
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.GraphExtension
 import dev.zacsweers.metro.Provides
@@ -24,6 +25,7 @@ interface ActivityComponent {
   val offlineDownloadManager: OfflineDownloadManager
   val userSessionManager: UserSessionManager
   val localNetworkPermission: LocalNetworkPermissionController
+  val appUpdateSource: AppUpdateSource
 
   @Provides
   fun provideActivityLocale(activity: Activity): Locale {

@@ -47,6 +47,7 @@ import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.libraries.api.screen.LibraryScreen
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.api.MediaProgressRepository
+import app.campfire.updates.source.AppUpdateSource
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
@@ -80,6 +81,7 @@ class HomePresenter(
   private val libraryItemRepository: LibraryItemRepository,
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
+  private val appUpdateSource: AppUpdateSource,
 ) : NonPausablePresenter<HomeUiState> {
 
   @Suppress("UNCHECKED_CAST")
@@ -299,6 +301,9 @@ class HomePresenter(
                 isRefreshing = false
               }
             }
+            coroutineScope.launch {
+              appUpdateSource.checkForUpdates(force = false)
+            }
           }
         }
 
@@ -312,6 +317,9 @@ class HomePresenter(
               } finally {
                 isRefreshingDiscoveries = false
               }
+            }
+            coroutineScope.launch {
+              appUpdateSource.checkForUpdates(force = false)
             }
           }
         }

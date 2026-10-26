@@ -1737,3 +1737,58 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
 * `gradle.properties`
+
+---
+
+## 64. Multi-Trigger GitHub App Update Checking with 1-Hour Disk Cooldown (v1.2.34)
+
+### Problem Description
+Previously, update checks against the GitHub Releases API occurred primarily during cold application startup or inside developer menus, leaving users uncertain about when or if updates were discovered during normal usage.
+Users wanted:
+1. **Pull-to-refresh on Home Screen**: Pulling down to refresh home shelves (or tapping the Discoveries shelf refresh) to also trigger an update check against GitHub.
+2. **Foregrounding Auto-Check (`onResume`)**: Automatically checking for updates when resuming Campfire after switching apps or unlocking the phone.
+3. **Throttled Hourly Network Usage**: Ensuring that frequent shelf refreshes or app-switching events do not hammer GitHub's API rate limits or waste network/battery.
+4. **Persistent Cooldown Across App Restarts**: Storing the last update check timestamp on disk rather than solely in RAM, so restarting or force-closing the app does not defeat the cooldown.
+5. **Manual "Check for Updates" Button**: A clear, accessible button in the main navigation drawer between "Settings" and "What's New" that bypasses the cooldown, forces an immediate check, gives clear Toast feedback ("Campfire is up to date", "Update available: v...", or network error), and resets the hourly cooldown.
+
+### Solution & Key Implementation Details
+1. **Persistent 1-Hour Cooldown (`AppStateSettings.kt`, `AppStateSettingsImpl.kt`)**:
+   - Added `lastAppUpdateCheckTimestamp: Long` and `observeLastAppUpdateCheckTimestamp(): StateFlow<Long>` to `AppStateSettings`.
+   - Backed by disk preference `pref_last_app_update_check_timestamp`.
+2. **Unified Update Check with Result Status (`AppUpdateSource.kt`, `GitHubAppUpdateSource.kt`)**:
+   - Defined `sealed interface CheckUpdateResult { data class Available(val update: AppUpdate) : CheckUpdateResult; data object UpToDate : CheckUpdateResult; data class Error(val cause: Throwable) : CheckUpdateResult }`.
+   - Added `suspend fun checkForUpdates(force: Boolean = false): CheckUpdateResult` to `AppUpdateSource`.
+   - In `GitHubAppUpdateSource`:
+     - Checks if `!force && (now - appStateSettings.lastAppUpdateCheckTimestamp < 1_HOUR_MS)`. If within the 1-hour cooldown window, cleanly skips network calls and returns `CheckUpdateResult.UpToDate`.
+     - When forced or when cooldown expired, queries GitHub Releases API.
+     - On successful response (whether update found or up to date), updates `appStateSettings.lastAppUpdateCheckTimestamp = now`.
+     - Emits on reactive `changes()` flow if an update is found, instantly triggering `AppUpdateWidget` in the home feed and navigation drawer without requiring an app restart.
+3. **Home Screen Pull-to-Refresh & Shelf Refresh Hooks (`HomePresenter.kt`, `HomePresenterTest.kt`)**:
+   - Injected `AppUpdateSource` into `HomePresenter`.
+   - When the user triggers `HomeUiEvent.Refresh` (pulling down on the home feed) or `HomeUiEvent.RefreshDiscoveries`, launches a non-blocking background coroutine calling `appUpdateSource.checkForUpdates(force = false)`.
+   - Unit tests updated with test fake `fakeAppUpdateSource`.
+4. **Lifecycle Foregrounding Hook (`MainActivity.kt`)**:
+   - In `MainActivity.onResume()`, launches a coroutine calling `component.appUpdateSource.checkForUpdates(force = false)` to silently check for updates if more than 1 hour has elapsed since the last check.
+5. **Manual "Check for Updates" Drawer Item (`CampfireDrawer.kt`)**:
+   - Injected `AppUpdateSource` into `CampfireDrawerComponent`.
+   - Positioned a dedicated `NavigationDrawerItem` between "Settings" and "What's New" (`ChangelogScreen`).
+   - Displays `CampfireIcons.Rounded.Sync` icon, switching to a 24dp `CircularProgressIndicator` while checking.
+   - On tap, calls `checkForUpdates(force = true)` and presents instant feedback via `GlobalToaster`:
+     - Available: `"Update available: ${result.update.versionName}"` (`Toast.Duration.LONG`)
+     - Up to date: `"Campfire is up to date (v${state.appVersion})"` (`Toast.Duration.SHORT`)
+     - Error: `"Couldn't connect to GitHub"` (`Toast.Duration.SHORT`)
+
+### Modified Files:
+* `app/android/src/main/java/app/campfire/android/MainActivity.kt`
+* `app/android/src/main/java/app/campfire/android/di/ActivityComponent.kt`
+* `app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AppStateSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestAppStateSettings.kt`
+* `infra/updates/api/src/commonMain/kotlin/app/campfire/updates/source/AppUpdateSource.kt`
+* `ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`

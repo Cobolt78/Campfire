@@ -14,16 +14,20 @@ import app.campfire.core.app.Flavor
 import app.campfire.core.di.AppScope
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
+import app.campfire.settings.api.AppStateSettings
 import app.campfire.updates.source.AppUpdate
 import app.campfire.updates.source.AppUpdateProgress
 import app.campfire.updates.source.AppUpdateProgress.Status
 import app.campfire.updates.source.AppUpdateSource
+import app.campfire.updates.source.CheckUpdateResult
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -41,6 +45,7 @@ import org.json.JSONObject
 class GitHubAppUpdateSource(
   private val application: Application,
   private val applicationInfo: ApplicationInfo,
+  private val appStateSettings: AppStateSettings,
 ) : AppUpdateSource {
 
   private val okHttpClient by lazy {
@@ -52,14 +57,14 @@ class GitHubAppUpdateSource(
       .build()
   }
 
+  private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  override fun changes(): Flow<Unit> = _changes.asSharedFlow()
+
   @Volatile
   private var cachedUpdate: AppUpdate? = null
 
   @Volatile
   private var cachedDownloadUrl: String? = null
-
-  @Volatile
-  private var lastCheckTimestamp: Long = 0L
 
   override val isSupported: Boolean = true
 
@@ -69,11 +74,23 @@ class GitHubAppUpdateSource(
 
   override suspend fun isUpdateAvailable(): Boolean = getAvailableUpdate() != null
 
-  override suspend fun getAvailableUpdate(): AppUpdate? = withContext(Dispatchers.IO) {
+  override suspend fun getAvailableUpdate(): AppUpdate? {
+    return when (val result = checkForUpdates(force = false)) {
+      is CheckUpdateResult.Available -> result.update
+      else -> null
+    }
+  }
+
+  override suspend fun checkForUpdates(force: Boolean): CheckUpdateResult = withContext(Dispatchers.IO) {
     val now = System.currentTimeMillis()
+    val lastCheck = appStateSettings.lastAppUpdateCheckTimestamp
     val cached = cachedUpdate
-    if (cached != null && (now - lastCheckTimestamp) < CACHE_DURATION_MS) {
-      return@withContext cached
+
+    if (!force && cached != null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
+      return@withContext CheckUpdateResult.Available(cached)
+    }
+    if (!force && cached == null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
+      return@withContext CheckUpdateResult.UpToDate
     }
 
     try {
@@ -86,7 +103,11 @@ class GitHubAppUpdateSource(
       okHttpClient.newCall(request).execute().use { response ->
         if (!response.isSuccessful) {
           bark(LogPriority.WARN) { "GitHub Releases API returned HTTP ${response.code}" }
-          return@withContext cached
+          return@withContext if (cached != null) {
+            CheckUpdateResult.Available(cached)
+          } else {
+            CheckUpdateResult.Error("HTTP ${response.code}")
+          }
         }
 
         val jsonString = response.body.string()
@@ -98,14 +119,16 @@ class GitHubAppUpdateSource(
 
         val remoteVersionCode = parseVersionCode(tagName)
           ?: parseVersionCode(releaseName)
-          ?: return@withContext null
+          ?: return@withContext CheckUpdateResult.Error("Unrecognized release version tag")
+
+        appStateSettings.lastAppUpdateCheckTimestamp = now
 
         // Check if remote version is strictly newer than current installed app
         if (remoteVersionCode <= applicationInfo.versionCode) {
           cachedUpdate = null
           cachedDownloadUrl = null
-          lastCheckTimestamp = now
-          return@withContext null
+          _changes.tryEmit(Unit)
+          return@withContext CheckUpdateResult.UpToDate
         }
 
         val remoteVersionName = parseVersionName(tagName).ifEmpty {
@@ -115,7 +138,8 @@ class GitHubAppUpdateSource(
         }
 
         // Find matching APK asset for current flavor
-        val assetsArray = releaseJson.optJSONArray("assets") ?: return@withContext null
+        val assetsArray = releaseJson.optJSONArray("assets")
+          ?: return@withContext CheckUpdateResult.Error("No release assets found")
         var matchedDownloadUrl: String? = null
         val isFoss = applicationInfo.flavor == Flavor.Foss
 
@@ -137,11 +161,10 @@ class GitHubAppUpdateSource(
 
         if (matchedDownloadUrl.isNullOrBlank()) {
           bark(LogPriority.WARN) { "No matching APK asset found in release $tagName for flavor ${applicationInfo.flavor}" }
-          return@withContext null
+          return@withContext CheckUpdateResult.Error("No matching APK asset found for flavor ${applicationInfo.flavor}")
         }
 
         cachedDownloadUrl = matchedDownloadUrl
-        lastCheckTimestamp = now
 
         val update = AppUpdate(
           versionName = remoteVersionName,
@@ -149,11 +172,16 @@ class GitHubAppUpdateSource(
           releaseNotes = body.ifBlank { null },
         )
         cachedUpdate = update
-        update
+        _changes.tryEmit(Unit)
+        CheckUpdateResult.Available(update)
       }
     } catch (e: Exception) {
       bark(LogPriority.WARN, throwable = e) { "Failed to check for GitHub updates" }
-      cached
+      if (cached != null) {
+        CheckUpdateResult.Available(cached)
+      } else {
+        CheckUpdateResult.Error(e.message ?: "Failed to connect to GitHub")
+      }
     }
   }
 
@@ -272,7 +300,7 @@ class GitHubAppUpdateSource(
   companion object {
     private const val GITHUB_REPO = "Cobolt78/Campfire"
     private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-    private val CACHE_DURATION_MS = TimeUnit.MINUTES.toMillis(15)
+    private val COOLDOWN_DURATION_MS = TimeUnit.HOURS.toMillis(1)
 
     private fun parseVersionCode(raw: String): Long? {
       val match = Regex("""(?:v)?(\d+)\.(\d+)\.(\d+)(?:[.-]rc(\d+))?""", RegexOption.IGNORE_CASE).find(raw)

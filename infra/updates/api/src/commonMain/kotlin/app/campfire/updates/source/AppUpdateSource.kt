@@ -46,9 +46,23 @@ interface AppUpdateSource {
   suspend fun getAvailableUpdate(): AppUpdate?
 
   /**
+   * Check for updates, optionally bypassing the time cooldown when [force] is true.
+   */
+  suspend fun checkForUpdates(force: Boolean = false): CheckUpdateResult {
+    val update = getAvailableUpdate()
+    return if (update != null) CheckUpdateResult.Available(update) else CheckUpdateResult.UpToDate
+  }
+
+  /**
    * Kick of the update installation process
    */
   suspend fun installUpdate(): Flow<AppUpdateProgress>
+}
+
+sealed interface CheckUpdateResult {
+  data class Available(val update: AppUpdate) : CheckUpdateResult
+  data object UpToDate : CheckUpdateResult
+  data class Error(val message: String?) : CheckUpdateResult
 }
 
 data class AppUpdate(

@@ -194,6 +194,14 @@ class MainActivity : ComponentActivity() {
     component.offlineDownloadManager.resumeDownloads()
   }
 
+  override fun onResume() {
+    super.onResume()
+    bark { "MainActivity::onResume()" }
+    lifecycleScope.launch {
+      component.appUpdateSource.checkForUpdates(force = false)
+    }
+  }
+
   override fun onDestroy() {
     super.onDestroy()
     bark { "MainActivity::onDestroy()" }

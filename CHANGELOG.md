@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.34]
+
+### Added
+
+- **Multi-Trigger GitHub App Update Checking with 1-Hour Disk Cooldown**:
+  - **Pull-to-Refresh Auto-Check**: Pulling down to refresh on the Home screen (or tapping the Discoveries shelf refresh) automatically checks GitHub Releases for new Campfire updates in a parallel, non-blocking background task.
+  - **App Foregrounding (`onResume`) Auto-Check**: Resuming or opening Campfire automatically performs a silent background update check without interrupting playback or startup.
+  - **Unified 1-Hour Disk Cooldown**: All background checks share an hourly timestamp persisted to disk (`AppStateSettings.lastAppUpdateCheckTimestamp`), preventing repeated GitHub API network queries during frequent shelf refreshes or app switching while surviving app restarts and process kills.
+  - **Manual "Check for Updates" Drawer Button**: Added a dedicated action item in the main navigation drawer between "Settings" and "What's New". Tapping it bypasses the 1-hour cooldown to force an immediate GitHub check with an interactive loading spinner, provides immediate Toast feedback ("Campfire is up to date", "Update available: v...", or connection status), resets the cooldown timer, and instantly presents the update banner if a new version is found.
+
 ## [1.2.33]
 
 ### Fixed

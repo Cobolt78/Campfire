@@ -30,4 +30,11 @@ interface AppStateSettings {
    */
   var appUpdateDismissedVersionCode: Long
   fun observeAppUpdateDismissedVersionCode(): StateFlow<Long>
+
+  /**
+   * Timestamp in epoch milliseconds when the app last polled for updates.
+   * Persisted on disk so 1-hour cooldowns survive background kills and restarts.
+   */
+  var lastAppUpdateCheckTimestamp: Long
+  fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long>
 }

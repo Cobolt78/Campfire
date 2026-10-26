@@ -26,6 +26,10 @@ import app.campfire.home.api.model.ShelfIds
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.test.FakeMediaProgressRepository
+import app.campfire.updates.source.AppUpdate
+import app.campfire.updates.source.AppUpdateProgress
+import app.campfire.updates.source.AppUpdateSource
+import kotlinx.coroutines.flow.Flow
 import assertk.Assert
 import assertk.all
 import assertk.assertThat
@@ -60,10 +64,19 @@ class HomePresenterTest {
   val offlineDownloadManager = FakeOfflineDownloadManager()
   val mediaProgressRepository = FakeMediaProgressRepository()
   val libraryItemRepository = FakeLibraryItemRepository()
+  val fakeAppUpdateSource = object : AppUpdateSource {
+    override val isSupported: Boolean = true
+    override fun isSignedIn(): Boolean = true
+    override suspend fun signIn() {}
+    override suspend fun isUpdateAvailable(): Boolean = false
+    override suspend fun getAvailableUpdate(): AppUpdate? = null
+    override suspend fun installUpdate(): Flow<AppUpdateProgress> = emptyFlow()
+  }
 
   private fun createPresenter(
     repository: HomeRepository,
     registry: BookInfoRegistry = FakeBookInfoRegistry(),
+    updateSource: AppUpdateSource = fakeAppUpdateSource,
   ): HomePresenter {
     return HomePresenter(
       navigator = navigator,
@@ -73,6 +86,7 @@ class HomePresenterTest {
       libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = registry,
       analytics = analytics,
+      appUpdateSource = updateSource,
     )
   }
 

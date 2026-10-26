@@ -36,4 +36,9 @@ class TestAppStateSettings(
   override fun observeAppUpdateDismissedVersionCode(): StateFlow<Long> =
     observeLong(::appUpdateDismissedVersionCode)
       .stateIn(testScope, SharingStarted.Lazily, appUpdateDismissedVersionCode)
+
+  override var lastAppUpdateCheckTimestamp: Long by long()
+  override fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long> =
+    observeLong(::lastAppUpdateCheckTimestamp)
+      .stateIn(testScope, SharingStarted.Lazily, lastAppUpdateCheckTimestamp)
 }

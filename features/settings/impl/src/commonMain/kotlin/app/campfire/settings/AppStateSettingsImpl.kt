@@ -40,9 +40,15 @@ class AppStateSettingsImpl(
   override var appUpdateDismissedVersionCode: Long by appUpdateDismissedVersionCodeProperty
   override fun observeAppUpdateDismissedVersionCode(): StateFlow<Long> =
     appUpdateDismissedVersionCodeProperty.observe()
+
+  private val lastAppUpdateCheckTimestampProperty = longSetting(KEY_LAST_APP_UPDATE_CHECK_TIMESTAMP, 0L)
+  override var lastAppUpdateCheckTimestamp: Long by lastAppUpdateCheckTimestampProperty
+  override fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long> =
+    lastAppUpdateCheckTimestampProperty.observe()
 }
 
 internal const val KEY_SHOW_WIDGET_PINNING = "pref_show_widget_pinning"
 internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"
 internal const val KEY_APP_UPDATE_SIGN_IN_DISMISSED = "pref_app_update_sign_in_dismissed"
 internal const val KEY_APP_UPDATE_DISMISSED_VERSION_CODE = "pref_app_update_dismissed_version_code"
+internal const val KEY_LAST_APP_UPDATE_CHECK_TIMESTAMP = "pref_last_app_update_check_timestamp"
