@@ -211,6 +211,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
 * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
 * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
 * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
 * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
 * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
 * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
@@ -1691,6 +1692,48 @@ Replaced the rigid 3-value tap-to-cycle skip settings (`5s / 10s / 30s`) in Play
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+* `gradle.properties`
+
+---
+
+## 63. Wired Headset 30-Second Skip Interception & Sleep Timer Persistence (v1.2.33)
+
+### Problem Description
+1. **Wired Headset / USB-C Inline Remote Chapter Skip Bug**:
+   - A user running a Samsung Galaxy Note 10 on Android 12 (One UI 4.1) using a wired USB-C headset reported that skipping with the wired headset skipped audiobook chapters instead of jumping forward/backward by 30 seconds, even though Bluetooth earbuds worked perfectly and the user explicitly configured `remoteNextPrevSkipsChapters = false`.
+   - **Root Cause**: In AndroidX Media3, hardware `ACTION_MEDIA_BUTTON` broadcast events from wired 3.5mm headsets, USB-C headphones, and USB DAC dongles are handled by `MediaSessionService.onStartCommand()` and routed into `MediaSessionImpl` via Media3's internal notification controller (`session.isMediaNotificationController(controllerInfo) == true`). In `MediaSessionCallback.kt`, checking `!isNotification` falsely identified all wired headset button events as the system notification tray, bypassing custom time-seek interception for `KEYCODE_HEADSETHOOK`, `KEYCODE_MEDIA_NEXT`, and `KEYCODE_MEDIA_PREVIOUS` and falling through to Media3's default behavior (`seekToNextMediaItem()`).
+2. **Sleep Timer Disappearing / Disabled After Playback Pauses**:
+   - Users noticed that after setting a sleep timer while paused (or pausing playback with a running sleep timer) and unpausing several minutes later, the sleep timer was disabled or completely gone.
+   - **Root Cause**: `CoroutineSleepTimerManager` previously maintained all active timer state solely in memory. When playback is paused for several minutes, Android demotes the foreground playback service to a cached background service and terminates the process during deep sleep. Upon unpausing, playback resumed cleanly, but `CoroutineSleepTimerManager` was re-instantiated with all in-memory timer fields set to `null`.
+
+### Solution & Key Implementation Details
+1. **Wired Headset & Media Notification Controller Decoupling (`MediaSessionCallback.kt`)**:
+   - Removed the overly broad `!isNotification` check from `KeyEvent.KEYCODE_HEADSETHOOK`, `KeyEvent.KEYCODE_MEDIA_NEXT`, and `KeyEvent.KEYCODE_MEDIA_PREVIOUS`.
+   - Android system notification buttons utilize Media3 `PlayerCommand`s (`Player.COMMAND_SEEK_TO_NEXT`, `Player.COMMAND_SEEK_FORWARD`, etc.) rather than raw hardware `KeyEvent`s, making the `!isNotification` check on `KeyEvent`s unnecessary and harmful to wired headsets.
+   - Retained the `!isAuto` guard so that dedicated in-car steering wheel and console buttons in Android Auto continue to function as intended.
+   - Wired headset multi-clicks (single click: play/pause; double click: skip forward; triple click: skip backward) and OEM-translated next/prev hardware buttons now consistently honor `component.playbackSettings.remoteNextPrevSkipsChapters` by invoking `player.seekForward()` and `player.seekBackward()`.
+2. **Sleep Timer State Persistence & Rehydration (`SleepSettings.kt`, `SleepSettingsImpl.kt`, `CoroutineSleepTimerManager.kt`)**:
+   - Added `PersistedSleepTimer(isEndOfChapter, totalDurationMillis, remainingMillis, isAutoSleepTimer)` to `SleepSettings`.
+   - Implemented persistent storage in `SleepSettingsImpl` backed by `stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)`.
+   - Updated `CoroutineSleepTimerManager`:
+     - **Save on Set**: In `setTimer(timer)`, writes `activeSleepTimer` to settings immediately.
+     - **Save on Pause**: In `pauseCountdown(timer)`, computes and persists the exact frozen `remainingMillis`.
+     - **Save on Resume**: In `resumeCountdown(timer)`, records the active timer and countdown resume reference.
+     - **Clear on Stop/Finish**: In `clearTimerInternal()`, sets `activeSleepTimer = null`.
+     - **Restore on Re-Instantiation**: In `init`, invokes `restorePersistedTimer()` to inspect `sleepSettings.activeSleepTimer`. If a valid timer exists, rehydrates `playbackTimer`, sets `initialRemainingMillis`, starts state observation, and immediately publishes a frozen `RunningTimer` if paused.
+3. **Comprehensive Unit Testing (`CoroutineSleepTimerManagerTest.kt`)**:
+   - Added test `persisted sleep timer is restored on manager initialization` verifying frozen remaining duration on pause and resumption countdown to completion.
+   - Added test `persisted end of chapter timer is restored on manager initialization` verifying boundary pause and clean timer removal.
+
+### Modified Files:
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
 * `gradle.properties`

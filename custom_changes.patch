@@ -11,14 +11,27 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..33608210 100644
+index c0278c85..57bc0db6 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,236 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,249 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.33]
++
++### Fixed
++
++- **Wired Headset Multi-Click & Next/Previous 30-Second Skip Interception**:
++  - Fixed an issue where wired 3.5mm headsets, USB-C earphones (e.g. Samsung AKG Type-C on Galaxy Note 10), and external USB-C DAC dongles unexpectedly skipped book chapters instead of jumping forward/backward by 30 seconds.
++  - Media3 routes hardware `ACTION_MEDIA_BUTTON` broadcast events from wired headsets through its internal notification controller proxy (`session.isMediaNotificationController() == true`). Removed overly restrictive `!isNotification` checks from `KEYCODE_HEADSETHOOK`, `KEYCODE_MEDIA_NEXT`, and `KEYCODE_MEDIA_PREVIOUS` handlers in `MediaSessionCallback.kt`.
++  - Wired headset inline multi-clicks (double click to jump forward, triple click to jump backward) and OEM-synthesized next/previous key events now consistently obey the user's remote skip setting (`remoteNextPrevSkipsChapters`).
++- **Sleep Timer Persistence Across Pauses & Background Service Lifecycle**:
++  - Fixed an issue where the sleep timer was unexpectedly disabled or disappeared if playback was paused for several minutes before resuming.
++  - When playback is paused in deep sleep, Android demotes and terminates idle background media services. In-memory timer countdowns were previously discarded upon service recreation.
++  - `CoroutineSleepTimerManager` now persists the active timer type, total duration, and exact frozen remaining countdown to disk (`SleepSettings.activeSleepTimer`) whenever a timer is set, paused, or resumed, and cleanly restores it on service restart.
++
 +## [1.2.32]
 +
 +### Fixed
@@ -254,10 +267,10 @@ index c0278c85..33608210 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..df5d3d88
+index 00000000..bc365399
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1696 @@
+@@ -0,0 +1,1739 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -471,6 +484,7 @@ index 00000000..df5d3d88
 +* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
 +* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
 +* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
 +* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
 +* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
 +* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
@@ -1951,6 +1965,48 @@ index 00000000..df5d3d88
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++* `gradle.properties`
++
++---
++
++## 63. Wired Headset 30-Second Skip Interception & Sleep Timer Persistence (v1.2.33)
++
++### Problem Description
++1. **Wired Headset / USB-C Inline Remote Chapter Skip Bug**:
++   - A user running a Samsung Galaxy Note 10 on Android 12 (One UI 4.1) using a wired USB-C headset reported that skipping with the wired headset skipped audiobook chapters instead of jumping forward/backward by 30 seconds, even though Bluetooth earbuds worked perfectly and the user explicitly configured `remoteNextPrevSkipsChapters = false`.
++   - **Root Cause**: In AndroidX Media3, hardware `ACTION_MEDIA_BUTTON` broadcast events from wired 3.5mm headsets, USB-C headphones, and USB DAC dongles are handled by `MediaSessionService.onStartCommand()` and routed into `MediaSessionImpl` via Media3's internal notification controller (`session.isMediaNotificationController(controllerInfo) == true`). In `MediaSessionCallback.kt`, checking `!isNotification` falsely identified all wired headset button events as the system notification tray, bypassing custom time-seek interception for `KEYCODE_HEADSETHOOK`, `KEYCODE_MEDIA_NEXT`, and `KEYCODE_MEDIA_PREVIOUS` and falling through to Media3's default behavior (`seekToNextMediaItem()`).
++2. **Sleep Timer Disappearing / Disabled After Playback Pauses**:
++   - Users noticed that after setting a sleep timer while paused (or pausing playback with a running sleep timer) and unpausing several minutes later, the sleep timer was disabled or completely gone.
++   - **Root Cause**: `CoroutineSleepTimerManager` previously maintained all active timer state solely in memory. When playback is paused for several minutes, Android demotes the foreground playback service to a cached background service and terminates the process during deep sleep. Upon unpausing, playback resumed cleanly, but `CoroutineSleepTimerManager` was re-instantiated with all in-memory timer fields set to `null`.
++
++### Solution & Key Implementation Details
++1. **Wired Headset & Media Notification Controller Decoupling (`MediaSessionCallback.kt`)**:
++   - Removed the overly broad `!isNotification` check from `KeyEvent.KEYCODE_HEADSETHOOK`, `KeyEvent.KEYCODE_MEDIA_NEXT`, and `KeyEvent.KEYCODE_MEDIA_PREVIOUS`.
++   - Android system notification buttons utilize Media3 `PlayerCommand`s (`Player.COMMAND_SEEK_TO_NEXT`, `Player.COMMAND_SEEK_FORWARD`, etc.) rather than raw hardware `KeyEvent`s, making the `!isNotification` check on `KeyEvent`s unnecessary and harmful to wired headsets.
++   - Retained the `!isAuto` guard so that dedicated in-car steering wheel and console buttons in Android Auto continue to function as intended.
++   - Wired headset multi-clicks (single click: play/pause; double click: skip forward; triple click: skip backward) and OEM-translated next/prev hardware buttons now consistently honor `component.playbackSettings.remoteNextPrevSkipsChapters` by invoking `player.seekForward()` and `player.seekBackward()`.
++2. **Sleep Timer State Persistence & Rehydration (`SleepSettings.kt`, `SleepSettingsImpl.kt`, `CoroutineSleepTimerManager.kt`)**:
++   - Added `PersistedSleepTimer(isEndOfChapter, totalDurationMillis, remainingMillis, isAutoSleepTimer)` to `SleepSettings`.
++   - Implemented persistent storage in `SleepSettingsImpl` backed by `stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)`.
++   - Updated `CoroutineSleepTimerManager`:
++     - **Save on Set**: In `setTimer(timer)`, writes `activeSleepTimer` to settings immediately.
++     - **Save on Pause**: In `pauseCountdown(timer)`, computes and persists the exact frozen `remainingMillis`.
++     - **Save on Resume**: In `resumeCountdown(timer)`, records the active timer and countdown resume reference.
++     - **Clear on Stop/Finish**: In `clearTimerInternal()`, sets `activeSleepTimer = null`.
++     - **Restore on Re-Instantiation**: In `init`, invokes `restorePersistedTimer()` to inspect `sleepSettings.activeSleepTimer`. If a valid timer exists, rehydrates `playbackTimer`, sets `initialRemainingMillis`, starts state observation, and immediately publishes a frozen `RunningTimer` if paused.
++3. **Comprehensive Unit Testing (`CoroutineSleepTimerManagerTest.kt`)**:
++   - Added test `persisted sleep timer is restored on manager initialization` verifying frozen remaining duration on pause and resumption countdown to completion.
++   - Added test `persisted end of chapter timer is restored on manager initialization` verifying boundary pause and clean timer removal.
++
++### Modified Files:
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
++* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
 +* `gradle.properties`
@@ -10938,10 +10994,10 @@ index 4b7fc2d1..2de5ecc3 100644
          )
        },
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-index 278dcf20..efba7ae3 100644
+index 278dcf20..62210af7 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-@@ -657,6 +657,15 @@ fun TimerBottomSheetV2Preview() {
+@@ -657,6 +657,24 @@ fun TimerBottomSheetV2Preview() {
                return mutableShakeToReset
              }
  
@@ -10952,6 +11008,15 @@ index 278dcf20..efba7ae3 100644
 +
 +            override fun observeResetTimerOnPause(): StateFlow<Boolean> {
 +              return mutableResetTimerOnPause
++            }
++
++            val mutableActiveSleepTimer = MutableStateFlow<SleepSettings.PersistedSleepTimer?>(null)
++            override var activeSleepTimer: SleepSettings.PersistedSleepTimer?
++              get() = mutableActiveSleepTimer.value
++              set(value) { mutableActiveSleepTimer.value = value }
++
++            override fun observeActiveSleepTimer(): StateFlow<SleepSettings.PersistedSleepTimer?> {
++              return mutableActiveSleepTimer
 +            }
 +
              override var shakeSensitivity: SleepSettings.ShakeSensitivity
@@ -11183,15 +11248,25 @@ index 7b142288..f3c18b43 100644
 +  fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
-index ea37e0e1..407e4ca8 100644
+index ea37e0e1..b9c30355 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
 +++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
-@@ -46,6 +46,9 @@ interface SleepSettings {
+@@ -46,6 +46,19 @@ interface SleepSettings {
    var fadeOutDuration: Duration
    fun observeFadeOutDuration(): StateFlow<Duration>
  
 +  var resetTimerOnPause: Boolean
 +  fun observeResetTimerOnPause(): StateFlow<Boolean>
++
++  var activeSleepTimer: PersistedSleepTimer?
++  fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?>
++
++  data class PersistedSleepTimer(
++    val isEndOfChapter: Boolean,
++    val totalDurationMillis: Long,
++    val remainingMillis: Long,
++    val isAutoSleepTimer: Boolean = false,
++  )
 +
    sealed class AutoSleepTimer {
      data class Epoch(val millis: Long) : AutoSleepTimer()
@@ -11266,10 +11341,29 @@ index 9644f55e..2f839968 100644
 +  KEY_CONTINUE_SERIES_ALTERNATE_VIEW,
  )
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
-index 2c64f754..c519f0b3 100644
+index 2c64f754..944eaeec 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
 +++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
-@@ -102,6 +102,10 @@ class SleepSettingsImpl(
+@@ -7,6 +7,7 @@ import app.campfire.core.di.AppScope
+ import app.campfire.core.di.qualifier.ForScope
+ import app.campfire.settings.api.SleepSettings
+ import app.campfire.settings.api.SleepSettings.AutoSleepTimer
++import app.campfire.settings.api.SleepSettings.PersistedSleepTimer
+ import app.campfire.settings.api.SleepSettings.ShakeSensitivity
+ import com.russhwolf.settings.ExperimentalSettingsApi
+ import com.russhwolf.settings.ObservableSettings
+@@ -17,7 +18,10 @@ import dev.zacsweers.metro.binding
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.minutes
+ import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.SharingStarted
+ import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.flow.stateIn
+ import kotlinx.datetime.LocalTime
+ 
+ @OptIn(ExperimentalSettingsApi::class)
+@@ -102,6 +106,24 @@ class SleepSettingsImpl(
    private val fadeOutDurationProperty = durationSetting(KEY_FADE_OUT_DURATION, SleepSettings.DefaultFadeOutDuration)
    override var fadeOutDuration: Duration by fadeOutDurationProperty
    override fun observeFadeOutDuration(): StateFlow<Duration> = fadeOutDurationProperty.observe()
@@ -11277,14 +11371,45 @@ index 2c64f754..c519f0b3 100644
 +  private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, false)
 +  override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
 +  override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
++
++  private val activeSleepTimerProperty = stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)
++  private var activeSleepTimerRaw: String? by activeSleepTimerProperty
++  override var activeSleepTimer: PersistedSleepTimer?
++    get() = activeSleepTimerRaw?.toPersistedSleepTimer()
++    set(value) {
++      activeSleepTimerRaw = value?.serialize()
++    }
++  override fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?> {
++    val initial = activeSleepTimerRaw?.toPersistedSleepTimer()
++    return activeSleepTimerProperty.observe()
++      .map { it?.toPersistedSleepTimer() }
++      .stateIn(scope, SharingStarted.Lazily, initial)
++  }
  }
  
  private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
-@@ -114,6 +118,7 @@ private const val KEY_AUTO_SLEEP_TIMER = "pref_auto_sleep_timer"
+@@ -114,6 +136,24 @@ private const val KEY_AUTO_SLEEP_TIMER = "pref_auto_sleep_timer"
  private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
  private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
  private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 +private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
++private const val KEY_ACTIVE_SLEEP_TIMER = "pref_active_sleep_timer"
++
++private const val ACTIVE_TIMER_SEPARATOR = "|"
++
++private fun PersistedSleepTimer.serialize(): String {
++  return "$isEndOfChapter$ACTIVE_TIMER_SEPARATOR$totalDurationMillis$ACTIVE_TIMER_SEPARATOR$remainingMillis$ACTIVE_TIMER_SEPARATOR$isAutoSleepTimer"
++}
++
++private fun String.toPersistedSleepTimer(): PersistedSleepTimer? {
++  val parts = split(ACTIVE_TIMER_SEPARATOR)
++  if (parts.size != 4) return null
++  val isEndOfChapter = parts[0].toBooleanStrictOrNull() ?: return null
++  val totalDurationMillis = parts[1].toLongOrNull() ?: return null
++  val remainingMillis = parts[2].toLongOrNull() ?: return null
++  val isAutoSleepTimer = parts[3].toBooleanStrictOrNull() ?: return null
++  return PersistedSleepTimer(isEndOfChapter, totalDurationMillis, remainingMillis, isAutoSleepTimer)
++}
  
  private const val DefaultShakeToResetEnabled = false
  private const val DefaultAutoSleepTimerEnabled = false
@@ -11322,10 +11447,18 @@ index 5d562767..fcb8d9c2 100644
    fun `corrupt profile strings fall back to the default`() {
      val backing = MapSettings()
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
-index bf6d70dc..9af7ede2 100644
+index bf6d70dc..6ec8fbeb 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
 +++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
-@@ -77,4 +77,10 @@ class FakeSleepSettings : SleepSettings {
+@@ -5,6 +5,7 @@ package app.campfire.settings.test
+ 
+ import app.campfire.settings.api.SleepSettings
+ import app.campfire.settings.api.SleepSettings.AutoSleepTimer
++import app.campfire.settings.api.SleepSettings.PersistedSleepTimer
+ import app.campfire.settings.api.SleepSettings.ShakeSensitivity
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.minutes
+@@ -77,4 +78,16 @@ class FakeSleepSettings : SleepSettings {
      get() = _fadeOutDuration.value
      set(value) { _fadeOutDuration.value = value }
    override fun observeFadeOutDuration(): StateFlow<Duration> = _fadeOutDuration.asStateFlow()
@@ -11335,6 +11468,12 @@ index bf6d70dc..9af7ede2 100644
 +    get() = _resetTimerOnPause.value
 +    set(value) { _resetTimerOnPause.value = value }
 +  override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
++
++  private val _activeSleepTimer = MutableStateFlow<PersistedSleepTimer?>(null)
++  override var activeSleepTimer: PersistedSleepTimer?
++    get() = _activeSleepTimer.value
++    set(value) { _activeSleepTimer.value = value }
++  override fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?> = _activeSleepTimer.asStateFlow()
  }
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
 index 012f349d..b2827c99 100644
@@ -12109,7 +12248,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..8187cd86 100644
+index f41126a7..668b9236 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12117,13 +12256,13 @@ index f41126a7..8187cd86 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.32
++campfire.version=1.2.33
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1023299
++campfire.versionCode=1023399
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -12471,7 +12610,7 @@ index 21246ae6..27d1c68e 100644
              .setDurationMs(metadata.durationMs)
              .build(),
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-index a22d7695..c4766e35 100644
+index a22d7695..75d3b754 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 @@ -8,6 +8,7 @@ import android.content.Context
@@ -12597,7 +12736,7 @@ index a22d7695..c4766e35 100644
          .build()
      } else {
        return AcceptedResultBuilder(session)
-@@ -172,20 +231,88 @@ internal class MediaSessionCallback(
+@@ -172,20 +231,87 @@ internal class MediaSessionCallback(
        component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
      }
  
@@ -12613,7 +12752,6 @@ index a22d7695..c4766e35 100644
 -        when (keyEvent.keyCode) {
 -          KeyEvent.KEYCODE_MEDIA_NEXT -> {
 +    val isAuto = session.isAutoController(controllerInfo)
-+    val isNotification = session.isMediaNotificationController(controllerInfo)
 +
 +    if (keyEvent != null) {
 +      when (keyEvent.keyCode) {
@@ -12636,7 +12774,7 @@ index a22d7695..c4766e35 100644
 +          return true
 +        }
 +        KeyEvent.KEYCODE_HEADSETHOOK -> {
-+          if (!isAuto && !isNotification) {
++          if (!isAuto) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
 +              if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
 +                isHeadsetHookLongPress = true
@@ -12678,10 +12816,10 @@ index a22d7695..c4766e35 100644
 +          }
 +        }
 +        KeyEvent.KEYCODE_MEDIA_NEXT -> {
-+          // In Android Auto and system notification, there are dedicated jump buttons,
++          // In Android Auto, there are dedicated jump buttons on the screen,
 +          // so next/prev should always skip chapters.
-+          // For remote bluetooth devices without dedicated jump buttons, respect setting:
-+          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
++          // For remote bluetooth devices, wired headsets, and external controllers, respect user setting:
++          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
 +              player.seekForward()
 +            }
@@ -12689,14 +12827,14 @@ index a22d7695..c4766e35 100644
 +          }
 +        }
 +        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-+          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
++          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
 +              player.seekBackward()
 +            }
              return true
            }
          }
-@@ -194,6 +321,42 @@ internal class MediaSessionCallback(
+@@ -194,6 +320,42 @@ internal class MediaSessionCallback(
      return super.onMediaButtonEvent(session, controllerInfo, intent)
    }
  
@@ -12739,7 +12877,7 @@ index a22d7695..c4766e35 100644
    override fun onGetLibraryRoot(
      session: MediaLibrarySession,
      browser: MediaSession.ControllerInfo,
-@@ -276,17 +439,71 @@ internal class MediaSessionCallback(
+@@ -276,17 +438,71 @@ internal class MediaSessionCallback(
      startIndex: Int,
      startPositionMs: Long,
    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
@@ -12820,7 +12958,7 @@ index a22d7695..c4766e35 100644
          // resolving / setting the media item(s).
          error("Deliberately not return here")
        }
-@@ -317,49 +534,7 @@ internal class MediaSessionCallback(
+@@ -317,49 +533,7 @@ internal class MediaSessionCallback(
      }
    }
  
@@ -13386,10 +13524,118 @@ index bf0c0272..c87139c9 100644
        artworkUri = media.coverImageUrl,
        durationMs = track.duration.seconds.inWholeMilliseconds,
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-index 5a85d185..af74ad1b 100644
+index 5a85d185..608ea1dd 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 +++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-@@ -306,11 +306,17 @@ class CoroutineSleepTimerManager(
+@@ -70,6 +70,50 @@ class CoroutineSleepTimerManager(
+   private var remainingMillis = 0L
+   private var countdownResumedAt: Long? = null
+ 
++  init {
++    restorePersistedTimer()
++  }
++
++  private fun restorePersistedTimer() {
++    val persisted = sleepSettings.activeSleepTimer ?: return
++    dbark { "Restoring persisted sleep timer: $persisted" }
++    if (persisted.isEndOfChapter) {
++      val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
++      playbackTimer = timer
++      lastPlaybackTimer = timer
++      startTimer(timer)
++      startShakeDetectorIfNeeded()
++    } else {
++      if (persisted.remainingMillis > 0L) {
++        val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
++        playbackTimer = timer
++        lastPlaybackTimer = timer
++        startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
++        startShakeDetectorIfNeeded()
++      } else {
++        dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
++        sleepSettings.activeSleepTimer = null
++      }
++    }
++  }
++
++  private fun persistTimer(timer: PlaybackTimer, remainingMillis: Long) {
++    sleepSettings.activeSleepTimer = when (timer) {
++      is PlaybackTimer.EndOfChapter -> SleepSettings.PersistedSleepTimer(
++        isEndOfChapter = true,
++        totalDurationMillis = 0L,
++        remainingMillis = 0L,
++        isAutoSleepTimer = timer.isAutoSleepTimer,
++      )
++      is PlaybackTimer.Epoch -> SleepSettings.PersistedSleepTimer(
++        isEndOfChapter = false,
++        totalDurationMillis = timer.epochMillis,
++        remainingMillis = remainingMillis,
++        isAutoSleepTimer = timer.isAutoSleepTimer,
++      )
++    }
++  }
++
+   override fun onSessionStart() {
+     if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
+       if (isNowAnAutoSleepZone()) {
+@@ -108,7 +152,17 @@ class CoroutineSleepTimerManager(
+     playbackTimer = timer
+     lastPlaybackTimer = timer
+     startTimer(timer)
++    persistTimer(
++      timer = timer,
++      remainingMillis = when (timer) {
++        is PlaybackTimer.Epoch -> timer.epochMillis
++        is PlaybackTimer.EndOfChapter -> 0L
++      },
++    )
++    startShakeDetectorIfNeeded()
++  }
+ 
++  private fun startShakeDetectorIfNeeded() {
+     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
+       ibark { "Shake to reset enabled, starting shake detector" }
+       shakeDetector.start(
+@@ -162,6 +216,7 @@ class CoroutineSleepTimerManager(
+     remainingMillis = 0L
+     playbackTimer = null
+     runningTimer.value = null
++    sleepSettings.activeSleepTimer = null
+   }
+ 
+   private fun cancelFade() {
+@@ -266,15 +321,20 @@ class CoroutineSleepTimerManager(
+     }
+   }
+ 
+-  private fun startTimer(timer: PlaybackTimer) {
++  private fun startTimer(timer: PlaybackTimer, initialRemainingMillis: Long? = null) {
+     if (timer !is PlaybackTimer.Epoch) {
+       runningTimer.value = RunningTimer(timer, fatherTime.nowInEpochMillis(), sleepSettings.shakeToResetEnabled)
+       return
+     }
+ 
+-    remainingMillis = timer.epochMillis
++    remainingMillis = initialRemainingMillis ?: timer.epochMillis
+     countdownResumedAt = null
+ 
++    if (initialRemainingMillis != null && player.state.value != AudioPlayer.State.Playing) {
++      val now = fatherTime.nowInEpochMillis()
++      publishRunningTimer(timer, reference = now, pausedAt = now)
++    }
++
+     // The countdown only counts listening time: it runs while audio is playing, freezes when playback
+     // pauses (or is still preparing) and picks back up on resume.
+     playbackStateJob = applicationScope.launch(dispatcherProvider.main) {
+@@ -289,6 +349,7 @@ class CoroutineSleepTimerManager(
+     val now = fatherTime.nowInEpochMillis()
+     countdownResumedAt = now
+     publishRunningTimer(timer, reference = now, pausedAt = null)
++    persistTimer(timer, remainingMillis)
+ 
+     val remaining = remainingMillis
+     countdownJob?.cancel()
+@@ -306,11 +367,18 @@ class CoroutineSleepTimerManager(
      val now = fatherTime.nowInEpochMillis()
      val resumedAt = countdownResumedAt
      if (resumedAt != null) {
@@ -13406,6 +13652,7 @@ index 5a85d185..af74ad1b 100644
 +        dbark { "Playback paused, freezing sleep timer" }
 +        remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
 +      }
++      persistTimer(timer, remainingMillis)
      }
      publishRunningTimer(timer, reference = now, pausedAt = now)
    }
@@ -13554,6 +13801,73 @@ index 4feda46f..12e72235 100644
    }
  
    @Test
+diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
+index e248f31e..f1f3ff3f 100644
+--- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
++++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
+@@ -11,6 +11,7 @@ import app.campfire.audioplayer.test.FakeAudioPlayer
+ import app.campfire.audioplayer.test.FakeAudioPlayer.Invocation
+ import app.campfire.core.coroutines.DispatcherProvider
+ import app.campfire.core.time.FatherTime
++import app.campfire.settings.api.SleepSettings
+ import app.campfire.settings.test.FakeSleepSettings
+ import app.campfire.shake.ShakeDetector
+ import assertk.assertThat
+@@ -205,6 +206,54 @@ class CoroutineSleepTimerManagerTest {
+     assertThat(manager.endOfChapter()).isFalse()
+   }
+ 
++  @Test
++  fun `persisted sleep timer is restored on manager initialization`() = runTest {
++    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
++      isEndOfChapter = false,
++      totalDurationMillis = 30.minutes.inWholeMilliseconds,
++      remainingMillis = 15.minutes.inWholeMilliseconds,
++      isAutoSleepTimer = false,
++    )
++    player.state.value = State.Paused
++
++    val manager = manager()
++    val running = manager.runningTimer.value
++    assertThat(running).isNotNull()
++    assertThat(running?.isPaused).isEqualTo(true)
++    assertThat(running?.remainingMillis(testScheduler.currentTime)).isEqualTo(15.minutes.inWholeMilliseconds)
++
++    // When resumed, countdown starts from remainingMillis
++    player.state.value = State.Playing
++    assertThat(manager.runningTimer.value?.isPaused).isEqualTo(false)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(15.minutes.inWholeMilliseconds)
++
++    advanceTimeBy(15.minutes.inWholeMilliseconds - 1)
++    assertThat(fades()).isEmpty()
++
++    advanceTimeBy(2L)
++    assertThat(fades().single().duration).isEqualTo(5.seconds)
++    assertThat(manager.runningTimer.value).isNull()
++    assertThat(settings.activeSleepTimer).isNull()
++  }
++
++  @Test
++  fun `persisted end of chapter timer is restored on manager initialization`() = runTest {
++    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
++      isEndOfChapter = true,
++      totalDurationMillis = 0L,
++      remainingMillis = 0L,
++      isAutoSleepTimer = false,
++    )
++    player.state.value = State.Playing
++
++    val manager = manager()
++    assertThat(manager.runningTimer.value?.timer).isNotNull().isInstanceOf(PlaybackTimer.EndOfChapter::class)
++
++    assertThat(manager.endOfChapter()).isTrue()
++    assertThat(player.invocations.last()).isEqualTo(Invocation.Pause)
++    assertThat(settings.activeSleepTimer).isNull()
++  }
++
+   private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
+     override fun now(): LocalDateTime = error("not used in tests")
+     override fun today(): LocalDate = error("not used in tests")
 diff --git a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
 index 1b4d4dda..f361ba31 100644
 --- a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml

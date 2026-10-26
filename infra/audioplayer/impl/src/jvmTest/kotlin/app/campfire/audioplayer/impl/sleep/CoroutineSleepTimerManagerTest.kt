@@ -11,6 +11,7 @@ import app.campfire.audioplayer.test.FakeAudioPlayer
 import app.campfire.audioplayer.test.FakeAudioPlayer.Invocation
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.time.FatherTime
+import app.campfire.settings.api.SleepSettings
 import app.campfire.settings.test.FakeSleepSettings
 import app.campfire.shake.ShakeDetector
 import assertk.assertThat
@@ -203,6 +204,54 @@ class CoroutineSleepTimerManagerTest {
     assertThat(fades()).isEmpty()
     assertThat(manager.runningTimer.value).isNull()
     assertThat(manager.endOfChapter()).isFalse()
+  }
+
+  @Test
+  fun `persisted sleep timer is restored on manager initialization`() = runTest {
+    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
+      isEndOfChapter = false,
+      totalDurationMillis = 30.minutes.inWholeMilliseconds,
+      remainingMillis = 15.minutes.inWholeMilliseconds,
+      isAutoSleepTimer = false,
+    )
+    player.state.value = State.Paused
+
+    val manager = manager()
+    val running = manager.runningTimer.value
+    assertThat(running).isNotNull()
+    assertThat(running?.isPaused).isEqualTo(true)
+    assertThat(running?.remainingMillis(testScheduler.currentTime)).isEqualTo(15.minutes.inWholeMilliseconds)
+
+    // When resumed, countdown starts from remainingMillis
+    player.state.value = State.Playing
+    assertThat(manager.runningTimer.value?.isPaused).isEqualTo(false)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(15.minutes.inWholeMilliseconds)
+
+    advanceTimeBy(15.minutes.inWholeMilliseconds - 1)
+    assertThat(fades()).isEmpty()
+
+    advanceTimeBy(2L)
+    assertThat(fades().single().duration).isEqualTo(5.seconds)
+    assertThat(manager.runningTimer.value).isNull()
+    assertThat(settings.activeSleepTimer).isNull()
+  }
+
+  @Test
+  fun `persisted end of chapter timer is restored on manager initialization`() = runTest {
+    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
+      isEndOfChapter = true,
+      totalDurationMillis = 0L,
+      remainingMillis = 0L,
+      isAutoSleepTimer = false,
+    )
+    player.state.value = State.Playing
+
+    val manager = manager()
+    assertThat(manager.runningTimer.value?.timer).isNotNull().isInstanceOf(PlaybackTimer.EndOfChapter::class)
+
+    assertThat(manager.endOfChapter()).isTrue()
+    assertThat(player.invocations.last()).isEqualTo(Invocation.Pause)
+    assertThat(settings.activeSleepTimer).isNull()
   }
 
   private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {

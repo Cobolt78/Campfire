@@ -5,6 +5,7 @@ package app.campfire.settings.test
 
 import app.campfire.settings.api.SleepSettings
 import app.campfire.settings.api.SleepSettings.AutoSleepTimer
+import app.campfire.settings.api.SleepSettings.PersistedSleepTimer
 import app.campfire.settings.api.SleepSettings.ShakeSensitivity
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -83,4 +84,10 @@ class FakeSleepSettings : SleepSettings {
     get() = _resetTimerOnPause.value
     set(value) { _resetTimerOnPause.value = value }
   override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
+
+  private val _activeSleepTimer = MutableStateFlow<PersistedSleepTimer?>(null)
+  override var activeSleepTimer: PersistedSleepTimer?
+    get() = _activeSleepTimer.value
+    set(value) { _activeSleepTimer.value = value }
+  override fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?> = _activeSleepTimer.asStateFlow()
 }

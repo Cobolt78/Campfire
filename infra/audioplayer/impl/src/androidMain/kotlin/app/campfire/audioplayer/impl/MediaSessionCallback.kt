@@ -235,7 +235,6 @@ internal class MediaSessionCallback(
     // Media3 routes media button key events through this callback before processing them,
     // allowing us to intercept and redirect next/prev to seek when the setting is disabled.
     val isAuto = session.isAutoController(controllerInfo)
-    val isNotification = session.isMediaNotificationController(controllerInfo)
 
     if (keyEvent != null) {
       when (keyEvent.keyCode) {
@@ -256,7 +255,7 @@ internal class MediaSessionCallback(
           return true
         }
         KeyEvent.KEYCODE_HEADSETHOOK -> {
-          if (!isAuto && !isNotification) {
+          if (!isAuto) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN) {
               if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
                 isHeadsetHookLongPress = true
@@ -298,10 +297,10 @@ internal class MediaSessionCallback(
           }
         }
         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-          // In Android Auto and system notification, there are dedicated jump buttons,
+          // In Android Auto, there are dedicated jump buttons on the screen,
           // so next/prev should always skip chapters.
-          // For remote bluetooth devices without dedicated jump buttons, respect setting:
-          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+          // For remote bluetooth devices, wired headsets, and external controllers, respect user setting:
+          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
               player.seekForward()
             }
@@ -309,7 +308,7 @@ internal class MediaSessionCallback(
           }
         }
         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-          if (!isAuto && !isNotification && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
               player.seekBackward()
             }

@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.33]
+
+### Fixed
+
+- **Wired Headset Multi-Click & Next/Previous 30-Second Skip Interception**:
+  - Fixed an issue where wired 3.5mm headsets, USB-C earphones (e.g. Samsung AKG Type-C on Galaxy Note 10), and external USB-C DAC dongles unexpectedly skipped book chapters instead of jumping forward/backward by 30 seconds.
+  - Media3 routes hardware `ACTION_MEDIA_BUTTON` broadcast events from wired headsets through its internal notification controller proxy (`session.isMediaNotificationController() == true`). Removed overly restrictive `!isNotification` checks from `KEYCODE_HEADSETHOOK`, `KEYCODE_MEDIA_NEXT`, and `KEYCODE_MEDIA_PREVIOUS` handlers in `MediaSessionCallback.kt`.
+  - Wired headset inline multi-clicks (double click to jump forward, triple click to jump backward) and OEM-synthesized next/previous key events now consistently obey the user's remote skip setting (`remoteNextPrevSkipsChapters`).
+- **Sleep Timer Persistence Across Pauses & Background Service Lifecycle**:
+  - Fixed an issue where the sleep timer was unexpectedly disabled or disappeared if playback was paused for several minutes before resuming.
+  - When playback is paused in deep sleep, Android demotes and terminates idle background media services. In-memory timer countdowns were previously discarded upon service recreation.
+  - `CoroutineSleepTimerManager` now persists the active timer type, total duration, and exact frozen remaining countdown to disk (`SleepSettings.activeSleepTimer`) whenever a timer is set, paused, or resumed, and cleanly restores it on service restart.
+
 ## [1.2.32]
 
 ### Fixed

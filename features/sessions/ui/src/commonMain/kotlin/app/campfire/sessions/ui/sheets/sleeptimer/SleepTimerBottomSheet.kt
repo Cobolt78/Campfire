@@ -666,6 +666,15 @@ fun TimerBottomSheetV2Preview() {
               return mutableResetTimerOnPause
             }
 
+            val mutableActiveSleepTimer = MutableStateFlow<SleepSettings.PersistedSleepTimer?>(null)
+            override var activeSleepTimer: SleepSettings.PersistedSleepTimer?
+              get() = mutableActiveSleepTimer.value
+              set(value) { mutableActiveSleepTimer.value = value }
+
+            override fun observeActiveSleepTimer(): StateFlow<SleepSettings.PersistedSleepTimer?> {
+              return mutableActiveSleepTimer
+            }
+
             override var shakeSensitivity: SleepSettings.ShakeSensitivity
               get() = TODO("Not yet implemented")
               set(value) {}

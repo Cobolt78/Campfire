@@ -7,6 +7,7 @@ import app.campfire.core.di.AppScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.settings.api.SleepSettings
 import app.campfire.settings.api.SleepSettings.AutoSleepTimer
+import app.campfire.settings.api.SleepSettings.PersistedSleepTimer
 import app.campfire.settings.api.SleepSettings.ShakeSensitivity
 import com.russhwolf.settings.ExperimentalSettingsApi
 import com.russhwolf.settings.ObservableSettings
@@ -17,7 +18,10 @@ import dev.zacsweers.metro.binding
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.datetime.LocalTime
 
 @OptIn(ExperimentalSettingsApi::class)
@@ -106,6 +110,20 @@ class SleepSettingsImpl(
   private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, false)
   override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
   override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
+
+  private val activeSleepTimerProperty = stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)
+  private var activeSleepTimerRaw: String? by activeSleepTimerProperty
+  override var activeSleepTimer: PersistedSleepTimer?
+    get() = activeSleepTimerRaw?.toPersistedSleepTimer()
+    set(value) {
+      activeSleepTimerRaw = value?.serialize()
+    }
+  override fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?> {
+    val initial = activeSleepTimerRaw?.toPersistedSleepTimer()
+    return activeSleepTimerProperty.observe()
+      .map { it?.toPersistedSleepTimer() }
+      .stateIn(scope, SharingStarted.Lazily, initial)
+  }
 }
 
 private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
@@ -119,6 +137,23 @@ private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
 private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
 private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
+private const val KEY_ACTIVE_SLEEP_TIMER = "pref_active_sleep_timer"
+
+private const val ACTIVE_TIMER_SEPARATOR = "|"
+
+private fun PersistedSleepTimer.serialize(): String {
+  return "$isEndOfChapter$ACTIVE_TIMER_SEPARATOR$totalDurationMillis$ACTIVE_TIMER_SEPARATOR$remainingMillis$ACTIVE_TIMER_SEPARATOR$isAutoSleepTimer"
+}
+
+private fun String.toPersistedSleepTimer(): PersistedSleepTimer? {
+  val parts = split(ACTIVE_TIMER_SEPARATOR)
+  if (parts.size != 4) return null
+  val isEndOfChapter = parts[0].toBooleanStrictOrNull() ?: return null
+  val totalDurationMillis = parts[1].toLongOrNull() ?: return null
+  val remainingMillis = parts[2].toLongOrNull() ?: return null
+  val isAutoSleepTimer = parts[3].toBooleanStrictOrNull() ?: return null
+  return PersistedSleepTimer(isEndOfChapter, totalDurationMillis, remainingMillis, isAutoSleepTimer)
+}
 
 private const val DefaultShakeToResetEnabled = false
 private const val DefaultAutoSleepTimerEnabled = false

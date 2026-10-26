@@ -49,6 +49,16 @@ interface SleepSettings {
   var resetTimerOnPause: Boolean
   fun observeResetTimerOnPause(): StateFlow<Boolean>
 
+  var activeSleepTimer: PersistedSleepTimer?
+  fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?>
+
+  data class PersistedSleepTimer(
+    val isEndOfChapter: Boolean,
+    val totalDurationMillis: Long,
+    val remainingMillis: Long,
+    val isAutoSleepTimer: Boolean = false,
+  )
+
   sealed class AutoSleepTimer {
     data class Epoch(val millis: Long) : AutoSleepTimer()
     data object EndOfChapter : AutoSleepTimer()

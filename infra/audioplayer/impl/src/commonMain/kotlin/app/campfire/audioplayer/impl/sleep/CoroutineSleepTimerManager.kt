@@ -70,6 +70,50 @@ class CoroutineSleepTimerManager(
   private var remainingMillis = 0L
   private var countdownResumedAt: Long? = null
 
+  init {
+    restorePersistedTimer()
+  }
+
+  private fun restorePersistedTimer() {
+    val persisted = sleepSettings.activeSleepTimer ?: return
+    dbark { "Restoring persisted sleep timer: $persisted" }
+    if (persisted.isEndOfChapter) {
+      val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
+      playbackTimer = timer
+      lastPlaybackTimer = timer
+      startTimer(timer)
+      startShakeDetectorIfNeeded()
+    } else {
+      if (persisted.remainingMillis > 0L) {
+        val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
+        playbackTimer = timer
+        lastPlaybackTimer = timer
+        startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
+        startShakeDetectorIfNeeded()
+      } else {
+        dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
+        sleepSettings.activeSleepTimer = null
+      }
+    }
+  }
+
+  private fun persistTimer(timer: PlaybackTimer, remainingMillis: Long) {
+    sleepSettings.activeSleepTimer = when (timer) {
+      is PlaybackTimer.EndOfChapter -> SleepSettings.PersistedSleepTimer(
+        isEndOfChapter = true,
+        totalDurationMillis = 0L,
+        remainingMillis = 0L,
+        isAutoSleepTimer = timer.isAutoSleepTimer,
+      )
+      is PlaybackTimer.Epoch -> SleepSettings.PersistedSleepTimer(
+        isEndOfChapter = false,
+        totalDurationMillis = timer.epochMillis,
+        remainingMillis = remainingMillis,
+        isAutoSleepTimer = timer.isAutoSleepTimer,
+      )
+    }
+  }
+
   override fun onSessionStart() {
     if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
       if (isNowAnAutoSleepZone()) {
@@ -108,7 +152,17 @@ class CoroutineSleepTimerManager(
     playbackTimer = timer
     lastPlaybackTimer = timer
     startTimer(timer)
+    persistTimer(
+      timer = timer,
+      remainingMillis = when (timer) {
+        is PlaybackTimer.Epoch -> timer.epochMillis
+        is PlaybackTimer.EndOfChapter -> 0L
+      },
+    )
+    startShakeDetectorIfNeeded()
+  }
 
+  private fun startShakeDetectorIfNeeded() {
     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
       ibark { "Shake to reset enabled, starting shake detector" }
       shakeDetector.start(
@@ -162,6 +216,7 @@ class CoroutineSleepTimerManager(
     remainingMillis = 0L
     playbackTimer = null
     runningTimer.value = null
+    sleepSettings.activeSleepTimer = null
   }
 
   private fun cancelFade() {
@@ -266,14 +321,19 @@ class CoroutineSleepTimerManager(
     }
   }
 
-  private fun startTimer(timer: PlaybackTimer) {
+  private fun startTimer(timer: PlaybackTimer, initialRemainingMillis: Long? = null) {
     if (timer !is PlaybackTimer.Epoch) {
       runningTimer.value = RunningTimer(timer, fatherTime.nowInEpochMillis(), sleepSettings.shakeToResetEnabled)
       return
     }
 
-    remainingMillis = timer.epochMillis
+    remainingMillis = initialRemainingMillis ?: timer.epochMillis
     countdownResumedAt = null
+
+    if (initialRemainingMillis != null && player.state.value != AudioPlayer.State.Playing) {
+      val now = fatherTime.nowInEpochMillis()
+      publishRunningTimer(timer, reference = now, pausedAt = now)
+    }
 
     // The countdown only counts listening time: it runs while audio is playing, freezes when playback
     // pauses (or is still preparing) and picks back up on resume.
@@ -289,6 +349,7 @@ class CoroutineSleepTimerManager(
     val now = fatherTime.nowInEpochMillis()
     countdownResumedAt = now
     publishRunningTimer(timer, reference = now, pausedAt = null)
+    persistTimer(timer, remainingMillis)
 
     val remaining = remainingMillis
     countdownJob?.cancel()
@@ -317,6 +378,7 @@ class CoroutineSleepTimerManager(
         dbark { "Playback paused, freezing sleep timer" }
         remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
       }
+      persistTimer(timer, remainingMillis)
     }
     publishRunningTimer(timer, reference = now, pausedAt = now)
   }
