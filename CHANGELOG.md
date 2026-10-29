@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.35]
+
+### Fixed
+
+- **Fix App Crash on Launch from Persisted Sleep Timer (Class Initialization Order)**:
+  - Fixed a critical startup crash (`NullPointerException` on `player.state.value` during `AudioPlayerService.onCreate()`) that caused the app to crash repeatedly on open if the user previously had an active sleep timer.
+  - Deferred instantiation of `SleepTimerManager` in `ExoPlayerAudioPlayer` until after `state` and all player StateFlows are fully initialized.
+  - Added robust exception handling around `restorePersistedTimer()` and `startTimer()` in `CoroutineSleepTimerManager` so any corrupted or unexpected timer state is safely caught and cleared rather than causing a crash loop on app launch.
+
 ## [1.2.34]
 
 ### Added

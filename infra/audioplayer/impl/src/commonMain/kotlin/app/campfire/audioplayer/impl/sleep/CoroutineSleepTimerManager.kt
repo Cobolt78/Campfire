@@ -75,25 +75,32 @@ class CoroutineSleepTimerManager(
   }
 
   private fun restorePersistedTimer() {
-    val persisted = sleepSettings.activeSleepTimer ?: return
-    dbark { "Restoring persisted sleep timer: $persisted" }
-    if (persisted.isEndOfChapter) {
-      val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
-      playbackTimer = timer
-      lastPlaybackTimer = timer
-      startTimer(timer)
-      startShakeDetectorIfNeeded()
-    } else {
-      if (persisted.remainingMillis > 0L) {
-        val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
+    try {
+      val persisted = sleepSettings.activeSleepTimer ?: return
+      dbark { "Restoring persisted sleep timer: $persisted" }
+      if (persisted.isEndOfChapter) {
+        val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
         playbackTimer = timer
         lastPlaybackTimer = timer
-        startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
+        startTimer(timer)
         startShakeDetectorIfNeeded()
       } else {
-        dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
-        sleepSettings.activeSleepTimer = null
+        if (persisted.remainingMillis > 0L) {
+          val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
+          playbackTimer = timer
+          lastPlaybackTimer = timer
+          startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
+          startShakeDetectorIfNeeded()
+        } else {
+          dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
+          sleepSettings.activeSleepTimer = null
+        }
       }
+    } catch (e: Exception) {
+      dbark { "Failed to restore persisted sleep timer: ${e.message}; clearing" }
+      try {
+        sleepSettings.activeSleepTimer = null
+      } catch (_: Exception) {}
     }
   }
 
@@ -330,7 +337,12 @@ class CoroutineSleepTimerManager(
     remainingMillis = initialRemainingMillis ?: timer.epochMillis
     countdownResumedAt = null
 
-    if (initialRemainingMillis != null && player.state.value != AudioPlayer.State.Playing) {
+    val isPlaying = try {
+      player.state.value == AudioPlayer.State.Playing
+    } catch (_: Exception) {
+      false
+    }
+    if (initialRemainingMillis != null && !isPlaying) {
       val now = fatherTime.nowInEpochMillis()
       publishRunningTimer(timer, reference = now, pausedAt = now)
     }
@@ -338,8 +350,12 @@ class CoroutineSleepTimerManager(
     // The countdown only counts listening time: it runs while audio is playing, freezes when playback
     // pauses (or is still preparing) and picks back up on resume.
     playbackStateJob = applicationScope.launch(dispatcherProvider.main) {
-      player.state.collect { state ->
-        if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
+      try {
+        player.state.collect { state ->
+          if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
+        }
+      } catch (e: Exception) {
+        dbark { "Failed observing player state for sleep timer: ${e.message}" }
       }
     }
   }

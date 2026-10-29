@@ -1792,3 +1792,46 @@ Users wanted:
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 65. Sleep Timer Startup Crash Fix & Initialization Order (v1.2.35)
+
+### Problem Description
+- **Crash on App Open After Setting a Sleep Timer**:
+  - When users set a sleep timer the previous night and reopened Campfire the next morning, the application repeatedly crashed on startup with FATAL EXCEPTION: main in AudioPlayerService.onCreate().
+  - **Stack Trace**:
+    `
+    Caused by: java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.Object kotlinx.coroutines.flow.StateFlowImpl.getValue()' on a null object reference
+        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.startTimer(CoroutineSleepTimerManager.kt:333)
+        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.restorePersistedTimer(CoroutineSleepTimerManager.kt:91)
+        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.<init>(CoroutineSleepTimerManager.kt:74)
+        at app.campfire.audioplayer.impl.ExoPlayerAudioPlayer.<init>(ExoPlayerAudioPlayer.kt:129)
+        at app.campfire.audioplayer.impl.AudioPlayerService.onCreate(AudioPlayerService.kt:92)
+    `
+  - **Root Cause**:
+    - In ExoPlayerAudioPlayer, sleepTimerManager = sleepTimerManagerFactory.create(this) was instantiated at property declaration line 129, passing the uninitialized 	his instance into CoroutineSleepTimerManager.
+    - In CoroutineSleepTimerManager.init, 
+estorePersistedTimer() inspected sleepSettings.activeSleepTimer. If a sleep timer was active when playback previously ended or paused, it invoked startTimer(), which checked player.state.value != AudioPlayer.State.Playing.
+    - Because ExoPlayerAudioPlayer.state was declared lower in the class body (line 287), player.state was 
+ull during construction, triggering a fatal NullPointerException on player.state.value.
+    - Because the crash terminated the process during service creation before the timer could expire or clear, the persisted timer remained in disk settings, causing an infinite bootloop every time the user attempted to launch the app.
+
+### Solution & Key Implementation Details
+1. **Deferred SleepTimerManager Instantiation (ExoPlayerAudioPlayer.kt)**:
+   - Moved private val sleepTimerManager = sleepTimerManagerFactory.create(this) from line 129 to line 323, directly preceding override val runningTimer: StateFlow<RunningTimer?>.
+   - Ensures that all AudioPlayer properties—including state, overallTime, currentTime, xoPlayer, and forwarding players—are fully initialized before 	his is passed to sleepTimerManagerFactory.create(this).
+2. **Defensive Persistence Restoration & State Access (CoroutineSleepTimerManager.kt)**:
+   - Wrapped 
+estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupted data occurs during startup restoration, the error is logged and sleepSettings.activeSleepTimer is safely cleared to prevent crash loops.
+   - Guarded player.state.value and player.state.collect in startTimer() with exception handling to guarantee safe fallback even if a player implementation's state is unready.
+3. **Unit Testing (CoroutineSleepTimerManagerTest.kt)**:
+   - Added test persisted sleep timer restoration does not crash when player state is uninitialized verifying that CoroutineSleepTimerManager initializes safely without throwing when an AudioPlayer with an uninitialized state property is supplied.
+
+### Modified Files:
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+* infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
+* infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md

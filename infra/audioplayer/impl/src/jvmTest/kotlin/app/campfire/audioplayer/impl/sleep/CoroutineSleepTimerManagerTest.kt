@@ -254,6 +254,36 @@ class CoroutineSleepTimerManagerTest {
     assertThat(settings.activeSleepTimer).isNull()
   }
 
+  @Test
+  fun `persisted sleep timer restoration does not crash when player state is uninitialized`() = runTest {
+    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
+      isEndOfChapter = false,
+      totalDurationMillis = 30.minutes.inWholeMilliseconds,
+      remainingMillis = 15.minutes.inWholeMilliseconds,
+      isAutoSleepTimer = false,
+    )
+    val throwingPlayer = object : app.campfire.audioplayer.AudioPlayer by player {
+      override val state: kotlinx.coroutines.flow.StateFlow<State>
+        get() = throw NullPointerException("Uninitialized property")
+    }
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    val manager = CoroutineSleepTimerManager(
+      player = throwingPlayer,
+      sleepSettings = settings,
+      shakeDetector = ShakeDetector(),
+      dispatcherProvider = DispatcherProvider(
+        io = dispatcher,
+        databaseWrite = dispatcher,
+        databaseRead = dispatcher,
+        computation = dispatcher,
+        main = dispatcher,
+      ),
+      fatherTime = SchedulerFatherTime(this),
+      applicationScope = backgroundScope,
+    )
+    assertThat(manager).isNotNull()
+  }
+
   private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
     override fun now(): LocalDateTime = error("not used in tests")
     override fun today(): LocalDate = error("not used in tests")

@@ -11,14 +11,23 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..18c49d19 100644
+index c0278c85..4d713176 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,259 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,268 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.35]
++
++### Fixed
++
++- **Fix App Crash on Launch from Persisted Sleep Timer (Class Initialization Order)**:
++  - Fixed a critical startup crash (`NullPointerException` on `player.state.value` during `AudioPlayerService.onCreate()`) that caused the app to crash repeatedly on open if the user previously had an active sleep timer.
++  - Deferred instantiation of `SleepTimerManager` in `ExoPlayerAudioPlayer` until after `state` and all player StateFlows are fully initialized.
++  - Added robust exception handling around `restorePersistedTimer()` and `startTimer()` in `CoroutineSleepTimerManager` so any corrupted or unexpected timer state is safely caught and cleared rather than causing a crash loop on app launch.
++
 +## [1.2.34]
 +
 +### Added
@@ -277,10 +286,10 @@ index c0278c85..18c49d19 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..58cd706d
+index 00000000..40494c3a
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1794 @@
+@@ -0,0 +1,1837 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -2075,6 +2084,49 @@ index 00000000..58cd706d
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 65. Sleep Timer Startup Crash Fix & Initialization Order (v1.2.35)
++
++### Problem Description
++- **Crash on App Open After Setting a Sleep Timer**:
++  - When users set a sleep timer the previous night and reopened Campfire the next morning, the application repeatedly crashed on startup with FATAL EXCEPTION: main in AudioPlayerService.onCreate().
++  - **Stack Trace**:
++    `
++    Caused by: java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.Object kotlinx.coroutines.flow.StateFlowImpl.getValue()' on a null object reference
++        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.startTimer(CoroutineSleepTimerManager.kt:333)
++        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.restorePersistedTimer(CoroutineSleepTimerManager.kt:91)
++        at app.campfire.audioplayer.impl.sleep.CoroutineSleepTimerManager.<init>(CoroutineSleepTimerManager.kt:74)
++        at app.campfire.audioplayer.impl.ExoPlayerAudioPlayer.<init>(ExoPlayerAudioPlayer.kt:129)
++        at app.campfire.audioplayer.impl.AudioPlayerService.onCreate(AudioPlayerService.kt:92)
++    `
++  - **Root Cause**:
++    - In ExoPlayerAudioPlayer, sleepTimerManager = sleepTimerManagerFactory.create(this) was instantiated at property declaration line 129, passing the uninitialized 	his instance into CoroutineSleepTimerManager.
++    - In CoroutineSleepTimerManager.init, 
++estorePersistedTimer() inspected sleepSettings.activeSleepTimer. If a sleep timer was active when playback previously ended or paused, it invoked startTimer(), which checked player.state.value != AudioPlayer.State.Playing.
++    - Because ExoPlayerAudioPlayer.state was declared lower in the class body (line 287), player.state was 
++ull during construction, triggering a fatal NullPointerException on player.state.value.
++    - Because the crash terminated the process during service creation before the timer could expire or clear, the persisted timer remained in disk settings, causing an infinite bootloop every time the user attempted to launch the app.
++
++### Solution & Key Implementation Details
++1. **Deferred SleepTimerManager Instantiation (ExoPlayerAudioPlayer.kt)**:
++   - Moved private val sleepTimerManager = sleepTimerManagerFactory.create(this) from line 129 to line 323, directly preceding override val runningTimer: StateFlow<RunningTimer?>.
++   - Ensures that all AudioPlayer properties—including state, overallTime, currentTime, xoPlayer, and forwarding players—are fully initialized before 	his is passed to sleepTimerManagerFactory.create(this).
++2. **Defensive Persistence Restoration & State Access (CoroutineSleepTimerManager.kt)**:
++   - Wrapped 
++estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupted data occurs during startup restoration, the error is logged and sleepSettings.activeSleepTimer is safely cleared to prevent crash loops.
++   - Guarded player.state.value and player.state.collect in startTimer() with exception handling to guarantee safe fallback even if a player implementation's state is unready.
++3. **Unit Testing (CoroutineSleepTimerManagerTest.kt)**:
++   - Added test persisted sleep timer restoration does not crash when player state is uninitialized verifying that CoroutineSleepTimerManager initializes safely without throwing when an AudioPlayer with an uninitialized state property is supplied.
++
++### Modified Files:
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
++* infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
++* infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -12456,7 +12508,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..07ee17e3 100644
+index f41126a7..2ed242ad 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12464,13 +12516,13 @@ index f41126a7..07ee17e3 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.34
++campfire.version=1.2.35
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1023499
++campfire.versionCode=1023599
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -12552,7 +12604,7 @@ index 7647cac8..6d3caac5 100644
      AudioPlayerDebugHooks.Holder.hooks.onSessionCreated(session!!)
  
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
-index 3d75ff1a..56ed4637 100644
+index 3d75ff1a..a0418ce6 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 @@ -10,6 +10,7 @@ import androidx.media3.common.C
@@ -12571,7 +12623,16 @@ index 3d75ff1a..56ed4637 100644
  import app.campfire.core.extensions.seconds
  import app.campfire.core.logging.Cork
  import app.campfire.core.logging.Corked
-@@ -180,22 +182,12 @@ class ExoPlayerAudioPlayer(
+@@ -124,8 +126,6 @@ class ExoPlayerAudioPlayer(
+     }
+   }
+ 
+-  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
+-
+   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+ 
+   private val exoPlayer = ExoPlayer.Builder(context)
+@@ -180,22 +180,12 @@ class ExoPlayerAudioPlayer(
      addListener(this@ExoPlayerAudioPlayer)
    }
  
@@ -12596,7 +12657,7 @@ index 3d75ff1a..56ed4637 100644
      playbackSettings = settings,
      recorder = playbackHistoryRecorder,
      session = { preparedSession },
-@@ -203,6 +195,16 @@ class ExoPlayerAudioPlayer(
+@@ -203,6 +193,16 @@ class ExoPlayerAudioPlayer(
  
    internal val player: Player get() = playbackHistoryForwardingPlayer
  
@@ -12613,7 +12674,7 @@ index 3d75ff1a..56ed4637 100644
    /**
     * The player handed to the MediaSession. On top of the forwarding chain it projects
     * coarse single-item (HLS or single-file) playback as a virtual chapter playlist, so controller
-@@ -212,7 +214,7 @@ class ExoPlayerAudioPlayer(
+@@ -212,7 +212,7 @@ class ExoPlayerAudioPlayer(
     * positions and seeks are absolute.
     */
    internal val sessionPlayer: ChapterWindowForwardingPlayer = ChapterWindowForwardingPlayer(
@@ -12622,7 +12683,7 @@ index 3d75ff1a..56ed4637 100644
      settings = settings,
      appPackageName = context.packageName,
      host = object : ChapterWindowForwardingPlayer.Host {
-@@ -225,6 +227,16 @@ class ExoPlayerAudioPlayer(
+@@ -225,6 +225,16 @@ class ExoPlayerAudioPlayer(
        override fun skipToNextChapter() = skipToNext()
  
        override fun skipToPreviousChapter() = skipToPrevious()
@@ -12638,6 +12699,15 @@ index 3d75ff1a..56ed4637 100644
 +        ?: preparedSession?.libraryItem?.media?.metadata?.author).orEmpty()
      },
    )
+ 
+@@ -309,6 +319,8 @@ class ExoPlayerAudioPlayer(
+     }
+   }
+ 
++  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
++
+   override val runningTimer: StateFlow<RunningTimer?>
+     get() = sleepTimerManager.runningTimer
  
 @@ -330,7 +342,7 @@ class ExoPlayerAudioPlayer(
      _error.value = null
@@ -13732,10 +13802,10 @@ index bf0c0272..c87139c9 100644
        artworkUri = media.coverImageUrl,
        durationMs = track.duration.seconds.inWholeMilliseconds,
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-index 5a85d185..608ea1dd 100644
+index 5a85d185..02b4114c 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 +++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-@@ -70,6 +70,50 @@ class CoroutineSleepTimerManager(
+@@ -70,6 +70,57 @@ class CoroutineSleepTimerManager(
    private var remainingMillis = 0L
    private var countdownResumedAt: Long? = null
  
@@ -13744,25 +13814,32 @@ index 5a85d185..608ea1dd 100644
 +  }
 +
 +  private fun restorePersistedTimer() {
-+    val persisted = sleepSettings.activeSleepTimer ?: return
-+    dbark { "Restoring persisted sleep timer: $persisted" }
-+    if (persisted.isEndOfChapter) {
-+      val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
-+      playbackTimer = timer
-+      lastPlaybackTimer = timer
-+      startTimer(timer)
-+      startShakeDetectorIfNeeded()
-+    } else {
-+      if (persisted.remainingMillis > 0L) {
-+        val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
++    try {
++      val persisted = sleepSettings.activeSleepTimer ?: return
++      dbark { "Restoring persisted sleep timer: $persisted" }
++      if (persisted.isEndOfChapter) {
++        val timer = PlaybackTimer.EndOfChapter(isAutoSleepTimer = persisted.isAutoSleepTimer)
 +        playbackTimer = timer
 +        lastPlaybackTimer = timer
-+        startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
++        startTimer(timer)
 +        startShakeDetectorIfNeeded()
 +      } else {
-+        dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
-+        sleepSettings.activeSleepTimer = null
++        if (persisted.remainingMillis > 0L) {
++          val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
++          playbackTimer = timer
++          lastPlaybackTimer = timer
++          startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
++          startShakeDetectorIfNeeded()
++        } else {
++          dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
++          sleepSettings.activeSleepTimer = null
++        }
 +      }
++    } catch (e: Exception) {
++      dbark { "Failed to restore persisted sleep timer: ${e.message}; clearing" }
++      try {
++        sleepSettings.activeSleepTimer = null
++      } catch (_: Exception) {}
 +    }
 +  }
 +
@@ -13786,7 +13863,7 @@ index 5a85d185..608ea1dd 100644
    override fun onSessionStart() {
      if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
        if (isNowAnAutoSleepZone()) {
-@@ -108,7 +152,17 @@ class CoroutineSleepTimerManager(
+@@ -108,7 +159,17 @@ class CoroutineSleepTimerManager(
      playbackTimer = timer
      lastPlaybackTimer = timer
      startTimer(timer)
@@ -13804,7 +13881,7 @@ index 5a85d185..608ea1dd 100644
      if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
        ibark { "Shake to reset enabled, starting shake detector" }
        shakeDetector.start(
-@@ -162,6 +216,7 @@ class CoroutineSleepTimerManager(
+@@ -162,6 +223,7 @@ class CoroutineSleepTimerManager(
      remainingMillis = 0L
      playbackTimer = null
      runningTimer.value = null
@@ -13812,7 +13889,7 @@ index 5a85d185..608ea1dd 100644
    }
  
    private fun cancelFade() {
-@@ -266,15 +321,20 @@ class CoroutineSleepTimerManager(
+@@ -266,20 +328,34 @@ class CoroutineSleepTimerManager(
      }
    }
  
@@ -13827,7 +13904,12 @@ index 5a85d185..608ea1dd 100644
 +    remainingMillis = initialRemainingMillis ?: timer.epochMillis
      countdownResumedAt = null
  
-+    if (initialRemainingMillis != null && player.state.value != AudioPlayer.State.Playing) {
++    val isPlaying = try {
++      player.state.value == AudioPlayer.State.Playing
++    } catch (_: Exception) {
++      false
++    }
++    if (initialRemainingMillis != null && !isPlaying) {
 +      val now = fatherTime.nowInEpochMillis()
 +      publishRunningTimer(timer, reference = now, pausedAt = now)
 +    }
@@ -13835,7 +13917,18 @@ index 5a85d185..608ea1dd 100644
      // The countdown only counts listening time: it runs while audio is playing, freezes when playback
      // pauses (or is still preparing) and picks back up on resume.
      playbackStateJob = applicationScope.launch(dispatcherProvider.main) {
-@@ -289,6 +349,7 @@ class CoroutineSleepTimerManager(
+-      player.state.collect { state ->
+-        if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
++      try {
++        player.state.collect { state ->
++          if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
++        }
++      } catch (e: Exception) {
++        dbark { "Failed observing player state for sleep timer: ${e.message}" }
+       }
+     }
+   }
+@@ -289,6 +365,7 @@ class CoroutineSleepTimerManager(
      val now = fatherTime.nowInEpochMillis()
      countdownResumedAt = now
      publishRunningTimer(timer, reference = now, pausedAt = null)
@@ -13843,7 +13936,7 @@ index 5a85d185..608ea1dd 100644
  
      val remaining = remainingMillis
      countdownJob?.cancel()
-@@ -306,11 +367,18 @@ class CoroutineSleepTimerManager(
+@@ -306,11 +383,18 @@ class CoroutineSleepTimerManager(
      val now = fatherTime.nowInEpochMillis()
      val resumedAt = countdownResumedAt
      if (resumedAt != null) {
@@ -14010,7 +14103,7 @@ index 4feda46f..12e72235 100644
  
    @Test
 diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
-index e248f31e..f1f3ff3f 100644
+index e248f31e..c28e4bff 100644
 --- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 +++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 @@ -11,6 +11,7 @@ import app.campfire.audioplayer.test.FakeAudioPlayer
@@ -14021,7 +14114,7 @@ index e248f31e..f1f3ff3f 100644
  import app.campfire.settings.test.FakeSleepSettings
  import app.campfire.shake.ShakeDetector
  import assertk.assertThat
-@@ -205,6 +206,54 @@ class CoroutineSleepTimerManagerTest {
+@@ -205,6 +206,84 @@ class CoroutineSleepTimerManagerTest {
      assertThat(manager.endOfChapter()).isFalse()
    }
  
@@ -14071,6 +14164,36 @@ index e248f31e..f1f3ff3f 100644
 +    assertThat(manager.endOfChapter()).isTrue()
 +    assertThat(player.invocations.last()).isEqualTo(Invocation.Pause)
 +    assertThat(settings.activeSleepTimer).isNull()
++  }
++
++  @Test
++  fun `persisted sleep timer restoration does not crash when player state is uninitialized`() = runTest {
++    settings.activeSleepTimer = SleepSettings.PersistedSleepTimer(
++      isEndOfChapter = false,
++      totalDurationMillis = 30.minutes.inWholeMilliseconds,
++      remainingMillis = 15.minutes.inWholeMilliseconds,
++      isAutoSleepTimer = false,
++    )
++    val throwingPlayer = object : app.campfire.audioplayer.AudioPlayer by player {
++      override val state: kotlinx.coroutines.flow.StateFlow<State>
++        get() = throw NullPointerException("Uninitialized property")
++    }
++    val dispatcher = UnconfinedTestDispatcher(testScheduler)
++    val manager = CoroutineSleepTimerManager(
++      player = throwingPlayer,
++      sleepSettings = settings,
++      shakeDetector = ShakeDetector(),
++      dispatcherProvider = DispatcherProvider(
++        io = dispatcher,
++        databaseWrite = dispatcher,
++        databaseRead = dispatcher,
++        computation = dispatcher,
++        main = dispatcher,
++      ),
++      fatherTime = SchedulerFatherTime(this),
++      applicationScope = backgroundScope,
++    )
++    assertThat(manager).isNotNull()
 +  }
 +
    private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {

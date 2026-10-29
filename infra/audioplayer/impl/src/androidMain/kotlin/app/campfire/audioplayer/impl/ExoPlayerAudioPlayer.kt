@@ -126,8 +126,6 @@ class ExoPlayerAudioPlayer(
     }
   }
 
-  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
-
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
   private val exoPlayer = ExoPlayer.Builder(context)
@@ -320,6 +318,8 @@ class ExoPlayerAudioPlayer(
       audioEffects.attach(exoPlayer.audioSessionId, currentEqualizerProfile)
     }
   }
+
+  private val sleepTimerManager = sleepTimerManagerFactory.create(this)
 
   override val runningTimer: StateFlow<RunningTimer?>
     get() = sleepTimerManager.runningTimer
