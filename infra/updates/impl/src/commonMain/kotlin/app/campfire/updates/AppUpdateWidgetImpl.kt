@@ -172,7 +172,6 @@ class AppUpdateWidgetImpl(
       onClick = {
         scope.launch {
           overlayHost.showAppUpdateSheet(update)
-          invalidator++
         }
       },
       onDismiss = onDismiss,

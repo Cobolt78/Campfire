@@ -8646,7 +8646,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..3e2a3be1 100644
+index e42923f9..0114ed4a 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8654,13 +8654,13 @@ index e42923f9..3e2a3be1 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.40-rc6
++campfire.version=1.2.40-rc7
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024006
++campfire.versionCode=1024007
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -9994,7 +9994,7 @@ index 2c789f5d..95bb0d38 100644
    val versionName: String,
    val versionCode: Long,
 diff --git a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
-index 9e34e26a..f5854ac1 100644
+index 9e34e26a..319f6dbf 100644
 --- a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 +++ b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 @@ -71,8 +71,6 @@ class AppUpdateWidgetImpl(
@@ -10038,7 +10038,7 @@ index 9e34e26a..f5854ac1 100644
      val signInDismissed by appStateSettings.observeAppUpdateSignInDismissed().collectAsState()
      val dismissedVersionCode by appStateSettings.observeAppUpdateDismissedVersionCode().collectAsState()
  
-@@ -161,6 +157,29 @@ class AppUpdateWidgetImpl(
+@@ -161,6 +157,28 @@ class AppUpdateWidgetImpl(
      }
    }
  
@@ -10057,7 +10057,6 @@ index 9e34e26a..f5854ac1 100644
 +      onClick = {
 +        scope.launch {
 +          overlayHost.showAppUpdateSheet(update)
-+          invalidator++
 +        }
 +      },
 +      onDismiss = onDismiss,
