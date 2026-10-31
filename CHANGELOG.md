@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.38]
+
+### Changed
+
+- **Restore 1-Hour Cooldown for Home Feed Pull-to-Refresh**:
+  - Restored the 1-hour background cooldown throttle (`force = false`) on home feed pull-to-refresh gestures (`HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries`), preventing excessive GitHub API requests during frequent library refreshes.
+  - The dedicated "Check for updates" navigation drawer button continues to bypass the cooldown (`force = true`), providing immediate on-demand checking whenever desired.
+
 ## [1.2.37]
 
 ### Added

@@ -11,14 +11,22 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..0e37bba0 100644
+index 1dcbc292..8f6f1514 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,272 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,280 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.38]
++
++### Changed
++
++- **Restore 1-Hour Cooldown for Home Feed Pull-to-Refresh**:
++  - Restored the 1-hour background cooldown throttle (`force = false`) on home feed pull-to-refresh gestures (`HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries`), preventing excessive GitHub API requests during frequent library refreshes.
++  - The dedicated "Check for updates" navigation drawer button continues to bypass the cooldown (`force = true`), providing immediate on-demand checking whenever desired.
++
 +## [1.2.37]
 +
 +### Added
@@ -289,10 +297,10 @@ index 1dcbc292..0e37bba0 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..474bae38 100644
+index e460bea1..48d10e3c 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,42 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,43 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -332,10 +340,11 @@ index e460bea1..474bae38 100644
 +65. [Sleep Timer Startup Crash Fix & Initialization Order (v1.2.35)](#65-sleep-timer-startup-crash-fix--initialization-order-v1235)
 +66. [Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)](#66-headset--remote-controls-settings-pane-and-multi-press-customization-v1236)
 +67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
++68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
  
  ---
  
-@@ -180,6 +216,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +217,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -343,7 +352,7 @@ index e460bea1..474bae38 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +416,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +417,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -377,7 +386,7 @@ index e460bea1..474bae38 100644
  
  ---
  
-@@ -891,8 +955,976 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +956,996 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -403,7 +412,7 @@ index e460bea1..474bae38 100644
 +   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
 +
 +---
- 
++
 +## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
 +
 +### Summary
@@ -435,9 +444,9 @@ index e460bea1..474bae38 100644
 +   - Updated `C:\Users\David\Desktop\Campfire.lnk` to point directly to `C:\Campfire Desktop\Campfire.exe`.
 +
 +---
- 
++
 +## 40. Audit & Comprehensive Feature Restoration (v1.2.20)
- 
++
 +### Summary
 +Conducted a thorough section-by-section audit of all custom features from `v1.2.17` against the ported `1.2.20` codebase. Restored all missing and regressed functionality including destructive action confirmations, headset/remote media button controls, cellular download warnings, navigation drawer What's New entry, series and progress mapping invariants, and home feed cache busting.
 +
@@ -501,7 +510,7 @@ index e460bea1..474bae38 100644
 +
 +### Summary
 +Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
- 
++
 +### Key Details
 +1. **Series Completion Filters & Sorting**:
 +   - Added `ContentFilter.Completion` with `HasMissing`, `Complete`, `HasUpcoming` to `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`.
@@ -599,7 +608,7 @@ index e460bea1..474bae38 100644
 +---
 +
 +## 45. Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.21)
-+
+ 
 +### Summary
 +Fixed critical regressions affecting progress tracking, "Continue Listening" visibility on the Audiobookshelf server dashboard, zombie listening sessions on the server, and false-positive chapter metadata error banners.
 +
@@ -624,7 +633,7 @@ index e460bea1..474bae38 100644
 +   - Added a standard rounding tolerance (`chapter.start.seconds > totalDuration + 2.seconds || floor(chapter.end).seconds > totalDuration + 5.seconds`), eliminating false-positive warning banners while still catching genuinely corrupt chapter metadata.
 +5. **Release Logcat Output (`CampfireApplication.kt`)**:
 +   - Enabled `Heartwood.grow(AndroidBark())` in release builds with `LogRedaction.enabled = !BuildConfig.DEBUG`, allowing diagnostic logging in `adb logcat` during device testing.
- 
++
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/model/Session.kt`
 +* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt`
@@ -671,12 +680,12 @@ index e460bea1..474bae38 100644
 +* `app/android/base-proguard-rules.pro`
 +
 +---
-+
+ 
 +## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
-+
+ 
 +### Summary
 +Resolved an issue where tapping Download on a book while connected to home Wi-Fi triggered a false-positive "Mobile Data Warning" dialog whenever the phone had mobile data enabled.
-+
+ 
 +### Root Cause
 +During the v1.2.21 feature restore (commit `ecac076c`), `rememberIsCellularOrMetered` was refactored with a live `ConnectivityManager.NetworkCallback` using `cm.registerNetworkCallback(request, callback)` with a general `NET_CAPABILITY_INTERNET` request. On modern Android devices (especially Samsung Galaxy devices), the cellular modem maintains an active background standby connection even while connected to Wi-Fi. Because `registerNetworkCallback` scans all active hardware interfaces on the phone rather than the system's active default network, Android dispatched capabilities for the standby cellular radio, falsely setting `isCellularOrMetered = true`.
 +
@@ -799,7 +808,7 @@ index e460bea1..474bae38 100644
 +   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.LastListened`, and `sortDirection = SortDirection.Descending`.
 +5. **Screen-Scoped Retained State (`LibraryPresenter.kt`)**:
 +   - Keyed `rememberRetainedSaveable(screen)` to guarantee that screen navigation arguments (`sortMode`, `sortDirection`, `filter`) are reliably applied when transitioning from Home shelf headers.
-+
+ 
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
 +* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
@@ -1351,6 +1360,26 @@ index e460bea1..474bae38 100644
 +* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 +* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +* ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++## 68. Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)
++
++### Problem Description
++- **Potential GitHub API Rate Limit & Resource Consumption**:
++  - In v1.2.37, pull-to-refresh on the Home feed was set to `force = true` on every swipe down gesture.
++  - Because users frequently swipe down to refresh book progress or sync shelves with the Audiobookshelf server, forcing a network check against the GitHub Releases API on every refresh could cause unnecessary network traffic, battery consumption, and risk encountering GitHub API rate limits.
++
++### Solution & Key Implementation Details
++1. **Restored 1-Hour Throttle on Home Feed Pull-to-Refresh (`HomePresenter.kt`)**:
++   - Reverted `HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries` in `HomePresenter.kt` to pass `force = false` to `appUpdateSource.checkForUpdates(force = false)`.
++   - Normal home feed pull-to-refresh gestures now respect the 1-hour background cooldown (`COOLDOWN_DURATION_MS = 1 hour`).
++2. **Preserved On-Demand Forced Check in Navigation Drawer (`CampfireDrawer.kt`)**:
++   - The dedicated "Check for updates" item in the navigation drawer remains `force = true`, ensuring explicit user requests to check for app updates bypass the cooldown and query GitHub immediately.
++
++### Modified Files:
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -4519,7 +4548,7 @@ index c381c853..8e30923e 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index f7491a92..216f31d4 100644
+index f7491a92..12d1449e 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 @@ -47,6 +47,7 @@ import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -4558,7 +4587,7 @@ index f7491a92..216f31d4 100644
                }
              }
 +            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = true)
++              appUpdateSource.checkForUpdates(force = false)
 +            }
            }
          }
@@ -4568,7 +4597,7 @@ index f7491a92..216f31d4 100644
                }
              }
 +            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = true)
++              appUpdateSource.checkForUpdates(force = false)
 +            }
            }
          }
@@ -8216,7 +8245,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..87059023 100644
+index e42923f9..ea33e358 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8224,13 +8253,13 @@ index e42923f9..87059023 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.37
++campfire.version=1.2.38
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1023799
++campfire.versionCode=1023899
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

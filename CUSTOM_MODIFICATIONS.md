@@ -72,6 +72,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 65. [Sleep Timer Startup Crash Fix & Initialization Order (v1.2.35)](#65-sleep-timer-startup-crash-fix--initialization-order-v1235)
 66. [Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)](#66-headset--remote-controls-settings-pane-and-multi-press-customization-v1236)
 67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
+68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
 
 ---
 
@@ -1925,6 +1926,26 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 * features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 * ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+## 68. Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)
+
+### Problem Description
+- **Potential GitHub API Rate Limit & Resource Consumption**:
+  - In v1.2.37, pull-to-refresh on the Home feed was set to `force = true` on every swipe down gesture.
+  - Because users frequently swipe down to refresh book progress or sync shelves with the Audiobookshelf server, forcing a network check against the GitHub Releases API on every refresh could cause unnecessary network traffic, battery consumption, and risk encountering GitHub API rate limits.
+
+### Solution & Key Implementation Details
+1. **Restored 1-Hour Throttle on Home Feed Pull-to-Refresh (`HomePresenter.kt`)**:
+   - Reverted `HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries` in `HomePresenter.kt` to pass `force = false` to `appUpdateSource.checkForUpdates(force = false)`.
+   - Normal home feed pull-to-refresh gestures now respect the 1-hour background cooldown (`COOLDOWN_DURATION_MS = 1 hour`).
+2. **Preserved On-Demand Forced Check in Navigation Drawer (`CampfireDrawer.kt`)**:
+   - The dedicated "Check for updates" item in the navigation drawer remains `force = true`, ensuring explicit user requests to check for app updates bypass the cooldown and query GitHub immediately.
+
+### Modified Files:
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
