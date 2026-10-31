@@ -11,7 +11,7 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..43f3a4ec 100644
+index c0278c85..b277aa66 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
 @@ -17,7 +17,345 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
@@ -19,7 +19,7 @@ index c0278c85..43f3a4ec 100644
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.40-rc1]
++## [1.2.40-rc2]
 +
 +### Added
 +
@@ -13637,7 +13637,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..a13a1e56 100644
+index f41126a7..81f27d1d 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -13645,13 +13645,13 @@ index f41126a7..a13a1e56 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.40-rc1
++campfire.version=1.2.40-rc2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1024001
++campfire.versionCode=1024002
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
