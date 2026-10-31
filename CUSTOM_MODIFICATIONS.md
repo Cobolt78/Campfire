@@ -75,6 +75,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
 69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
 70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
+71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
 
 ---
 
@@ -2015,4 +2016,32 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt
 * gradle.properties
 * CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+## 71. Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)
+
+### Problem Description
+- **Home Feed Update Banner Missed on App Resume**:
+  - `_changes` in `GitHubAppUpdateSource.kt` was defined as `MutableSharedFlow<Unit>(extraBufferCapacity = 1)` with `replay = 0`.
+  - When `MainActivity.onResume()` performed a background check upon device wake or app launch, the event was emitted at the moment the activity was transitioning to the foreground. If the Home screen composable was paused or not yet collecting, the event was dropped.
+  - Furthermore, `invalidator` in `AppUpdateWidgetImpl` was stored as a member variable on a singleton `@AppScope` class rather than locally within the `@Composable Content()` function, preventing reliable recomposition observation.
+  - While `CampfireDrawer` read `appUpdateSource.getAvailableUpdate()` directly upon drawer opening (showing the update), the Home screen remained stuck in the previously dismissed state.
+
+### Solution & Key Implementation Details
+1. **Replay Buffer for Update Change Flow (`GitHubAppUpdateSource.kt`)**:
+   - Upgraded `_changes` to `MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)`.
+   - Guaranteed that any screen (Home feed or Drawer) subscribing to `changes()` immediately receives the latest notification even if emitted during a background or resume transition.
+   - In `checkForUpdates()`, when returning a cached update within cooldown, ensured `_changes.tryEmit(Unit)` is re-emitted so active UI collectors sync with the cache.
+2. **Local Remembered Invalidation State (`AppUpdateWidgetImpl.kt`)**:
+   - Replaced the singleton member variable `invalidator` with a local `var invalidator by remember { mutableIntStateOf(0) }` inside `Content()`.
+   - Dedicated `LaunchedEffect(appUpdateSource)` collects `appUpdateSource.changes()` directly, triggering `LaunchedEffect(invalidator)` to update local state without missed recompositions.
+3. **Temporary Forced Check Enablement for Multi-Trigger Verification**:
+   - Temporarily set `force = true` on `HomeUiEvent.Refresh`, `HomeUiEvent.RefreshDiscoveries`, and `MainActivity.onResume()` to facilitate rapid end-to-end testing of all update triggers without artificial clock adjustments.
+
+### Modified Files:
+* app/android/src/main/java/app/campfire/android/MainActivity.kt
+* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
+* gradle.properties
 * CUSTOM_MODIFICATIONS.md

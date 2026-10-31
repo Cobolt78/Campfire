@@ -323,10 +323,10 @@ index 1dcbc292..b277aa66 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..af6ae5d7 100644
+index e460bea1..5768d928 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,45 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,46 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -369,10 +369,11 @@ index e460bea1..af6ae5d7 100644
 +68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
 +69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
 +70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
++71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
  
  ---
  
-@@ -180,6 +219,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +220,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -380,7 +381,7 @@ index e460bea1..af6ae5d7 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +419,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +420,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -414,7 +415,7 @@ index e460bea1..af6ae5d7 100644
  
  ---
  
-@@ -891,8 +958,1061 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +959,1089 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -531,14 +532,14 @@ index e460bea1..af6ae5d7 100644
 +* `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/DiscoverScanWorker.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/InProcessDiscoverScanTrackerTest.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
-+
+ 
 +---
-+
+ 
 +## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)
-+
+ 
 +### Summary
 +Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
-+
+ 
 +### Key Details
 +1. **Series Completion Filters & Sorting**:
 +   - Added `ContentFilter.Completion` with `HasMissing`, `Complete`, `HasUpcoming` to `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`.
@@ -763,7 +764,7 @@ index e460bea1..af6ae5d7 100644
 +
 +### Summary
 +Resolved stale data/book counts when opening "Recently Added" and other paged views, and resolved book detail blank cover art display errors.
- 
++
 +### Root Cause
 +1. **Stale 24-Hour Paging Cache Lock**:
 +   - Upstream commit `93c4027b` introduced a 24-hour cache limit (`MAX_CACHE_TIME_MS = 24L * 60L * 60 * 1000L`).
@@ -787,14 +788,14 @@ index e460bea1..af6ae5d7 100644
 +* `features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
 +* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt`
- 
++
 +---
- 
++
 +## 50. Multi-Device Playback Sync False-Positive Suppression & Tolerance Threshold (v1.2.24)
- 
++
 +### Summary
 +Resolved an issue where the mini-player and expanded player intermittently displayed a "Sync available" popup ("Update to mm:ss (-00:02)") that vanished within 2–4 seconds during active playback.
- 
++
 +### Root Cause
 +1. In v1.2.21, real-time Audiobookshelf session tracking and progress reporting were restored (`skipUpload = false`, `MAX_TIME_LISTENING_INTERVAL = 15.seconds`). Every 15 seconds during active playback, the phone sends current progress to the server.
 +2. The Audiobookshelf server broadcasts `user_item_progress_updated` over WebSockets back to all user clients, including the sending device.
@@ -843,7 +844,7 @@ index e460bea1..af6ae5d7 100644
 +* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt`
-+
+ 
 +---
 +
 +## 52. Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)
@@ -1476,6 +1477,34 @@ index e460bea1..af6ae5d7 100644
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++## 71. Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)
++
++### Problem Description
++- **Home Feed Update Banner Missed on App Resume**:
++  - `_changes` in `GitHubAppUpdateSource.kt` was defined as `MutableSharedFlow<Unit>(extraBufferCapacity = 1)` with `replay = 0`.
++  - When `MainActivity.onResume()` performed a background check upon device wake or app launch, the event was emitted at the moment the activity was transitioning to the foreground. If the Home screen composable was paused or not yet collecting, the event was dropped.
++  - Furthermore, `invalidator` in `AppUpdateWidgetImpl` was stored as a member variable on a singleton `@AppScope` class rather than locally within the `@Composable Content()` function, preventing reliable recomposition observation.
++  - While `CampfireDrawer` read `appUpdateSource.getAvailableUpdate()` directly upon drawer opening (showing the update), the Home screen remained stuck in the previously dismissed state.
++
++### Solution & Key Implementation Details
++1. **Replay Buffer for Update Change Flow (`GitHubAppUpdateSource.kt`)**:
++   - Upgraded `_changes` to `MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)`.
++   - Guaranteed that any screen (Home feed or Drawer) subscribing to `changes()` immediately receives the latest notification even if emitted during a background or resume transition.
++   - In `checkForUpdates()`, when returning a cached update within cooldown, ensured `_changes.tryEmit(Unit)` is re-emitted so active UI collectors sync with the cache.
++2. **Local Remembered Invalidation State (`AppUpdateWidgetImpl.kt`)**:
++   - Replaced the singleton member variable `invalidator` with a local `var invalidator by remember { mutableIntStateOf(0) }` inside `Content()`.
++   - Dedicated `LaunchedEffect(appUpdateSource)` collects `appUpdateSource.changes()` directly, triggering `LaunchedEffect(invalidator)` to update local state without missed recompositions.
++3. **Temporary Forced Check Enablement for Multi-Trigger Verification**:
++   - Temporarily set `force = true` on `HomeUiEvent.Refresh`, `HomeUiEvent.RefreshDiscoveries`, and `MainActivity.onResume()` to facilitate rapid end-to-end testing of all update triggers without artificial clock adjustments.
++
++### Modified Files:
++* app/android/src/main/java/app/campfire/android/MainActivity.kt
++* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++* infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
++* gradle.properties
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -1616,7 +1645,7 @@ index ba22d953..0b471beb 100644
      // Create application component
      val component = Trace.trace(DiTraceSections.APP_GRAPH) {
 diff --git a/app/android/src/main/java/app/campfire/android/MainActivity.kt b/app/android/src/main/java/app/campfire/android/MainActivity.kt
-index 7f090139..3f95cc4a 100644
+index 7f090139..825cd079 100644
 --- a/app/android/src/main/java/app/campfire/android/MainActivity.kt
 +++ b/app/android/src/main/java/app/campfire/android/MainActivity.kt
 @@ -4,12 +4,21 @@
@@ -1722,7 +1751,7 @@ index 7f090139..3f95cc4a 100644
 +    super.onResume()
 +    bark { "MainActivity::onResume()" }
 +    lifecycleScope.launch {
-+      component.appUpdateSource.checkForUpdates(force = false)
++      component.appUpdateSource.checkForUpdates(force = true)
 +    }
 +  }
 +
@@ -1750,10 +1779,10 @@ index 2cc4bd1c..21387680 100644
    @Provides
    fun provideActivityLocale(activity: Activity): Locale {
 diff --git a/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
-index caf3062c..ed6c4508 100644
+index caf3062c..0d42d7e0 100644
 --- a/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 +++ b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
-@@ -14,21 +14,26 @@ import app.campfire.core.app.Flavor
+@@ -14,21 +14,27 @@ import app.campfire.core.app.Flavor
  import app.campfire.core.di.AppScope
  import app.campfire.core.logging.LogPriority
  import app.campfire.core.logging.bark
@@ -1768,6 +1797,7 @@ index caf3062c..ed6c4508 100644
  import java.io.File
  import java.util.concurrent.TimeUnit
  import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.channels.BufferOverflow
  import kotlinx.coroutines.flow.Flow
 +import kotlinx.coroutines.flow.MutableSharedFlow
 +import kotlinx.coroutines.flow.asSharedFlow
@@ -1780,7 +1810,7 @@ index caf3062c..ed6c4508 100644
  import org.json.JSONObject
  
  /**
-@@ -41,6 +46,7 @@ import org.json.JSONObject
+@@ -41,6 +47,7 @@ import org.json.JSONObject
  class GitHubAppUpdateSource(
    private val application: Application,
    private val applicationInfo: ApplicationInfo,
@@ -1788,11 +1818,15 @@ index caf3062c..ed6c4508 100644
  ) : AppUpdateSource {
  
    private val okHttpClient by lazy {
-@@ -52,14 +58,29 @@ class GitHubAppUpdateSource(
+@@ -52,14 +59,33 @@ class GitHubAppUpdateSource(
        .build()
    }
  
-+  private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
++  private val _changes = MutableSharedFlow<Unit>(
++    replay = 1,
++    extraBufferCapacity = 1,
++    onBufferOverflow = BufferOverflow.DROP_OLDEST,
++  )
 +  override fun changes(): Flow<Unit> = _changes.asSharedFlow()
 +
    @Volatile
@@ -1820,7 +1854,7 @@ index caf3062c..ed6c4508 100644
  
    override val isSupported: Boolean = true
  
-@@ -69,11 +90,23 @@ class GitHubAppUpdateSource(
+@@ -69,11 +95,24 @@ class GitHubAppUpdateSource(
  
    override suspend fun isUpdateAvailable(): Boolean = getAvailableUpdate() != null
  
@@ -1841,6 +1875,7 @@ index caf3062c..ed6c4508 100644
 +    val cached = cachedUpdate ?: getPersistedUpdate().also { cachedUpdate = it }
 +
 +    if (!force && cached != null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
++      _changes.tryEmit(Unit)
 +      return@withContext CheckUpdateResult.Available(cached)
 +    }
 +    if (!force && cached == null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
@@ -1848,7 +1883,7 @@ index caf3062c..ed6c4508 100644
      }
  
      try {
-@@ -86,74 +119,113 @@ class GitHubAppUpdateSource(
+@@ -86,74 +125,113 @@ class GitHubAppUpdateSource(
        okHttpClient.newCall(request).execute().use { response ->
          if (!response.isSuccessful) {
            bark(LogPriority.WARN) { "GitHub Releases API returned HTTP ${response.code}" }
@@ -2009,7 +2044,7 @@ index caf3062c..ed6c4508 100644
      }
    }
  
-@@ -271,8 +343,8 @@ class GitHubAppUpdateSource(
+@@ -271,8 +349,8 @@ class GitHubAppUpdateSource(
  
    companion object {
      private const val GITHUB_REPO = "Cobolt78/Campfire"
@@ -4738,7 +4773,7 @@ index c381c853..8e30923e 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index f7491a92..12d1449e 100644
+index f7491a92..216f31d4 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 @@ -47,6 +47,7 @@ import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -4777,7 +4812,7 @@ index f7491a92..12d1449e 100644
                }
              }
 +            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = false)
++              appUpdateSource.checkForUpdates(force = true)
 +            }
            }
          }
@@ -4787,7 +4822,7 @@ index f7491a92..12d1449e 100644
                }
              }
 +            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = false)
++              appUpdateSource.checkForUpdates(force = true)
 +            }
            }
          }
@@ -8611,7 +8646,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..c56c1b24 100644
+index e42923f9..3e2a3be1 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8619,13 +8654,13 @@ index e42923f9..c56c1b24 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.40-rc5
++campfire.version=1.2.40-rc6
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024005
++campfire.versionCode=1024006
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -9959,10 +9994,25 @@ index 2c789f5d..95bb0d38 100644
    val versionName: String,
    val versionCode: Long,
 diff --git a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
-index 9e34e26a..a14274bf 100644
+index 9e34e26a..f5854ac1 100644
 --- a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 +++ b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
-@@ -84,17 +84,14 @@ class AppUpdateWidgetImpl(
+@@ -71,8 +71,6 @@ class AppUpdateWidgetImpl(
+   private val appStateSettings: AppStateSettings,
+ ) : AppUpdateWidget {
+ 
+-  private var invalidator by mutableIntStateOf(0)
+-
+   @Composable
+   override fun Content(modifier: Modifier) {
+     if (!appUpdateSource.isSupported) return
+@@ -80,21 +78,19 @@ class AppUpdateWidgetImpl(
+     val scope = rememberCoroutineScope()
+     val overlayHost = LocalOverlayHost.current
+ 
+-    LaunchedEffect(Unit) {
++    var invalidator by remember { mutableIntStateOf(0) }
++    LaunchedEffect(appUpdateSource) {
        appUpdateSource.changes().collect { invalidator++ }
      }
  
@@ -9988,7 +10038,7 @@ index 9e34e26a..a14274bf 100644
      val signInDismissed by appStateSettings.observeAppUpdateSignInDismissed().collectAsState()
      val dismissedVersionCode by appStateSettings.observeAppUpdateDismissedVersionCode().collectAsState()
  
-@@ -161,6 +158,29 @@ class AppUpdateWidgetImpl(
+@@ -161,6 +157,29 @@ class AppUpdateWidgetImpl(
      }
    }
  

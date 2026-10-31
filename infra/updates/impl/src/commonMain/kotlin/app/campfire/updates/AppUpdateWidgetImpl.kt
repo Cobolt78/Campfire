@@ -71,8 +71,6 @@ class AppUpdateWidgetImpl(
   private val appStateSettings: AppStateSettings,
 ) : AppUpdateWidget {
 
-  private var invalidator by mutableIntStateOf(0)
-
   @Composable
   override fun Content(modifier: Modifier) {
     if (!appUpdateSource.isSupported) return
@@ -80,7 +78,8 @@ class AppUpdateWidgetImpl(
     val scope = rememberCoroutineScope()
     val overlayHost = LocalOverlayHost.current
 
-    LaunchedEffect(Unit) {
+    var invalidator by remember { mutableIntStateOf(0) }
+    LaunchedEffect(appUpdateSource) {
       appUpdateSource.changes().collect { invalidator++ }
     }
 

@@ -25,6 +25,7 @@ import dev.zacsweers.metro.Inject
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -58,7 +59,11 @@ class GitHubAppUpdateSource(
       .build()
   }
 
-  private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  private val _changes = MutableSharedFlow<Unit>(
+    replay = 1,
+    extraBufferCapacity = 1,
+    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+  )
   override fun changes(): Flow<Unit> = _changes.asSharedFlow()
 
   @Volatile
@@ -103,6 +108,7 @@ class GitHubAppUpdateSource(
     val cached = cachedUpdate ?: getPersistedUpdate().also { cachedUpdate = it }
 
     if (!force && cached != null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
+      _changes.tryEmit(Unit)
       return@withContext CheckUpdateResult.Available(cached)
     }
     if (!force && cached == null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
