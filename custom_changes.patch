@@ -11,29 +11,40 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..b277aa66 100644
+index 1dcbc292..7a3a0289 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,306 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,317 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.40-rc2]
++## [1.2.40]
 +
 +### Added
 +
-+- **Direct In-Drawer Update Card Ownership**:
++- **Direct In-Drawer Update Card Ownership & Feedback**:
 +  - The navigation drawer now directly holds and controls the detected `AppUpdate` state, rendering an interactive update card immediately when an update is available.
-+  - Tapping the update card opens the update details sheet with release notes and the "Update now" button; dismissing the card hides it cleanly with a dismiss ('✕') button.
++  - Tapping the update card opens the update details sheet with release notes and the "Update now" button; dismissing the card hides it cleanly with a dismiss ('×') button.
 +  - Immediate visual confirmation: tapping "Check for updates" displays either the update card, an up-to-date confirmation pill ("Campfire is up to date"), or an error pill, eliminating the bug where the check spun for 0.5s and then vanished into silence.
-+
 +- **GitHub Pre-Release & Release Candidate (RC) Support**:
-+  - Changed GitHub Releases API integration from `/releases/latest` to query the releases list, allowing seamless recognition of pre-releases (e.g. `v1.2.40-rc1`).
++  - Changed GitHub Releases API integration to query the releases list, allowing seamless recognition of pre-releases (e.g. `v1.2.40-rc1` through `rc7`).
 +  - Pre-releases are automatically recognized and version-ordered (`rc1` < `rc2` < final release), enabling testing and verification of new versions without bumping public releases.
-+
 +- **Persistent Disk Caching for Discovered Updates**:
 +  - Discovered update metadata (version code, version name, download URL, release notes) is now persisted to disk in `AppStateSettings`, allowing the update card to survive app restarts and background process terminations.
++
++### Fixed
++
++- **Reactive Replay Buffer for Update Notifications**:
++  - Upgraded update change notifications to a buffered replay flow (`replay = 1`) so UI screens (including the Home feed) never drop update events when waking from sleep or navigating back to the app.
++  - Fixed local composition invalidation in `AppUpdateWidgetImpl` so cached update states immediately render without requiring multiple manual refreshes.
++
++### Changed
++
++- **Decoupled Discover Shelf Refresh from App Updates**:
++  - Pull-to-refresh on the Home feed and app resume silently check for app updates subject to a 1-hour background cooldown (`force = false`).
++  - Refreshing the Discover shelf focuses purely on generating fresh book discovery recommendations from Audiobookshelf without triggering app update checks.
++  - The navigation drawer "Check for updates" button continues to provide an immediate forced update check (`force = true`), bypassing the 1-hour cooldown.
 +
 +## [1.2.39]
 +
@@ -323,10 +334,10 @@ index 1dcbc292..b277aa66 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..5768d928 100644
+index e460bea1..e855423d 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,46 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,47 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -370,10 +381,11 @@ index e460bea1..5768d928 100644
 +69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
 +70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
 +71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
++72. [Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)](#72-discover-shelf-refresh-decoupling--1-hour-background-cooldown-restoration-v1240)
  
  ---
  
-@@ -180,6 +220,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +221,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -381,7 +393,7 @@ index e460bea1..5768d928 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +420,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +421,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -415,7 +427,7 @@ index e460bea1..5768d928 100644
  
  ---
  
-@@ -891,8 +959,1089 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +960,1117 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -532,14 +544,14 @@ index e460bea1..5768d928 100644
 +* `features/discover/impl/src/androidMain/kotlin/app/campfire/discover/DiscoverScanWorker.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/InProcessDiscoverScanTrackerTest.kt`
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
- 
++
 +---
- 
++
 +## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)
- 
++
 +### Summary
 +Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
- 
++
 +### Key Details
 +1. **Series Completion Filters & Sorting**:
 +   - Added `ContentFilter.Completion` with `HasMissing`, `Complete`, `HasUpcoming` to `core/src/commonMain/kotlin/app/campfire/core/filter/ContentFilter.kt`.
@@ -837,14 +849,14 @@ index e460bea1..5768d928 100644
 +   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.LastListened`, and `sortDirection = SortDirection.Descending`.
 +5. **Screen-Scoped Retained State (`LibraryPresenter.kt`)**:
 +   - Keyed `rememberRetainedSaveable(screen)` to guarantee that screen navigation arguments (`sortMode`, `sortDirection`, `filter`) are reliably applied when transitioning from Home shelf headers.
-+
+ 
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
 +* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
 +* `features/filters/ui/src/commonMain/kotlin/app/campfire/filters/ui/sort/SortModeBottomSheet.kt`
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt`
- 
++
 +---
 +
 +## 52. Multi-Tier Resilient Fallback for Cover Thumbnails (v1.2.24)
@@ -1010,7 +1022,7 @@ index e460bea1..5768d928 100644
 +* `gradle.properties`
 +
 +---
-+
+ 
 +## 58. Wired Headset 3.5mm Multi-Click Detection & Navigation Drawer String Fix (v1.2.28)
 +
 +### Problem Description
@@ -1029,7 +1041,7 @@ index e460bea1..5768d928 100644
 +     - **Long-Press Passthrough**: Uses `ViewConfiguration.getLongPressTimeout()` and `repeatCount` detection to cleanly pass long-presses to Google Assistant.
 +2. **String Resource Fix (`ui_drawer_strings.xml`, `audioplayer_ui_strings.xml`)**:
 +   - Replaced `What\'s New` with `What's New` and `Couldn\'t connect` with `Couldn't connect`.
-+
+ 
 +### Modified Files:
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
 +* `ui/navigation/ui/src/commonMain/composeResources/values/ui_drawer_strings.xml`
@@ -1195,7 +1207,7 @@ index e460bea1..5768d928 100644
 +3. **Comprehensive Unit Testing (`CoroutineSleepTimerManagerTest.kt`)**:
 +   - Added test `persisted sleep timer is restored on manager initialization` verifying frozen remaining duration on pause and resumption countdown to completion.
 +   - Added test `persisted end of chapter timer is restored on manager initialization` verifying boundary pause and clean timer removal.
-+
+ 
 +### Modified Files:
 +* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
 +* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
@@ -1505,6 +1517,34 @@ index e460bea1..5768d928 100644
 +* infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 +* gradle.properties
 +* CUSTOM_MODIFICATIONS.md
++
++## 72. Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)
++
++### Problem Description
++- **Unintended Coupling of Shelf Refresh to Update Checks**:
++  - Previously, tapping the refresh button on the "Discover" shelf (`HomeUiEvent.RefreshDiscoveries`) was bundled with an app update check.
++  - Discover shelf refresh should strictly generate fresh book discovery recommendations from the Audiobookshelf server without triggering redundant GitHub update queries.
++- **Background Check Cooldown Restoration**:
++  - During end-to-end multi-trigger verification of the update card fix (`rc6` to `rc7`), `MainActivity.onResume()` and `HomeUiEvent.Refresh` had `force = true` temporarily set.
++  - For the production release, automatic background checks must respect the 1-hour cooldown window (`force = false`) so network bandwidth and GitHub API rate limits are conserved during frequent app switching and feed pulls.
++  - Only explicit manual user checks via the navigation drawer "Check for updates" button should bypass cooldown with `force = true`.
++
++### Solution & Key Implementation Details
++1. **Decoupled Discover Refresh (`HomePresenter.kt`)**:
++   - Removed the `appUpdateSource.checkForUpdates(...)` call completely from `HomeUiEvent.RefreshDiscoveries`.
++   - Discover shelf refresh now purely resets the Audiobookshelf cache seed and queries fresh recommendations without touching update state.
++2. **Restored 1-Hour Background Cooldown (`MainActivity.kt` & `HomePresenter.kt`)**:
++   - Reverted `MainActivity.onResume()` to `component.appUpdateSource.checkForUpdates(force = false)`.
++   - Reverted `HomeUiEvent.Refresh` in `HomePresenter.kt` to `appUpdateSource.checkForUpdates(force = false)`.
++   - The dedicated "Check for updates" drawer button remains strictly `component.appUpdateSource.checkForUpdates(force = true)`.
++
++### Modified Files:
++* app/android/src/main/java/app/campfire/android/MainActivity.kt
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
+ 
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -1645,7 +1685,7 @@ index ba22d953..0b471beb 100644
      // Create application component
      val component = Trace.trace(DiTraceSections.APP_GRAPH) {
 diff --git a/app/android/src/main/java/app/campfire/android/MainActivity.kt b/app/android/src/main/java/app/campfire/android/MainActivity.kt
-index 7f090139..825cd079 100644
+index 7f090139..3f95cc4a 100644
 --- a/app/android/src/main/java/app/campfire/android/MainActivity.kt
 +++ b/app/android/src/main/java/app/campfire/android/MainActivity.kt
 @@ -4,12 +4,21 @@
@@ -1751,7 +1791,7 @@ index 7f090139..825cd079 100644
 +    super.onResume()
 +    bark { "MainActivity::onResume()" }
 +    lifecycleScope.launch {
-+      component.appUpdateSource.checkForUpdates(force = true)
++      component.appUpdateSource.checkForUpdates(force = false)
 +    }
 +  }
 +
@@ -4773,7 +4813,7 @@ index c381c853..8e30923e 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index f7491a92..216f31d4 100644
+index f7491a92..fc32b4a1 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 @@ -47,6 +47,7 @@ import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -4812,22 +4852,12 @@ index f7491a92..216f31d4 100644
                }
              }
 +            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = true)
++              appUpdateSource.checkForUpdates(force = false)
 +            }
            }
          }
  
-@@ -307,6 +318,9 @@ class HomePresenter(
-                 isRefreshingDiscoveries = false
-               }
-             }
-+            coroutineScope.launch {
-+              appUpdateSource.checkForUpdates(force = true)
-+            }
-           }
-         }
-       }
-@@ -359,7 +373,7 @@ private fun insertUpcomingShelf(
+@@ -359,7 +370,7 @@ private fun insertUpcomingShelf(
  
  private fun isMediaProgressCompleted(prog: app.campfire.core.model.MediaProgress?): Boolean {
    if (prog == null) return false
@@ -8646,7 +8676,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..0114ed4a 100644
+index e42923f9..a4adf12a 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8654,13 +8684,13 @@ index e42923f9..0114ed4a 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.40-rc7
++campfire.version=1.2.40
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024007
++campfire.versionCode=1024099
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

@@ -76,6 +76,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
 70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
 71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
+72. [Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)](#72-discover-shelf-refresh-decoupling--1-hour-background-cooldown-restoration-v1240)
 
 ---
 
@@ -2045,3 +2046,31 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 * gradle.properties
 * CUSTOM_MODIFICATIONS.md
+
+## 72. Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)
+
+### Problem Description
+- **Unintended Coupling of Shelf Refresh to Update Checks**:
+  - Previously, tapping the refresh button on the "Discover" shelf (`HomeUiEvent.RefreshDiscoveries`) was bundled with an app update check.
+  - Discover shelf refresh should strictly generate fresh book discovery recommendations from the Audiobookshelf server without triggering redundant GitHub update queries.
+- **Background Check Cooldown Restoration**:
+  - During end-to-end multi-trigger verification of the update card fix (`rc6` to `rc7`), `MainActivity.onResume()` and `HomeUiEvent.Refresh` had `force = true` temporarily set.
+  - For the production release, automatic background checks must respect the 1-hour cooldown window (`force = false`) so network bandwidth and GitHub API rate limits are conserved during frequent app switching and feed pulls.
+  - Only explicit manual user checks via the navigation drawer "Check for updates" button should bypass cooldown with `force = true`.
+
+### Solution & Key Implementation Details
+1. **Decoupled Discover Refresh (`HomePresenter.kt`)**:
+   - Removed the `appUpdateSource.checkForUpdates(...)` call completely from `HomeUiEvent.RefreshDiscoveries`.
+   - Discover shelf refresh now purely resets the Audiobookshelf cache seed and queries fresh recommendations without touching update state.
+2. **Restored 1-Hour Background Cooldown (`MainActivity.kt` & `HomePresenter.kt`)**:
+   - Reverted `MainActivity.onResume()` to `component.appUpdateSource.checkForUpdates(force = false)`.
+   - Reverted `HomeUiEvent.Refresh` in `HomePresenter.kt` to `appUpdateSource.checkForUpdates(force = false)`.
+   - The dedicated "Check for updates" drawer button remains strictly `component.appUpdateSource.checkForUpdates(force = true)`.
+
+### Modified Files:
+* app/android/src/main/java/app/campfire/android/MainActivity.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+

@@ -302,7 +302,7 @@ class HomePresenter(
               }
             }
             coroutineScope.launch {
-              appUpdateSource.checkForUpdates(force = true)
+              appUpdateSource.checkForUpdates(force = false)
             }
           }
         }
@@ -317,9 +317,6 @@ class HomePresenter(
               } finally {
                 isRefreshingDiscoveries = false
               }
-            }
-            coroutineScope.launch {
-              appUpdateSource.checkForUpdates(force = true)
             }
           }
         }

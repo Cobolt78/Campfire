@@ -17,21 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.40-rc2]
+## [1.2.40]
 
 ### Added
 
-- **Direct In-Drawer Update Card Ownership**:
+- **Direct In-Drawer Update Card Ownership & Feedback**:
   - The navigation drawer now directly holds and controls the detected `AppUpdate` state, rendering an interactive update card immediately when an update is available.
-  - Tapping the update card opens the update details sheet with release notes and the "Update now" button; dismissing the card hides it cleanly with a dismiss ('✕') button.
+  - Tapping the update card opens the update details sheet with release notes and the "Update now" button; dismissing the card hides it cleanly with a dismiss ('×') button.
   - Immediate visual confirmation: tapping "Check for updates" displays either the update card, an up-to-date confirmation pill ("Campfire is up to date"), or an error pill, eliminating the bug where the check spun for 0.5s and then vanished into silence.
-
 - **GitHub Pre-Release & Release Candidate (RC) Support**:
-  - Changed GitHub Releases API integration from `/releases/latest` to query the releases list, allowing seamless recognition of pre-releases (e.g. `v1.2.40-rc1`).
+  - Changed GitHub Releases API integration to query the releases list, allowing seamless recognition of pre-releases (e.g. `v1.2.40-rc1` through `rc7`).
   - Pre-releases are automatically recognized and version-ordered (`rc1` < `rc2` < final release), enabling testing and verification of new versions without bumping public releases.
-
 - **Persistent Disk Caching for Discovered Updates**:
   - Discovered update metadata (version code, version name, download URL, release notes) is now persisted to disk in `AppStateSettings`, allowing the update card to survive app restarts and background process terminations.
+
+### Fixed
+
+- **Reactive Replay Buffer for Update Notifications**:
+  - Upgraded update change notifications to a buffered replay flow (`replay = 1`) so UI screens (including the Home feed) never drop update events when waking from sleep or navigating back to the app.
+  - Fixed local composition invalidation in `AppUpdateWidgetImpl` so cached update states immediately render without requiring multiple manual refreshes.
+
+### Changed
+
+- **Decoupled Discover Shelf Refresh from App Updates**:
+  - Pull-to-refresh on the Home feed and app resume silently check for app updates subject to a 1-hour background cooldown (`force = false`).
+  - Refreshing the Discover shelf focuses purely on generating fresh book discovery recommendations from Audiobookshelf without triggering app update checks.
+  - The navigation drawer "Check for updates" button continues to provide an immediate forced update check (`force = true`), bypassing the 1-hour cooldown.
 
 ## [1.2.39]
 

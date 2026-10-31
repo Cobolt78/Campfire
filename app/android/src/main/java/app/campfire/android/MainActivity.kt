@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
     super.onResume()
     bark { "MainActivity::onResume()" }
     lifecycleScope.launch {
-      component.appUpdateSource.checkForUpdates(force = true)
+      component.appUpdateSource.checkForUpdates(force = false)
     }
   }
 
