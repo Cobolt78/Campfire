@@ -158,6 +158,29 @@ class AppUpdateWidgetImpl(
     }
   }
 
+  @Composable
+  override fun UpdateCard(
+    update: AppUpdate,
+    modifier: Modifier,
+    onDismiss: (() -> Unit)?,
+  ) {
+    val scope = rememberCoroutineScope()
+    val overlayHost = LocalOverlayHost.current
+    AppUpdateWidgetCard(
+      title = "Update available",
+      subtitle = "${update.versionName} • Tap to view & install",
+      icon = CampfireIcons.Rounded.NewReleases,
+      onClick = {
+        scope.launch {
+          overlayHost.showAppUpdateSheet(update)
+          invalidator++
+        }
+      },
+      onDismiss = onDismiss,
+      modifier = modifier.fillMaxWidth(),
+    )
+  }
+
   private suspend fun OverlayHost.showAppUpdateSheet(appUpdate: AppUpdate) {
     show(
       BottomSheetOverlay<AppUpdate, Unit>(

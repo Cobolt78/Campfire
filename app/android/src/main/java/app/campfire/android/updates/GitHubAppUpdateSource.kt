@@ -343,7 +343,7 @@ class GitHubAppUpdateSource(
 
   companion object {
     private const val GITHUB_REPO = "Cobolt78/Campfire"
-    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=5"
+    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=10"
     private val COOLDOWN_DURATION_MS = TimeUnit.HOURS.toMillis(1)
 
     private fun parseVersionCode(raw: String): Long? {

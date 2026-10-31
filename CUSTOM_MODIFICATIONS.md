@@ -1995,10 +1995,10 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
    - Clicking the card opens the bottom sheet with release details and the "Update now" action; clicking dismiss (`✕`) clears `availableUpdate`.
    - When up-to-date, it displays a 4-second green check confirmation pill ("Campfire is up to date (v...)"); on failure, a 4-second error pill ("Couldn't connect to GitHub").
 2. **Exposed Direct `UpdateCard` in `AppUpdateWidget` (`AppUpdateWidget.kt`, `AppUpdateWidgetImpl.kt`)**:
-   - Added `@Composable fun UpdateCard(update: AppUpdate, modifier: Modifier, onDismiss: (() -> Unit)?)` to `AppUpdateWidget` interface, allowing callers like `CampfireDrawer` to render a fully styled, interactive update card directly with zero race conditions.
+   - Added `@Composable fun UpdateCard(update: AppUpdate, modifier: Modifier, onDismiss: (() -> Unit)?)` to `AppUpdateWidget` interface and fully implemented it in `AppUpdateWidgetImpl.kt` rendering `AppUpdateWidgetCard` with subtitle `"${update.versionName} • Tap to view & install"`, dismiss action, and full bottom-sheet handoff.
    - Replaced fragile `remember(invalidator) { flow { ... } }.collectAsState(null)` with `LaunchedEffect(invalidator)` in `AppUpdateWidgetImpl.Content` to eliminate temporary reset to `null`.
 3. **GitHub Pre-Release & Release Candidate Support (`GitHubAppUpdateSource.kt`)**:
-   - Changed API URL from `/releases/latest` to `https://api.github.com/repos/$GITHUB_REPO/releases?per_page=5`.
+   - Changed API URL from `/releases/latest` to `https://api.github.com/repos/$GITHUB_REPO/releases?per_page=10` to query the 10 most recent releases, providing robust multi-release pre-release detection.
    - Iterates releases array and evaluates the newest non-draft release, properly recognizing pre-releases (`--prerelease`).
    - Enhanced `parseVersionCode` and `parseVersionName` to parse RC versions (`-rc(\d+)`), following upstream Campfire's `deriveVersionCode` formula (`1.2.40-rc1` = `1024001`, `1.2.40` final = `1024099`).
 4. **Persistent Disk Caching for Update State (`AppStateSettings.kt`, `AppStateSettingsImpl.kt`)**:
