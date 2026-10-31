@@ -1879,6 +1879,7 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+* features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt

@@ -309,10 +309,10 @@ index c0278c85..38a400da 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..a9aa71ec
+index 00000000..e57fc126
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1889 @@
+@@ -0,0 +1,1890 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -2194,6 +2194,7 @@ index 00000000..a9aa71ec
 +* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
 +* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 +* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
++* features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
 +* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 +* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
 +* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
@@ -11037,6 +11038,38 @@ index 331fdd56..cc4de3b0 100644
        AnimatedVisibility(
          visible = dragState.actionState != Dispose && availableSync != null,
        ) {
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
+index 91cc51fe..b176c9bb 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
+@@ -51,6 +51,7 @@ import app.campfire.sessions.ui.playback.ThemeUiState
+ import app.campfire.sessions.ui.playback.VolumeUiState
+ import app.campfire.settings.api.PendingResumeRewind
+ import app.campfire.settings.api.PlaybackSettings
++import app.campfire.settings.api.RemoteControlAction
+ import app.campfire.settings.api.ResumeRewindConfig
+ import app.campfire.settings.api.StreamingMethod
+ import coil3.ColorImage
+@@ -688,6 +689,19 @@ internal class PreviewPlaybackSettings : PlaybackSettings {
+   override var playbackSpeed = 1f
+   override var itemPlaybackSpeeds = emptyMap<LibraryItemId, Float>()
+   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> = MutableStateFlow(itemPlaybackSpeeds)
++  override var singleButtonDoublePressAction = RemoteControlAction.SKIP_FORWARD_TIME
++  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
++    MutableStateFlow(singleButtonDoublePressAction)
++  override var singleButtonTriplePressAction = RemoteControlAction.SKIP_BACKWARD_TIME
++  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
++    MutableStateFlow(singleButtonTriplePressAction)
++  override var singleButtonQuadruplePressAction = RemoteControlAction.ADD_BOOKMARK
++  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
++    MutableStateFlow(singleButtonQuadruplePressAction)
++  override var nextButtonAction = RemoteControlAction.SKIP_FORWARD_TIME
++  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(nextButtonAction)
++  override var previousButtonAction = RemoteControlAction.SKIP_BACKWARD_TIME
++  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(previousButtonAction)
+   override var remoteNextPrevSkipsChapters = true
+   override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = MutableStateFlow(remoteNextPrevSkipsChapters)
+   override var syncEnabled = true
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
 index ea2a2a3e..de11276a 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt

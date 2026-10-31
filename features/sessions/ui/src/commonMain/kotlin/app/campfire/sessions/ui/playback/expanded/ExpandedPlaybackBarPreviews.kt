@@ -51,6 +51,7 @@ import app.campfire.sessions.ui.playback.ThemeUiState
 import app.campfire.sessions.ui.playback.VolumeUiState
 import app.campfire.settings.api.PendingResumeRewind
 import app.campfire.settings.api.PlaybackSettings
+import app.campfire.settings.api.RemoteControlAction
 import app.campfire.settings.api.ResumeRewindConfig
 import app.campfire.settings.api.StreamingMethod
 import coil3.ColorImage
@@ -688,6 +689,19 @@ internal class PreviewPlaybackSettings : PlaybackSettings {
   override var playbackSpeed = 1f
   override var itemPlaybackSpeeds = emptyMap<LibraryItemId, Float>()
   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> = MutableStateFlow(itemPlaybackSpeeds)
+  override var singleButtonDoublePressAction = RemoteControlAction.SKIP_FORWARD_TIME
+  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
+    MutableStateFlow(singleButtonDoublePressAction)
+  override var singleButtonTriplePressAction = RemoteControlAction.SKIP_BACKWARD_TIME
+  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
+    MutableStateFlow(singleButtonTriplePressAction)
+  override var singleButtonQuadruplePressAction = RemoteControlAction.ADD_BOOKMARK
+  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
+    MutableStateFlow(singleButtonQuadruplePressAction)
+  override var nextButtonAction = RemoteControlAction.SKIP_FORWARD_TIME
+  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(nextButtonAction)
+  override var previousButtonAction = RemoteControlAction.SKIP_BACKWARD_TIME
+  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(previousButtonAction)
   override var remoteNextPrevSkipsChapters = true
   override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = MutableStateFlow(remoteNextPrevSkipsChapters)
   override var syncEnabled = true
