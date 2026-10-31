@@ -5,6 +5,7 @@ package app.campfire.updates
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import app.campfire.updates.source.AppUpdate
 
 /**
  * A small, dismissable widget that surfaces app update state on builds that support
@@ -22,4 +23,11 @@ interface AppUpdateWidget {
 
   @Composable
   fun Content(modifier: Modifier)
+
+  @Composable
+  fun UpdateCard(
+    update: AppUpdate,
+    modifier: Modifier = Modifier,
+    onDismiss: (() -> Unit)? = null,
+  ) {}
 }

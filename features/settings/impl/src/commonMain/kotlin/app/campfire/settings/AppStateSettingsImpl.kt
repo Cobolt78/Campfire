@@ -45,6 +45,22 @@ class AppStateSettingsImpl(
   override var lastAppUpdateCheckTimestamp: Long by lastAppUpdateCheckTimestampProperty
   override fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long> =
     lastAppUpdateCheckTimestampProperty.observe()
+
+  private val cachedUpdateVersionCodeProperty = longSetting(KEY_CACHED_UPDATE_VERSION_CODE, 0L)
+  override var cachedUpdateVersionCode: Long by cachedUpdateVersionCodeProperty
+  override fun observeCachedUpdateVersionCode(): StateFlow<Long> = cachedUpdateVersionCodeProperty.observe()
+
+  private val cachedUpdateVersionNameProperty = stringOrNullSetting(KEY_CACHED_UPDATE_VERSION_NAME)
+  override var cachedUpdateVersionName: String? by cachedUpdateVersionNameProperty
+  override fun observeCachedUpdateVersionName(): StateFlow<String?> = cachedUpdateVersionNameProperty.observe()
+
+  private val cachedUpdateDownloadUrlProperty = stringOrNullSetting(KEY_CACHED_UPDATE_DOWNLOAD_URL)
+  override var cachedUpdateDownloadUrl: String? by cachedUpdateDownloadUrlProperty
+  override fun observeCachedUpdateDownloadUrl(): StateFlow<String?> = cachedUpdateDownloadUrlProperty.observe()
+
+  private val cachedUpdateReleaseNotesProperty = stringOrNullSetting(KEY_CACHED_UPDATE_RELEASE_NOTES)
+  override var cachedUpdateReleaseNotes: String? by cachedUpdateReleaseNotesProperty
+  override fun observeCachedUpdateReleaseNotes(): StateFlow<String?> = cachedUpdateReleaseNotesProperty.observe()
 }
 
 internal const val KEY_SHOW_WIDGET_PINNING = "pref_show_widget_pinning"
@@ -52,3 +68,7 @@ internal const val KEY_LAST_SEEN_WHATS_NEW = "pref_last_seen_whats_new"
 internal const val KEY_APP_UPDATE_SIGN_IN_DISMISSED = "pref_app_update_sign_in_dismissed"
 internal const val KEY_APP_UPDATE_DISMISSED_VERSION_CODE = "pref_app_update_dismissed_version_code"
 internal const val KEY_LAST_APP_UPDATE_CHECK_TIMESTAMP = "pref_last_app_update_check_timestamp"
+internal const val KEY_CACHED_UPDATE_VERSION_CODE = "pref_cached_update_version_code"
+internal const val KEY_CACHED_UPDATE_VERSION_NAME = "pref_cached_update_version_name"
+internal const val KEY_CACHED_UPDATE_DOWNLOAD_URL = "pref_cached_update_download_url"
+internal const val KEY_CACHED_UPDATE_RELEASE_NOTES = "pref_cached_update_release_notes"

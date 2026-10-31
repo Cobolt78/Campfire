@@ -41,4 +41,24 @@ class TestAppStateSettings(
   override fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long> =
     observeLong(::lastAppUpdateCheckTimestamp)
       .stateIn(testScope, SharingStarted.Lazily, lastAppUpdateCheckTimestamp)
+
+  override var cachedUpdateVersionCode: Long by long()
+  override fun observeCachedUpdateVersionCode(): StateFlow<Long> =
+    observeLong(::cachedUpdateVersionCode)
+      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateVersionCode)
+
+  override var cachedUpdateVersionName: String? by stringOrNull()
+  override fun observeCachedUpdateVersionName(): StateFlow<String?> =
+    observeStringOrNull(::cachedUpdateVersionName)
+      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateVersionName)
+
+  override var cachedUpdateDownloadUrl: String? by stringOrNull()
+  override fun observeCachedUpdateDownloadUrl(): StateFlow<String?> =
+    observeStringOrNull(::cachedUpdateDownloadUrl)
+      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateDownloadUrl)
+
+  override var cachedUpdateReleaseNotes: String? by stringOrNull()
+  override fun observeCachedUpdateReleaseNotes(): StateFlow<String?> =
+    observeStringOrNull(::cachedUpdateReleaseNotes)
+      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateReleaseNotes)
 }

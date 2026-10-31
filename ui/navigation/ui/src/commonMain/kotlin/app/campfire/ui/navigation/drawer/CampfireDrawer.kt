@@ -79,6 +79,7 @@ import app.campfire.common.compose.icons.rounded.CheckCircle
 import app.campfire.common.compose.icons.rounded.Sync
 import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.updates.AppUpdateWidget
+import app.campfire.updates.source.AppUpdate
 import app.campfire.updates.source.AppUpdateSource
 import app.campfire.updates.source.CheckUpdateResult
 import app.campfire.whatsnew.api.WhatsNewWidgetProvider
@@ -115,11 +116,14 @@ fun CampfireDrawer(
   var isCheckingForUpdates by remember { mutableStateOf(false) }
   var updateFeedback by remember { mutableStateOf<DrawerUpdateFeedback?>(null) }
   var isUpdateAvailable by remember { mutableStateOf(false) }
+  var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 
   LaunchedEffect(component.appUpdateSource) {
-    isUpdateAvailable = component.appUpdateSource.isUpdateAvailable()
+    availableUpdate = component.appUpdateSource.getAvailableUpdate()
+    isUpdateAvailable = availableUpdate != null
     component.appUpdateSource.changes().collect {
-      isUpdateAvailable = component.appUpdateSource.isUpdateAvailable()
+      availableUpdate = component.appUpdateSource.getAvailableUpdate()
+      isUpdateAvailable = availableUpdate != null
     }
   }
   val presenter = remember(component) {
@@ -203,9 +207,13 @@ fun CampfireDrawer(
                     val result = component.appUpdateSource.checkForUpdates(force = true)
                     when (result) {
                       is CheckUpdateResult.Available -> {
+                        availableUpdate = result.update
+                        isUpdateAvailable = true
                         updateFeedback = null
                       }
                       is CheckUpdateResult.UpToDate -> {
+                        availableUpdate = null
+                        isUpdateAvailable = false
                         updateFeedback = DrawerUpdateFeedback.UpToDate("Campfire is up to date (v${state.appVersion})")
                         delay(4000)
                         if (updateFeedback is DrawerUpdateFeedback.UpToDate) {
@@ -238,12 +246,25 @@ fun CampfireDrawer(
             ),
           )
 
-          component.appUpdateWidget.Content(
-            modifier = Modifier.padding(
-              horizontal = 16.dp,
-              vertical = 4.dp,
-            ),
-          )
+          AnimatedVisibility(
+            visible = availableUpdate != null,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+          ) {
+            val update = availableUpdate
+            if (update != null) {
+              component.appUpdateWidget.UpdateCard(
+                update = update,
+                modifier = Modifier.padding(
+                  horizontal = 16.dp,
+                  vertical = 4.dp,
+                ),
+                onDismiss = {
+                  availableUpdate = null
+                },
+              )
+            }
+          }
 
           AnimatedVisibility(
             visible = updateFeedback != null,

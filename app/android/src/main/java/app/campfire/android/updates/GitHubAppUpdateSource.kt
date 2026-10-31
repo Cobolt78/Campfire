@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -66,6 +67,21 @@ class GitHubAppUpdateSource(
   @Volatile
   private var cachedDownloadUrl: String? = null
 
+  private fun getPersistedUpdate(): AppUpdate? {
+    val code = appStateSettings.cachedUpdateVersionCode
+    val name = appStateSettings.cachedUpdateVersionName
+    val url = appStateSettings.cachedUpdateDownloadUrl
+    if (code > applicationInfo.versionCode && !name.isNullOrBlank() && !url.isNullOrBlank()) {
+      cachedDownloadUrl = url
+      return AppUpdate(
+        versionName = name,
+        versionCode = code,
+        releaseNotes = appStateSettings.cachedUpdateReleaseNotes,
+      )
+    }
+    return null
+  }
+
   override val isSupported: Boolean = true
 
   override fun isSignedIn(): Boolean = true
@@ -84,7 +100,7 @@ class GitHubAppUpdateSource(
   override suspend fun checkForUpdates(force: Boolean): CheckUpdateResult = withContext(Dispatchers.IO) {
     val now = System.currentTimeMillis()
     val lastCheck = appStateSettings.lastAppUpdateCheckTimestamp
-    val cached = cachedUpdate
+    val cached = cachedUpdate ?: getPersistedUpdate().also { cachedUpdate = it }
 
     if (!force && cached != null && (now - lastCheck) in 0 until COOLDOWN_DURATION_MS) {
       return@withContext CheckUpdateResult.Available(cached)
@@ -114,68 +130,85 @@ class GitHubAppUpdateSource(
           }
         }
 
-        val jsonString = response.body.string()
-        val releaseJson = JSONObject(jsonString)
+        val jsonString = response.body.string().trim()
+        val releasesArray = JSONArray(jsonString)
+        if (releasesArray.length() == 0) {
+          return@withContext CheckUpdateResult.UpToDate
+        }
 
-        val tagName = releaseJson.optString("tag_name", "")
-        val releaseName = releaseJson.optString("name", "")
-        val body = releaseJson.optString("body", "")
+        var newestVersionCode: Long = 0L
+        var newestVersionName: String = ""
+        var newestDownloadUrl: String? = null
+        var newestBody: String = ""
+        val isFoss = applicationInfo.flavor == Flavor.Foss
 
-        val remoteVersionCode = parseVersionCode(tagName)
-          ?: parseVersionCode(releaseName)
-          ?: return@withContext CheckUpdateResult.Error("Unrecognized release version tag")
+        for (i in 0 until releasesArray.length()) {
+          val releaseJson = releasesArray.getJSONObject(i)
+          if (releaseJson.optBoolean("draft", false)) continue
+
+          val tagName = releaseJson.optString("tag_name", "")
+          val releaseName = releaseJson.optString("name", "")
+          val vCode = parseVersionCode(tagName) ?: parseVersionCode(releaseName) ?: continue
+
+          if (vCode <= applicationInfo.versionCode) continue
+          if (vCode <= newestVersionCode) continue
+
+          val assetsArray = releaseJson.optJSONArray("assets") ?: continue
+          var matchedUrl: String? = null
+          for (j in 0 until assetsArray.length()) {
+            val asset = assetsArray.getJSONObject(j)
+            val assetName = asset.optString("name", "").lowercase()
+            val downloadUrl = asset.optString("browser_download_url", "")
+
+            if (!assetName.endsWith(".apk")) continue
+
+            if (isFoss && assetName.contains("foss")) {
+              matchedUrl = downloadUrl
+              break
+            } else if (!isFoss && (assetName.contains("standard") || !assetName.contains("foss"))) {
+              matchedUrl = downloadUrl
+              break
+            }
+          }
+
+          if (matchedUrl != null) {
+            val vName = parseVersionName(tagName).ifEmpty {
+              parseVersionName(releaseName)
+            }.ifEmpty {
+              tagName.removePrefix("v")
+            }
+            newestVersionCode = vCode
+            newestVersionName = vName
+            newestDownloadUrl = matchedUrl
+            newestBody = releaseJson.optString("body", "")
+          }
+        }
 
         appStateSettings.lastAppUpdateCheckTimestamp = now
 
-        // Check if remote version is strictly newer than current installed app
-        if (remoteVersionCode <= applicationInfo.versionCode) {
+        if (newestVersionCode <= applicationInfo.versionCode || newestDownloadUrl == null) {
           cachedUpdate = null
           cachedDownloadUrl = null
+          appStateSettings.cachedUpdateVersionCode = 0L
+          appStateSettings.cachedUpdateVersionName = null
+          appStateSettings.cachedUpdateDownloadUrl = null
+          appStateSettings.cachedUpdateReleaseNotes = null
           _changes.tryEmit(Unit)
           return@withContext CheckUpdateResult.UpToDate
         }
 
-        val remoteVersionName = parseVersionName(tagName).ifEmpty {
-          parseVersionName(releaseName)
-        }.ifEmpty {
-          tagName.removePrefix("v")
-        }
-
-        // Find matching APK asset for current flavor
-        val assetsArray = releaseJson.optJSONArray("assets")
-          ?: return@withContext CheckUpdateResult.Error("No release assets found")
-        var matchedDownloadUrl: String? = null
-        val isFoss = applicationInfo.flavor == Flavor.Foss
-
-        for (i in 0 until assetsArray.length()) {
-          val asset = assetsArray.getJSONObject(i)
-          val assetName = asset.optString("name", "").lowercase()
-          val downloadUrl = asset.optString("browser_download_url", "")
-
-          if (!assetName.endsWith(".apk")) continue
-
-          if (isFoss && assetName.contains("foss")) {
-            matchedDownloadUrl = downloadUrl
-            break
-          } else if (!isFoss && (assetName.contains("standard") || !assetName.contains("foss"))) {
-            matchedDownloadUrl = downloadUrl
-            break
-          }
-        }
-
-        if (matchedDownloadUrl.isNullOrBlank()) {
-          bark(LogPriority.WARN) { "No matching APK asset found in release $tagName for flavor ${applicationInfo.flavor}" }
-          return@withContext CheckUpdateResult.Error("No matching APK asset found for flavor ${applicationInfo.flavor}")
-        }
-
-        cachedDownloadUrl = matchedDownloadUrl
-
+        cachedDownloadUrl = newestDownloadUrl
         val update = AppUpdate(
-          versionName = remoteVersionName,
-          versionCode = remoteVersionCode,
-          releaseNotes = body.ifBlank { null },
+          versionName = newestVersionName,
+          versionCode = newestVersionCode,
+          releaseNotes = newestBody.ifBlank { null },
         )
         cachedUpdate = update
+        appStateSettings.cachedUpdateVersionCode = newestVersionCode
+        appStateSettings.cachedUpdateVersionName = newestVersionName
+        appStateSettings.cachedUpdateDownloadUrl = newestDownloadUrl
+        appStateSettings.cachedUpdateReleaseNotes = update.releaseNotes
+
         if (force) {
           appStateSettings.appUpdateDismissedVersionCode = 0L
         }
@@ -310,7 +343,7 @@ class GitHubAppUpdateSource(
 
   companion object {
     private const val GITHUB_REPO = "Cobolt78/Campfire"
-    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases?per_page=5"
     private val COOLDOWN_DURATION_MS = TimeUnit.HOURS.toMillis(1)
 
     private fun parseVersionCode(raw: String): Long? {

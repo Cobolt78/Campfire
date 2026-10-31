@@ -74,6 +74,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
 68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
 69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
+70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
 
 ---
 
@@ -1971,6 +1972,47 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 
 ### Modified Files:
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+## 70. Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)
+
+### Problem Description
+- **Drawer Check Spin-and-Disappear Bug**:
+  - In `CampfireDrawer.kt`, when manual update check (`checkForUpdates(force = true)`) detected an available release on GitHub, it executed `updateFeedback = null` and relied entirely on `component.appUpdateWidget.Content` to display the update.
+  - Because `AppUpdateWidgetImpl` is an indirect `@AppScope` component with detached reactive collectors and state resetting on invalidation, no update card or feedback message was rendered in the drawer. The spinner spun for ~0.5s and then vanished into silence, confusing users.
+- **Inability to Test Updates via Pre-Releases / RCs**:
+  - `GitHubAppUpdateSource.kt` queried `https://api.github.com/repos/$GITHUB_REPO/releases/latest`.
+  - GitHub's `/releases/latest` endpoint strictly omits all pre-releases by definition. Testing release candidates (e.g. `v1.2.40-rc1`) was impossible without publishing full public releases and incrementing official version numbers.
+- **In-Memory Cache Eviction on Process Kill**:
+  - Discovered update state was kept only in volatile memory (`cachedUpdate`). When the app was background-killed or restarted, the cached update was lost, and if within the 1-hour background cooldown, the app would report no update available until manually force-checked.
+
+### Solution & Key Implementation Details
+1. **Direct In-Drawer Update Card Ownership (`CampfireDrawer.kt`)**:
+   - `CampfireDrawer` now directly manages `var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }`.
+   - When `checkForUpdates(force = true)` returns `CheckUpdateResult.Available(update)`, `availableUpdate` is immediately assigned, directly rendering an interactive `AppUpdateWidgetCard` right under the "Check for updates" drawer button.
+   - Clicking the card opens the bottom sheet with release details and the "Update now" action; clicking dismiss (`✕`) clears `availableUpdate`.
+   - When up-to-date, it displays a 4-second green check confirmation pill ("Campfire is up to date (v...)"); on failure, a 4-second error pill ("Couldn't connect to GitHub").
+2. **Exposed Direct `UpdateCard` in `AppUpdateWidget` (`AppUpdateWidget.kt`, `AppUpdateWidgetImpl.kt`)**:
+   - Added `@Composable fun UpdateCard(update: AppUpdate, modifier: Modifier, onDismiss: (() -> Unit)?)` to `AppUpdateWidget` interface, allowing callers like `CampfireDrawer` to render a fully styled, interactive update card directly with zero race conditions.
+   - Replaced fragile `remember(invalidator) { flow { ... } }.collectAsState(null)` with `LaunchedEffect(invalidator)` in `AppUpdateWidgetImpl.Content` to eliminate temporary reset to `null`.
+3. **GitHub Pre-Release & Release Candidate Support (`GitHubAppUpdateSource.kt`)**:
+   - Changed API URL from `/releases/latest` to `https://api.github.com/repos/$GITHUB_REPO/releases?per_page=5`.
+   - Iterates releases array and evaluates the newest non-draft release, properly recognizing pre-releases (`--prerelease`).
+   - Enhanced `parseVersionCode` and `parseVersionName` to parse RC versions (`-rc(\d+)`), following upstream Campfire's `deriveVersionCode` formula (`1.2.40-rc1` = `1024001`, `1.2.40` final = `1024099`).
+4. **Persistent Disk Caching for Update State (`AppStateSettings.kt`, `AppStateSettingsImpl.kt`)**:
+   - Persisted `cachedUpdateVersionCode`, `cachedUpdateVersionName`, `cachedUpdateDownloadUrl`, and `cachedUpdateReleaseNotes` to disk across process kills.
+   - When the app is restarted, `getPersistedUpdate()` immediately restores the cached update without querying GitHub during cooldown.
+
+### Modified Files:
+* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
+* features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt
+* features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AppStateSettingsImpl.kt
+* features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestAppStateSettings.kt
+* infra/updates/api/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidget.kt
+* infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
+* ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

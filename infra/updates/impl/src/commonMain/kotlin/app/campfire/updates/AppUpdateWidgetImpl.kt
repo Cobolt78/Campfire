@@ -84,17 +84,14 @@ class AppUpdateWidgetImpl(
       appUpdateSource.changes().collect { invalidator++ }
     }
 
-    val state by remember(invalidator) {
-      flow {
-        val isSignedIn = appUpdateSource.isSignedIn()
-        emit(
-          AppUpdateState(
-            isSignedIn = isSignedIn,
-            appUpdate = if (isSignedIn) appUpdateSource.getAvailableUpdate() else null,
-          ),
-        )
-      }
-    }.collectAsState(null)
+    var state by remember { mutableStateOf<AppUpdateState?>(null) }
+    LaunchedEffect(invalidator) {
+      val isSignedIn = appUpdateSource.isSignedIn()
+      state = AppUpdateState(
+        isSignedIn = isSignedIn,
+        appUpdate = if (isSignedIn) appUpdateSource.getAvailableUpdate() else null,
+      )
+    }
     val signInDismissed by appStateSettings.observeAppUpdateSignInDismissed().collectAsState()
     val dismissedVersionCode by appStateSettings.observeAppUpdateDismissedVersionCode().collectAsState()
 

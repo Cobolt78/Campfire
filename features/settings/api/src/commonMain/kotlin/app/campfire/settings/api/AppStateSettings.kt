@@ -37,4 +37,19 @@ interface AppStateSettings {
    */
   var lastAppUpdateCheckTimestamp: Long
   fun observeLastAppUpdateCheckTimestamp(): StateFlow<Long>
+
+  /**
+   * Cached update information persisted to disk across process deaths.
+   */
+  var cachedUpdateVersionCode: Long
+  fun observeCachedUpdateVersionCode(): StateFlow<Long>
+
+  var cachedUpdateVersionName: String?
+  fun observeCachedUpdateVersionName(): StateFlow<String?>
+
+  var cachedUpdateDownloadUrl: String?
+  fun observeCachedUpdateDownloadUrl(): StateFlow<String?>
+
+  var cachedUpdateReleaseNotes: String?
+  fun observeCachedUpdateReleaseNotes(): StateFlow<String?>
 }

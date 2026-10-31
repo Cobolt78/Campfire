@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.40-rc1]
+
+### Added
+
+- **Direct In-Drawer Update Card Ownership**:
+  - The navigation drawer now directly holds and controls the detected `AppUpdate` state, rendering an interactive update card immediately when an update is available.
+  - Tapping the update card opens the update details sheet with release notes and the "Update now" button; dismissing the card hides it cleanly with a dismiss ('✕') button.
+  - Immediate visual confirmation: tapping "Check for updates" displays either the update card, an up-to-date confirmation pill ("Campfire is up to date"), or an error pill, eliminating the bug where the check spun for 0.5s and then vanished into silence.
+
+- **GitHub Pre-Release & Release Candidate (RC) Support**:
+  - Changed GitHub Releases API integration from `/releases/latest` to query the releases list, allowing seamless recognition of pre-releases (e.g. `v1.2.40-rc1`).
+  - Pre-releases are automatically recognized and version-ordered (`rc1` < `rc2` < final release), enabling testing and verification of new versions without bumping public releases.
+
+- **Persistent Disk Caching for Discovered Updates**:
+  - Discovered update metadata (version code, version name, download URL, release notes) is now persisted to disk in `AppStateSettings`, allowing the update card to survive app restarts and background process terminations.
+
 ## [1.2.39]
 
 ### Changed
