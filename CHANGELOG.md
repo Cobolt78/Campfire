@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.39]
+
+### Changed
+
+- **Full-Width Stacked Layout for Headset & Remote Controls Settings**:
+  - Redesigned the action selectors in the "Headset & Remote Controls" settings pane from cramped horizontal rows into clean, full-width vertical blocks with headlines and descriptions placed directly above each selector.
+  - Eliminated awkward single-letter word wrapping (such as orphan "s" in "Quadruple-Press") and compressed 3–4 line descriptions into natural 1–2 line paragraphs spanning the full screen width.
+  - Added subtle horizontal divider lines between setting blocks to establish clear visual boundaries, ensuring users can instantly tell which description belongs to each button.
+  - Expanded selector chips into full-width Material 3 picker fields, giving long action labels (e.g. "Skip to previous chapter") ample room without truncation.
+
 ## [1.2.38]
 
 ### Changed

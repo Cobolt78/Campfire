@@ -11,14 +11,24 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..8f6f1514 100644
+index 1dcbc292..a74e3242 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,280 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,290 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.39]
++
++### Changed
++
++- **Full-Width Stacked Layout for Headset & Remote Controls Settings**:
++  - Redesigned the action selectors in the "Headset & Remote Controls" settings pane from cramped horizontal rows into clean, full-width vertical blocks with headlines and descriptions placed directly above each selector.
++  - Eliminated awkward single-letter word wrapping (such as orphan "s" in "Quadruple-Press") and compressed 3–4 line descriptions into natural 1–2 line paragraphs spanning the full screen width.
++  - Added subtle horizontal divider lines between setting blocks to establish clear visual boundaries, ensuring users can instantly tell which description belongs to each button.
++  - Expanded selector chips into full-width Material 3 picker fields, giving long action labels (e.g. "Skip to previous chapter") ample room without truncation.
++
 +## [1.2.38]
 +
 +### Changed
@@ -297,10 +307,10 @@ index 1dcbc292..8f6f1514 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..48d10e3c 100644
+index e460bea1..db7e2f3e 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,43 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,44 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -341,10 +351,11 @@ index e460bea1..48d10e3c 100644
 +66. [Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)](#66-headset--remote-controls-settings-pane-and-multi-press-customization-v1236)
 +67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
 +68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
++69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
  
  ---
  
-@@ -180,6 +217,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +218,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -352,7 +363,7 @@ index e460bea1..48d10e3c 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +417,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +418,33 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -386,7 +397,7 @@ index e460bea1..48d10e3c 100644
  
  ---
  
-@@ -891,8 +956,996 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +957,1020 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -505,9 +516,9 @@ index e460bea1..48d10e3c 100644
 +* `features/discover/impl/src/commonTest/kotlin/app/campfire/discover/SeriesScannerTest.kt`
 +
 +---
-+
+ 
 +## 42. Audiobookshelf Server-Synced Audible Series Tracking & Completion Filters (v1.2.21)
-+
+ 
 +### Summary
 +Wired Campfire client to the new Audiobookshelf server Audible series endpoints (`/api/libraries/:id/upcoming-releases`, `/api/libraries/:id/missing-books`, `/api/series/:id/provider-entries`, `/api/libraries/:id/series-provider/scan`), adding Series completion filter options (`Has Missing Books`, `Complete`, `Has Upcoming Releases`) and sort options (`Missing Books Count`, `Upcoming Release Date`), while maintaining 100% backwards compatibility with upstream vanilla ABS servers via automatic fallback to local 28-day scanning.
 +
@@ -560,7 +571,7 @@ index e460bea1..48d10e3c 100644
 +---
 +
 +## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
-+
+ 
 +### Summary
 +Added offline downloaded status indicators (`OfflineStatusIndicator`) to book covers in the dedicated Continue Series screen (`ContinueSeriesUi.kt`) across both the standard list card view and the alternate grid card view. Users can now immediately identify which next-up series books are downloaded to the device without having to open individual book detail screens.
 +
@@ -580,9 +591,9 @@ index e460bea1..48d10e3c 100644
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt`
 +
 +---
-+
+ 
 +## 44. Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.21)
-+
+ 
 +### Summary
 +Resolved a noticeable 1–3 second freeze/lag when navigating back from a Book Details screen to the Home screen. By removing Jetpack Compose's shared element transitions (`sharedBounds` on the main page scaffold and book title, and `sharedElement` on the cover image), navigation back to the Home screen now executes instantly via smooth, native slide animations.
 +
@@ -608,7 +619,7 @@ index e460bea1..48d10e3c 100644
 +---
 +
 +## 45. Audiobookshelf Playback Progress Sync & Server Session Cleanup (v1.2.21)
- 
++
 +### Summary
 +Fixed critical regressions affecting progress tracking, "Continue Listening" visibility on the Audiobookshelf server dashboard, zombie listening sessions on the server, and false-positive chapter metadata error banners.
 +
@@ -680,12 +691,12 @@ index e460bea1..48d10e3c 100644
 +* `app/android/base-proguard-rules.pro`
 +
 +---
- 
++
 +## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
- 
++
 +### Summary
 +Resolved an issue where tapping Download on a book while connected to home Wi-Fi triggered a false-positive "Mobile Data Warning" dialog whenever the phone had mobile data enabled.
- 
++
 +### Root Cause
 +During the v1.2.21 feature restore (commit `ecac076c`), `rememberIsCellularOrMetered` was refactored with a live `ConnectivityManager.NetworkCallback` using `cm.registerNetworkCallback(request, callback)` with a general `NET_CAPABILITY_INTERNET` request. On modern Android devices (especially Samsung Galaxy devices), the cellular modem maintains an active background standby connection even while connected to Wi-Fi. Because `registerNetworkCallback` scans all active hardware interfaces on the phone rather than the system's active default network, Android dispatched capabilities for the standby cellular radio, falsely setting `isCellularOrMetered = true`.
 +
@@ -808,7 +819,7 @@ index e460bea1..48d10e3c 100644
 +   - Updated the click handler for the "Listen Again" shelf header to navigate to `LibraryScreen` with `filter = Filter.Finished`, `sortMode = ContentSortMode.LastListened`, and `sortDirection = SortDirection.Descending`.
 +5. **Screen-Scoped Retained State (`LibraryPresenter.kt`)**:
 +   - Keyed `rememberRetainedSaveable(screen)` to guarantee that screen navigation arguments (`sortMode`, `sortDirection`, `filter`) are reliably applied when transitioning from Home shelf headers.
- 
++
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/settings/ContentSortMode.kt`
 +* `features/filters/ui/src/commonMain/composeResources/values/filters_ui_strings.xml`
@@ -1380,6 +1391,30 @@ index e460bea1..48d10e3c 100644
 +
 +### Modified Files:
 +* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++## 69. Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)
++
++### Problem Description
++- **Awkward Text Wrapping & Orphan Letters**:
++  - In `HeadsetControlsPane.kt`, settings were implemented using horizontal `ListItem` rows with the headline/description on the left and the interactive dropdown chip on the right.
++  - Because action labels (e.g., "Skip forward (time)", "Skip to previous chapter") are long, the right-hand chip occupied 50–60% of screen width, compressing the text column down to ~140dp.
++  - On standard phone viewports, "Quadruple-Press" ran out of room, forcing the final "s" to wrap alone onto a second line (`Quadruple-Pres` / `s`). Subtitle descriptions were also squeezed into 3–4 narrow vertical lines.
++
++### Solution & Key Implementation Details
++1. **Full-Width Stacked Layout (`HeadsetControlsPane.kt`)**:
++   - Redesigned `RemoteControlActionDropdownSetting` to stack vertically: Headline -> Subtitle -> Full-width selector button.
++   - Text now spans the entire viewport width (360–412dp), cleanly eliminating orphan letter wrapping ("Quadruple-Press" stays comfortably on one line) and compressing descriptions into natural 1–2 line paragraphs.
++2. **Subtle Horizontal Dividers (`HeadsetControlsPane.kt`)**:
++   - Inserted Material 3 `HorizontalDivider` elements with `outlineVariant` styling between adjacent setting blocks.
++   - Combined with tight internal vertical spacing (Headline to Subtitle to Selector), the dividers create unambiguous visual boundaries so users immediately recognize which description belongs to each button.
++3. **Full-Width Material 3 Selector Field (`HeadsetControlsPane.kt`)**:
++   - Styled the selector into a rounded, surface-container input field with leading action icon, bold action title, and trailing dropdown indicator, giving even the longest action titles plenty of breathing room.
++
++### Modified Files:
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -7648,25 +7683,46 @@ index 2ce324d6..905dd47b 100644
        is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 new file mode 100644
-index 00000000..08c01813
+index 00000000..03c46fec
 --- /dev/null
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,260 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
 +package app.campfire.ui.settings.panes
 +
++import androidx.compose.foundation.background
++import androidx.compose.foundation.border
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
 +import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
 +import androidx.compose.foundation.layout.height
 +import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.DropdownMenu
++import androidx.compose.material3.DropdownMenuItem
++import androidx.compose.material3.HorizontalDivider
 +import androidx.compose.material3.Icon
 +import androidx.compose.material3.MaterialTheme
 +import androidx.compose.material3.Text
 +import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
 +import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
++import androidx.compose.ui.text.font.FontWeight
 +import androidx.compose.ui.unit.dp
 +import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.ArrowDropDown
 +import app.campfire.common.compose.icons.rounded.BookmarkAdd
 +import app.campfire.common.compose.icons.rounded.Close
 +import app.campfire.common.compose.icons.rounded.FastForward
@@ -7676,7 +7732,6 @@ index 00000000..08c01813
 +import app.campfire.settings.api.RemoteControlAction
 +import app.campfire.ui.settings.SettingsUiEvent.HeadsetControlsSettingEvent
 +import app.campfire.ui.settings.SettingsUiState
-+import app.campfire.ui.settings.composables.DropdownSetting
 +import app.campfire.ui.settings.composables.Header
 +
 +@Composable
@@ -7704,7 +7759,7 @@ index 00000000..08c01813
 +      modifier = Modifier.padding(horizontal = 16.dp),
 +    )
 +
-+    Spacer(Modifier.height(8.dp))
++    Spacer(Modifier.height(12.dp))
 +
 +    RemoteControlActionDropdownSetting(
 +      headline = "Double-Press",
@@ -7713,11 +7768,21 @@ index 00000000..08c01813
 +      onValueChange = { eventSink(HeadsetControlsSettingEvent.SingleButtonDoublePress(it)) },
 +    )
 +
++    HorizontalDivider(
++      modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
++      color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
++    )
++
 +    RemoteControlActionDropdownSetting(
 +      headline = "Triple-Press",
 +      subtitle = "Action triggered on three quick presses",
 +      value = settings.singleButtonTriplePressAction,
 +      onValueChange = { eventSink(HeadsetControlsSettingEvent.SingleButtonTriplePress(it)) },
++    )
++
++    HorizontalDivider(
++      modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
++      color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
 +    )
 +
 +    RemoteControlActionDropdownSetting(
@@ -7740,7 +7805,7 @@ index 00000000..08c01813
 +      modifier = Modifier.padding(horizontal = 16.dp),
 +    )
 +
-+    Spacer(Modifier.height(8.dp))
++    Spacer(Modifier.height(12.dp))
 +
 +    RemoteControlActionDropdownSetting(
 +      headline = "\"Next Track\" Command",
@@ -7749,12 +7814,19 @@ index 00000000..08c01813
 +      onValueChange = { eventSink(HeadsetControlsSettingEvent.NextButton(it)) },
 +    )
 +
++    HorizontalDivider(
++      modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
++      color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
++    )
++
 +    RemoteControlActionDropdownSetting(
 +      headline = "\"Previous Track\" Command",
 +      subtitle = "Action when a Previous signal is received (e.g. triple-tapping most Bluetooth earbuds or pressing Previous on car audio)",
 +      value = settings.previousButtonAction,
 +      onValueChange = { eventSink(HeadsetControlsSettingEvent.PreviousButton(it)) },
 +    )
++
++    Spacer(Modifier.height(16.dp))
 +  }
 +}
 +
@@ -7766,30 +7838,114 @@ index 00000000..08c01813
 +  onValueChange: (RemoteControlAction) -> Unit,
 +  modifier: Modifier = Modifier,
 +) {
-+  DropdownSetting(
-+    value = value,
-+    values = RemoteControlAction.entries,
-+    onValueChange = onValueChange,
-+    headlineContent = { Text(headline) },
-+    supportingContent = { Text(subtitle) },
-+    itemIcon = { action ->
-+      Icon(
-+        imageVector = when (action) {
++  var isExpanded by remember { mutableStateOf(false) }
++
++  Column(
++    modifier = modifier
++      .fillMaxWidth()
++      .padding(horizontal = 16.dp, vertical = 6.dp),
++  ) {
++    Text(
++      text = headline,
++      style = MaterialTheme.typography.titleMedium,
++      fontWeight = FontWeight.SemiBold,
++      color = MaterialTheme.colorScheme.onSurface,
++    )
++
++    Spacer(Modifier.height(4.dp))
++
++    Text(
++      text = subtitle,
++      style = MaterialTheme.typography.bodyMedium,
++      color = MaterialTheme.colorScheme.onSurfaceVariant,
++    )
++
++    Spacer(Modifier.height(10.dp))
++
++    Box(modifier = Modifier.fillMaxWidth()) {
++      Row(
++        modifier = Modifier
++          .fillMaxWidth()
++          .background(
++            color = MaterialTheme.colorScheme.surfaceContainer,
++            shape = RoundedCornerShape(12.dp),
++          )
++          .border(
++            width = 1.dp,
++            color = MaterialTheme.colorScheme.outlineVariant,
++            shape = RoundedCornerShape(12.dp),
++          )
++          .clip(RoundedCornerShape(12.dp))
++          .clickable { isExpanded = true }
++          .padding(horizontal = 16.dp, vertical = 12.dp),
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        val actionIcon = when (value) {
 +          RemoteControlAction.SKIP_FORWARD_TIME -> CampfireIcons.Rounded.FastForward
 +          RemoteControlAction.SKIP_BACKWARD_TIME -> CampfireIcons.Rounded.FastRewind
 +          RemoteControlAction.NEXT_CHAPTER -> CampfireIcons.Rounded.SkipNext
 +          RemoteControlAction.PREVIOUS_CHAPTER -> CampfireIcons.Rounded.SkipPrevious
 +          RemoteControlAction.ADD_BOOKMARK -> CampfireIcons.Rounded.BookmarkAdd
 +          RemoteControlAction.NONE -> CampfireIcons.Rounded.Close
-+        },
-+        contentDescription = null,
-+      )
-+    },
-+    itemText = { action ->
-+      Text(action.label)
-+    },
-+    modifier = modifier,
-+  )
++        }
++        Icon(
++          imageVector = actionIcon,
++          contentDescription = null,
++          tint = MaterialTheme.colorScheme.primary,
++          modifier = Modifier.size(24.dp),
++        )
++        Spacer(Modifier.width(12.dp))
++        Text(
++          text = value.label,
++          style = MaterialTheme.typography.bodyLarge,
++          fontWeight = FontWeight.Medium,
++          color = MaterialTheme.colorScheme.onSurface,
++          modifier = Modifier.weight(1f),
++        )
++        Icon(
++          imageVector = CampfireIcons.Rounded.ArrowDropDown,
++          contentDescription = null,
++          tint = MaterialTheme.colorScheme.onSurfaceVariant,
++        )
++      }
++
++      DropdownMenu(
++        expanded = isExpanded,
++        onDismissRequest = { isExpanded = false },
++      ) {
++        RemoteControlAction.entries.forEach { option ->
++          val optionIcon = when (option) {
++            RemoteControlAction.SKIP_FORWARD_TIME -> CampfireIcons.Rounded.FastForward
++            RemoteControlAction.SKIP_BACKWARD_TIME -> CampfireIcons.Rounded.FastRewind
++            RemoteControlAction.NEXT_CHAPTER -> CampfireIcons.Rounded.SkipNext
++            RemoteControlAction.PREVIOUS_CHAPTER -> CampfireIcons.Rounded.SkipPrevious
++            RemoteControlAction.ADD_BOOKMARK -> CampfireIcons.Rounded.BookmarkAdd
++            RemoteControlAction.NONE -> CampfireIcons.Rounded.Close
++          }
++          DropdownMenuItem(
++            leadingIcon = {
++              Icon(
++                imageVector = optionIcon,
++                contentDescription = null,
++                tint = if (option == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
++              )
++            },
++            text = {
++              Text(
++                text = option.label,
++                fontWeight = if (option == value) FontWeight.SemiBold else FontWeight.Normal,
++                color = if (option == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
++              )
++            },
++            onClick = {
++              onValueChange(option)
++              isExpanded = false
++            },
++          )
++        }
++      }
++    }
++  }
 +}
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 index 7e0fa6f4..b8b32f3d 100644
@@ -8245,7 +8401,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..ea33e358 100644
+index e42923f9..9ba13fc1 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -8253,13 +8409,13 @@ index e42923f9..ea33e358 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.38
++campfire.version=1.2.39
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1023899
++campfire.versionCode=1023999
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

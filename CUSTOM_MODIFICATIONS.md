@@ -73,6 +73,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 66. [Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)](#66-headset--remote-controls-settings-pane-and-multi-press-customization-v1236)
 67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
 68. [Restoration of 1-Hour Cooldown for Home Feed Pull-to-Refresh (v1.2.38)](#68-restoration-of-1-hour-cooldown-for-home-feed-pull-to-refresh-v1238)
+69. [Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)](#69-full-width-stacked-layout--dividers-for-headset--remote-controls-settings-v1239)
 
 ---
 
@@ -1946,6 +1947,30 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 
 ### Modified Files:
 * features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+## 69. Full-Width Stacked Layout & Dividers for Headset & Remote Controls Settings (v1.2.39)
+
+### Problem Description
+- **Awkward Text Wrapping & Orphan Letters**:
+  - In `HeadsetControlsPane.kt`, settings were implemented using horizontal `ListItem` rows with the headline/description on the left and the interactive dropdown chip on the right.
+  - Because action labels (e.g., "Skip forward (time)", "Skip to previous chapter") are long, the right-hand chip occupied 50–60% of screen width, compressing the text column down to ~140dp.
+  - On standard phone viewports, "Quadruple-Press" ran out of room, forcing the final "s" to wrap alone onto a second line (`Quadruple-Pres` / `s`). Subtitle descriptions were also squeezed into 3–4 narrow vertical lines.
+
+### Solution & Key Implementation Details
+1. **Full-Width Stacked Layout (`HeadsetControlsPane.kt`)**:
+   - Redesigned `RemoteControlActionDropdownSetting` to stack vertically: Headline -> Subtitle -> Full-width selector button.
+   - Text now spans the entire viewport width (360–412dp), cleanly eliminating orphan letter wrapping ("Quadruple-Press" stays comfortably on one line) and compressing descriptions into natural 1–2 line paragraphs.
+2. **Subtle Horizontal Dividers (`HeadsetControlsPane.kt`)**:
+   - Inserted Material 3 `HorizontalDivider` elements with `outlineVariant` styling between adjacent setting blocks.
+   - Combined with tight internal vertical spacing (Headline to Subtitle to Selector), the dividers create unambiguous visual boundaries so users immediately recognize which description belongs to each button.
+3. **Full-Width Material 3 Selector Field (`HeadsetControlsPane.kt`)**:
+   - Styled the selector into a rounded, surface-container input field with leading action icon, bold action title, and trailing dropdown indicator, giving even the longest action titles plenty of breathing room.
+
+### Modified Files:
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
