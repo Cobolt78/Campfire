@@ -17,6 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.37]
+
+### Added
+
+- **Interactive In-Drawer App Update Card**:
+  - Replaced transient, unclickable toast notifications in the navigation drawer with an expandable, interactive update card rendered directly beneath the "Check for updates" button.
+  - Tapping the update card immediately opens the release notes bottom sheet with full changelogs and one-tap installation.
+  - Added a dismiss ('X') button directly on the card to collapse it when desired.
+- **Inline Status Feedback for Update Checks**:
+  - Checking for updates now displays a clean, temporary inline status banner directly under the "Check for updates" button ("Campfire is up to date" or network error) that automatically fades away after 4 seconds.
+- **Update Badge on Drawer Navigation**:
+  - Added an update badge indicator to the "Check for updates" navigation item whenever an update is available.
+
+### Changed
+
+- **Forced Update Checks on User Pull-to-Refresh**:
+  - Pulling down to refresh on the Home screen (`HomeUi`) now runs an immediate forced update check against GitHub Releases (`force = true`), bypassing the 1-hour background cooldown throttle.
+- **Automatic Un-dismissal on Manual Update Checks**:
+  - Manually checking for updates (either by swiping down on Home or tapping "Check for updates" in the drawer) now clears prior update dismissals, ensuring newly available releases are immediately surfaced on both the Home screen and the navigation drawer.
+
 ## [1.2.36]
 
 ### Added

@@ -67,6 +67,11 @@ This document captures all custom features, bug fixes, and UI improvements added
 60. [Google Assistant & Gemini Hands-Free Voice Controls & Enlarged Book-Time Readouts (v1.2.30)](#60-google-assistant--gemini-hands-free-voice-controls--enlarged-book-time-readouts-v1230)
 61. [Android Auto & Notification Dual Progress Hierarchy (v1.2.31)](#61-android-auto--notification-dual-progress-hierarchy-v1231)
 62. [Android Auto Single-File Chaptered Book Title Restoration (v1.2.32)](#62-android-auto-single-file-chaptered-book-title-restoration-v1232)
+63. [Dual Book-Time Readout Speed Factor Restoration (v1.2.33)](#63-dual-book-time-readout-speed-factor-restoration-v1233)
+64. [Multi-Trigger GitHub App Update Checking with 1-Hour Disk Cooldown (v1.2.34)](#64-multi-trigger-github-app-update-checking-with-1-hour-disk-cooldown-v1234)
+65. [Sleep Timer Startup Crash Fix & Initialization Order (v1.2.35)](#65-sleep-timer-startup-crash-fix--initialization-order-v1235)
+66. [Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)](#66-headset--remote-controls-settings-pane-and-multi-press-customization-v1236)
+67. [Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)](#67-interactive-in-drawer-update-card--pull-to-refresh-forced-check-v1237)
 
 ---
 
@@ -1885,6 +1890,41 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+## 67. Interactive In-Drawer Update Card & Pull-to-Refresh Forced Check (v1.2.37)
+
+### Problem Description
+- **Suppressed Pull-to-Refresh Update Checks**:
+  - In `HomePresenter.kt`, pulling down on the home feed (`HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries`) called `appUpdateSource.checkForUpdates(force = false)`.
+  - In `GitHubAppUpdateSource.kt`, background update checks are throttled by a 1-hour cooldown (`COOLDOWN_DURATION_MS = 1 hour`). Because Campfire checks for updates upon app launch, user pull-to-refresh gestures within that 1-hour window were skipped and never contacted GitHub.
+- **Unclickable Transient Drawer Toast**:
+  - In `CampfireDrawer.kt`, tapping "Check for updates" displayed a floating Android system toast (`GlobalToaster.show`) that vanished after a few seconds. Toasts cannot be clicked, provided no action to view release notes or install, and did not leave a persistent banner in the drawer.
+- **Permanent Dismissal Suppression on Manual Checks**:
+  - If a user previously clicked the 'X' button to dismiss an update card on the home screen, `appStateSettings.appUpdateDismissedVersionCode` permanently muted the card for that version. Explicitly checking for updates via the drawer button or swipe-to-refresh never cleared this suppression, leaving the home banner hidden even when an update was confirmed available.
+
+### Solution & Key Implementation Details
+1. **Interactive In-Drawer App Update Card (`CampfireDrawer.kt`)**:
+   - Replaced transient system toasts with an expandable, interactive update card rendered directly beneath the "Check for updates" drawer item (`component.appUpdateWidget.Content`).
+   - Tapping the card opens the full release notes bottom sheet with markdown changelog and one-tap update installation.
+   - Includes a direct dismiss ('X') button to collapse the card at will.
+2. **Inline Feedback Status Chip (`CampfireDrawer.kt`)**:
+   - Added temporary inline status feedback (`DrawerUpdateFeedback`) directly beneath the "Check for updates" button.
+   - When the app is up to date, shows a subtle `CheckCircle` status banner ("Campfire is up to date (vX.X.XX)") that automatically fades after 4 seconds.
+   - When a network error occurs, shows a `Warning` status banner ("Couldn't connect to GitHub") that fades after 4 seconds.
+3. **Drawer Item Update Badge (`CampfireDrawer.kt`)**:
+   - Added a Material 3 `Badge()` to the Sync icon on the "Check for updates" drawer item when `isUpdateAvailable` is true, providing an immediate visual cue that an update is waiting.
+4. **Forced Check on User Pull-to-Refresh (`HomePresenter.kt`)**:
+   - Changed `appUpdateSource.checkForUpdates(force = false)` to `force = true` on both `HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries` so explicit user refresh gestures query GitHub immediately.
+5. **Automatic Un-dismissal on Manual Check (`GitHubAppUpdateSource.kt`)**:
+   - In `checkForUpdates(force = true)`, resets `appStateSettings.appUpdateDismissedVersionCode = 0L` whenever an update is found or cached, ensuring manual checks always un-suppress the update cards on both the home feed and navigation drawer.
+
+### Modified Files:
+* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* ui/navigation/ui/src/commonMain/kotlin/app/campfire/ui/navigation/drawer/CampfireDrawer.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

@@ -104,6 +104,10 @@ class GitHubAppUpdateSource(
         if (!response.isSuccessful) {
           bark(LogPriority.WARN) { "GitHub Releases API returned HTTP ${response.code}" }
           return@withContext if (cached != null) {
+            if (force) {
+              appStateSettings.appUpdateDismissedVersionCode = 0L
+              _changes.tryEmit(Unit)
+            }
             CheckUpdateResult.Available(cached)
           } else {
             CheckUpdateResult.Error("HTTP ${response.code}")
@@ -172,12 +176,19 @@ class GitHubAppUpdateSource(
           releaseNotes = body.ifBlank { null },
         )
         cachedUpdate = update
+        if (force) {
+          appStateSettings.appUpdateDismissedVersionCode = 0L
+        }
         _changes.tryEmit(Unit)
         CheckUpdateResult.Available(update)
       }
     } catch (e: Exception) {
       bark(LogPriority.WARN, throwable = e) { "Failed to check for GitHub updates" }
       if (cached != null) {
+        if (force) {
+          appStateSettings.appUpdateDismissedVersionCode = 0L
+          _changes.tryEmit(Unit)
+        }
         CheckUpdateResult.Available(cached)
       } else {
         CheckUpdateResult.Error(e.message ?: "Failed to connect to GitHub")

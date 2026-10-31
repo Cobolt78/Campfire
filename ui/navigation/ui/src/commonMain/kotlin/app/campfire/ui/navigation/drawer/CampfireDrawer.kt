@@ -64,14 +64,21 @@ import app.campfire.settings.api.ThemeMode.SYSTEM
 import app.campfire.ui.navigation.HomeNavigationItem
 import app.campfire.ui.navigation.NavigationPresenterFactory
 import app.campfire.ui.theming.api.screen.ThemePickerScreen
-import app.campfire.updates.AppUpdateWidget
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.campfire.common.compose.icons.rounded.CheckCircle
 import app.campfire.common.compose.icons.rounded.Sync
-import app.campfire.core.toast.GlobalToaster
-import app.campfire.core.toast.Toast
+import app.campfire.common.compose.icons.rounded.Warning
+import app.campfire.updates.AppUpdateWidget
 import app.campfire.updates.source.AppUpdateSource
 import app.campfire.updates.source.CheckUpdateResult
 import app.campfire.whatsnew.api.WhatsNewWidgetProvider
@@ -82,6 +89,8 @@ import campfire.ui.navigation.ui.generated.resources.action_change_theme_mode
 import com.slack.circuit.runtime.Navigator
 import com.slack.circuit.runtime.screen.Screen
 import dev.zacsweers.metro.ContributesTo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -104,6 +113,15 @@ fun CampfireDrawer(
 ) {
   val scope = rememberCoroutineScope()
   var isCheckingForUpdates by remember { mutableStateOf(false) }
+  var updateFeedback by remember { mutableStateOf<DrawerUpdateFeedback?>(null) }
+  var isUpdateAvailable by remember { mutableStateOf(false) }
+
+  LaunchedEffect(component.appUpdateSource) {
+    isUpdateAvailable = component.appUpdateSource.isUpdateAvailable()
+    component.appUpdateSource.changes().collect {
+      isUpdateAvailable = component.appUpdateSource.isUpdateAvailable()
+    }
+  }
   val presenter = remember(component) {
     component.navigationPresenterFactory()
   }
@@ -148,12 +166,6 @@ fun CampfireDrawer(
         ),
       )
 
-      component.appUpdateWidget.Content(
-        modifier = Modifier.padding(
-          horizontal = 16.dp,
-        ),
-      )
-
       Spacer(Modifier.height(8.dp))
 
       state.navigationItems.forEach { item ->
@@ -166,10 +178,18 @@ fun CampfireDrawer(
                   strokeWidth = 2.dp,
                 )
               } else {
-                Icon(
-                  imageVector = CampfireIcons.Rounded.Sync,
-                  contentDescription = "Check for updates",
-                )
+                BadgedBox(
+                  badge = {
+                    if (isUpdateAvailable) {
+                      Badge()
+                    }
+                  },
+                ) {
+                  Icon(
+                    imageVector = CampfireIcons.Rounded.Sync,
+                    contentDescription = "Check for updates",
+                  )
+                }
               }
             },
             label = { Text(text = "Check for updates") },
@@ -177,34 +197,36 @@ fun CampfireDrawer(
             onClick = {
               if (!isCheckingForUpdates) {
                 isCheckingForUpdates = true
+                updateFeedback = null
                 scope.launch {
                   try {
                     val result = component.appUpdateSource.checkForUpdates(force = true)
                     when (result) {
                       is CheckUpdateResult.Available -> {
-                        GlobalToaster.show(
-                          "Update available: ${result.update.versionName}",
-                          Toast.Duration.LONG,
-                        )
+                        updateFeedback = null
                       }
                       is CheckUpdateResult.UpToDate -> {
-                        GlobalToaster.show(
-                          "Campfire is up to date (v${state.appVersion})",
-                          Toast.Duration.SHORT,
-                        )
+                        updateFeedback = DrawerUpdateFeedback.UpToDate("Campfire is up to date (v${state.appVersion})")
+                        delay(4000)
+                        if (updateFeedback is DrawerUpdateFeedback.UpToDate) {
+                          updateFeedback = null
+                        }
                       }
                       is CheckUpdateResult.Error -> {
-                        GlobalToaster.show(
-                          "Couldn't connect to GitHub",
-                          Toast.Duration.SHORT,
-                        )
+                        updateFeedback = DrawerUpdateFeedback.Error("Couldn't connect to GitHub")
+                        delay(4000)
+                        if (updateFeedback is DrawerUpdateFeedback.Error) {
+                          updateFeedback = null
+                        }
                       }
                     }
                   } catch (e: Exception) {
-                    GlobalToaster.show(
-                      "Couldn't connect to GitHub",
-                      Toast.Duration.SHORT,
-                    )
+                    if (e is CancellationException) throw e
+                    updateFeedback = DrawerUpdateFeedback.Error("Couldn't connect to GitHub")
+                    delay(4000)
+                    if (updateFeedback is DrawerUpdateFeedback.Error) {
+                      updateFeedback = null
+                    }
                   } finally {
                     isCheckingForUpdates = false
                   }
@@ -215,6 +237,54 @@ fun CampfireDrawer(
               horizontal = 16.dp,
             ),
           )
+
+          component.appUpdateWidget.Content(
+            modifier = Modifier.padding(
+              horizontal = 16.dp,
+              vertical = 4.dp,
+            ),
+          )
+
+          AnimatedVisibility(
+            visible = updateFeedback != null,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+          ) {
+            val feedback = updateFeedback
+            if (feedback != null) {
+              Surface(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  val (icon, tint) = when (feedback) {
+                    is DrawerUpdateFeedback.UpToDate ->
+                      CampfireIcons.Rounded.CheckCircle to MaterialTheme.colorScheme.primary
+                    is DrawerUpdateFeedback.Error ->
+                      CampfireIcons.Rounded.Warning to MaterialTheme.colorScheme.error
+                  }
+                  Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(18.dp),
+                  )
+                  Text(
+                    text = feedback.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
+              }
+            }
+          }
         }
 
         DestinationListItem(
@@ -389,4 +459,11 @@ private fun DrawerSheet(
       windowInsets = windowInsets,
     )
   }
+}
+
+private sealed interface DrawerUpdateFeedback {
+  val message: String
+
+  data class UpToDate(override val message: String) : DrawerUpdateFeedback
+  data class Error(override val message: String) : DrawerUpdateFeedback
 }
