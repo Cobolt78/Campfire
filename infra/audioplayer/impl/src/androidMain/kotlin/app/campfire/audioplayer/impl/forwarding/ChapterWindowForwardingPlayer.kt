@@ -13,6 +13,7 @@ import app.campfire.audioplayer.impl.mediaitem.MediaItemBuilder
 import app.campfire.core.extensions.seconds
 import app.campfire.core.model.Chapter
 import app.campfire.settings.api.PlaybackSettings
+import app.campfire.settings.api.RemoteControlAction
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlin.time.Duration
@@ -146,8 +147,13 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_NEXT,
       Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
       -> {
-        if (remoteJumpPreferred()) {
-          host.seekForward()
+        if (session.isRemoteControllerRequest(appPackageName)) {
+          when (settings.nextButtonAction) {
+            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
+            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
+            RemoteControlAction.NONE -> Unit
+            else -> host.skipToNextChapter()
+          }
         } else {
           host.skipToNextChapter()
         }
@@ -156,8 +162,13 @@ class ChapterWindowForwardingPlayer(
       Player.COMMAND_SEEK_TO_PREVIOUS,
       Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
       -> {
-        if (remoteJumpPreferred()) {
-          host.seekBackward()
+        if (session.isRemoteControllerRequest(appPackageName)) {
+          when (settings.previousButtonAction) {
+            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
+            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
+            RemoteControlAction.NONE -> Unit
+            else -> host.skipToPreviousChapter()
+          }
         } else {
           host.skipToPreviousChapter()
         }

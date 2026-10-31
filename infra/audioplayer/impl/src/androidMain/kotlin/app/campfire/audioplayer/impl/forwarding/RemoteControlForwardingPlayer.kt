@@ -8,6 +8,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import app.campfire.settings.api.PlaybackSettings
+import app.campfire.settings.api.RemoteControlAction
 
 /**
  * A [androidx.media3.common.ForwardingPlayer] that intercepts next/previous media item commands from external controllers
@@ -47,40 +48,50 @@ class RemoteControlForwardingPlayer(
     return session.isRemoteControllerRequest(appPackageName)
   }
 
-  /**
-   * Applies the setting-based behavior for remote controllers.
-   * Returns true if we handled the command (seek forward/back), false if default behavior should be used.
-   */
-  private inline fun handleRemoteNextPrevCommand(seekAction: () -> Unit): Boolean {
-    if (isRemoteController() && !settings.remoteNextPrevSkipsChapters) {
-      seekAction()
-      return true
+  private inline fun handleRemoteNextCommand(defaultAction: () -> Unit) {
+    if (isRemoteController()) {
+      when (settings.nextButtonAction) {
+        RemoteControlAction.SKIP_FORWARD_TIME -> seekForward()
+        RemoteControlAction.SKIP_BACKWARD_TIME -> seekBack()
+        RemoteControlAction.NEXT_CHAPTER -> defaultAction()
+        RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
+        RemoteControlAction.NONE -> Unit
+        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
+      }
+    } else {
+      defaultAction()
     }
-    return false
+  }
+
+  private inline fun handleRemotePrevCommand(defaultAction: () -> Unit) {
+    if (isRemoteController()) {
+      when (settings.previousButtonAction) {
+        RemoteControlAction.SKIP_FORWARD_TIME -> seekForward()
+        RemoteControlAction.SKIP_BACKWARD_TIME -> seekBack()
+        RemoteControlAction.NEXT_CHAPTER -> defaultAction()
+        RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
+        RemoteControlAction.NONE -> Unit
+        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
+      }
+    } else {
+      defaultAction()
+    }
   }
 
   override fun seekToNextMediaItem() {
-    if (!handleRemoteNextPrevCommand { seekForward() }) {
-      super.seekToNextMediaItem()
-    }
+    handleRemoteNextCommand { super.seekToNextMediaItem() }
   }
 
   override fun seekToPreviousMediaItem() {
-    if (!handleRemoteNextPrevCommand { seekBack() }) {
-      super.seekToPreviousMediaItem()
-    }
+    handleRemotePrevCommand { super.seekToPreviousMediaItem() }
   }
 
   override fun seekToNext() {
-    if (!handleRemoteNextPrevCommand { seekForward() }) {
-      super.seekToNext()
-    }
+    handleRemoteNextCommand { super.seekToNext() }
   }
 
   override fun seekToPrevious() {
-    if (!handleRemoteNextPrevCommand { seekBack() }) {
-      super.seekToPrevious()
-    }
+    handleRemotePrevCommand { super.seekToPrevious() }
   }
 }
 

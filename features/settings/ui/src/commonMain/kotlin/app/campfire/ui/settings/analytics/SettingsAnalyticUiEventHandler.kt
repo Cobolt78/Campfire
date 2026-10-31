@@ -140,6 +140,19 @@ class SettingsAnalyticUiEventHandler(
         send("scrolling_titles", Updated, event.enabled)
     }
 
+    is SettingsUiEvent.HeadsetControlsSettingEvent -> when (event) {
+      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonDoublePress ->
+        send("headset_single_button_double_press", Updated, event.action.storageKey)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonTriplePress ->
+        send("headset_single_button_triple_press", Updated, event.action.storageKey)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonQuadruplePress ->
+        send("headset_single_button_quadruple_press", Updated, event.action.storageKey)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.NextButton ->
+        send("headset_next_button", Updated, event.action.storageKey)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
+        send("headset_previous_button", Updated, event.action.storageKey)
+    }
+
     is SettingsUiEvent.SleepSettingEvent -> when (event) {
       is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
       is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)

@@ -48,6 +48,7 @@ import app.campfire.settings.api.DevSettings
 import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.settings.api.MobileDataSettings
 import app.campfire.settings.api.PlaybackSettings
+import app.campfire.settings.api.RemoteControlAction
 import app.campfire.settings.api.PrivacySettings
 import app.campfire.settings.api.SleepSettings
 import app.campfire.settings.api.ThemeSettings
@@ -203,6 +204,23 @@ class SettingsPresenter(
     val playbackWavyScrubber by remember { playbackSettings.observePlaybackWavyScrubber() }.collectAsState()
     val scrollingTitles by remember { playbackSettings.observeScrollingTitles() }.collectAsState()
 
+    // Headset & Remote Control Settings
+    val singleButtonDoublePressAction by remember {
+      playbackSettings.observeSingleButtonDoublePressAction()
+    }.collectAsState()
+    val singleButtonTriplePressAction by remember {
+      playbackSettings.observeSingleButtonTriplePressAction()
+    }.collectAsState()
+    val singleButtonQuadruplePressAction by remember {
+      playbackSettings.observeSingleButtonQuadruplePressAction()
+    }.collectAsState()
+    val nextButtonAction by remember {
+      playbackSettings.observeNextButtonAction()
+    }.collectAsState()
+    val previousButtonAction by remember {
+      playbackSettings.observePreviousButtonAction()
+    }.collectAsState()
+
     // Downloads Settings
     val showDownloadConfirmation by remember { libraryViewSettings.observeShowConfirmDownload() }
       .collectAsState()
@@ -351,6 +369,13 @@ class SettingsPresenter(
         playbackWavyScrubber = playbackWavyScrubber,
         scrollingTitles = scrollingTitles,
       ),
+      headsetControlsSettings = HeadsetControlsSettingsInfo(
+        singleButtonDoublePressAction = singleButtonDoublePressAction,
+        singleButtonTriplePressAction = singleButtonTriplePressAction,
+        singleButtonQuadruplePressAction = singleButtonQuadruplePressAction,
+        nextButtonAction = nextButtonAction,
+        previousButtonAction = previousButtonAction,
+      ),
       sleepSettings = SleepSettingsInfo(
         shakeToReset = shakeToResetEnabled,
         shakeSensitivity = shakeSensitivity,
@@ -487,6 +512,19 @@ class SettingsPresenter(
               entry.episode,
             )
           }
+        }
+
+        is SettingsUiEvent.HeadsetControlsSettingEvent -> when (event) {
+          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonDoublePress ->
+            playbackSettings.singleButtonDoublePressAction = event.action
+          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonTriplePress ->
+            playbackSettings.singleButtonTriplePressAction = event.action
+          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonQuadruplePress ->
+            playbackSettings.singleButtonQuadruplePressAction = event.action
+          is SettingsUiEvent.HeadsetControlsSettingEvent.NextButton ->
+            playbackSettings.nextButtonAction = event.action
+          is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
+            playbackSettings.previousButtonAction = event.action
         }
 
         is SettingsUiEvent.PlaybackSettingEvent -> when (event) {

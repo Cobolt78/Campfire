@@ -9,6 +9,7 @@ import app.campfire.core.model.LibraryItemId
 import app.campfire.settings.api.PendingResumeRewind
 import app.campfire.settings.api.PlaybackSettings
 import app.campfire.settings.api.ResumeRewindConfig
+import app.campfire.settings.api.RemoteControlAction
 import app.campfire.settings.api.StreamingMethod
 import com.russhwolf.settings.ExperimentalSettingsApi
 import com.russhwolf.settings.ObservableSettings
@@ -77,12 +78,69 @@ class PlaybackSettingsImpl(
   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> =
     itemPlaybackSpeedsProperty.observe()
 
-  private val remoteNextPrevSkipsChaptersProperty = booleanSetting(
-    PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS,
-    DEFAULT_REMOTE_NEXT_PREV_SKIPS_CHAPTERS,
+  private val singleButtonDoublePressActionProperty = enumSetting(
+    PREF_SINGLE_BUTTON_DOUBLE_PRESS_ACTION,
+    RemoteControlAction.provider(RemoteControlAction.SKIP_FORWARD_TIME),
   )
-  override var remoteNextPrevSkipsChapters: Boolean by remoteNextPrevSkipsChaptersProperty
-  override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = remoteNextPrevSkipsChaptersProperty.observe()
+  override var singleButtonDoublePressAction: RemoteControlAction by singleButtonDoublePressActionProperty
+  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
+    singleButtonDoublePressActionProperty.observe()
+
+  private val singleButtonTriplePressActionProperty = enumSetting(
+    PREF_SINGLE_BUTTON_TRIPLE_PRESS_ACTION,
+    RemoteControlAction.provider(RemoteControlAction.SKIP_BACKWARD_TIME),
+  )
+  override var singleButtonTriplePressAction: RemoteControlAction by singleButtonTriplePressActionProperty
+  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
+    singleButtonTriplePressActionProperty.observe()
+
+  private val singleButtonQuadruplePressActionProperty = enumSetting(
+    PREF_SINGLE_BUTTON_QUADRUPLE_PRESS_ACTION,
+    RemoteControlAction.provider(RemoteControlAction.ADD_BOOKMARK),
+  )
+  override var singleButtonQuadruplePressAction: RemoteControlAction by singleButtonQuadruplePressActionProperty
+  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
+    singleButtonQuadruplePressActionProperty.observe()
+
+  private val nextButtonActionProperty = enumSetting(
+    PREF_NEXT_BUTTON_ACTION,
+    RemoteControlAction.provider(
+      if (settings.getBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, false)) {
+        RemoteControlAction.NEXT_CHAPTER
+      } else {
+        RemoteControlAction.SKIP_FORWARD_TIME
+      }
+    ),
+  )
+  override var nextButtonAction: RemoteControlAction by nextButtonActionProperty
+  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> =
+    nextButtonActionProperty.observe()
+
+  private val previousButtonActionProperty = enumSetting(
+    PREF_PREVIOUS_BUTTON_ACTION,
+    RemoteControlAction.provider(
+      if (settings.getBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, false)) {
+        RemoteControlAction.PREVIOUS_CHAPTER
+      } else {
+        RemoteControlAction.SKIP_BACKWARD_TIME
+      }
+    ),
+  )
+  override var previousButtonAction: RemoteControlAction by previousButtonActionProperty
+  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> =
+    previousButtonActionProperty.observe()
+
+  override var remoteNextPrevSkipsChapters: Boolean
+    get() = nextButtonAction == RemoteControlAction.NEXT_CHAPTER
+    set(value) {
+      nextButtonAction = if (value) RemoteControlAction.NEXT_CHAPTER else RemoteControlAction.SKIP_FORWARD_TIME
+      previousButtonAction = if (value) RemoteControlAction.PREVIOUS_CHAPTER else RemoteControlAction.SKIP_BACKWARD_TIME
+      settings.putBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, value)
+    }
+  override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> =
+    combine(observeNextButtonAction(), observePreviousButtonAction()) { next, _ ->
+      next == RemoteControlAction.NEXT_CHAPTER
+    }.stateIn(scope, SharingStarted.Lazily, nextButtonAction == RemoteControlAction.NEXT_CHAPTER)
 
   private val syncEnabledProperty = booleanSetting(PREF_SYNC, DEFAULT_AUTO_SYNC)
   override var syncEnabled: Boolean by syncEnabledProperty
@@ -220,6 +278,11 @@ internal const val ITEM_SPEED_VALUE_SEPARATOR = "|"
 internal const val PREF_SYNC = "pref_synchronization"
 internal const val PREF_AUTO_SYNC = "pref_auto_sync"
 internal const val PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS = "pref_playback_remote_next_prev_skips_chapters"
+internal const val PREF_SINGLE_BUTTON_DOUBLE_PRESS_ACTION = "pref_playback_single_button_double_press_action"
+internal const val PREF_SINGLE_BUTTON_TRIPLE_PRESS_ACTION = "pref_playback_single_button_triple_press_action"
+internal const val PREF_SINGLE_BUTTON_QUADRUPLE_PRESS_ACTION = "pref_playback_single_button_quadruple_press_action"
+internal const val PREF_NEXT_BUTTON_ACTION = "pref_playback_next_button_action"
+internal const val PREF_PREVIOUS_BUTTON_ACTION = "pref_playback_previous_button_action"
 internal const val PREF_PLAYBACK_HISTORY = "pref_playback_history_enabled"
 internal const val PREF_SYNC_INTERVAL_UNMETERED = "pref_sync_interval_unmetered"
 internal const val PREF_SYNC_INTERVAL_METERED = "pref_sync_interval_metered"

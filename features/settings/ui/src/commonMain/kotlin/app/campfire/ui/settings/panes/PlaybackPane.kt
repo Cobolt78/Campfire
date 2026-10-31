@@ -129,14 +129,6 @@ internal fun PlaybackPane(
       supportingContent = { Text(stringResource(Res.string.setting_playback_mp3seeking_subtitle)) },
     )
 
-    SwitchSetting(
-      value = state.playbackSettings.remoteNextPrevSkipsChapters,
-      onValueChange = {
-        state.eventSink(PlaybackSettingEvent.RemoteNextPrevSkipsChapters(it))
-      },
-      headlineContent = { Text(stringResource(Res.string.setting_playback_remote_skip_title)) },
-      supportingContent = { Text(stringResource(Res.string.setting_playback_remote_skip_subtitle)) },
-    )
 
     Header(
       title = { Text(stringResource(Res.string.header_playback_speed_options)) },

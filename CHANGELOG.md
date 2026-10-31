@@ -17,6 +17,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.36]
+
+### Added
+
+- **Dedicated "Headset & Remote Controls" Settings Category**:
+  - Moved remote button and gesture preferences out of the crowded Playback settings into a dedicated, organized "Headset & Remote Controls" settings pane.
+  - Distinct sections for **Wired Headset (Single Button)** and **Bluetooth & Dedicated Buttons** with clear, intuitive guidance.
+
+- **Configurable Multi-Press Actions for Single-Button Wired Headsets**:
+  - Added individual action selectors for **Double-Press**, **Triple-Press**, and **Quadruple-Press** of the physical inline play button.
+  - Customizable actions include: *Skip forward (time)*, *Skip backward (time)*, *Skip to next chapter*, *Skip to previous chapter*, *Add bookmark*, or *Do nothing*.
+  - Instant remote bookmark creation saves a bookmark at the exact playback position with toast feedback without having to take the phone out of your pocket or unlock the screen.
+
+- **Configurable "Next Track" & "Previous Track" Command Mapping**:
+  - Independent action mapping for incoming **Next Track** and **Previous Track** commands from Bluetooth earbuds, headphones, and car steering wheel controls.
+  - Supports all actions (*Skip forward*, *Skip backward*, *Skip next/previous chapter*, *Add bookmark*, *Do nothing*), decoupling Campfire's actions from headphone companion app gesture customizations.
+
+### Fixed
+
+- **Wired Headset Multi-Press Accumulation & Chapter Skip Hijack**:
+  - Fixed a race condition in `MediaSessionCallback` where rapid multi-clicks on a single inline headset hook button did not cancel pending click timers on `ACTION_DOWN`, causing double and triple presses to misfire or execute as unwanted chapter skips.
+  - Key events for wired single-button multi-presses and Bluetooth next/previous commands are now fully consumed and dispatched directly to the configured action before Media3's internal controller proxy can force chapter skipping.
+
 ## [1.2.35]
 
 ### Fixed

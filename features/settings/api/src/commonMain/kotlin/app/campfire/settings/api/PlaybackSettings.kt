@@ -56,6 +56,36 @@ interface PlaybackSettings {
   }
 
   /**
+   * Action triggered by a double-press of the single headset button (wired / inline).
+   */
+  var singleButtonDoublePressAction: RemoteControlAction
+  fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction>
+
+  /**
+   * Action triggered by a triple-press of the single headset button (wired / inline).
+   */
+  var singleButtonTriplePressAction: RemoteControlAction
+  fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction>
+
+  /**
+   * Action triggered by a quadruple-press of the single headset button (wired / inline).
+   */
+  var singleButtonQuadruplePressAction: RemoteControlAction
+  fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction>
+
+  /**
+   * Action triggered when the Next Track command is received (Bluetooth headphones, car stereos, etc.).
+   */
+  var nextButtonAction: RemoteControlAction
+  fun observeNextButtonAction(): StateFlow<RemoteControlAction>
+
+  /**
+   * Action triggered when the Previous Track command is received (Bluetooth headphones, car stereos, etc.).
+   */
+  var previousButtonAction: RemoteControlAction
+  fun observePreviousButtonAction(): StateFlow<RemoteControlAction>
+
+  /**
    * When true, remote control next/previous buttons skip to next/previous chapter.
    * When false, they seek forward/backward by the configured time.
    */

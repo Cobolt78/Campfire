@@ -22,6 +22,7 @@ import app.campfire.settings.api.ResumeRewindTier
 import app.campfire.settings.api.SleepSettings
 import app.campfire.settings.api.SleepSettings.AutoSleepTimer
 import app.campfire.settings.api.SleepSettings.ShakeSensitivity
+import app.campfire.settings.api.RemoteControlAction
 import app.campfire.settings.api.StreamingMethod
 import app.campfire.settings.api.ThemeMode
 import app.campfire.ui.theming.api.AppTheme
@@ -47,6 +48,7 @@ data class SettingsUiState(
   val appearanceSettings: AppearanceSettingsInfo,
   val downloadsSettings: DownloadsSettingsInfo,
   val playbackSettings: PlaybackSettingsInfo,
+  val headsetControlsSettings: HeadsetControlsSettingsInfo,
   val sleepSettings: SleepSettingsInfo,
   val androidAutoSettings: AndroidAutoSettingsInfo,
   val aboutSettings: AboutSettingsInfo,
@@ -136,6 +138,15 @@ data class PlaybackSettingsInfo(
 )
 
 @Immutable
+data class HeadsetControlsSettingsInfo(
+  val singleButtonDoublePressAction: RemoteControlAction,
+  val singleButtonTriplePressAction: RemoteControlAction,
+  val singleButtonQuadruplePressAction: RemoteControlAction,
+  val nextButtonAction: RemoteControlAction,
+  val previousButtonAction: RemoteControlAction,
+)
+
+@Immutable
 data class SleepSettingsInfo(
   val shakeToReset: Boolean,
   val shakeSensitivity: ShakeSensitivity,
@@ -199,6 +210,7 @@ enum class SettingsPane {
   Appearance,
   Downloads,
   Playback,
+  HeadsetControls,
   Sleep,
   AndroidAuto,
   About,
@@ -211,6 +223,7 @@ enum class SettingsPane {
     Appearance -> SettingsScreen.Page.Appearance
     Downloads -> SettingsScreen.Page.Downloads
     Playback -> SettingsScreen.Page.Playback
+    HeadsetControls -> SettingsScreen.Page.HeadsetControls
     Sleep -> SettingsScreen.Page.Sleep
     AndroidAuto -> SettingsScreen.Page.AndroidAuto
     About -> SettingsScreen.Page.About
@@ -285,6 +298,15 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
     data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
     data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
+  }
+
+  // Headset & Remote Control Setting Events
+  sealed interface HeadsetControlsSettingEvent : SettingsUiEvent {
+    data class SingleButtonDoublePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
+    data class SingleButtonTriplePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
+    data class SingleButtonQuadruplePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
+    data class NextButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
+    data class PreviousButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
   }
 
   // Sleep Setting Events

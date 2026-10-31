@@ -30,6 +30,7 @@ import app.campfire.core.session.UserSession
 import app.campfire.infra.audioplayer.impl.R
 import app.campfire.libraries.api.LibraryRepository
 import app.campfire.sessions.api.SessionsRepository
+import app.campfire.user.api.BookmarkRepository
 import app.campfire.settings.api.AndroidAutoSettings
 import app.campfire.settings.api.DevSettings
 import app.campfire.settings.api.PlaybackSettings
@@ -65,6 +66,7 @@ interface AudioPlayerUserComponent {
   val sessionsRepository: SessionsRepository
   val playbackSessionManager: PlaybackSessionManager
   val libraryRepository: LibraryRepository
+  val bookmarkRepository: BookmarkRepository
 }
 
 @SuppressLint("UnsafeOptInUsageError")

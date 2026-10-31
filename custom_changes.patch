@@ -11,14 +11,37 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..4d713176 100644
+index c0278c85..38a400da 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,268 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,291 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.36]
++
++### Added
++
++- **Dedicated "Headset & Remote Controls" Settings Category**:
++  - Moved remote button and gesture preferences out of the crowded Playback settings into a dedicated, organized "Headset & Remote Controls" settings pane.
++  - Distinct sections for **Wired Headset (Single Button)** and **Bluetooth & Dedicated Buttons** with clear, intuitive guidance.
++
++- **Configurable Multi-Press Actions for Single-Button Wired Headsets**:
++  - Added individual action selectors for **Double-Press**, **Triple-Press**, and **Quadruple-Press** of the physical inline play button.
++  - Customizable actions include: *Skip forward (time)*, *Skip backward (time)*, *Skip to next chapter*, *Skip to previous chapter*, *Add bookmark*, or *Do nothing*.
++  - Instant remote bookmark creation saves a bookmark at the exact playback position with toast feedback without having to take the phone out of your pocket or unlock the screen.
++
++- **Configurable "Next Track" & "Previous Track" Command Mapping**:
++  - Independent action mapping for incoming **Next Track** and **Previous Track** commands from Bluetooth earbuds, headphones, and car steering wheel controls.
++  - Supports all actions (*Skip forward*, *Skip backward*, *Skip next/previous chapter*, *Add bookmark*, *Do nothing*), decoupling Campfire's actions from headphone companion app gesture customizations.
++
++### Fixed
++
++- **Wired Headset Multi-Press Accumulation & Chapter Skip Hijack**:
++  - Fixed a race condition in `MediaSessionCallback` where rapid multi-clicks on a single inline headset hook button did not cancel pending click timers on `ACTION_DOWN`, causing double and triple presses to misfire or execute as unwanted chapter skips.
++  - Key events for wired single-button multi-presses and Bluetooth next/previous commands are now fully consumed and dispatched directly to the configured action before Media3's internal controller proxy can force chapter skipping.
++
 +## [1.2.35]
 +
 +### Fixed
@@ -286,10 +309,10 @@ index c0278c85..4d713176 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..40494c3a
+index 00000000..a9aa71ec
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,1837 @@
+@@ -0,0 +1,1889 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -2127,6 +2150,58 @@ index 00000000..40494c3a
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++## 66. Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)
++
++### Problem Description
++- **Wired Headset Multi-Click & Remote Action Limitations**:
++  - A user with a single-button wired headset (inline play/pause button) reported that double-pressing and triple-pressing always skipped forward one chapter regardless of toggle settings or intent, and prevented them from skipping backwards.
++  - The previous implementation in `MediaSessionCallback` did not cancel pending multi-click timeout jobs on `ACTION_DOWN`. Holding or repeating presses could cause the 350ms delay from the first click to fire mid-gesture, treating multi-clicks as a single click followed by a double click.
++  - Furthermore, AndroidX Media3 routed wired headset button intents through its notification controller proxy, which caused chapter-forwarding players to interpret them as notification drawer button actions and force chapter skips.
++  - Users on wired headsets with a single button had no way to configure custom tap counts (e.g. double-press to skip backward, triple-press to skip forward, quadruple-press to bookmark).
++  - Users on Bluetooth headphones who had custom tap controls set in their manufacturer companion apps needed clear mapping for what incoming Next and Previous commands trigger in Campfire.
++
++### Solution & Key Implementation Details
++1. **Dedicated "Headset & Remote Controls" Settings Category**:
++   - Added `SettingsScreen.Page.HeadsetControls` and `SettingsPane.HeadsetControls`.
++   - Extracted remote control settings out of `PlaybackPane` into a newly designed, dedicated `HeadsetControlsPane`.
++   - Clear sections for **Wired Headset (Single Button)** and **Bluetooth & Dedicated Buttons** explaining how companion app gestures interface with Campfire's command mapping.
++2. **Flexible Remote Control Action Model (`RemoteControlAction.kt`)**:
++   - Introduced enum `RemoteControlAction` (`SKIP_FORWARD_TIME`, `SKIP_BACKWARD_TIME`, `NEXT_CHAPTER`, `PREVIOUS_CHAPTER`, `ADD_BOOKMARK`, `NONE`).
++   - Implemented 5 configurable settings in `PlaybackSettings`:
++     - `singleButtonDoublePressAction` (default: Skip forward time)
++     - `singleButtonTriplePressAction` (default: Skip backward time)
++     - `singleButtonQuadruplePressAction` (default: Add bookmark)
++     - `nextButtonAction` (default: Skip forward time / Next chapter)
++     - `previousButtonAction` (default: Skip backward time / Previous chapter)
++   - Synchronized `remoteNextPrevSkipsChapters` to reflect `nextButtonAction == RemoteControlAction.NEXT_CHAPTER` for full backward compatibility.
++3. **Multi-Press Accumulation & Race Condition Elimination (`MediaSessionCallback.kt`)**:
++   - In `MediaSessionCallback.onMediaButtonEvent`, `headsetHookJob?.cancel()` is now executed immediately on every `ACTION_DOWN` of `KEYCODE_HEADSETHOOK`, ensuring rapid successive presses do not suffer from timer races.
++   - Added support for 1-click (Play/Pause), 2-click (Double-Press action), 3-click (Triple-Press action), and 4-click (Quadruple-Press action, e.g. Add Bookmark).
++   - In `dispatchRemoteAction`, implemented instant bookmark creation using `userComponent.bookmarkRepository.createBookmark()` with Toast feedback.
++   - Fully consumed `KEYCODE_MEDIA_NEXT` and `KEYCODE_MEDIA_PREVIOUS` events on `ACTION_DOWN` so Media3 cannot bypass configured settings.
++4. **Forwarding Players Synchronization**:
++   - Updated `RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer` to check and dispatch `settings.nextButtonAction` and `settings.previousButtonAction`.
++
++### Modified Files:
++* common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
++* features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt
++* features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
++* features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
++* features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -3886,7 +3961,7 @@ index 00000000..7c6e9709
 +@Composable
 +actual fun rememberIsCellularOrMetered(): Boolean = false
 diff --git a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt b/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
-index c15f21c6..2cb91f3c 100644
+index c15f21c6..6fcfd1cb 100644
 --- a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
 +++ b/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
 @@ -9,6 +9,8 @@ import app.campfire.core.model.SeriesId
@@ -3916,6 +3991,14 @@ index c15f21c6..2cb91f3c 100644
  
  @Parcelize
  data class SeriesDetailScreen(
+@@ -144,6 +155,7 @@ data class SettingsScreen(
+     Appearance,
+     Downloads,
+     Playback,
++    HeadsetControls,
+     Sleep,
+     AndroidAuto,
+     About,
 diff --git a/core/src/commonMain/kotlin/app/campfire/core/audio/Equalizer.kt b/core/src/commonMain/kotlin/app/campfire/core/audio/Equalizer.kt
 index dd90c658..22c4756e 100644
 --- a/core/src/commonMain/kotlin/app/campfire/core/audio/Equalizer.kt
@@ -11473,6 +11556,85 @@ index 7b142288..f3c18b43 100644
 +  var continueSeriesAlternateView: Boolean
 +  fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
  }
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
+index e2314f46..65b8dc3a 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
+@@ -55,6 +55,36 @@ interface PlaybackSettings {
+     }
+   }
+ 
++  /**
++   * Action triggered by a double-press of the single headset button (wired / inline).
++   */
++  var singleButtonDoublePressAction: RemoteControlAction
++  fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction>
++
++  /**
++   * Action triggered by a triple-press of the single headset button (wired / inline).
++   */
++  var singleButtonTriplePressAction: RemoteControlAction
++  fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction>
++
++  /**
++   * Action triggered by a quadruple-press of the single headset button (wired / inline).
++   */
++  var singleButtonQuadruplePressAction: RemoteControlAction
++  fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction>
++
++  /**
++   * Action triggered when the Next Track command is received (Bluetooth headphones, car stereos, etc.).
++   */
++  var nextButtonAction: RemoteControlAction
++  fun observeNextButtonAction(): StateFlow<RemoteControlAction>
++
++  /**
++   * Action triggered when the Previous Track command is received (Bluetooth headphones, car stereos, etc.).
++   */
++  var previousButtonAction: RemoteControlAction
++  fun observePreviousButtonAction(): StateFlow<RemoteControlAction>
++
+   /**
+    * When true, remote control next/previous buttons skip to next/previous chapter.
+    * When false, they seek forward/backward by the configured time.
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt
+new file mode 100644
+index 00000000..9f4c66bb
+--- /dev/null
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt
+@@ -0,0 +1,32 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.settings.api
++
++import app.campfire.core.settings.EnumSetting
++import app.campfire.core.settings.EnumSettingProvider
++
++enum class RemoteControlAction(
++  override val storageKey: String,
++  val label: String,
++) : EnumSetting {
++  SKIP_FORWARD_TIME("skip_forward_time", "Skip forward"),
++  SKIP_BACKWARD_TIME("skip_backward_time", "Skip backward"),
++  NEXT_CHAPTER("next_chapter", "Skip to next chapter"),
++  PREVIOUS_CHAPTER("previous_chapter", "Skip to previous chapter"),
++  ADD_BOOKMARK("add_bookmark", "Add bookmark"),
++  NONE("none", "Do nothing"),
++  ;
++
++  companion object : EnumSettingProvider<RemoteControlAction> {
++    override fun fromStorageKey(key: String?): RemoteControlAction =
++      fromKeyOrDefault(key, SKIP_FORWARD_TIME)
++
++    fun fromKeyOrDefault(key: String?, default: RemoteControlAction): RemoteControlAction =
++      entries.find { it.storageKey == key } ?: default
++
++    fun provider(default: RemoteControlAction) = object : EnumSettingProvider<RemoteControlAction> {
++      override fun fromStorageKey(key: String?): RemoteControlAction = fromKeyOrDefault(key, default)
++    }
++  }
++}
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
 index ea37e0e1..b9c30355 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
@@ -11586,6 +11748,105 @@ index 9644f55e..2f839968 100644
 +  KEY_WARN_ON_CELLULAR_DOWNLOAD,
 +  KEY_CONTINUE_SERIES_ALTERNATE_VIEW,
  )
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
+index 5a8d65ae..95980168 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
+@@ -9,6 +9,7 @@ import app.campfire.core.model.LibraryItemId
+ import app.campfire.settings.api.PendingResumeRewind
+ import app.campfire.settings.api.PlaybackSettings
+ import app.campfire.settings.api.ResumeRewindConfig
++import app.campfire.settings.api.RemoteControlAction
+ import app.campfire.settings.api.StreamingMethod
+ import com.russhwolf.settings.ExperimentalSettingsApi
+ import com.russhwolf.settings.ObservableSettings
+@@ -77,12 +78,69 @@ class PlaybackSettingsImpl(
+   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> =
+     itemPlaybackSpeedsProperty.observe()
+ 
+-  private val remoteNextPrevSkipsChaptersProperty = booleanSetting(
+-    PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS,
+-    DEFAULT_REMOTE_NEXT_PREV_SKIPS_CHAPTERS,
++  private val singleButtonDoublePressActionProperty = enumSetting(
++    PREF_SINGLE_BUTTON_DOUBLE_PRESS_ACTION,
++    RemoteControlAction.provider(RemoteControlAction.SKIP_FORWARD_TIME),
+   )
+-  override var remoteNextPrevSkipsChapters: Boolean by remoteNextPrevSkipsChaptersProperty
+-  override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = remoteNextPrevSkipsChaptersProperty.observe()
++  override var singleButtonDoublePressAction: RemoteControlAction by singleButtonDoublePressActionProperty
++  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
++    singleButtonDoublePressActionProperty.observe()
++
++  private val singleButtonTriplePressActionProperty = enumSetting(
++    PREF_SINGLE_BUTTON_TRIPLE_PRESS_ACTION,
++    RemoteControlAction.provider(RemoteControlAction.SKIP_BACKWARD_TIME),
++  )
++  override var singleButtonTriplePressAction: RemoteControlAction by singleButtonTriplePressActionProperty
++  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
++    singleButtonTriplePressActionProperty.observe()
++
++  private val singleButtonQuadruplePressActionProperty = enumSetting(
++    PREF_SINGLE_BUTTON_QUADRUPLE_PRESS_ACTION,
++    RemoteControlAction.provider(RemoteControlAction.ADD_BOOKMARK),
++  )
++  override var singleButtonQuadruplePressAction: RemoteControlAction by singleButtonQuadruplePressActionProperty
++  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
++    singleButtonQuadruplePressActionProperty.observe()
++
++  private val nextButtonActionProperty = enumSetting(
++    PREF_NEXT_BUTTON_ACTION,
++    RemoteControlAction.provider(
++      if (settings.getBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, false)) {
++        RemoteControlAction.NEXT_CHAPTER
++      } else {
++        RemoteControlAction.SKIP_FORWARD_TIME
++      }
++    ),
++  )
++  override var nextButtonAction: RemoteControlAction by nextButtonActionProperty
++  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> =
++    nextButtonActionProperty.observe()
++
++  private val previousButtonActionProperty = enumSetting(
++    PREF_PREVIOUS_BUTTON_ACTION,
++    RemoteControlAction.provider(
++      if (settings.getBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, false)) {
++        RemoteControlAction.PREVIOUS_CHAPTER
++      } else {
++        RemoteControlAction.SKIP_BACKWARD_TIME
++      }
++    ),
++  )
++  override var previousButtonAction: RemoteControlAction by previousButtonActionProperty
++  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> =
++    previousButtonActionProperty.observe()
++
++  override var remoteNextPrevSkipsChapters: Boolean
++    get() = nextButtonAction == RemoteControlAction.NEXT_CHAPTER
++    set(value) {
++      nextButtonAction = if (value) RemoteControlAction.NEXT_CHAPTER else RemoteControlAction.SKIP_FORWARD_TIME
++      previousButtonAction = if (value) RemoteControlAction.PREVIOUS_CHAPTER else RemoteControlAction.SKIP_BACKWARD_TIME
++      settings.putBoolean(PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS, value)
++    }
++  override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> =
++    combine(observeNextButtonAction(), observePreviousButtonAction()) { next, _ ->
++      next == RemoteControlAction.NEXT_CHAPTER
++    }.stateIn(scope, SharingStarted.Lazily, nextButtonAction == RemoteControlAction.NEXT_CHAPTER)
+ 
+   private val syncEnabledProperty = booleanSetting(PREF_SYNC, DEFAULT_AUTO_SYNC)
+   override var syncEnabled: Boolean by syncEnabledProperty
+@@ -220,6 +278,11 @@ internal const val ITEM_SPEED_VALUE_SEPARATOR = "|"
+ internal const val PREF_SYNC = "pref_synchronization"
+ internal const val PREF_AUTO_SYNC = "pref_auto_sync"
+ internal const val PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS = "pref_playback_remote_next_prev_skips_chapters"
++internal const val PREF_SINGLE_BUTTON_DOUBLE_PRESS_ACTION = "pref_playback_single_button_double_press_action"
++internal const val PREF_SINGLE_BUTTON_TRIPLE_PRESS_ACTION = "pref_playback_single_button_triple_press_action"
++internal const val PREF_SINGLE_BUTTON_QUADRUPLE_PRESS_ACTION = "pref_playback_single_button_quadruple_press_action"
++internal const val PREF_NEXT_BUTTON_ACTION = "pref_playback_next_button_action"
++internal const val PREF_PREVIOUS_BUTTON_ACTION = "pref_playback_previous_button_action"
+ internal const val PREF_PLAYBACK_HISTORY = "pref_playback_history_enabled"
+ internal const val PREF_SYNC_INTERVAL_UNMETERED = "pref_sync_interval_unmetered"
+ internal const val PREF_SYNC_INTERVAL_METERED = "pref_sync_interval_metered"
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
 index 2c64f754..944eaeec 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
@@ -11692,6 +11953,74 @@ index 5d562767..fcb8d9c2 100644
    @Test
    fun `corrupt profile strings fall back to the default`() {
      val backing = MapSettings()
+diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
+index 4b097111..f857607f 100644
+--- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
++++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
+@@ -6,6 +6,7 @@ package app.campfire.settings.test
+ import app.campfire.core.model.LibraryItemId
+ import app.campfire.settings.api.PendingResumeRewind
+ import app.campfire.settings.api.PlaybackSettings
++import app.campfire.settings.api.RemoteControlAction
+ import app.campfire.settings.api.ResumeRewindConfig
+ import app.campfire.settings.api.StreamingMethod
+ import kotlin.time.Duration
+@@ -58,10 +59,52 @@ class FakePlaybackSettings : PlaybackSettings {
+   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> =
+     _itemPlaybackSpeeds.asStateFlow()
+ 
+-  private val _remoteNextPrevSkipsChapters = MutableStateFlow(true)
++  private val _singleButtonDoublePressAction = MutableStateFlow(RemoteControlAction.SKIP_FORWARD_TIME)
++  override var singleButtonDoublePressAction: RemoteControlAction
++    get() = _singleButtonDoublePressAction.value
++    set(value) { _singleButtonDoublePressAction.value = value }
++  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
++    _singleButtonDoublePressAction.asStateFlow()
++
++  private val _singleButtonTriplePressAction = MutableStateFlow(RemoteControlAction.SKIP_BACKWARD_TIME)
++  override var singleButtonTriplePressAction: RemoteControlAction
++    get() = _singleButtonTriplePressAction.value
++    set(value) { _singleButtonTriplePressAction.value = value }
++  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
++    _singleButtonTriplePressAction.asStateFlow()
++
++  private val _singleButtonQuadruplePressAction = MutableStateFlow(RemoteControlAction.ADD_BOOKMARK)
++  override var singleButtonQuadruplePressAction: RemoteControlAction
++    get() = _singleButtonQuadruplePressAction.value
++    set(value) { _singleButtonQuadruplePressAction.value = value }
++  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
++    _singleButtonQuadruplePressAction.asStateFlow()
++
++  private val _nextButtonAction = MutableStateFlow(RemoteControlAction.SKIP_FORWARD_TIME)
++  override var nextButtonAction: RemoteControlAction
++    get() = _nextButtonAction.value
++    set(value) {
++      _nextButtonAction.value = value
++      _remoteNextPrevSkipsChapters.value = (value == RemoteControlAction.NEXT_CHAPTER)
++    }
++  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> = _nextButtonAction.asStateFlow()
++
++  private val _previousButtonAction = MutableStateFlow(RemoteControlAction.SKIP_BACKWARD_TIME)
++  override var previousButtonAction: RemoteControlAction
++    get() = _previousButtonAction.value
++    set(value) {
++      _previousButtonAction.value = value
++    }
++  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = _previousButtonAction.asStateFlow()
++
++  private val _remoteNextPrevSkipsChapters = MutableStateFlow(false)
+   override var remoteNextPrevSkipsChapters: Boolean
+-    get() = _remoteNextPrevSkipsChapters.value
+-    set(value) { _remoteNextPrevSkipsChapters.value = value }
++    get() = _nextButtonAction.value == RemoteControlAction.NEXT_CHAPTER
++    set(value) {
++      _remoteNextPrevSkipsChapters.value = value
++      _nextButtonAction.value = if (value) RemoteControlAction.NEXT_CHAPTER else RemoteControlAction.SKIP_FORWARD_TIME
++      _previousButtonAction.value = if (value) RemoteControlAction.PREVIOUS_CHAPTER else RemoteControlAction.SKIP_BACKWARD_TIME
++    }
+   override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = _remoteNextPrevSkipsChapters.asStateFlow()
+ 
+   private val _syncEnabled = MutableStateFlow(true)
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
 index bf6d70dc..6ec8fbeb 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
@@ -11795,10 +12124,18 @@ index 6eba5bd2..c6588e28 100644
    <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
    <string name="shake_sensitivity_very_low">Very low</string>
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-index 5c4d5e98..4e96e36e 100644
+index 5c4d5e98..c2180c38 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-@@ -61,13 +61,16 @@ import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.PrivacyPolicyC
+@@ -48,6 +48,7 @@ import app.campfire.settings.api.DevSettings
+ import app.campfire.settings.api.LibraryViewSettings
+ import app.campfire.settings.api.MobileDataSettings
+ import app.campfire.settings.api.PlaybackSettings
++import app.campfire.settings.api.RemoteControlAction
+ import app.campfire.settings.api.PrivacySettings
+ import app.campfire.settings.api.SleepSettings
+ import app.campfire.settings.api.ThemeSettings
+@@ -61,13 +62,16 @@ import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.PrivacyPolicyC
  import app.campfire.ui.settings.SettingsUiEvent.AboutSettingEvent.TermsOfServiceClick
  import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.ChangeName
  import app.campfire.ui.settings.SettingsUiEvent.AccountSettingEvent.Logout
@@ -11815,7 +12152,7 @@ index 5c4d5e98..4e96e36e 100644
  import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoRewindOnResumeEnabled
  import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoRewindStopAtChapterBoundary
  import app.campfire.ui.settings.SettingsUiEvent.PlaybackSettingEvent.AutoSyncEnabled
-@@ -94,6 +97,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
+@@ -94,6 +98,7 @@ import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimer
  import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerEnd
  import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.AutoSleepTimerStart
  import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.FadeOutDuration
@@ -11823,7 +12160,7 @@ index 5c4d5e98..4e96e36e 100644
  import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeSensitivity
  import app.campfire.ui.settings.SettingsUiEvent.SleepSettingEvent.ShakeToReset
  import app.campfire.ui.settings.analytics.SettingsAnalyticUiEventHandler
-@@ -170,6 +174,9 @@ class SettingsPresenter(
+@@ -170,6 +175,9 @@ class SettingsPresenter(
      val itemCardMarqueeEnabled by remember {
        libraryViewSettings.observeLibraryItemMarqueeEnabled()
      }.collectAsState()
@@ -11833,7 +12170,27 @@ index 5c4d5e98..4e96e36e 100644
  
      // Playback Settings
      val playbackRates by remember { playbackSettings.observePlaybackRates() }.collectAsState()
-@@ -199,6 +206,10 @@ class SettingsPresenter(
+@@ -196,9 +204,30 @@ class SettingsPresenter(
+     val playbackWavyScrubber by remember { playbackSettings.observePlaybackWavyScrubber() }.collectAsState()
+     val scrollingTitles by remember { playbackSettings.observeScrollingTitles() }.collectAsState()
+ 
++    // Headset & Remote Control Settings
++    val singleButtonDoublePressAction by remember {
++      playbackSettings.observeSingleButtonDoublePressAction()
++    }.collectAsState()
++    val singleButtonTriplePressAction by remember {
++      playbackSettings.observeSingleButtonTriplePressAction()
++    }.collectAsState()
++    val singleButtonQuadruplePressAction by remember {
++      playbackSettings.observeSingleButtonQuadruplePressAction()
++    }.collectAsState()
++    val nextButtonAction by remember {
++      playbackSettings.observeNextButtonAction()
++    }.collectAsState()
++    val previousButtonAction by remember {
++      playbackSettings.observePreviousButtonAction()
++    }.collectAsState()
++
      // Downloads Settings
      val showDownloadConfirmation by remember { libraryViewSettings.observeShowConfirmDownload() }
        .collectAsState()
@@ -11844,7 +12201,7 @@ index 5c4d5e98..4e96e36e 100644
  
      val downloads by remember {
        offlineDownloadManager.observeAll()
-@@ -243,6 +254,7 @@ class SettingsPresenter(
+@@ -243,6 +272,7 @@ class SettingsPresenter(
      val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
      val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
      val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
@@ -11852,7 +12209,7 @@ index 5c4d5e98..4e96e36e 100644
  
      // Account Settings
      val keepSignedInAfterReinstall by remember { privacySettings.observeKeepSignedInAfterReinstall() }
-@@ -307,9 +319,12 @@ class SettingsPresenter(
+@@ -307,9 +337,12 @@ class SettingsPresenter(
          dynamicItemDetailTheming = dynamicItemDetailTheming,
          dynamicPlaybackTheming = dynamicPlaybackTheming,
          itemCardMarqueeEnabled = itemCardMarqueeEnabled,
@@ -11865,7 +12222,18 @@ index 5c4d5e98..4e96e36e 100644
          isWifiOnlyAvailable = currentPlatform == Platform.ANDROID,
          downloadOnWifiOnly = downloadOnWifiOnly,
          downloads = downloadEntries,
-@@ -340,6 +355,7 @@ class SettingsPresenter(
+@@ -336,10 +369,18 @@ class SettingsPresenter(
+         playbackWavyScrubber = playbackWavyScrubber,
+         scrollingTitles = scrollingTitles,
+       ),
++      headsetControlsSettings = HeadsetControlsSettingsInfo(
++        singleButtonDoublePressAction = singleButtonDoublePressAction,
++        singleButtonTriplePressAction = singleButtonTriplePressAction,
++        singleButtonQuadruplePressAction = singleButtonQuadruplePressAction,
++        nextButtonAction = nextButtonAction,
++        previousButtonAction = previousButtonAction,
++      ),
+       sleepSettings = SleepSettingsInfo(
          shakeToReset = shakeToResetEnabled,
          shakeSensitivity = shakeSensitivity,
          fadeOutDuration = fadeOutDuration,
@@ -11873,7 +12241,7 @@ index 5c4d5e98..4e96e36e 100644
          autoSleepSetting = if (autoSleepTimerEnabled) {
            SleepSettingsInfo.AutoSleepSetting(
              start = autoSleepTimerStart,
-@@ -447,11 +463,14 @@ class SettingsPresenter(
+@@ -447,11 +488,14 @@ class SettingsPresenter(
            is DynamicItemDetailTheming -> themeSettings.dynamicallyThemeItemDetail = event.enabled
            is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
            is ItemCardMarqueeEnabled -> libraryViewSettings.libraryItemMarqueeEnabled = event.enabled
@@ -11888,7 +12256,27 @@ index 5c4d5e98..4e96e36e 100644
            is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
              mobileDataSettings.downloadOnWifiOnly = event.enabled
            }
-@@ -527,6 +546,7 @@ class SettingsPresenter(
+@@ -470,6 +514,19 @@ class SettingsPresenter(
+           }
+         }
+ 
++        is SettingsUiEvent.HeadsetControlsSettingEvent -> when (event) {
++          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonDoublePress ->
++            playbackSettings.singleButtonDoublePressAction = event.action
++          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonTriplePress ->
++            playbackSettings.singleButtonTriplePressAction = event.action
++          is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonQuadruplePress ->
++            playbackSettings.singleButtonQuadruplePressAction = event.action
++          is SettingsUiEvent.HeadsetControlsSettingEvent.NextButton ->
++            playbackSettings.nextButtonAction = event.action
++          is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
++            playbackSettings.previousButtonAction = event.action
++        }
++
+         is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
+           is PlaybackRateChanged -> {
+             val rates = playbackSettings.playbackRates.toMutableList()
+@@ -527,6 +584,7 @@ class SettingsPresenter(
            is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
            is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
            is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
@@ -11896,11 +12284,91 @@ index 5c4d5e98..4e96e36e 100644
          }
  
          is SettingsUiEvent.AboutSettingEvent -> when (event) {
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
+index cb636714..99ec6444 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
+@@ -41,6 +41,7 @@ import app.campfire.common.compose.icons.outline.Library
+ import app.campfire.common.compose.icons.rounded.AccountCircle
+ import app.campfire.common.compose.icons.rounded.DeveloperMode
+ import app.campfire.common.compose.icons.rounded.DirectionsCar
++import app.campfire.common.compose.icons.rounded.Headphones
+ import app.campfire.common.compose.icons.rounded.Download
+ import app.campfire.common.compose.icons.rounded.Info
+ import app.campfire.common.compose.icons.rounded.NotificationsPaused
+@@ -66,6 +67,7 @@ import app.campfire.ui.settings.panes.DeveloperPane
+ import app.campfire.ui.settings.panes.DownloadsPane
+ import app.campfire.ui.settings.panes.LocalPaneState
+ import app.campfire.ui.settings.panes.PaneState
++import app.campfire.ui.settings.panes.HeadsetControlsPane
+ import app.campfire.ui.settings.panes.PlaybackPane
+ import app.campfire.ui.settings.panes.SleepPane
+ import campfire.features.settings.ui.generated.resources.Res
+@@ -117,6 +119,7 @@ fun SettingsUi(
+         SettingsScreen.Page.Appearance -> SettingsPane.Appearance
+         SettingsScreen.Page.Downloads -> SettingsPane.Downloads
+         SettingsScreen.Page.Playback -> SettingsPane.Playback
++        SettingsScreen.Page.HeadsetControls -> SettingsPane.HeadsetControls
+         SettingsScreen.Page.Sleep -> SettingsPane.Sleep
+         SettingsScreen.Page.AndroidAuto -> SettingsPane.AndroidAuto
+         SettingsScreen.Page.About -> SettingsPane.About
+@@ -389,6 +392,22 @@ private fun SettingsRootPane(
+         },
+       )
+ 
++      // Headset & Remote Controls
++      SettingPaneListItem(
++        selected = pane == SettingsPane.HeadsetControls && isTwoPane,
++        icon = {
++          Icon(
++            CampfireIcons.Rounded.Headphones,
++            contentDescription = null,
++          )
++        },
++        title = { Text("Headset & Remote Controls") },
++        subtitle = { Text("Wired button multi-press, Bluetooth gestures & car controls") },
++        onClick = {
++          onPaneClick(SettingsPane.HeadsetControls)
++        },
++      )
++
+       // Sleep
+       SettingPaneListItem(
+         selected = pane == SettingsPane.Sleep && isTwoPane,
+@@ -512,6 +531,12 @@ private fun SettingPaneContent(
+       modifier = modifier,
+     )
+ 
++    SettingsPane.HeadsetControls -> HeadsetControlsPane(
++      state = state,
++      onBackClick = onBackClick,
++      modifier = modifier,
++    )
++
+     SettingsPane.Sleep -> SleepPane(
+       state = state,
+       onBackClick = onBackClick,
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-index b1842dbf..e62bc8ec 100644
+index b1842dbf..8bfe1783 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-@@ -79,11 +79,14 @@ data class AppearanceSettingsInfo(
+@@ -22,6 +22,7 @@ import app.campfire.settings.api.ResumeRewindTier
+ import app.campfire.settings.api.SleepSettings
+ import app.campfire.settings.api.SleepSettings.AutoSleepTimer
+ import app.campfire.settings.api.SleepSettings.ShakeSensitivity
++import app.campfire.settings.api.RemoteControlAction
+ import app.campfire.settings.api.StreamingMethod
+ import app.campfire.settings.api.ThemeMode
+ import app.campfire.ui.theming.api.AppTheme
+@@ -47,6 +48,7 @@ data class SettingsUiState(
+   val appearanceSettings: AppearanceSettingsInfo,
+   val downloadsSettings: DownloadsSettingsInfo,
+   val playbackSettings: PlaybackSettingsInfo,
++  val headsetControlsSettings: HeadsetControlsSettingsInfo,
+   val sleepSettings: SleepSettingsInfo,
+   val androidAutoSettings: AndroidAutoSettingsInfo,
+   val aboutSettings: AboutSettingsInfo,
+@@ -79,11 +81,14 @@ data class AppearanceSettingsInfo(
    val dynamicItemDetailTheming: Boolean,
    val dynamicPlaybackTheming: Boolean,
    val itemCardMarqueeEnabled: Boolean,
@@ -11915,7 +12383,21 @@ index b1842dbf..e62bc8ec 100644
    /** Only where downloads can wait for Wi-Fi (Android); desktop never reports mobile data. */
    val isWifiOnlyAvailable: Boolean,
    val downloadOnWifiOnly: Boolean,
-@@ -137,6 +140,7 @@ data class SleepSettingsInfo(
+@@ -132,11 +137,21 @@ data class PlaybackSettingsInfo(
+   val scrollingTitles: Boolean,
+ )
+ 
++@Immutable
++data class HeadsetControlsSettingsInfo(
++  val singleButtonDoublePressAction: RemoteControlAction,
++  val singleButtonTriplePressAction: RemoteControlAction,
++  val singleButtonQuadruplePressAction: RemoteControlAction,
++  val nextButtonAction: RemoteControlAction,
++  val previousButtonAction: RemoteControlAction,
++)
++
+ @Immutable
+ data class SleepSettingsInfo(
    val shakeToReset: Boolean,
    val shakeSensitivity: ShakeSensitivity,
    val fadeOutDuration: Duration,
@@ -11923,7 +12405,23 @@ index b1842dbf..e62bc8ec 100644
    val autoSleepSetting: AutoSleepSetting? = null,
  ) {
  
-@@ -243,12 +247,15 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -195,6 +210,7 @@ enum class SettingsPane {
+   Appearance,
+   Downloads,
+   Playback,
++  HeadsetControls,
+   Sleep,
+   AndroidAuto,
+   About,
+@@ -207,6 +223,7 @@ enum class SettingsPane {
+     Appearance -> SettingsScreen.Page.Appearance
+     Downloads -> SettingsScreen.Page.Downloads
+     Playback -> SettingsScreen.Page.Playback
++    HeadsetControls -> SettingsScreen.Page.HeadsetControls
+     Sleep -> SettingsScreen.Page.Sleep
+     AndroidAuto -> SettingsScreen.Page.AndroidAuto
+     About -> SettingsScreen.Page.About
+@@ -243,12 +260,15 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class DynamicItemDetailTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class DynamicPlaybackTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class ItemCardMarqueeEnabled(val enabled: Boolean) : AppearanceSettingEvent
@@ -11939,7 +12437,23 @@ index b1842dbf..e62bc8ec 100644
      data class DownloadOnWifiOnly(val enabled: Boolean) : DownloadsSettingEvent
      data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
      data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
-@@ -291,6 +298,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -280,6 +300,15 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+     data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
+   }
+ 
++  // Headset & Remote Control Setting Events
++  sealed interface HeadsetControlsSettingEvent : SettingsUiEvent {
++    data class SingleButtonDoublePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
++    data class SingleButtonTriplePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
++    data class SingleButtonQuadruplePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
++    data class NextButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
++    data class PreviousButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
++  }
++
+   // Sleep Setting Events
+   sealed interface SleepSettingEvent : SettingsUiEvent {
+     data class ShakeToReset(val enabled: Boolean) : SleepSettingEvent
+@@ -291,6 +320,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
      data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
      data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
@@ -11948,7 +12462,7 @@ index b1842dbf..e62bc8ec 100644
  
    sealed interface AboutSettingEvent : SettingsUiEvent {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
-index d871b2e3..2ce324d6 100644
+index d871b2e3..905dd47b 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 @@ -88,11 +88,14 @@ class SettingsAnalyticUiEventHandler(
@@ -11966,7 +12480,27 @@ index d871b2e3..2ce324d6 100644
        is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
          send("download_on_wifi_only", Updated, event.enabled.toString())
        }
-@@ -151,6 +154,7 @@ class SettingsAnalyticUiEventHandler(
+@@ -137,6 +140,19 @@ class SettingsAnalyticUiEventHandler(
+         send("scrolling_titles", Updated, event.enabled)
+     }
+ 
++    is SettingsUiEvent.HeadsetControlsSettingEvent -> when (event) {
++      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonDoublePress ->
++        send("headset_single_button_double_press", Updated, event.action.storageKey)
++      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonTriplePress ->
++        send("headset_single_button_triple_press", Updated, event.action.storageKey)
++      is SettingsUiEvent.HeadsetControlsSettingEvent.SingleButtonQuadruplePress ->
++        send("headset_single_button_quadruple_press", Updated, event.action.storageKey)
++      is SettingsUiEvent.HeadsetControlsSettingEvent.NextButton ->
++        send("headset_next_button", Updated, event.action.storageKey)
++      is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
++        send("headset_previous_button", Updated, event.action.storageKey)
++    }
++
+     is SettingsUiEvent.SleepSettingEvent -> when (event) {
+       is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
+       is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
+@@ -151,6 +167,7 @@ class SettingsAnalyticUiEventHandler(
        is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
        is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
        is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
@@ -12032,8 +12566,153 @@ index bf4d0d7f..31dad0a2 100644
      if (state.downloadsSettings.isWifiOnlyAvailable) {
        SwitchSetting(
          value = state.downloadsSettings.downloadOnWifiOnly,
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+new file mode 100644
+index 00000000..08c01813
+--- /dev/null
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+@@ -0,0 +1,139 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.ui.settings.panes
++
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.material3.Icon
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.unit.dp
++import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.BookmarkAdd
++import app.campfire.common.compose.icons.rounded.Close
++import app.campfire.common.compose.icons.rounded.FastForward
++import app.campfire.common.compose.icons.rounded.FastRewind
++import app.campfire.common.compose.icons.rounded.SkipNext
++import app.campfire.common.compose.icons.rounded.SkipPrevious
++import app.campfire.settings.api.RemoteControlAction
++import app.campfire.ui.settings.SettingsUiEvent.HeadsetControlsSettingEvent
++import app.campfire.ui.settings.SettingsUiState
++import app.campfire.ui.settings.composables.DropdownSetting
++import app.campfire.ui.settings.composables.Header
++
++@Composable
++internal fun HeadsetControlsPane(
++  state: SettingsUiState,
++  onBackClick: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  val settings = state.headsetControlsSettings
++  val eventSink = state.eventSink
++
++  SettingPaneLayout(
++    title = { Text("Headset & Remote Controls") },
++    onBackClick = onBackClick,
++    modifier = modifier,
++  ) {
++    Header(
++      title = { Text("Wired Headset (Single Button)") },
++    )
++
++    Text(
++      text = "Customize actions for earphones with a single inline physical button. Single-press is reserved for Play/Pause.",
++      style = MaterialTheme.typography.bodyMedium,
++      color = MaterialTheme.colorScheme.onSurfaceVariant,
++      modifier = Modifier.padding(horizontal = 16.dp),
++    )
++
++    Spacer(Modifier.height(8.dp))
++
++    RemoteControlActionDropdownSetting(
++      headline = "Double-Press",
++      subtitle = "Action triggered on two quick presses",
++      value = settings.singleButtonDoublePressAction,
++      onValueChange = { eventSink(HeadsetControlsSettingEvent.SingleButtonDoublePress(it)) },
++    )
++
++    RemoteControlActionDropdownSetting(
++      headline = "Triple-Press",
++      subtitle = "Action triggered on three quick presses",
++      value = settings.singleButtonTriplePressAction,
++      onValueChange = { eventSink(HeadsetControlsSettingEvent.SingleButtonTriplePress(it)) },
++    )
++
++    RemoteControlActionDropdownSetting(
++      headline = "Quadruple-Press",
++      subtitle = "Action triggered on four quick presses",
++      value = settings.singleButtonQuadruplePressAction,
++      onValueChange = { eventSink(HeadsetControlsSettingEvent.SingleButtonQuadruplePress(it)) },
++    )
++
++    Spacer(Modifier.height(16.dp))
++
++    Header(
++      title = { Text("Bluetooth & Dedicated Buttons") },
++    )
++
++    Text(
++      text = "For car stereos, Bluetooth headphones, and multi-button remotes. If your Bluetooth earbuds support touch gestures, tap commands configured in your headphone companion app will trigger these actions.",
++      style = MaterialTheme.typography.bodyMedium,
++      color = MaterialTheme.colorScheme.onSurfaceVariant,
++      modifier = Modifier.padding(horizontal = 16.dp),
++    )
++
++    Spacer(Modifier.height(8.dp))
++
++    RemoteControlActionDropdownSetting(
++      headline = "\"Next Track\" Command",
++      subtitle = "Action when a Next signal is received (e.g. double-tapping most Bluetooth earbuds or pressing Next on car audio)",
++      value = settings.nextButtonAction,
++      onValueChange = { eventSink(HeadsetControlsSettingEvent.NextButton(it)) },
++    )
++
++    RemoteControlActionDropdownSetting(
++      headline = "\"Previous Track\" Command",
++      subtitle = "Action when a Previous signal is received (e.g. triple-tapping most Bluetooth earbuds or pressing Previous on car audio)",
++      value = settings.previousButtonAction,
++      onValueChange = { eventSink(HeadsetControlsSettingEvent.PreviousButton(it)) },
++    )
++  }
++}
++
++@Composable
++private fun RemoteControlActionDropdownSetting(
++  headline: String,
++  subtitle: String,
++  value: RemoteControlAction,
++  onValueChange: (RemoteControlAction) -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  DropdownSetting(
++    value = value,
++    values = RemoteControlAction.entries,
++    onValueChange = onValueChange,
++    headlineContent = { Text(headline) },
++    supportingContent = { Text(subtitle) },
++    itemIcon = { action ->
++      Icon(
++        imageVector = when (action) {
++          RemoteControlAction.SKIP_FORWARD_TIME -> CampfireIcons.Rounded.FastForward
++          RemoteControlAction.SKIP_BACKWARD_TIME -> CampfireIcons.Rounded.FastRewind
++          RemoteControlAction.NEXT_CHAPTER -> CampfireIcons.Rounded.SkipNext
++          RemoteControlAction.PREVIOUS_CHAPTER -> CampfireIcons.Rounded.SkipPrevious
++          RemoteControlAction.ADD_BOOKMARK -> CampfireIcons.Rounded.BookmarkAdd
++          RemoteControlAction.NONE -> CampfireIcons.Rounded.Close
++        },
++        contentDescription = null,
++      )
++    },
++    itemText = { action ->
++      Text(action.label)
++    },
++    modifier = modifier,
++  )
++}
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
-index 7e0fa6f4..c0b72906 100644
+index 7e0fa6f4..b8b32f3d 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 @@ -86,24 +86,28 @@ internal fun PlaybackPane(
@@ -12077,7 +12756,22 @@ index 7e0fa6f4..c0b72906 100644
      )
  
      TimeJumpSetting(
-@@ -329,6 +333,8 @@ internal fun PlaybackPane(
+@@ -125,14 +129,6 @@ internal fun PlaybackPane(
+       supportingContent = { Text(stringResource(Res.string.setting_playback_mp3seeking_subtitle)) },
+     )
+ 
+-    SwitchSetting(
+-      value = state.playbackSettings.remoteNextPrevSkipsChapters,
+-      onValueChange = {
+-        state.eventSink(PlaybackSettingEvent.RemoteNextPrevSkipsChapters(it))
+-      },
+-      headlineContent = { Text(stringResource(Res.string.setting_playback_remote_skip_title)) },
+-      supportingContent = { Text(stringResource(Res.string.setting_playback_remote_skip_subtitle)) },
+-    )
+ 
+     Header(
+       title = { Text(stringResource(Res.string.header_playback_speed_options)) },
+@@ -329,6 +325,8 @@ internal fun PlaybackPane(
    }
  }
  
@@ -12508,7 +13202,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..2ed242ad 100644
+index f41126a7..63c04fda 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12516,13 +13210,13 @@ index f41126a7..2ed242ad 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.35
++campfire.version=1.2.36
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1023599
++campfire.versionCode=1023699
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -12559,10 +13253,26 @@ index 8c91c0a0..e03c0efd 100644
      </service>
  
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
-index 7647cac8..6d3caac5 100644
+index 7647cac8..036cfea3 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
-@@ -94,16 +94,17 @@ class AudioPlayerService : MediaLibraryService() {
+@@ -30,6 +30,7 @@ import app.campfire.core.session.UserSession
+ import app.campfire.infra.audioplayer.impl.R
+ import app.campfire.libraries.api.LibraryRepository
+ import app.campfire.sessions.api.SessionsRepository
++import app.campfire.user.api.BookmarkRepository
+ import app.campfire.settings.api.AndroidAutoSettings
+ import app.campfire.settings.api.DevSettings
+ import app.campfire.settings.api.PlaybackSettings
+@@ -65,6 +66,7 @@ interface AudioPlayerUserComponent {
+   val sessionsRepository: SessionsRepository
+   val playbackSessionManager: PlaybackSessionManager
+   val libraryRepository: LibraryRepository
++  val bookmarkRepository: BookmarkRepository
+ }
+ 
+ @SuppressLint("UnsafeOptInUsageError")
+@@ -94,16 +96,17 @@ class AudioPlayerService : MediaLibraryService() {
      // (Bluetooth, car stereo) are intercepted per user settings, and coarse single-item (HLS)
      // playback is presented as a virtual chapter playlist so notification/Auto scrubbers and
      // titles stay chapter-granular. In-app UI uses the direct player.
@@ -12588,7 +13298,7 @@ index 7647cac8..6d3caac5 100644
      )
        .setSessionActivity(
          PendingIntent.getActivity(
-@@ -114,10 +115,13 @@ class AudioPlayerService : MediaLibraryService() {
+@@ -114,10 +117,13 @@ class AudioPlayerService : MediaLibraryService() {
          ),
        )
        .build()
@@ -12888,18 +13598,21 @@ index 21246ae6..27d1c68e 100644
              .setDurationMs(metadata.durationMs)
              .build(),
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-index a22d7695..75d3b754 100644
+index a22d7695..9c2728f7 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-@@ -8,6 +8,7 @@ import android.content.Context
+@@ -8,6 +8,10 @@ import android.content.Context
  import android.content.Intent
  import android.os.Bundle
  import android.view.KeyEvent
 +import android.view.ViewConfiguration
++import android.widget.Toast
++import app.campfire.settings.api.RemoteControlAction
++import kotlinx.coroutines.withContext
  import androidx.media3.common.MediaItem
  import androidx.media3.common.Player
  import androidx.media3.session.CommandButton
-@@ -32,7 +33,13 @@ import com.google.common.util.concurrent.ListenableFuture
+@@ -32,7 +36,13 @@ import com.google.common.util.concurrent.ListenableFuture
  import kotlin.time.Duration.Companion.minutes
  import kotlinx.coroutines.CancellationException
  import kotlinx.coroutines.CoroutineScope
@@ -12913,7 +13626,7 @@ index a22d7695..75d3b754 100644
  
  @SuppressLint("UnsafeOptInUsageError")
  internal class MediaSessionCallback(
-@@ -47,6 +54,72 @@ internal class MediaSessionCallback(
+@@ -47,6 +57,73 @@ internal class MediaSessionCallback(
    private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
    private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
  
@@ -12925,10 +13638,11 @@ index a22d7695..75d3b754 100644
 +  fun bindSession(mediaSession: MediaSession) {
 +    serviceScope.launch {
 +      combine(
-+        component.playbackSettings.observeRemoteNextPrevSkipsChapters(),
++        component.playbackSettings.observeNextButtonAction(),
++        component.playbackSettings.observePreviousButtonAction(),
 +        component.playbackSettings.observeBackwardTimeMs(),
 +        component.playbackSettings.observeForwardTimeMs(),
-+      ) { _, _, _ -> }
++      ) { _, _, _, _ -> }
 +        .collect {
 +          mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
 +        }
@@ -12936,7 +13650,7 @@ index a22d7695..75d3b754 100644
 +  }
 +
 +  internal fun createMediaButtonPreferences(): List<CommandButton> {
-+    val skipsChapters = component.playbackSettings.remoteNextPrevSkipsChapters
++    val skipsChapters = component.playbackSettings.nextButtonAction == RemoteControlAction.NEXT_CHAPTER
 +    val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
 +      5_000L -> CommandButton.ICON_SKIP_BACK_5
 +      10_000L -> CommandButton.ICON_SKIP_BACK_10
@@ -12986,7 +13700,7 @@ index a22d7695..75d3b754 100644
    override fun onConnect(
      session: MediaSession,
      controller: MediaSession.ControllerInfo,
-@@ -61,25 +134,11 @@ internal class MediaSessionCallback(
+@@ -61,25 +138,11 @@ internal class MediaSessionCallback(
  
      if (
        session.isMediaNotificationController(controller) ||
@@ -13014,7 +13728,7 @@ index a22d7695..75d3b754 100644
          .build()
      } else {
        return AcceptedResultBuilder(session)
-@@ -172,20 +231,87 @@ internal class MediaSessionCallback(
+@@ -172,20 +235,87 @@ internal class MediaSessionCallback(
        component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
      }
  
@@ -13054,9 +13768,9 @@ index a22d7695..75d3b754 100644
 +        KeyEvent.KEYCODE_HEADSETHOOK -> {
 +          if (!isAuto) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
++              headsetHookJob?.cancel()
 +              if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
 +                isHeadsetHookLongPress = true
-+                headsetHookJob?.cancel()
 +                headsetHookClickCount = 0
 +                return super.onMediaButtonEvent(session, controllerInfo, intent)
 +              }
@@ -13075,9 +13789,9 @@ index a22d7695..75d3b754 100644
 +              headsetHookClickCount++
 +              headsetHookJob?.cancel()
 +
-+              if (headsetHookClickCount >= 3) {
++              if (headsetHookClickCount >= 4) {
 +                headsetHookClickCount = 0
-+                handleHeadsetSkipBackward()
++                dispatchRemoteAction(component.playbackSettings.singleButtonQuadruplePressAction)
 +              } else {
 +                headsetHookJob = serviceScope.launch(Dispatchers.Main) {
 +                  delay(HEADSET_MULTI_CLICK_TIMEOUT_MS)
@@ -13085,7 +13799,8 @@ index a22d7695..75d3b754 100644
 +                  headsetHookClickCount = 0
 +                  when (count) {
 +                    1 -> handleHeadsetPlayPause()
-+                    2 -> handleHeadsetSkipForward()
++                    2 -> dispatchRemoteAction(component.playbackSettings.singleButtonDoublePressAction)
++                    3 -> dispatchRemoteAction(component.playbackSettings.singleButtonTriplePressAction)
 +                  }
 +                }
 +              }
@@ -13094,28 +13809,61 @@ index a22d7695..75d3b754 100644
 +          }
 +        }
 +        KeyEvent.KEYCODE_MEDIA_NEXT -> {
-+          // In Android Auto, there are dedicated jump buttons on the screen,
-+          // so next/prev should always skip chapters.
-+          // For remote bluetooth devices, wired headsets, and external controllers, respect user setting:
-+          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
++          // For Android Auto, skip to next chapter because Auto UI has dedicated jump buttons.
++          // For Bluetooth headsets, wired remotes, and car stereos, dispatch configured action:
++          if (!isAuto) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-+              player.seekForward()
++              dispatchRemoteAction(component.playbackSettings.nextButtonAction)
 +            }
 +            return true
 +          }
 +        }
 +        KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-+          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
++          if (!isAuto) {
 +            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-+              player.seekBackward()
++              dispatchRemoteAction(component.playbackSettings.previousButtonAction)
 +            }
              return true
            }
          }
-@@ -194,6 +320,42 @@ internal class MediaSessionCallback(
+@@ -194,6 +324,60 @@ internal class MediaSessionCallback(
      return super.onMediaButtonEvent(session, controllerInfo, intent)
    }
  
++  private fun dispatchRemoteAction(action: RemoteControlAction) {
++    when (action) {
++      RemoteControlAction.SKIP_FORWARD_TIME -> player.seekForward()
++      RemoteControlAction.SKIP_BACKWARD_TIME -> player.seekBackward()
++      RemoteControlAction.NEXT_CHAPTER -> player.skipToNext()
++      RemoteControlAction.PREVIOUS_CHAPTER -> player.skipToPrevious()
++      RemoteControlAction.ADD_BOOKMARK -> {
++        val currentSession = player.preparedSession
++        val itemId = currentSession?.libraryItem?.id
++        if (itemId != null) {
++          val timestamp = player.overallTime.value
++          val minutes = timestamp.inWholeMinutes
++          val seconds = (timestamp.inWholeSeconds % 60)
++          val timeStr = "${minutes}m ${seconds}s"
++          serviceScope.launch {
++            try {
++              userComponent.bookmarkRepository.createBookmark(
++                libraryItemId = itemId,
++                timestamp = timestamp,
++                title = "Bookmark at $timeStr",
++              )
++              withContext(Dispatchers.Main) {
++                Toast.makeText(context, "Bookmark added ($timeStr)", Toast.LENGTH_SHORT).show()
++              }
++            } catch (e: Exception) {
++              bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
++            }
++          }
++        }
++      }
++      RemoteControlAction.NONE -> Unit
++    }
++  }
++
 +  private fun handleHeadsetPlayPause() {
 +    if (player.preparedSession != null) {
 +      player.playPause()
@@ -13136,26 +13884,10 @@ index a22d7695..75d3b754 100644
 +    }
 +  }
 +
-+  private fun handleHeadsetSkipForward() {
-+    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
-+      player.skipToNext()
-+    } else {
-+      player.seekForward()
-+    }
-+  }
-+
-+  private fun handleHeadsetSkipBackward() {
-+    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
-+      player.skipToPrevious()
-+    } else {
-+      player.seekBackward()
-+    }
-+  }
-+
    override fun onGetLibraryRoot(
      session: MediaLibrarySession,
      browser: MediaSession.ControllerInfo,
-@@ -276,17 +438,71 @@ internal class MediaSessionCallback(
+@@ -276,17 +460,71 @@ internal class MediaSessionCallback(
      startIndex: Int,
      startPositionMs: Long,
    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
@@ -13236,7 +13968,7 @@ index a22d7695..75d3b754 100644
          // resolving / setting the media item(s).
          error("Deliberately not return here")
        }
-@@ -317,49 +533,7 @@ internal class MediaSessionCallback(
+@@ -317,49 +555,7 @@ internal class MediaSessionCallback(
      }
    }
  
@@ -13288,10 +14020,10 @@ index a22d7695..75d3b754 100644
    }
  }
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
-index 3933cdd1..27380015 100644
+index 3933cdd1..a43a204c 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
-@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
+@@ -9,9 +9,11 @@ import androidx.media3.common.MediaItem
  import androidx.media3.common.Player
  import androidx.media3.common.util.UnstableApi
  import androidx.media3.session.MediaSession
@@ -13299,7 +14031,11 @@ index 3933cdd1..27380015 100644
  import app.campfire.core.extensions.seconds
  import app.campfire.core.model.Chapter
  import app.campfire.settings.api.PlaybackSettings
-@@ -52,6 +53,24 @@ class ChapterWindowForwardingPlayer(
++import app.campfire.settings.api.RemoteControlAction
+ import com.google.common.util.concurrent.Futures
+ import com.google.common.util.concurrent.ListenableFuture
+ import kotlin.time.Duration
+@@ -52,6 +54,24 @@ class ChapterWindowForwardingPlayer(
  
      /** Chapter-skip honoring the track-reset threshold, like the in-app controls. */
      fun skipToPreviousChapter()
@@ -13324,7 +14060,7 @@ index 3933cdd1..27380015 100644
    }
  
    /** Set after session creation, to identify the controller a command came from. */
-@@ -60,6 +79,8 @@ class ChapterWindowForwardingPlayer(
+@@ -60,6 +80,8 @@ class ChapterWindowForwardingPlayer(
    private val wrapped: Player = player
  
    private var cachedChapters: List<Chapter>? = null
@@ -13333,7 +14069,7 @@ index 3933cdd1..27380015 100644
    private var cachedPlaylist: List<MediaItemData> = emptyList()
  
    /** Re-derives state; called from the audio player's progress tick while windowing is active. */
-@@ -94,6 +115,8 @@ class ChapterWindowForwardingPlayer(
+@@ -94,6 +116,8 @@ class ChapterWindowForwardingPlayer(
              Player.COMMAND_SEEK_TO_PREVIOUS,
              Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
              Player.COMMAND_SEEK_TO_MEDIA_ITEM,
@@ -13342,15 +14078,20 @@ index 3933cdd1..27380015 100644
            )
            .build(),
        )
-@@ -123,15 +146,29 @@ class ChapterWindowForwardingPlayer(
+@@ -123,15 +147,39 @@ class ChapterWindowForwardingPlayer(
        Player.COMMAND_SEEK_TO_NEXT,
        Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
        -> {
 -        // Remote controllers can prefer time jumps over chapter skips — the same behavior
 -        // RemoteControlForwardingPlayer applies on chapter-granular queues
 -        if (remoteJumpPreferred()) wrapped.seekForward() else host.skipToNextChapter()
-+        if (remoteJumpPreferred()) {
-+          host.seekForward()
++        if (session.isRemoteControllerRequest(appPackageName)) {
++          when (settings.nextButtonAction) {
++            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
++            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
++            RemoteControlAction.NONE -> Unit
++            else -> host.skipToNextChapter()
++          }
 +        } else {
 +          host.skipToNextChapter()
 +        }
@@ -13360,8 +14101,13 @@ index 3933cdd1..27380015 100644
        Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
        -> {
 -        if (remoteJumpPreferred()) wrapped.seekBack() else host.skipToPreviousChapter()
-+        if (remoteJumpPreferred()) {
-+          host.seekBackward()
++        if (session.isRemoteControllerRequest(appPackageName)) {
++          when (settings.previousButtonAction) {
++            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
++            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
++            RemoteControlAction.NONE -> Unit
++            else -> host.skipToPreviousChapter()
++          }
 +        } else {
 +          host.skipToPreviousChapter()
 +        }
@@ -13376,7 +14122,7 @@ index 3933cdd1..27380015 100644
        }
  
        else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
-@@ -152,16 +189,33 @@ class ChapterWindowForwardingPlayer(
+@@ -152,16 +200,33 @@ class ChapterWindowForwardingPlayer(
    }
  
    private fun chapterPlaylist(chapters: List<Chapter>, baseItem: MediaItem): List<MediaItemData> {
@@ -13413,7 +14159,7 @@ index 3933cdd1..27380015 100644
                  .setDurationMs(chapter.durationMs)
                  .build(),
              )
-@@ -172,6 +226,8 @@ class ChapterWindowForwardingPlayer(
+@@ -172,6 +237,8 @@ class ChapterWindowForwardingPlayer(
          .build()
      }.also {
        cachedChapters = chapters
@@ -13423,10 +14169,86 @@ index 3933cdd1..27380015 100644
      }
    }
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
-index da6ec972..0a609b88 100644
+index da6ec972..85e6c586 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
-@@ -84,23 +84,37 @@ class RemoteControlForwardingPlayer(
+@@ -8,6 +8,7 @@ import androidx.media3.common.Player
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.session.MediaSession
+ import app.campfire.settings.api.PlaybackSettings
++import app.campfire.settings.api.RemoteControlAction
+ 
+ /**
+  * A [androidx.media3.common.ForwardingPlayer] that intercepts next/previous media item commands from external controllers
+@@ -47,60 +48,84 @@ class RemoteControlForwardingPlayer(
+     return session.isRemoteControllerRequest(appPackageName)
+   }
+ 
+-  /**
+-   * Applies the setting-based behavior for remote controllers.
+-   * Returns true if we handled the command (seek forward/back), false if default behavior should be used.
+-   */
+-  private inline fun handleRemoteNextPrevCommand(seekAction: () -> Unit): Boolean {
+-    if (isRemoteController() && !settings.remoteNextPrevSkipsChapters) {
+-      seekAction()
+-      return true
++  private inline fun handleRemoteNextCommand(defaultAction: () -> Unit) {
++    if (isRemoteController()) {
++      when (settings.nextButtonAction) {
++        RemoteControlAction.SKIP_FORWARD_TIME -> seekForward()
++        RemoteControlAction.SKIP_BACKWARD_TIME -> seekBack()
++        RemoteControlAction.NEXT_CHAPTER -> defaultAction()
++        RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
++        RemoteControlAction.NONE -> Unit
++        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
++      }
++    } else {
++      defaultAction()
+     }
+-    return false
+   }
+ 
+-  override fun seekToNextMediaItem() {
+-    if (!handleRemoteNextPrevCommand { seekForward() }) {
+-      super.seekToNextMediaItem()
++  private inline fun handleRemotePrevCommand(defaultAction: () -> Unit) {
++    if (isRemoteController()) {
++      when (settings.previousButtonAction) {
++        RemoteControlAction.SKIP_FORWARD_TIME -> seekForward()
++        RemoteControlAction.SKIP_BACKWARD_TIME -> seekBack()
++        RemoteControlAction.NEXT_CHAPTER -> defaultAction()
++        RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
++        RemoteControlAction.NONE -> Unit
++        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
++      }
++    } else {
++      defaultAction()
+     }
+   }
+ 
++  override fun seekToNextMediaItem() {
++    handleRemoteNextCommand { super.seekToNextMediaItem() }
++  }
++
+   override fun seekToPreviousMediaItem() {
+-    if (!handleRemoteNextPrevCommand { seekBack() }) {
+-      super.seekToPreviousMediaItem()
+-    }
++    handleRemotePrevCommand { super.seekToPreviousMediaItem() }
+   }
+ 
+   override fun seekToNext() {
+-    if (!handleRemoteNextPrevCommand { seekForward() }) {
+-      super.seekToNext()
+-    }
++    handleRemoteNextCommand { super.seekToNext() }
+   }
+ 
+   override fun seekToPrevious() {
+-    if (!handleRemoteNextPrevCommand { seekBack() }) {
+-      super.seekToPrevious()
+-    }
++    handleRemotePrevCommand { super.seekToPrevious() }
    }
  }
  

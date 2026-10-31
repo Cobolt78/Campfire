@@ -6,6 +6,7 @@ package app.campfire.settings.test
 import app.campfire.core.model.LibraryItemId
 import app.campfire.settings.api.PendingResumeRewind
 import app.campfire.settings.api.PlaybackSettings
+import app.campfire.settings.api.RemoteControlAction
 import app.campfire.settings.api.ResumeRewindConfig
 import app.campfire.settings.api.StreamingMethod
 import kotlin.time.Duration
@@ -58,10 +59,52 @@ class FakePlaybackSettings : PlaybackSettings {
   override fun observeItemPlaybackSpeeds(): StateFlow<Map<LibraryItemId, Float>> =
     _itemPlaybackSpeeds.asStateFlow()
 
-  private val _remoteNextPrevSkipsChapters = MutableStateFlow(true)
+  private val _singleButtonDoublePressAction = MutableStateFlow(RemoteControlAction.SKIP_FORWARD_TIME)
+  override var singleButtonDoublePressAction: RemoteControlAction
+    get() = _singleButtonDoublePressAction.value
+    set(value) { _singleButtonDoublePressAction.value = value }
+  override fun observeSingleButtonDoublePressAction(): StateFlow<RemoteControlAction> =
+    _singleButtonDoublePressAction.asStateFlow()
+
+  private val _singleButtonTriplePressAction = MutableStateFlow(RemoteControlAction.SKIP_BACKWARD_TIME)
+  override var singleButtonTriplePressAction: RemoteControlAction
+    get() = _singleButtonTriplePressAction.value
+    set(value) { _singleButtonTriplePressAction.value = value }
+  override fun observeSingleButtonTriplePressAction(): StateFlow<RemoteControlAction> =
+    _singleButtonTriplePressAction.asStateFlow()
+
+  private val _singleButtonQuadruplePressAction = MutableStateFlow(RemoteControlAction.ADD_BOOKMARK)
+  override var singleButtonQuadruplePressAction: RemoteControlAction
+    get() = _singleButtonQuadruplePressAction.value
+    set(value) { _singleButtonQuadruplePressAction.value = value }
+  override fun observeSingleButtonQuadruplePressAction(): StateFlow<RemoteControlAction> =
+    _singleButtonQuadruplePressAction.asStateFlow()
+
+  private val _nextButtonAction = MutableStateFlow(RemoteControlAction.SKIP_FORWARD_TIME)
+  override var nextButtonAction: RemoteControlAction
+    get() = _nextButtonAction.value
+    set(value) {
+      _nextButtonAction.value = value
+      _remoteNextPrevSkipsChapters.value = (value == RemoteControlAction.NEXT_CHAPTER)
+    }
+  override fun observeNextButtonAction(): StateFlow<RemoteControlAction> = _nextButtonAction.asStateFlow()
+
+  private val _previousButtonAction = MutableStateFlow(RemoteControlAction.SKIP_BACKWARD_TIME)
+  override var previousButtonAction: RemoteControlAction
+    get() = _previousButtonAction.value
+    set(value) {
+      _previousButtonAction.value = value
+    }
+  override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = _previousButtonAction.asStateFlow()
+
+  private val _remoteNextPrevSkipsChapters = MutableStateFlow(false)
   override var remoteNextPrevSkipsChapters: Boolean
-    get() = _remoteNextPrevSkipsChapters.value
-    set(value) { _remoteNextPrevSkipsChapters.value = value }
+    get() = _nextButtonAction.value == RemoteControlAction.NEXT_CHAPTER
+    set(value) {
+      _remoteNextPrevSkipsChapters.value = value
+      _nextButtonAction.value = if (value) RemoteControlAction.NEXT_CHAPTER else RemoteControlAction.SKIP_FORWARD_TIME
+      _previousButtonAction.value = if (value) RemoteControlAction.PREVIOUS_CHAPTER else RemoteControlAction.SKIP_BACKWARD_TIME
+    }
   override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = _remoteNextPrevSkipsChapters.asStateFlow()
 
   private val _syncEnabled = MutableStateFlow(true)

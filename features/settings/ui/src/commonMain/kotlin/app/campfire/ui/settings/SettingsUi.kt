@@ -41,6 +41,7 @@ import app.campfire.common.compose.icons.outline.Library
 import app.campfire.common.compose.icons.rounded.AccountCircle
 import app.campfire.common.compose.icons.rounded.DeveloperMode
 import app.campfire.common.compose.icons.rounded.DirectionsCar
+import app.campfire.common.compose.icons.rounded.Headphones
 import app.campfire.common.compose.icons.rounded.Download
 import app.campfire.common.compose.icons.rounded.Info
 import app.campfire.common.compose.icons.rounded.NotificationsPaused
@@ -66,6 +67,7 @@ import app.campfire.ui.settings.panes.DeveloperPane
 import app.campfire.ui.settings.panes.DownloadsPane
 import app.campfire.ui.settings.panes.LocalPaneState
 import app.campfire.ui.settings.panes.PaneState
+import app.campfire.ui.settings.panes.HeadsetControlsPane
 import app.campfire.ui.settings.panes.PlaybackPane
 import app.campfire.ui.settings.panes.SleepPane
 import campfire.features.settings.ui.generated.resources.Res
@@ -117,6 +119,7 @@ fun SettingsUi(
         SettingsScreen.Page.Appearance -> SettingsPane.Appearance
         SettingsScreen.Page.Downloads -> SettingsPane.Downloads
         SettingsScreen.Page.Playback -> SettingsPane.Playback
+        SettingsScreen.Page.HeadsetControls -> SettingsPane.HeadsetControls
         SettingsScreen.Page.Sleep -> SettingsPane.Sleep
         SettingsScreen.Page.AndroidAuto -> SettingsPane.AndroidAuto
         SettingsScreen.Page.About -> SettingsPane.About
@@ -389,6 +392,22 @@ private fun SettingsRootPane(
         },
       )
 
+      // Headset & Remote Controls
+      SettingPaneListItem(
+        selected = pane == SettingsPane.HeadsetControls && isTwoPane,
+        icon = {
+          Icon(
+            CampfireIcons.Rounded.Headphones,
+            contentDescription = null,
+          )
+        },
+        title = { Text("Headset & Remote Controls") },
+        subtitle = { Text("Wired button multi-press, Bluetooth gestures & car controls") },
+        onClick = {
+          onPaneClick(SettingsPane.HeadsetControls)
+        },
+      )
+
       // Sleep
       SettingPaneListItem(
         selected = pane == SettingsPane.Sleep && isTwoPane,
@@ -507,6 +526,12 @@ private fun SettingPaneContent(
     )
 
     SettingsPane.Playback -> PlaybackPane(
+      state = state,
+      onBackClick = onBackClick,
+      modifier = modifier,
+    )
+
+    SettingsPane.HeadsetControls -> HeadsetControlsPane(
       state = state,
       onBackClick = onBackClick,
       modifier = modifier,

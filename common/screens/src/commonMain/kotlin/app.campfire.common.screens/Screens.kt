@@ -155,6 +155,7 @@ data class SettingsScreen(
     Appearance,
     Downloads,
     Playback,
+    HeadsetControls,
     Sleep,
     AndroidAuto,
     About,

@@ -1835,3 +1835,55 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
+
+## 66. Headset & Remote Controls Settings Pane and Multi-Press Customization (v1.2.36)
+
+### Problem Description
+- **Wired Headset Multi-Click & Remote Action Limitations**:
+  - A user with a single-button wired headset (inline play/pause button) reported that double-pressing and triple-pressing always skipped forward one chapter regardless of toggle settings or intent, and prevented them from skipping backwards.
+  - The previous implementation in `MediaSessionCallback` did not cancel pending multi-click timeout jobs on `ACTION_DOWN`. Holding or repeating presses could cause the 350ms delay from the first click to fire mid-gesture, treating multi-clicks as a single click followed by a double click.
+  - Furthermore, AndroidX Media3 routed wired headset button intents through its notification controller proxy, which caused chapter-forwarding players to interpret them as notification drawer button actions and force chapter skips.
+  - Users on wired headsets with a single button had no way to configure custom tap counts (e.g. double-press to skip backward, triple-press to skip forward, quadruple-press to bookmark).
+  - Users on Bluetooth headphones who had custom tap controls set in their manufacturer companion apps needed clear mapping for what incoming Next and Previous commands trigger in Campfire.
+
+### Solution & Key Implementation Details
+1. **Dedicated "Headset & Remote Controls" Settings Category**:
+   - Added `SettingsScreen.Page.HeadsetControls` and `SettingsPane.HeadsetControls`.
+   - Extracted remote control settings out of `PlaybackPane` into a newly designed, dedicated `HeadsetControlsPane`.
+   - Clear sections for **Wired Headset (Single Button)** and **Bluetooth & Dedicated Buttons** explaining how companion app gestures interface with Campfire's command mapping.
+2. **Flexible Remote Control Action Model (`RemoteControlAction.kt`)**:
+   - Introduced enum `RemoteControlAction` (`SKIP_FORWARD_TIME`, `SKIP_BACKWARD_TIME`, `NEXT_CHAPTER`, `PREVIOUS_CHAPTER`, `ADD_BOOKMARK`, `NONE`).
+   - Implemented 5 configurable settings in `PlaybackSettings`:
+     - `singleButtonDoublePressAction` (default: Skip forward time)
+     - `singleButtonTriplePressAction` (default: Skip backward time)
+     - `singleButtonQuadruplePressAction` (default: Add bookmark)
+     - `nextButtonAction` (default: Skip forward time / Next chapter)
+     - `previousButtonAction` (default: Skip backward time / Previous chapter)
+   - Synchronized `remoteNextPrevSkipsChapters` to reflect `nextButtonAction == RemoteControlAction.NEXT_CHAPTER` for full backward compatibility.
+3. **Multi-Press Accumulation & Race Condition Elimination (`MediaSessionCallback.kt`)**:
+   - In `MediaSessionCallback.onMediaButtonEvent`, `headsetHookJob?.cancel()` is now executed immediately on every `ACTION_DOWN` of `KEYCODE_HEADSETHOOK`, ensuring rapid successive presses do not suffer from timer races.
+   - Added support for 1-click (Play/Pause), 2-click (Double-Press action), 3-click (Triple-Press action), and 4-click (Quadruple-Press action, e.g. Add Bookmark).
+   - In `dispatchRemoteAction`, implemented instant bookmark creation using `userComponent.bookmarkRepository.createBookmark()` with Toast feedback.
+   - Fully consumed `KEYCODE_MEDIA_NEXT` and `KEYCODE_MEDIA_PREVIOUS` events on `ACTION_DOWN` so Media3 cannot bypass configured settings.
+4. **Forwarding Players Synchronization**:
+   - Updated `RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer` to check and dispatch `settings.nextButtonAction` and `settings.previousButtonAction`.
+
+### Modified Files:
+* common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
+* features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt
+* features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
+* features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
+* features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md

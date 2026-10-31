@@ -9,6 +9,9 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.ViewConfiguration
+import android.widget.Toast
+import app.campfire.settings.api.RemoteControlAction
+import kotlinx.coroutines.withContext
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.CommandButton
@@ -62,10 +65,11 @@ internal class MediaSessionCallback(
   fun bindSession(mediaSession: MediaSession) {
     serviceScope.launch {
       combine(
-        component.playbackSettings.observeRemoteNextPrevSkipsChapters(),
+        component.playbackSettings.observeNextButtonAction(),
+        component.playbackSettings.observePreviousButtonAction(),
         component.playbackSettings.observeBackwardTimeMs(),
         component.playbackSettings.observeForwardTimeMs(),
-      ) { _, _, _ -> }
+      ) { _, _, _, _ -> }
         .collect {
           mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
         }
@@ -73,7 +77,7 @@ internal class MediaSessionCallback(
   }
 
   internal fun createMediaButtonPreferences(): List<CommandButton> {
-    val skipsChapters = component.playbackSettings.remoteNextPrevSkipsChapters
+    val skipsChapters = component.playbackSettings.nextButtonAction == RemoteControlAction.NEXT_CHAPTER
     val skipBackIcon = when (component.playbackSettings.backwardTimeMs) {
       5_000L -> CommandButton.ICON_SKIP_BACK_5
       10_000L -> CommandButton.ICON_SKIP_BACK_10
@@ -257,9 +261,9 @@ internal class MediaSessionCallback(
         KeyEvent.KEYCODE_HEADSETHOOK -> {
           if (!isAuto) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+              headsetHookJob?.cancel()
               if (keyEvent.repeatCount > 0 || keyEvent.isLongPress) {
                 isHeadsetHookLongPress = true
-                headsetHookJob?.cancel()
                 headsetHookClickCount = 0
                 return super.onMediaButtonEvent(session, controllerInfo, intent)
               }
@@ -278,9 +282,9 @@ internal class MediaSessionCallback(
               headsetHookClickCount++
               headsetHookJob?.cancel()
 
-              if (headsetHookClickCount >= 3) {
+              if (headsetHookClickCount >= 4) {
                 headsetHookClickCount = 0
-                handleHeadsetSkipBackward()
+                dispatchRemoteAction(component.playbackSettings.singleButtonQuadruplePressAction)
               } else {
                 headsetHookJob = serviceScope.launch(Dispatchers.Main) {
                   delay(HEADSET_MULTI_CLICK_TIMEOUT_MS)
@@ -288,7 +292,8 @@ internal class MediaSessionCallback(
                   headsetHookClickCount = 0
                   when (count) {
                     1 -> handleHeadsetPlayPause()
-                    2 -> handleHeadsetSkipForward()
+                    2 -> dispatchRemoteAction(component.playbackSettings.singleButtonDoublePressAction)
+                    3 -> dispatchRemoteAction(component.playbackSettings.singleButtonTriplePressAction)
                   }
                 }
               }
@@ -297,20 +302,19 @@ internal class MediaSessionCallback(
           }
         }
         KeyEvent.KEYCODE_MEDIA_NEXT -> {
-          // In Android Auto, there are dedicated jump buttons on the screen,
-          // so next/prev should always skip chapters.
-          // For remote bluetooth devices, wired headsets, and external controllers, respect user setting:
-          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+          // For Android Auto, skip to next chapter because Auto UI has dedicated jump buttons.
+          // For Bluetooth headsets, wired remotes, and car stereos, dispatch configured action:
+          if (!isAuto) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-              player.seekForward()
+              dispatchRemoteAction(component.playbackSettings.nextButtonAction)
             }
             return true
           }
         }
         KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-          if (!isAuto && !component.playbackSettings.remoteNextPrevSkipsChapters) {
+          if (!isAuto) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-              player.seekBackward()
+              dispatchRemoteAction(component.playbackSettings.previousButtonAction)
             }
             return true
           }
@@ -318,6 +322,40 @@ internal class MediaSessionCallback(
       }
     }
     return super.onMediaButtonEvent(session, controllerInfo, intent)
+  }
+
+  private fun dispatchRemoteAction(action: RemoteControlAction) {
+    when (action) {
+      RemoteControlAction.SKIP_FORWARD_TIME -> player.seekForward()
+      RemoteControlAction.SKIP_BACKWARD_TIME -> player.seekBackward()
+      RemoteControlAction.NEXT_CHAPTER -> player.skipToNext()
+      RemoteControlAction.PREVIOUS_CHAPTER -> player.skipToPrevious()
+      RemoteControlAction.ADD_BOOKMARK -> {
+        val currentSession = player.preparedSession
+        val itemId = currentSession?.libraryItem?.id
+        if (itemId != null) {
+          val timestamp = player.overallTime.value
+          val minutes = timestamp.inWholeMinutes
+          val seconds = (timestamp.inWholeSeconds % 60)
+          val timeStr = "${minutes}m ${seconds}s"
+          serviceScope.launch {
+            try {
+              userComponent.bookmarkRepository.createBookmark(
+                libraryItemId = itemId,
+                timestamp = timestamp,
+                title = "Bookmark at $timeStr",
+              )
+              withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Bookmark added ($timeStr)", Toast.LENGTH_SHORT).show()
+              }
+            } catch (e: Exception) {
+              bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
+            }
+          }
+        }
+      }
+      RemoteControlAction.NONE -> Unit
+    }
   }
 
   private fun handleHeadsetPlayPause() {
@@ -337,22 +375,6 @@ internal class MediaSessionCallback(
           bark(LogPriority.ERROR, throwable = e) { "Failed to resume playback on headset click" }
         }
       }
-    }
-  }
-
-  private fun handleHeadsetSkipForward() {
-    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
-      player.skipToNext()
-    } else {
-      player.seekForward()
-    }
-  }
-
-  private fun handleHeadsetSkipBackward() {
-    if (component.playbackSettings.remoteNextPrevSkipsChapters) {
-      player.skipToPrevious()
-    } else {
-      player.seekBackward()
     }
   }
 
