@@ -512,7 +512,7 @@ class KtorAudioBookShelfApi(
 
   override suspend fun getPlaylists(libraryId: String): Result<List<PlaylistExpanded>> {
     return trySendRequest<PlaylistsResponse> {
-      hydratedClientRequest("/api/libraries/$libraryId/playlists")
+      hydratedClientRequest("/api/libraries/$libraryId/playlists?minified=1")
     }.map { it.results }
   }
 

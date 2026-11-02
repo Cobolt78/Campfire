@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.41-rc1]
+
+### Changed
+- Slashed playlist library listing network payload and initial load times by requesting `?minified=1` from Audiobookshelf server.
+- Made `LibraryItemExpanded.Book.libraryFiles` default to `emptyList()` for seamless deserialization of both minified and expanded payloads.
+
 ## [1.2.40]
 
 ### Added

@@ -77,6 +77,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 70. [Direct In-Drawer Update Card Ownership, Pre-Release Support & Persistent Update Caching (v1.2.40-rc1)](#70-direct-in-drawer-update-card-ownership-pre-release-support--persistent-update-caching-v1240-rc1)
 71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
 72. [Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)](#72-discover-shelf-refresh-decoupling--1-hour-background-cooldown-restoration-v1240)
+73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 
 ---
 
@@ -2074,3 +2075,31 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
 
+
+
+---
+
+## 73. Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)
+
+### Problem Description
+- **Extreme Initial Loading Delay for Playlists**:
+  - Tapping "Playlists" in the bottom navigation or "Add to Playlist" on a book took up to 60+ seconds on initial cold load before any playlists would appear.
+  - While subsequent opens in the same session loaded instantly from SQLite, the initial load was blocked waiting for the network response.
+  - The Audiobookshelf server was responding with fully expanded library items (`toOldJSONExpanded()`) for every book in every playlist, transferring up to 20–30 MB of uncompressed JSON with thousands of audio files, chapters, and tracklists that are completely unneeded for playlist listings or addition dialogs.
+- **Deserialization Inflexibility**:
+  - `LibraryItemExpanded.Book` in Campfire required `libraryFiles: List<LibraryFile>` without a default empty list, which would cause Kotlinx Serialization exceptions if the server returned minified items.
+
+### Solution & Key Implementation Details
+1. **Minified Playlist Library Listing Query (`KtorAudioBookShelfApi.kt`)**:
+   - Updated `getPlaylists(libraryId)` to query `/api/libraries/$libraryId/playlists?minified=1`.
+   - Paired with the Audiobookshelf server optimization, this drops server query execution from 30s to ~50ms and slashes network payload size by 99.9% (from ~25 MB to ~25 KB).
+2. **Resilient Deserialization (`LibraryItemExpanded.kt`)**:
+   - Updated `LibraryItemExpanded.Book.libraryFiles` to default to `emptyList()` (`override val libraryFiles: List<LibraryFile> = emptyList()`), matching `LibraryItemExpanded.Podcast`.
+   - Allows Campfire to seamlessly deserialize both minified playlist items and unminified expanded items without missing-field errors.
+
+### Modified Files:
+* data/network/api/src/commonMain/kotlin/app/campfire/network/models/LibraryItemExpanded.kt
+* data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md

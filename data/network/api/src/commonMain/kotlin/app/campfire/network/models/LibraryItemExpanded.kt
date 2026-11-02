@@ -45,7 +45,7 @@ sealed class LibraryItemExpanded : LibraryItemBase() {
     override val size: Long? = null,
     override val numFiles: Int? = null,
     val media: MediaExpanded,
-    override val libraryFiles: List<LibraryFile>,
+    override val libraryFiles: List<LibraryFile> = emptyList(),
     override val userMediaProgress: MediaProgress? = null,
   ) : LibraryItemExpanded()
 
