@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.41-rc2]
+
+### Performance
+- Eliminated 6,000+ sequential SQLite queries on initial playlist load by adding lightweight item hydration (`hydrateLightweightById`) in `LibraryItemDao` and `SqlDelightLibraryItemDao`.
+- Capped playlist cover hydration in `PlaylistsSourceOfTruthFactory.readAll` to 8 covers per playlist while preserving the total count and playlist item ordering.
+- Optimized playlist item hydration in `StorePlaylistsRepository.observePlaylistItems` to bypass unnecessary child audio file and chapter database queries.
+- Disabled large-payload string allocations in `PlaylistsStore::observeAllPlaylists` debug logging.
+
 ## [1.2.41-rc1]
 
 ### Changed

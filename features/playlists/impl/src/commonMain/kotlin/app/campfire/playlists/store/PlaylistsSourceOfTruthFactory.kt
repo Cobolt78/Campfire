@@ -7,6 +7,9 @@ import app.campfire.CampfireDatabase
 import app.campfire.account.api.UrlHydrator
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.model.LibraryId
+import app.campfire.core.model.LibraryItem
+import app.campfire.core.model.LibraryItemId
+import app.campfire.core.model.MediaType
 import app.campfire.core.model.Media
 import app.campfire.core.model.Playlist
 import app.campfire.core.model.PlaylistId
@@ -66,7 +69,7 @@ class PlaylistsSourceOfTruthFactory(
       .mapToList(dispatcherProvider.databaseRead)
       .mapLatest { playlists ->
         playlists.map { playlist ->
-          val items = hydratePlaylistItems(playlist.id)
+          val items = hydratePlaylistItems(playlist.id, maxCovers = MaxCoverHydration)
           playlist.asDomainModel(items)
         }
       }
@@ -90,32 +93,104 @@ class PlaylistsSourceOfTruthFactory(
       .map { PlaylistsStore.Output.Single(it) }
   }
 
-  private suspend fun hydratePlaylistItems(playlistId: PlaylistId): List<Playlist.Item.Expanded> {
-    // Get junction entries (carries episodeId and ordering). For podcasts the same
-    // libraryItemId can appear multiple times under different episodeIds, so we hydrate
-    // by id directly rather than via a libraryItem-side join (which can only see one
-    // media variant at a time).
+  private suspend fun hydratePlaylistItems(
+    playlistId: PlaylistId,
+    maxCovers: Int? = null,
+  ): List<Playlist.Item.Expanded> {
+    // Get junction entries (carries episodeId and ordering).
     val junctionEntries = db.playlistItemJoinQueries
       .selectForPlaylist(playlistId)
       .awaitAsList()
 
     return junctionEntries.mapIndexedNotNull { index, junction ->
-      val libraryItem = libraryItemDao.hydrateById(junction.libraryItemId)
-        ?: return@mapIndexedNotNull null
       val resolvedEpisodeId = junction.episodeId.takeIf { it.isNotEmpty() }
-      val episode = resolvedEpisodeId?.let { episodeId ->
-        (libraryItem.media as? Media.Podcast)
-          ?.episodes
-          ?.firstOrNull { it.id == episodeId }
+      if (maxCovers != null && index >= maxCovers) {
+        // Beyond the cover limit for list display: preserve count, ordering, and ID keys
+        // without executing heavy disk queries for unused metadata.
+        Playlist.Item.Expanded(
+          index = index,
+          libraryItemId = junction.libraryItemId,
+          episodeId = resolvedEpisodeId,
+          libraryItem = stubLibraryItem(junction.libraryItemId),
+          episode = null,
+        )
+      } else {
+        val libraryItem = libraryItemDao.hydrateLightweightById(junction.libraryItemId)
+          ?: return@mapIndexedNotNull null
+        val episode = resolvedEpisodeId?.let { episodeId ->
+          (libraryItem.media as? Media.Podcast)
+            ?.episodes
+            ?.firstOrNull { it.id == episodeId }
+        }
+        Playlist.Item.Expanded(
+          index = index,
+          libraryItemId = junction.libraryItemId,
+          episodeId = resolvedEpisodeId,
+          libraryItem = libraryItem,
+          episode = episode,
+        )
       }
-      Playlist.Item.Expanded(
-        index = index,
-        libraryItemId = junction.libraryItemId,
-        episodeId = resolvedEpisodeId,
-        libraryItem = libraryItem,
-        episode = episode,
-      )
     }
+  }
+
+  private fun stubLibraryItem(id: LibraryItemId): LibraryItem {
+    return LibraryItem(
+      id = id,
+      ino = "",
+      libraryId = "",
+      oldLibraryId = null,
+      folderId = "",
+      path = "",
+      relPath = "",
+      isFile = false,
+      mtimeMs = 0L,
+      ctimeMs = 0L,
+      birthtimeMs = 0L,
+      isMissing = false,
+      isInvalid = false,
+      mediaType = MediaType.Book,
+      numFiles = 0,
+      sizeInBytes = 0L,
+      addedAtMillis = 0L,
+      updatedAtMillis = 0L,
+      media = Media.Book(
+        id = id,
+        metadata = Media.Metadata.Book(
+          title = "",
+          titleIgnorePrefix = null,
+          subtitle = null,
+          authorName = null,
+          authorNameLastFirst = null,
+          narratorName = null,
+          seriesName = null,
+          series = emptyList(),
+          genres = emptyList(),
+          publishedYear = null,
+          publishedDate = null,
+          publisher = null,
+          description = null,
+          ISBN = null,
+          ASIN = null,
+          language = null,
+          isExplicit = false,
+          isAbridged = false,
+        ),
+        coverImageUrl = "",
+        coverPath = null,
+        tags = emptyList(),
+        numTracks = 0,
+        numAudioFiles = 0,
+        numChapters = 0,
+        numMissingParts = 0,
+        numInvalidAudioFiles = 0,
+        durationInMillis = 0L,
+        sizeInBytes = 0L,
+      ),
+    )
+  }
+
+  companion object {
+    private const val MaxCoverHydration = 8
   }
 
   private suspend fun handleWrite(

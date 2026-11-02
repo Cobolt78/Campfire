@@ -64,7 +64,7 @@ class StorePlaylistsRepository(
         val request = StoreReadRequest.cached(operation, refresh = true)
 
         playlistsStore.stream<StoreReadResponse<PlaylistsStore.Output>>(request)
-          .debugLogging("PlaylistsStore::observeAllPlaylists")
+          .debugLogging("PlaylistsStore::observeAllPlaylists", enabled = false)
           .filterNot { it is StoreReadResponse.Loading || it is StoreReadResponse.NoNewData }
           .mapNotNull { response ->
             response.dataOrNull()?.let { output ->
@@ -127,7 +127,7 @@ class StorePlaylistsRepository(
       .mapToList(dispatcherProvider.databaseRead)
       .mapLatest { junctionEntries ->
         junctionEntries.mapIndexedNotNull { index, junction ->
-          val libraryItem = libraryItemDao.hydrateById(junction.libraryItemId)
+          val libraryItem = libraryItemDao.hydrateLightweightById(junction.libraryItemId)
             ?: return@mapIndexedNotNull null
           val episodeId = junction.episodeId.takeIf { it.isNotEmpty() }
           val episode = episodeId?.let { id ->

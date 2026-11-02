@@ -449,6 +449,9 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `app/android/src/main/res/xml/shortcuts.xml` | App Actions voice capabilities for Google Assistant & Gemini |
 | `app/android/src/main/java/app/campfire/android/MainActivity.kt` | Handle MEDIA_PLAY_FROM_SEARCH voice intents and bind MediaController |
 | `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Voice search query resolution against mediaTree & playback resumption |
+| `data/db/mapping/.../LibraryItemDao.kt` | Added `hydrateLightweightById` skipping child audio/chapter queries |
+| `features/playlists/impl/.../PlaylistsSourceOfTruthFactory.kt` | Capped playlist cover hydration to 8 items in `readAll` |
+| `features/playlists/impl/.../StorePlaylistsRepository.kt` | Use lightweight hydration in `observePlaylistItems` & disabled large log dumps |
 
 ---
 
@@ -2100,6 +2103,40 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 ### Modified Files:
 * data/network/api/src/commonMain/kotlin/app/campfire/network/models/LibraryItemExpanded.kt
 * data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 74. Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41-rc2)
+
+### Problem Description
+- **35-Second Client-Side SQLite Storm**:
+  - Even after server-side payload minification reduced API response time to ~3.3 seconds, Campfire took ~35-40 seconds to display the playlists on the device.
+  - When Campfire receives the playlists collection (e.g. 15 playlists with 1,010 total items), `PlaylistsSourceOfTruthFactory.readAll` observed the database update and called `hydratePlaylistItems` for every single playlist.
+  - `hydratePlaylistItems` was executing full `libraryItemDao.hydrateById()` sequentially for all 1,010 items.
+  - `hydrateById` ran 6 separate database queries per item (including querying `mediaAudioFiles`, `mediaAudioTracks`, `mediaChapters`, and `metadataAuthor`), resulting in over **6,060 sequential SQLite queries** executed across coroutine dispatches on the device flash storage.
+- **Unneeded Data on List Cards**:
+  - The playlists list UI (`ItemCollectionCard` / `ItemCollectionGridCard`) only ever renders at most 8 covers in a thumbnail mosaic (`MaxBookDisplay = 8`, `MaxMosaicCovers = 4`) and the total count badge (`count`).
+  - Child audio files, tracks, and chapters are completely unused in playlist lists, "Add to Playlist" dialogs, and playlist item rows.
+
+### Solution & Key Implementation Details
+1. **Lightweight Hydration (`LibraryItemDao.kt`)**:
+   - Added `hydrateLightweightById(id: LibraryItemId): LibraryItem?` to `LibraryItemDao` and implemented it in `SqlDelightLibraryItemDao`.
+   - Uses the joined `selectForIdFull` row directly to map the domain `LibraryItem` with default empty child lists, bypassing 4 child queries per book.
+2. **Cover-Capped Hydration for List View (`PlaylistsSourceOfTruthFactory.kt`)**:
+   - `readAll` now passes `maxCovers = 8` to `hydratePlaylistItems`.
+   - The first 8 items per playlist are hydrated with `hydrateLightweightById` for the mosaic cover art.
+   - Items beyond index 8 are mapped as lightweight stub items that preserve their index, libraryItemId, episodeId, and ordering for true count and minified contract serialization without executing redundant disk queries.
+3. **Optimized Playlist Items Stream (`StorePlaylistsRepository.kt`)**:
+   - Updated `observePlaylistItems` to use `hydrateLightweightById` so that opening even large playlists (e.g. 600 items) is fast and smooth.
+   - Disabled heavy `debugLogging` serialization on `observeAllPlaylists` to avoid multi-megabyte string allocations.
+
+### Modified Files:
+* data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/dao/LibraryItemDao.kt
+* features/playlists/impl/src/commonMain/kotlin/app/campfire/playlists/store/PlaylistsSourceOfTruthFactory.kt
+* features/playlists/impl/src/commonMain/kotlin/app/campfire/playlists/StorePlaylistsRepository.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

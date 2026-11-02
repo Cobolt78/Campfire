@@ -75,6 +75,8 @@ interface LibraryItemDao {
    */
   suspend fun hydrateById(id: app.campfire.core.model.LibraryItemId): LibraryItem?
 
+  suspend fun hydrateLightweightById(id: app.campfire.core.model.LibraryItemId): LibraryItem? = hydrateById(id)
+
   /**
    * Insert an expanded library item and all of its relations in a transaction
    * @param item the [LibraryItemExpanded] network model to insert into the database
@@ -215,6 +217,44 @@ class SqlDelightLibraryItemDao(
             .awaitAsOneOrNull()
         } ?: return null
         hydratePodcastItem(full)
+      }
+    }
+  }
+
+  override suspend fun hydrateLightweightById(
+    id: app.campfire.core.model.LibraryItemId,
+  ): LibraryItem? {
+    val mediaType = withContext(dispatcherProvider.databaseRead) {
+      db.libraryItemsQueries.selectMediaTypeForId(id).awaitAsOneOrNull()
+    } ?: return null
+    return when (mediaType) {
+      MediaType.Book -> {
+        val full = withContext(dispatcherProvider.databaseRead) {
+          db.libraryItemsQueries
+            .selectForIdFull(
+              userId = userSession.requiredUserId,
+              id = id,
+              mapper = ::mapToLibraryItemWithProgress,
+            )
+            .awaitAsOneOrNull()
+        } ?: return null
+        withContext(dispatcherProvider.databaseRead) {
+          full.asDomainModel(urlHydrator)
+        }
+      }
+      MediaType.Podcast -> {
+        val full = withContext(dispatcherProvider.databaseRead) {
+          db.libraryItemsQueries
+            .selectForPodcastIdFull(
+              userId = userSession.requiredUserId,
+              id = id,
+              mapper = ::mapToPodcastLibraryItemWithProgress,
+            )
+            .awaitAsOneOrNull()
+        } ?: return null
+        withContext(dispatcherProvider.databaseRead) {
+          full.asDomainModel(urlHydrator, emptyList(), emptyMap())
+        }
       }
     }
   }
