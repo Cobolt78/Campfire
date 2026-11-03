@@ -17,19 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.41-rc2]
+## [1.2.41] - 2026-11-03
 
 ### Performance
-- Eliminated 6,000+ sequential SQLite queries on initial playlist load by adding lightweight item hydration (`hydrateLightweightById`) in `LibraryItemDao` and `SqlDelightLibraryItemDao`.
-- Capped playlist cover hydration in `PlaylistsSourceOfTruthFactory.readAll` to 8 covers per playlist while preserving the total count and playlist item ordering.
-- Optimized playlist item hydration in `StorePlaylistsRepository.observePlaylistItems` to bypass unnecessary child audio file and chapter database queries.
-- Disabled large-payload string allocations in `PlaylistsStore::observeAllPlaylists` debug logging.
 
-## [1.2.41-rc1]
+- **Instant Playlist Loading & Network Minification**:
+  - Slashed playlist library listing network payload and initial load times by requesting `?minified=1` from Audiobookshelf server, cutting transfer size by over 99.9% (from ~25 MB down to ~25 KB).
+- **Eliminated Client-Side N+1 SQLite Query Storm**:
+  - Eliminated over 6,000 sequential database queries on initial playlist load by adding lightweight item hydration (`hydrateLightweightById`) in `LibraryItemDao` and `SqlDelightLibraryItemDao`.
+  - Capped playlist cover hydration in `PlaylistsSourceOfTruthFactory.readAll` to 8 covers per playlist (sufficient for thumbnail mosaic rendering) while preserving the total count and playlist item ordering.
+  - Optimized playlist item hydration in `StorePlaylistsRepository.observePlaylistItems` to bypass unnecessary child audio file, track, and chapter queries.
+  - Disabled large-payload string allocations in `PlaylistsStore::observeAllPlaylists` debug logging.
 
-### Changed
-- Slashed playlist library listing network payload and initial load times by requesting `?minified=1` from Audiobookshelf server.
-- Made `LibraryItemExpanded.Book.libraryFiles` default to `emptyList()` for seamless deserialization of both minified and expanded payloads.
+### Added
+
+- **Deserialization Resilience**:
+  - Made `LibraryItemExpanded.Book.libraryFiles` default to `emptyList()` for seamless deserialization of both minified and expanded payloads from Audiobookshelf.
 
 ## [1.2.40]
 

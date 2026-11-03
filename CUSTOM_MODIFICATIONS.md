@@ -2082,7 +2082,7 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 
 ---
 
-## 73. Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)
+## 73. Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41)
 
 ### Problem Description
 - **Extreme Initial Loading Delay for Playlists**:
@@ -2109,7 +2109,7 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 
 ---
 
-## 74. Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41-rc2)
+## 74. Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)
 
 ### Problem Description
 - **35-Second Client-Side SQLite Storm**:
