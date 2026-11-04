@@ -78,6 +78,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 71. [Reactive Update Notification Replay Buffer & Local Composition Invalidation (v1.2.40-rc6)](#71-reactive-update-notification-replay-buffer--local-composition-invalidation-v1240-rc6)
 72. [Discover Shelf Refresh Decoupling & 1-Hour Background Cooldown Restoration (v1.2.40)](#72-discover-shelf-refresh-decoupling--1-hour-background-cooldown-restoration-v1240)
 73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
+74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
+75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
 
 ---
 
@@ -2143,7 +2145,7 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 
 ---
 
-## 75. USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42-rc1)
+## 75. USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)
 
 ### Problem Description
 - **USB-C DAC Dongle Center Button Interception**:
