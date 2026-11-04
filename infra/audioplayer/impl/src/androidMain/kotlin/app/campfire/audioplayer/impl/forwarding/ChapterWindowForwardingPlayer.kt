@@ -151,7 +151,8 @@ class ChapterWindowForwardingPlayer(
           when (settings.nextButtonAction) {
             RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
             RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
-            RemoteControlAction.NONE -> Unit
+            RemoteControlAction.NONE,
+            RemoteControlAction.ADD_BOOKMARK -> Unit
             else -> host.skipToNextChapter()
           }
         } else {
@@ -166,7 +167,8 @@ class ChapterWindowForwardingPlayer(
           when (settings.previousButtonAction) {
             RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
             RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
-            RemoteControlAction.NONE -> Unit
+            RemoteControlAction.NONE,
+            RemoteControlAction.ADD_BOOKMARK -> Unit
             else -> host.skipToPreviousChapter()
           }
         } else {

@@ -56,7 +56,7 @@ class RemoteControlForwardingPlayer(
         RemoteControlAction.NEXT_CHAPTER -> defaultAction()
         RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
         RemoteControlAction.NONE -> Unit
-        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
+        RemoteControlAction.ADD_BOOKMARK -> Unit
       }
     } else {
       defaultAction()
@@ -71,7 +71,7 @@ class RemoteControlForwardingPlayer(
         RemoteControlAction.NEXT_CHAPTER -> defaultAction()
         RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
         RemoteControlAction.NONE -> Unit
-        RemoteControlAction.ADD_BOOKMARK -> defaultAction()
+        RemoteControlAction.ADD_BOOKMARK -> Unit
       }
     } else {
       defaultAction()

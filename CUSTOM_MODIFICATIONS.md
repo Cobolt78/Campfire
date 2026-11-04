@@ -2140,3 +2140,36 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
+
+---
+
+## 75. USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42-rc1)
+
+### Problem Description
+- **USB-C DAC Dongle Center Button Interception**:
+  - When users connect single-button wired headphones via a USB-C to 3.5mm DAC dongle (such as on modern smartphones lacking a dedicated 3.5mm jack), pressing the inline button emits USB HID Consumer Control `KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE` (keyCode 85) rather than the legacy analog jack `KeyEvent.KEYCODE_HEADSETHOOK` (keyCode 79).
+  - In `MediaSessionCallback.kt`, the multi-press accumulator (double-press, triple-press, quadruple-press) only intercepted `KEYCODE_HEADSETHOOK`.
+  - Consequently, rapid double-clicks and triple-clicks on USB-C DAC dongles were passed unhandled to AndroidX Media3's default `super.onMediaButtonEvent`.
+  - AndroidX Media3 contains a hardcoded fallback that automatically converts double-presses on `KEYCODE_MEDIA_PLAY_PAUSE` into `COMMAND_SEEK_TO_NEXT`, immediately skipping to the next chapter regardless of configured double-press actions (e.g. Add Bookmark, Skip Forward). Furthermore, Media3 lacks triple-click support, causing triple-clicks to trigger the double-click chapter skip followed by play/pause toggling.
+
+### Solution & Key Implementation Details
+1. **Multi-Press State Machine Unification (`MediaSessionCallback.kt`)**:
+   - Expanded the multi-press state machine in `onMediaButtonEvent` to intercept both `KeyEvent.KEYCODE_HEADSETHOOK` and `KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE`.
+   - Single-click (1 click) invokes `handleHeadsetPlayPause()`.
+   - Double-click (2 clicks) executes `component.playbackSettings.singleButtonDoublePressAction`.
+   - Triple-click (3 clicks) executes `component.playbackSettings.singleButtonTriplePressAction`.
+   - Quadruple-click (4+ clicks) executes `component.playbackSettings.singleButtonQuadruplePressAction`.
+2. **Robust Long-Press Calculation**:
+   - Replaced fragile timing delta with `(keyEvent.eventTime - keyEvent.downTime).coerceAtLeast(0L)` so that long-press events accurately pass through to Google Assistant / Gemini without false positives from coroutine dispatch latency.
+3. **Resilient Bookmark Creation Fallback**:
+   - In `dispatchRemoteAction(RemoteControlAction.ADD_BOOKMARK)`, added a fallback to `userComponent.sessionsRepository.getCurrentSession()`, ensuring bookmarks can be added reliably even if the player is currently idle or paused.
+4. **Forwarding Players Chapter-Skip Guard**:
+   - Guarded `RemoteControlForwardingPlayer.kt` and `ChapterWindowForwardingPlayer.kt` so `RemoteControlAction.ADD_BOOKMARK` does not accidentally fall through into `defaultAction()` / `skipToNextChapter()`.
+
+### Modified Files:
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md

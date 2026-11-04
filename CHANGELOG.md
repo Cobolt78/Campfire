@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.42-rc1]
+
+### Fixed
+
+- **USB-C DAC Dongle & Headset Multi-Press Controls**:
+  - Unified `KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE` (emitted by USB-C to 3.5mm DAC dongles and Bluetooth inline buttons) with `KeyEvent.KEYCODE_HEADSETHOOK` inside `MediaSessionCallback.kt`.
+  - Double-press, triple-press, and quadruple-press now reliably trigger their configured actions (e.g. Add Bookmark, Skip Forward/Backward) across USB-C DAC dongles instead of being intercepted by Media3's default chapter-skipping logic.
+  - Hardened long-press detection against timing mismatches using `(keyEvent.eventTime - keyEvent.downTime)` to pass long presses to Google Assistant / Gemini cleanly.
+  - Enhanced `RemoteControlAction.ADD_BOOKMARK` with fallback to `getCurrentSession()`, ensuring bookmarks can be added even while playback is paused or stopping.
+  - Guarded forwarding players (`RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer`) against accidental chapter-skip fallthrough on `ADD_BOOKMARK`.
+
 ## [1.2.41] - 2026-11-03
 
 ### Performance

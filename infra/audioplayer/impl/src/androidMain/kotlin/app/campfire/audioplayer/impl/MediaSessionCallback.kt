@@ -220,6 +220,10 @@ internal class MediaSessionCallback(
   ): Boolean {
     val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
 
+    bark(LogPriority.INFO) {
+      "MediaSessionCallback.onMediaButtonEvent: keyCode=${keyEvent?.keyCode}, action=${keyEvent?.action}, repeat=${keyEvent?.repeatCount}, pkg=${controllerInfo.packageName}"
+    }
+
     if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
       AudioPlayerDebugHooks.Holder.hooks.onMediaButtonEvent(controllerInfo.packageName, keyEvent.keyCode)
     }
@@ -258,7 +262,8 @@ internal class MediaSessionCallback(
           }
           return true
         }
-        KeyEvent.KEYCODE_HEADSETHOOK -> {
+        KeyEvent.KEYCODE_HEADSETHOOK,
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
           if (!isAuto) {
             if (keyEvent.action == KeyEvent.ACTION_DOWN) {
               headsetHookJob?.cancel()
@@ -274,7 +279,7 @@ internal class MediaSessionCallback(
                 isHeadsetHookLongPress = false
                 return super.onMediaButtonEvent(session, controllerInfo, intent)
               }
-              val pressDuration = keyEvent.eventTime - lastHeadsetHookDownTime
+              val pressDuration = (keyEvent.eventTime - keyEvent.downTime).coerceAtLeast(0L)
               if (pressDuration >= ViewConfiguration.getLongPressTimeout()) {
                 return super.onMediaButtonEvent(session, controllerInfo, intent)
               }
@@ -325,21 +330,23 @@ internal class MediaSessionCallback(
   }
 
   private fun dispatchRemoteAction(action: RemoteControlAction) {
+    bark(LogPriority.INFO) { "MediaSessionCallback.dispatchRemoteAction: action=$action" }
     when (action) {
       RemoteControlAction.SKIP_FORWARD_TIME -> player.seekForward()
       RemoteControlAction.SKIP_BACKWARD_TIME -> player.seekBackward()
       RemoteControlAction.NEXT_CHAPTER -> player.skipToNext()
       RemoteControlAction.PREVIOUS_CHAPTER -> player.skipToPrevious()
       RemoteControlAction.ADD_BOOKMARK -> {
-        val currentSession = player.preparedSession
-        val itemId = currentSession?.libraryItem?.id
-        if (itemId != null) {
-          val timestamp = player.overallTime.value
-          val minutes = timestamp.inWholeMinutes
-          val seconds = (timestamp.inWholeSeconds % 60)
-          val timeStr = "${minutes}m ${seconds}s"
-          serviceScope.launch {
-            try {
+        serviceScope.launch {
+          try {
+            val currentSession = player.preparedSession
+              ?: userComponent.sessionsRepository.getCurrentSession()
+            val itemId = currentSession?.libraryItem?.id
+            if (itemId != null) {
+              val timestamp = player.overallTime.value
+              val minutes = timestamp.inWholeMinutes
+              val seconds = (timestamp.inWholeSeconds % 60)
+              val timeStr = "${minutes}m ${seconds}s"
               userComponent.bookmarkRepository.createBookmark(
                 libraryItemId = itemId,
                 timestamp = timestamp,
@@ -348,9 +355,9 @@ internal class MediaSessionCallback(
               withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Bookmark added ($timeStr)", Toast.LENGTH_SHORT).show()
               }
-            } catch (e: Exception) {
-              bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
             }
+          } catch (e: Exception) {
+            bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
           }
         }
       }
@@ -359,6 +366,7 @@ internal class MediaSessionCallback(
   }
 
   private fun handleHeadsetPlayPause() {
+    bark(LogPriority.INFO) { "MediaSessionCallback.handleHeadsetPlayPause: preparedSession=${player.preparedSession != null}" }
     if (player.preparedSession != null) {
       player.playPause()
     } else {
