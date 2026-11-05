@@ -11,7 +11,7 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..9ea105fc 100644
+index 1dcbc292..e748b71d 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
 @@ -17,7 +17,356 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
@@ -19,7 +19,7 @@ index 1dcbc292..9ea105fc 100644
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.43-rc1] - 2026-11-05
++## [1.2.43] - 2026-11-05
 +
 +### Added
 +
@@ -373,7 +373,7 @@ index 1dcbc292..9ea105fc 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..68845e76 100644
+index e460bea1..be61af3f 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -36,6 +36,51 @@ This document captures all custom features, bug fixes, and UI improvements added
@@ -424,7 +424,7 @@ index e460bea1..68845e76 100644
 +73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 +74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
 +75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
-+76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
++76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
  
  ---
  
@@ -1689,7 +1689,7 @@ index e460bea1..68845e76 100644
 +
 +---
 +
-+## 76. Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)
++## 76. Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)
 +
 +### Problem Description
 +When an Audiobookshelf session token expires (or after server restarts, token revocation, or socket timeouts), API requests and streaming playback fail with 401/403 errors. In earlier versions, this resulted in an indefinite loading spinner or playback errors ("Unable to play this file. The audio format may not be supported on this device") and forced the user to manually enter their username and password to log back in. For non-technical users or elderly family members, this caused frequent confusion and interrupted listening.
@@ -9471,7 +9471,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..6358144c 100644
+index e42923f9..3f7971dc 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9479,13 +9479,13 @@ index e42923f9..6358144c 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.43-rc1
++campfire.version=1.2.43
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024301
++campfire.versionCode=1024399
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
