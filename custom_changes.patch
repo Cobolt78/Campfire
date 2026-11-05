@@ -11,14 +11,24 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..e748b71d 100644
+index 1dcbc292..37e890e0 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,356 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,366 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.44] - 2026-11-06
++
++### Added
++
++- **Preserved Campsite & Username on Logout with One-Tap Re-Authentication**:
++  - Preserves server address (URL), Campsite name, and Username upon manual logout instead of purging them into an empty state.
++  - Displays a clean "Previous Accounts" card on the Welcome screen showing the campsite name and server URL.
++  - Tapping the previous account card immediately pre-fills the campsite URL and username, automatically verifies server status, and focuses the password field for instant one-tap re-login.
++  - Includes a dedicated "Forget campsite" ('×') button on each previous account card to allow users to permanently remove remembered campsites at will.
++
 +## [1.2.43] - 2026-11-05
 +
 +### Added
@@ -373,10 +383,10 @@ index 1dcbc292..e748b71d 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..be61af3f 100644
+index e460bea1..9d710429 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,51 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,52 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -424,11 +434,12 @@ index e460bea1..be61af3f 100644
 +73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 +74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
 +75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
-+76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
++76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
++77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
  
  ---
  
-@@ -180,6 +225,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +226,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -436,7 +447,7 @@ index e460bea1..be61af3f 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +425,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +426,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -473,7 +484,7 @@ index e460bea1..be61af3f 100644
  
  ---
  
-@@ -891,8 +967,1247 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +968,1274 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -660,14 +671,14 @@ index e460bea1..be61af3f 100644
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(6.dp)` on the book cover poster in `ContinueSeriesCard` (list view).
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(8.dp)` on the cover box in `ContinueSeriesGridCard` (alternate grid view).
 +   - Mapped `state.offlineStates[item.nextUpBook.id].asWidgetStatus()` to both cards, rendering the standard green download arrow on dark scrim circle for downloaded books, progress wheels for active downloads, and nothing when not downloaded.
- 
++
 +### Modified Files:
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt`
- 
++
 +---
- 
++
 +## 44. Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.21)
 +
 +### Summary
@@ -1191,7 +1202,7 @@ index e460bea1..be61af3f 100644
 +* `gradle.properties`
 +
 +---
-+
+ 
 +## 62. Android Auto Single-File Chaptered Book Title Restoration (v1.2.32)
 +
 +### Problem Description
@@ -1213,7 +1224,7 @@ index e460bea1..be61af3f 100644
 +   - `updatePlaylistMetadata()` now resolves the unformatted chapter title from `session.episode?.title ?: chapterTimeline?.chapterAt(overallTime.value)?.title`, ensuring real-time progress ticks keep the chapter and book title in sync.
 +4. **Defensive Title Deduplication (`MediaItemBuilder.formatChapterWithBookTitle`)**:
 +   - Added checks to prevent duplicate book titles if the chapter metadata already has the book title embedded (e.g. avoiding `Chapter 1 - Title - Title`).
-+
+ 
 +### Modified Files:
 +* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
@@ -1442,7 +1453,7 @@ index e460bea1..be61af3f 100644
 +   - Changed `appUpdateSource.checkForUpdates(force = false)` to `force = true` on both `HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries` so explicit user refresh gestures query GitHub immediately.
 +5. **Automatic Un-dismissal on Manual Check (`GitHubAppUpdateSource.kt`)**:
 +   - In `checkForUpdates(force = true)`, resets `appStateSettings.appUpdateDismissedVersionCode = 0L` whenever an update is found or cached, ensuring manual checks always un-suppress the update cards on both the home feed and navigation drawer.
-+
+ 
 +### Modified Files:
 +* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 +* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
@@ -1718,6 +1729,33 @@ index e460bea1..be61af3f 100644
 +* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
 +* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
 +* infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++---
++
++## 77. Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)
++
++### Problem Description
++Previously, when a user logged out of Campfire, the logout use case completely purged the server and user snapshot from `AccountRestoreStore` (`forget(server.user.id)`). As a result, the user returned to an empty Welcome screen displaying only an "Add campsite" button. The user was forced to re-type the entire server URL (including protocol, host, port, or custom domain) and campsite name from scratch each time they logged out and wanted to log back in.
++
++### Solution & Implementation
++1. **Preserve Logged-Out Accounts in Restore Snapshot**:
++   - In `RestoreSnapshot.kt`, introduced `fun preserve(server: Server): RestoreSnapshot`, which moves the logged-out server into `pending`, sets `lastUserId = server.user.id`, and removes it from `live`.
++   - In `AccountRestoreStore.kt`, exposed `suspend fun preserveAsRestorable(server: Server) { update { it.preserve(server) } }`.
++   - In `DefaultLogoutUseCase.kt`, replaced `accountRestoreStore.forget(server.user.id)` with `accountRestoreStore.preserveAsRestorable(server)`.
++2. **Seamless Welcome & Restore UI**:
++   - On the Welcome screen, remembered servers are displayed as cards under "PREVIOUS ACCOUNTS" (`login_restorable_accounts_title`).
++   - Tapping an account card routes directly to `LoginScreen.Restore`, automatically pre-filling the Server URL, Campsite Name, and Username, pinging the server status, and focusing the Password input field so the user only needs to type their password to log back in.
++   - An explicit '×' ("Forget campsite") button remains present on each card, allowing users to permanently purge saved server info from the device at any time.
++
++### Modified Files:
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
++* data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
++* features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -3409,6 +3447,70 @@ index d93303ee..406f15d8 100644
 +    credentialStorage.remove(userId)
 +  }
  }
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt
+index 10342bc5..b5d7383d 100644
+--- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt
+@@ -11,6 +11,7 @@ import app.campfire.core.di.AppScope
+ import app.campfire.core.di.qualifier.ForScope
+ import app.campfire.core.logging.LogPriority
+ import app.campfire.core.logging.bark
++import app.campfire.core.model.Server
+ import app.campfire.core.model.UserId
+ import app.campfire.settings.api.DeviceSettings
+ import com.russhwolf.settings.ObservableSettings
+@@ -61,6 +62,10 @@ class AccountRestoreStore(
+    * Drop [userId] from the snapshot. Must be called before the account is deleted from the
+    * database, otherwise [mirror] treats it as restorable.
+    */
++  suspend fun preserveAsRestorable(server: Server) {
++    update { it.preserve(server) }
++  }
++
+   suspend fun forget(userId: UserId) {
+     update { it.forget(userId) }
+   }
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt
+index afbcf006..945c8ea9 100644
+--- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt
+@@ -40,6 +40,16 @@ internal data class RestoreSnapshot(
+     )
+   }
+ 
++  fun preserve(server: Server): RestoreSnapshot {
++    val entry = RestoreEntry(server)
++    val updatedPending = (pending + entry).distinctBy { it.userId to it.host }
++    return copy(
++      live = live.filterNot { it.userId == server.user.id },
++      pending = updatedPending,
++      lastUserId = server.user.id,
++    )
++  }
++
+   fun forget(userId: UserId): RestoreSnapshot = copy(
+     live = live.filterNot { it.userId == userId },
+     pending = pending.filterNot { it.userId == userId },
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
+index b72ba9be..2bc78811 100644
+--- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
+@@ -22,9 +22,12 @@ class DefaultLogoutUseCase(
+   private val accountRestoreStore: AccountRestoreStore,
+ ) : LogoutUseCase {
+ 
+-  override suspend fun execute(server: Server) {
+-    // Forget the account first, or deleting it would look like a restore to the mirror
+-    accountRestoreStore.forget(server.user.id)
++    override suspend fun execute(server: Server) {
++    // Preserve the logged-out server and user in accountRestoreStore so that
++    // the Welcome/Login screen presents an account card with the Server URL,
++    // Campsite Name, and Username pre-filled, requiring only the password.
++    // If the user wants to remove the campsite permanently, they can tap '×' on the card.
++    accountRestoreStore.preserveAsRestorable(server)
+ 
+     // Delete the core server db models and relations
+     serverRepository.remove(server)
 diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
 index ddcf1e05..954a4921 100644
 --- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
@@ -3514,6 +3616,41 @@ index 00000000..14bae6c7
 +  private fun usernameKey(userId: String): String = "cred_username_$userId"
 +  private fun passwordKey(userId: String): String = "cred_password_$userId"
 +}
+diff --git a/data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt b/data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
+index 7fac3f98..e20a62c8 100644
+--- a/data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
++++ b/data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
+@@ -72,6 +72,30 @@ class AccountRestoreStoreTest {
+     }
+   }
+ 
++  @Test
++  fun `preserving an account offers it as restorable after logout`() = runTest {
++    val store = store()
++    backgroundScope.launch { store.mirror() }
++    val server = testServer(url = SERVER_URL, userId = "user-1", userName = "alice")
++    servers.value = listOf(server)
++    testScheduler.runCurrent()
++
++    store.preserveAsRestorable(server)
++    servers.value = emptyList()
++    testScheduler.runCurrent()
++
++    store.observeRestorableAccounts().test {
++      assertThat(awaitItem()).containsExactly(
++        RestorableAccount(
++          serverUrl = SERVER_URL,
++          serverName = "Home",
++          userId = "user-1",
++          userName = "alice",
++        ),
++      )
++    }
++  }
++
+   @Test
+   fun `an unreadable snapshot is discarded`() = runTest {
+     settings.putString("account_restore_snapshot", "{not json")
 diff --git a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt b/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
 index 823cd918..f8324bae 100644
 --- a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
@@ -4641,6 +4778,19 @@ index 684ec57e..411b066a 100644
      override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = null
      override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
      override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
+diff --git a/features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml b/features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
+index d8259dba..7cdf23e8 100644
+--- a/features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
++++ b/features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
+@@ -12,7 +12,7 @@
+   <string name="label_password">Password</string>
+   <string name="action_add_campsite">Add campsite</string>
+   <string name="action_login_openid">Login with OpenID</string>
+-  <string name="login_restorable_accounts_title">RESTORE</string>
++  <string name="login_restorable_accounts_title">PREVIOUS ACCOUNTS</string>
+   <string name="label_restoring_account">Signing back in…</string>
+   <string name="action_dismiss_restorable_account">Forget campsite</string>
+ 
 diff --git a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt b/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
 index 890fc746..47e37726 100644
 --- a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
@@ -9471,7 +9621,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..3f7971dc 100644
+index e42923f9..8d53a52f 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9479,13 +9629,13 @@ index e42923f9..3f7971dc 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.43
++campfire.version=1.2.44
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024399
++campfire.versionCode=1024499
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

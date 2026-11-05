@@ -40,6 +40,16 @@ internal data class RestoreSnapshot(
     )
   }
 
+  fun preserve(server: Server): RestoreSnapshot {
+    val entry = RestoreEntry(server)
+    val updatedPending = (pending + entry).distinctBy { it.userId to it.host }
+    return copy(
+      live = live.filterNot { it.userId == server.user.id },
+      pending = updatedPending,
+      lastUserId = server.user.id,
+    )
+  }
+
   fun forget(userId: UserId): RestoreSnapshot = copy(
     live = live.filterNot { it.userId == userId },
     pending = pending.filterNot { it.userId == userId },

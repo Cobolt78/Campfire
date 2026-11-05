@@ -73,6 +73,30 @@ class AccountRestoreStoreTest {
   }
 
   @Test
+  fun `preserving an account offers it as restorable after logout`() = runTest {
+    val store = store()
+    backgroundScope.launch { store.mirror() }
+    val server = testServer(url = SERVER_URL, userId = "user-1", userName = "alice")
+    servers.value = listOf(server)
+    testScheduler.runCurrent()
+
+    store.preserveAsRestorable(server)
+    servers.value = emptyList()
+    testScheduler.runCurrent()
+
+    store.observeRestorableAccounts().test {
+      assertThat(awaitItem()).containsExactly(
+        RestorableAccount(
+          serverUrl = SERVER_URL,
+          serverName = "Home",
+          userId = "user-1",
+          userName = "alice",
+        ),
+      )
+    }
+  }
+
+  @Test
   fun `an unreadable snapshot is discarded`() = runTest {
     settings.putString("account_restore_snapshot", "{not json")
     val store = store()

@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.44] - 2026-11-06
+
+### Added
+
+- **Preserved Campsite & Username on Logout with One-Tap Re-Authentication**:
+  - Preserves server address (URL), Campsite name, and Username upon manual logout instead of purging them into an empty state.
+  - Displays a clean "Previous Accounts" card on the Welcome screen showing the campsite name and server URL.
+  - Tapping the previous account card immediately pre-fills the campsite URL and username, automatically verifies server status, and focuses the password field for instant one-tap re-login.
+  - Includes a dedicated "Forget campsite" ('×') button on each previous account card to allow users to permanently remove remembered campsites at will.
+
 ## [1.2.43] - 2026-11-05
 
 ### Added

@@ -11,6 +11,7 @@ import app.campfire.core.di.AppScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
+import app.campfire.core.model.Server
 import app.campfire.core.model.UserId
 import app.campfire.settings.api.DeviceSettings
 import com.russhwolf.settings.ObservableSettings
@@ -61,6 +62,10 @@ class AccountRestoreStore(
    * Drop [userId] from the snapshot. Must be called before the account is deleted from the
    * database, otherwise [mirror] treats it as restorable.
    */
+  suspend fun preserveAsRestorable(server: Server) {
+    update { it.preserve(server) }
+  }
+
   suspend fun forget(userId: UserId) {
     update { it.forget(userId) }
   }

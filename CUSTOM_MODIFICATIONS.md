@@ -80,7 +80,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
 75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
-76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
+76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
+77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
 
 ---
 
@@ -2208,6 +2209,33 @@ When an Audiobookshelf session token expires (or after server restarts, token re
 * features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
 * features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
 * infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 77. Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)
+
+### Problem Description
+Previously, when a user logged out of Campfire, the logout use case completely purged the server and user snapshot from `AccountRestoreStore` (`forget(server.user.id)`). As a result, the user returned to an empty Welcome screen displaying only an "Add campsite" button. The user was forced to re-type the entire server URL (including protocol, host, port, or custom domain) and campsite name from scratch each time they logged out and wanted to log back in.
+
+### Solution & Implementation
+1. **Preserve Logged-Out Accounts in Restore Snapshot**:
+   - In `RestoreSnapshot.kt`, introduced `fun preserve(server: Server): RestoreSnapshot`, which moves the logged-out server into `pending`, sets `lastUserId = server.user.id`, and removes it from `live`.
+   - In `AccountRestoreStore.kt`, exposed `suspend fun preserveAsRestorable(server: Server) { update { it.preserve(server) } }`.
+   - In `DefaultLogoutUseCase.kt`, replaced `accountRestoreStore.forget(server.user.id)` with `accountRestoreStore.preserveAsRestorable(server)`.
+2. **Seamless Welcome & Restore UI**:
+   - On the Welcome screen, remembered servers are displayed as cards under "PREVIOUS ACCOUNTS" (`login_restorable_accounts_title`).
+   - Tapping an account card routes directly to `LoginScreen.Restore`, automatically pre-filling the Server URL, Campsite Name, and Username, pinging the server status, and focusing the Password input field so the user only needs to type their password to log back in.
+   - An explicit '×' ("Forget campsite") button remains present on each card, allowing users to permanently purge saved server info from the device at any time.
+
+### Modified Files:
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/AccountRestoreStore.kt
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/restore/RestoreSnapshot.kt
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
+* data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
+* features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
