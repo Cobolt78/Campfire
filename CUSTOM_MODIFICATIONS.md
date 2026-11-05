@@ -80,6 +80,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
 75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
+76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
 
 ---
 
@@ -2172,6 +2173,41 @@ estorePersistedTimer() in a 	ry-catch block. If any unexpected error or corrupte
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 76. Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)
+
+### Problem Description
+When an Audiobookshelf session token expires (or after server restarts, token revocation, or socket timeouts), API requests and streaming playback fail with 401/403 errors. In earlier versions, this resulted in an indefinite loading spinner or playback errors ("Unable to play this file. The audio format may not be supported on this device") and forced the user to manually enter their username and password to log back in. For non-technical users or elderly family members, this caused frequent confusion and interrupted listening.
+
+### Solution & Implementation
+1. **Hardware-Protected Keystore Credential Storage**:
+   - Implemented `CredentialStorage` and `SecureCredentialStorage` backed by `@TokenSettings Settings` (`KeystoreSettings` using hardware-encrypted AES keys in the Android Keystore).
+   - In `DefaultAuthRepository.authenticate`, upon successful initial server login, user credentials (`username`, `password`) are encrypted and saved securely.
+   - In `DefaultAccountManager`, stored credentials are automatically purged upon explicit logout or account invalidation.
+2. **Ktor BearerAuthProvider Auto-Healing**:
+   - In `HttpClientModule`, extended `userBearerAuthProvider`'s `refreshTokens` block.
+   - If standard `/auth/refresh` fails or returns 401/403, Campfire retrieves the encrypted credentials from `accountManager.getCredentials(user.id)`.
+   - It submits a background login request to `${user.serverUrl}/login` with header `x-return-tokens: true`.
+   - Upon receiving fresh tokens, it updates `accountManager.updateToken(user.id, healedToken)` and returns the active `BearerTokens` to Ktor.
+   - Ktor transparently and seamlessly replays the original failed HTTP request with the new tokens without interrupting playback, showing errors, or kicking the user out of the app.
+
+### Modified Files:
+* data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
+* data/account/api/src/commonMain/kotlin/app/campfire/account/api/UserCredentials.kt
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/CredentialStorage.kt
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/SecureCredentialStorage.kt
+* data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt
+* features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
+* data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
+* data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt
+* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
+* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
+* infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

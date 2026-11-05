@@ -4,6 +4,7 @@
 package app.campfire.auth
 
 import app.campfire.account.api.AccountManager
+import app.campfire.account.api.UserCredentials
 import app.campfire.account.api.BackedUpAccount
 import app.campfire.account.api.ServerRepository
 import app.campfire.auth.api.AuthException
@@ -72,7 +73,9 @@ class DefaultAuthRepository(
       serverName = serverName,
       userId = targetUserId,
       networkSettings = networkSettings,
-    ).map { }
+    ).map { user ->
+      accountManager.saveCredentials(user.id, UserCredentials(username, password))
+    }
   }
 
   override suspend fun authenticate(

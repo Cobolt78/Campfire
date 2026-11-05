@@ -7,6 +7,7 @@ import app.campfire.account.api.AbsToken
 import app.campfire.account.api.AccountManager
 import app.campfire.account.api.BackedUpAccount
 import app.campfire.account.api.ServerRepository
+import app.campfire.account.api.UserCredentials
 import app.campfire.auth.api.AuthException
 import app.campfire.auth.local.UserStorageStrategy
 import app.campfire.core.model.Server
@@ -440,6 +441,18 @@ class DefaultAuthRepositoryTest {
     override suspend fun logout(server: Server) = Unit
     override suspend fun getToken(userId: UserId): AbsToken? = null
     override suspend fun updateToken(userId: UserId, newToken: AbsToken) = Unit
+    var savedCredentials: Pair<UserId, UserCredentials>? = null
+
+    override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
+      savedCredentials = userId to credentials
+    }
+
+    override suspend fun getCredentials(userId: UserId): UserCredentials? = savedCredentials?.second
+
+    override suspend fun removeCredentials(userId: UserId) {
+      savedCredentials = null
+    }
+
     override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = null
     override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
     override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()

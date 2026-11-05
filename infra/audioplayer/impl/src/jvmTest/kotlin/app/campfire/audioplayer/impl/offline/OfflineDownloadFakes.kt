@@ -6,6 +6,7 @@ package app.campfire.audioplayer.impl.offline
 import app.campfire.account.api.AbsToken
 import app.campfire.account.api.AccountManager
 import app.campfire.account.api.TokenRefresher
+import app.campfire.account.api.UserCredentials
 import app.campfire.account.api.UserSessionManager
 import app.campfire.core.model.Server
 import app.campfire.core.model.User
@@ -62,6 +63,9 @@ internal class FakeAccountManager : AccountManager {
     token = newToken
   }
 
+  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) = Unit
+  override suspend fun getCredentials(userId: UserId): UserCredentials? = null
+  override suspend fun removeCredentials(userId: UserId) = Unit
   override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = extraHeaders
   override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
   override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()

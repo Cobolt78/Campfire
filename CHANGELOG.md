@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.43-rc1] - 2026-11-05
+
+### Added
+
+- **Silent Background Auto-Healing & Transparent Re-Authentication**:
+  - Securely stores login credentials using hardware-backed Android Keystore encryption (`@TokenSettings Settings`) upon successful login.
+  - Automatically intercepts 401 Unauthorized / 403 Forbidden responses and expired refresh tokens in `HttpClientModule`.
+  - Performs seamless re-authentication against `/login` (with `x-return-tokens: true`), updates authentication tokens transparently, and retries the failed request in the background.
+  - Keeps sessions alive permanently without requiring manual user re-login or displaying "Unable to play this file" errors caused by expired tokens during streaming playback or WebSocket reconnects.
+  - Automatically clears stored credentials when the user explicitly taps "Log out".
+
 ## [1.2.42] - 2026-11-04
 
 ### Fixed

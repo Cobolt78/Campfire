@@ -5,6 +5,7 @@ package app.campfire.network
 
 import app.campfire.account.api.AbsToken
 import app.campfire.account.api.AccountManager
+import app.campfire.account.api.UserCredentials
 import app.campfire.account.api.UserSessionManager
 import app.campfire.core.model.Server
 import app.campfire.core.model.User
@@ -65,6 +66,18 @@ internal class FakeAccountManager : AccountManager {
 
   override suspend fun updateToken(userId: UserId, newToken: AbsToken) {
     tokens[userId] = newToken
+  }
+
+  private val credentials = mutableMapOf<UserId, UserCredentials>()
+
+  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
+    this.credentials[userId] = credentials
+  }
+
+  override suspend fun getCredentials(userId: UserId): UserCredentials? = credentials[userId]
+
+  override suspend fun removeCredentials(userId: UserId) {
+    credentials.remove(userId)
   }
 
   override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = extraHeaders

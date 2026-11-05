@@ -14,6 +14,10 @@ import app.campfire.core.session.userId
 import app.campfire.network.RefreshResponse
 import app.campfire.network.asBearerTokens
 import app.campfire.network.cleanServerUrl
+import app.campfire.network.envelopes.LoginRequest
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import app.campfire.network.plugins.suspendingDefaultHeaders
 import app.campfire.network.reachability.ReachabilityGate
 import app.campfire.network.reachability.serverReachabilityPlugin
@@ -316,39 +320,68 @@ internal fun userBearerAuthProvider(
       return@refreshTokens tokens.asBearerTokens()
     }
 
-    val newTokenResponse = client.post {
-      url("${cleanServerUrl(user.serverUrl)}/auth/refresh")
-      tokens?.refreshToken?.let {
-        header(HttpHeaders.RefreshToken, it)
+    var refreshedTokens: app.campfire.account.api.AbsToken? = null
+
+    // 1. Attempt standard /auth/refresh with the existing refresh token
+    val refreshToken = tokens?.refreshToken
+    if (refreshToken != null) {
+      val newTokenResponse = client.post {
+        url("${cleanServerUrl(user.serverUrl)}/auth/refresh")
+        header(HttpHeaders.RefreshToken, refreshToken)
+        markAsRefreshTokenRequest()
       }
-      markAsRefreshTokenRequest()
+
+      if (newTokenResponse.status.isSuccess()) {
+        try {
+          refreshedTokens = newTokenResponse.body<RefreshResponse>().asAbsToken()
+        } catch (e: Exception) {
+          bark("KtorClient", LogPriority.WARN, throwable = e) { "Something went wrong trying to parse refresh token response" }
+        }
+      } else {
+        bark("KtorClient", LogPriority.WARN) { "[${newTokenResponse.status}] Standard token refresh failed" }
+      }
     }
 
-    return@refreshTokens if (newTokenResponse.status.isSuccess()) {
+    if (refreshedTokens != null) {
+      accountManager.updateToken(user.id, refreshedTokens)
+      return@refreshTokens refreshedTokens.asBearerTokens()
+    }
+
+    // 2. Silent Background Auto-Healing: re-authenticate seamlessly with hardware-stored credentials
+    val creds = accountManager.getCredentials(user.id)
+    if (creds != null) {
+      bark("KtorClient", LogPriority.INFO) { "Refresh token expired or failed; attempting silent background auto-healing for '${user.name}'…" }
       try {
-        val newToken = newTokenResponse.body<RefreshResponse>().asAbsToken()
-        if (newToken != null) {
-          accountManager.updateToken(user.id, newToken)
-          newToken.asBearerTokens()
+        val extraHeaders = accountManager.getExtraHeaders(user.id)
+        val loginResponse = client.post {
+          url("${cleanServerUrl(user.serverUrl)}/login")
+          header(HttpHeaders.ReturnTokens, "true")
+          extraHeaders?.forEach { (k, v) -> header(k, v) }
+          contentType(ContentType.Application.Json)
+          setBody(LoginRequest(username = creds.username, password = creds.password))
+          markAsRefreshTokenRequest()
+        }
+
+        if (loginResponse.status.isSuccess()) {
+          val healedToken = loginResponse.body<RefreshResponse>().asAbsToken()
+          if (healedToken != null) {
+            accountManager.updateToken(user.id, healedToken)
+            bark("KtorClient", LogPriority.INFO) { "Silent background auto-healing succeeded for '${user.name}'!" }
+            return@refreshTokens healedToken.asBearerTokens()
+          }
         } else {
-          bark("KtorClient", LogPriority.ERROR) { "No valid tokens in response, requiring authentication…" }
-          accountManager.invalidateAccount(user)
-          null
+          bark("KtorClient", LogPriority.WARN) { "Auto-healing login returned ${loginResponse.status}" }
         }
       } catch (e: Exception) {
-        bark("KtorClient", LogPriority.ERROR) { "Something went wrong trying to parse refresh token response" }
-        null
+        bark("KtorClient", LogPriority.ERROR, throwable = e) { "Error during silent background auto-healing" }
       }
-    } else {
-      bark("KtorClient", LogPriority.ERROR) { "[${newTokenResponse.status}] Refresh token request failed!" }
-      if (
-        newTokenResponse.status == HttpStatusCode.Unauthorized ||
-        newTokenResponse.status == HttpStatusCode.Forbidden
-      ) {
-        accountManager.invalidateAccount(user)
-      }
-      null
     }
+
+    // 3. Both token refresh and auto-healing failed (e.g. password changed on server or no credentials)
+    bark("KtorClient", LogPriority.ERROR) { "Both token refresh and silent auto-healing failed; requiring re-authentication." }
+    accountManager.removeCredentials(user.id)
+    accountManager.invalidateAccount(user)
+    null
   },
   realm = null,
 )

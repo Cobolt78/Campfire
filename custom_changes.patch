@@ -11,14 +11,25 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..f8a6ccf7 100644
+index 1dcbc292..9ea105fc 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,345 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,356 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.43-rc1] - 2026-11-05
++
++### Added
++
++- **Silent Background Auto-Healing & Transparent Re-Authentication**:
++  - Securely stores login credentials using hardware-backed Android Keystore encryption (`@TokenSettings Settings`) upon successful login.
++  - Automatically intercepts 401 Unauthorized / 403 Forbidden responses and expired refresh tokens in `HttpClientModule`.
++  - Performs seamless re-authentication against `/login` (with `x-return-tokens: true`), updates authentication tokens transparently, and retries the failed request in the background.
++  - Keeps sessions alive permanently without requiring manual user re-login or displaying "Unable to play this file" errors caused by expired tokens during streaming playback or WebSocket reconnects.
++  - Automatically clears stored credentials when the user explicitly taps "Log out".
++
 +## [1.2.42] - 2026-11-04
 +
 +### Fixed
@@ -362,10 +373,10 @@ index 1dcbc292..f8a6ccf7 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..b36b313c 100644
+index e460bea1..68845e76 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,50 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,51 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -413,10 +424,11 @@ index e460bea1..b36b313c 100644
 +73. [Playlist Library Minification Optimization (`minified=1`) & Deserialization Resilience (v1.2.41-rc1)](#73-playlist-library-minification-optimization-minified1--deserialization-resilience-v1241-rc1)
 +74. [Client-Side Playlist N+1 Hydration & Cover Query Optimization (v1.2.41)](#74-client-side-playlist-n1-hydration--cover-query-optimization-v1241)
 +75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
++76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243-rc1)
  
  ---
  
-@@ -180,6 +224,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +225,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -424,7 +436,7 @@ index e460bea1..b36b313c 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +424,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +425,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -461,7 +473,7 @@ index e460bea1..b36b313c 100644
  
  ---
  
-@@ -891,8 +966,1212 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +967,1247 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -648,14 +660,14 @@ index e460bea1..b36b313c 100644
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(6.dp)` on the book cover poster in `ContinueSeriesCard` (list view).
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(8.dp)` on the cover box in `ContinueSeriesGridCard` (alternate grid view).
 +   - Mapped `state.offlineStates[item.nextUpBook.id].asWidgetStatus()` to both cards, rendering the standard green download arrow on dark scrim circle for downloaded books, progress wheels for active downloads, and nothing when not downloaded.
-+
+ 
 +### Modified Files:
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt`
-+
+ 
 +---
-+
+ 
 +## 44. Eliminate Book Details to Home Screen Back Navigation Lag (v1.2.21)
 +
 +### Summary
@@ -921,9 +933,9 @@ index e460bea1..b36b313c 100644
 +* `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
 +
 +---
-+
+ 
 +## 53. Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)
-+
+ 
 +### Summary
 +Resolved scrolling hitching, card re-shuffling animations, and sudden upward screen snaps when browsing the Library, Recently Added, and other paged screens.
 +
@@ -1045,7 +1057,7 @@ index e460bea1..b36b313c 100644
 +   - Replaced the mismatched double-chevron fast-forward arrow in `Forward.kt` with a true clockwise circular arrow loop that identically mirrors `Replay.kt`.
 +   - Added dedicated `Forward15` and `Replay15` vector ImageVectors so 15-second skip times render with clear "15" digit badges matching 5s, 10s, and 30s.
 +   - All non-standard duration selections now render consistent, matching circular loop arrow icons for both rewind and forward buttons across the entire app.
- 
++
 +### Modified Files:
 +* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt`
 +* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward15.kt`
@@ -1086,11 +1098,11 @@ index e460bea1..b36b313c 100644
 +---
 +
 +## 59. Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)
- 
++
 +### Problem Description
 +1. In the expanded audiobook player, the whole-book progress indicator previously only showed the remaining time centered beneath the progress bar, omitting the elapsed listening time.
 +2. In the player bottom action row, the playback speed action button (`PlaybackSpeedAction.kt`) and end-of-chapter timer (`RunningTimerAction.kt`) were implemented as hardcoded 96dp wide boxes with unconstrained 18sp extra bold text. When multiple player tools were present, the ~48dp action slot caused the speed text (`"1.25x"`) to wrap into two lines, pushing `"1.25"` upwards and clipping `"x"` at the bottom container edge.
- 
++
 +### Solution & Key Implementation Details
 +1. **Dual Book-Time Readouts (`BookTimeProgressIndicator.kt`)**:
 +   - Replaced centered single-text readout with a full-width row (`BookTimeReadouts`) containing:
@@ -1101,7 +1113,7 @@ index e460bea1..b36b313c 100644
 +   - Replaced custom fixed-width box layouts with standard `IconButtonTooltip` and `IconButton` containers.
 +   - Formatted speed and end-of-chapter timer text with `fontSize = 16.sp`, `fontWeight = FontWeight.Bold`, `maxLines = 1`, `softWrap = false`, and `overflow = TextOverflow.Visible`.
 +   - Guaranteed identical vertical alignment, touch targets, and baseline centering across all player action buttons.
- 
++
 +### Modified Files:
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt`
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt`
@@ -1146,7 +1158,7 @@ index e460bea1..b36b313c 100644
 +* `gradle.properties`
 +
 +---
- 
++
 +## 61. Android Auto & Notification Dual Progress Hierarchy (v1.2.31)
 +
 +### Problem Description
@@ -1671,6 +1683,41 @@ index e460bea1..b36b313c 100644
 +* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt
 +* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++---
++
++## 76. Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43-rc1)
++
++### Problem Description
++When an Audiobookshelf session token expires (or after server restarts, token revocation, or socket timeouts), API requests and streaming playback fail with 401/403 errors. In earlier versions, this resulted in an indefinite loading spinner or playback errors ("Unable to play this file. The audio format may not be supported on this device") and forced the user to manually enter their username and password to log back in. For non-technical users or elderly family members, this caused frequent confusion and interrupted listening.
++
++### Solution & Implementation
++1. **Hardware-Protected Keystore Credential Storage**:
++   - Implemented `CredentialStorage` and `SecureCredentialStorage` backed by `@TokenSettings Settings` (`KeystoreSettings` using hardware-encrypted AES keys in the Android Keystore).
++   - In `DefaultAuthRepository.authenticate`, upon successful initial server login, user credentials (`username`, `password`) are encrypted and saved securely.
++   - In `DefaultAccountManager`, stored credentials are automatically purged upon explicit logout or account invalidation.
++2. **Ktor BearerAuthProvider Auto-Healing**:
++   - In `HttpClientModule`, extended `userBearerAuthProvider`'s `refreshTokens` block.
++   - If standard `/auth/refresh` fails or returns 401/403, Campfire retrieves the encrypted credentials from `accountManager.getCredentials(user.id)`.
++   - It submits a background login request to `${user.serverUrl}/login` with header `x-return-tokens: true`.
++   - Upon receiving fresh tokens, it updates `accountManager.updateToken(user.id, healedToken)` and returns the active `BearerTokens` to Ktor.
++   - Ktor transparently and seamlessly replays the original failed HTTP request with the new tokens without interrupting playback, showing errors, or kicking the user out of the app.
++
++### Modified Files:
++* data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
++* data/account/api/src/commonMain/kotlin/app/campfire/account/api/UserCredentials.kt
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/CredentialStorage.kt
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/SecureCredentialStorage.kt
++* data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt
++* features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
++* data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
++* data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt
++* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
++* features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
++* infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -3265,6 +3312,103 @@ index 2f1dc3ee..6baa23b7 100644
 +    assertThat(CoverUrls.raw(external)).isEqualTo(external)
 +  }
  }
+diff --git a/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt b/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
+index 7fc80239..28a6f777 100644
+--- a/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
++++ b/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
+@@ -80,4 +80,20 @@ interface AccountManager {
+ 
+   /** The extra headers for [userId], re-emitting whenever they change. */
+   fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>>
++
++  /**
++   * Save user login credentials in secure storage for silent background auto-healing.
++   */
++  suspend fun saveCredentials(userId: UserId, credentials: UserCredentials)
++
++  /**
++   * Retrieve stored login credentials for silent background auto-healing.
++   */
++  suspend fun getCredentials(userId: UserId): UserCredentials?
++
++  /**
++   * Remove stored login credentials.
++   */
++  suspend fun removeCredentials(userId: UserId)
+ }
++
+diff --git a/data/account/api/src/commonMain/kotlin/app/campfire/account/api/UserCredentials.kt b/data/account/api/src/commonMain/kotlin/app/campfire/account/api/UserCredentials.kt
+new file mode 100644
+index 00000000..33010fb6
+--- /dev/null
++++ b/data/account/api/src/commonMain/kotlin/app/campfire/account/api/UserCredentials.kt
+@@ -0,0 +1,13 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.account.api
++
++/**
++ * Credentials securely stored in hardware-backed storage for silent background auto-healing
++ * when access and refresh tokens expire or are revoked.
++ */
++data class UserCredentials(
++  val username: String,
++  val password: String,
++)
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt
+index d93303ee..406f15d8 100644
+--- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/DefaultAccountManager.kt
+@@ -10,6 +10,8 @@ import app.campfire.account.api.UserSessionManager
+ import app.campfire.account.api.di.UserGraphManager
+ import app.campfire.account.backup.AccountBackups
+ import app.campfire.account.server.LogoutUseCase
++import app.campfire.account.api.UserCredentials
++import app.campfire.account.storage.CredentialStorage
+ import app.campfire.account.storage.ExtraHeaderStorage
+ import app.campfire.account.storage.TokenStorage
+ import app.campfire.core.di.AppScope
+@@ -39,6 +41,7 @@ class DefaultAccountManager(
+   private val deviceSettings: DeviceSettings,
+   private val userSessionManager: UserSessionManager,
+   private val tokenStorage: TokenStorage,
++  private val credentialStorage: CredentialStorage,
+   private val extraHeaderStorage: ExtraHeaderStorage,
+   private val logoutUseCase: LogoutUseCase,
+   private val serverRepository: ServerRepository,
+@@ -85,6 +88,7 @@ class DefaultAccountManager(
+   override suspend fun invalidateAccount(user: User) {
+     // Invalidate token storage
+     tokenStorage.remove(user.id)
++    credentialStorage.remove(user.id)
+     applicationScope.launch { accountBackups.forget(user.id) }
+ 
+     // Notify user using the global toaster
+@@ -152,6 +156,7 @@ class DefaultAccountManager(
+ 
+     // Delete the accounts token / data
+     tokenStorage.remove(server.user.id)
++    credentialStorage.remove(server.user.id)
+     extraHeaderStorage.remove(server.user.id)
+     accountBackups.forget(server.user.id)
+     userSettingsStore.clear(server.user.id)
+@@ -203,4 +208,15 @@ class DefaultAccountManager(
+     deviceSettings.currentUserId = newSession.userId
+     userSessionManager.current = newSession
+   }
++  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
++    credentialStorage.put(userId, credentials)
++  }
++
++  override suspend fun getCredentials(userId: UserId): UserCredentials? {
++    return credentialStorage.get(userId)
++  }
++
++  override suspend fun removeCredentials(userId: UserId) {
++    credentialStorage.remove(userId)
++  }
+ }
 diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
 index ddcf1e05..954a4921 100644
 --- a/data/account/impl/src/commonMain/kotlin/app/campfire/account/session/UserSessionRestorer.kt
@@ -3295,6 +3439,81 @@ index ddcf1e05..954a4921 100644
  
      val server = withContext(dispatcherProvider.databaseRead) {
        db.serversQueries.selectByUserId(currentUserId, ::ServerWithUser)
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/CredentialStorage.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/CredentialStorage.kt
+new file mode 100644
+index 00000000..dc5f20ce
+--- /dev/null
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/CredentialStorage.kt
+@@ -0,0 +1,13 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.account.storage
++
++import app.campfire.account.api.UserCredentials
++import app.campfire.core.model.UserId
++
++interface CredentialStorage {
++  suspend fun get(userId: UserId): UserCredentials?
++  suspend fun put(userId: UserId, credentials: UserCredentials)
++  suspend fun remove(userId: UserId)
++}
+diff --git a/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/SecureCredentialStorage.kt b/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/SecureCredentialStorage.kt
+new file mode 100644
+index 00000000..14bae6c7
+--- /dev/null
++++ b/data/account/impl/src/commonMain/kotlin/app/campfire/account/storage/SecureCredentialStorage.kt
+@@ -0,0 +1,50 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.account.storage
++
++import app.campfire.account.api.UserCredentials
++import app.campfire.account.settings.TokenSettings
++import app.campfire.core.coroutines.DispatcherProvider
++import app.campfire.core.di.AppScope
++import app.campfire.core.model.UserId
++import com.russhwolf.settings.ExperimentalSettingsApi
++import com.russhwolf.settings.Settings
++import com.russhwolf.settings.coroutines.toSuspendSettings
++import dev.zacsweers.metro.ContributesBinding
++import dev.zacsweers.metro.Inject
++import dev.zacsweers.metro.SingleIn
++
++@OptIn(ExperimentalSettingsApi::class)
++@SingleIn(AppScope::class)
++@ContributesBinding(AppScope::class)
++@Inject
++class SecureCredentialStorage(
++  @TokenSettings private val tokenSettings: Settings,
++  private val dispatcherProvider: DispatcherProvider,
++) : CredentialStorage {
++
++  @OptIn(ExperimentalSettingsApi::class)
++  private val settings by lazy {
++    tokenSettings.toSuspendSettings(dispatcherProvider.io)
++  }
++
++  override suspend fun get(userId: UserId): UserCredentials? {
++    val username = settings.getStringOrNull(usernameKey(userId)) ?: return null
++    val password = settings.getStringOrNull(passwordKey(userId)) ?: return null
++    return UserCredentials(username = username, password = password)
++  }
++
++  override suspend fun put(userId: UserId, credentials: UserCredentials) {
++    settings.putString(usernameKey(userId), credentials.username)
++    settings.putString(passwordKey(userId), credentials.password)
++  }
++
++  override suspend fun remove(userId: UserId) {
++    settings.remove(usernameKey(userId))
++    settings.remove(passwordKey(userId))
++  }
++
++  private fun usernameKey(userId: String): String = "cred_username_$userId"
++  private fun passwordKey(userId: String): String = "cred_password_$userId"
++}
 diff --git a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt b/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
 index 823cd918..f8324bae 100644
 --- a/data/account/impl/src/commonTest/kotlin/app/campfire/account/session/DatabaseUserSessionRestorerTest.kt
@@ -4126,6 +4345,145 @@ index 7b0704e7..0a017e5a 100644
      }.map { it.results }
    }
  
+diff --git a/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt b/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
+index f7d00892..a271bb9c 100644
+--- a/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
++++ b/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
+@@ -14,6 +14,10 @@ import app.campfire.core.session.userId
+ import app.campfire.network.RefreshResponse
+ import app.campfire.network.asBearerTokens
+ import app.campfire.network.cleanServerUrl
++import app.campfire.network.envelopes.LoginRequest
++import io.ktor.client.request.setBody
++import io.ktor.http.ContentType
++import io.ktor.http.contentType
+ import app.campfire.network.plugins.suspendingDefaultHeaders
+ import app.campfire.network.reachability.ReachabilityGate
+ import app.campfire.network.reachability.serverReachabilityPlugin
+@@ -316,39 +320,68 @@ internal fun userBearerAuthProvider(
+       return@refreshTokens tokens.asBearerTokens()
+     }
+ 
+-    val newTokenResponse = client.post {
+-      url("${cleanServerUrl(user.serverUrl)}/auth/refresh")
+-      tokens?.refreshToken?.let {
+-        header(HttpHeaders.RefreshToken, it)
++    var refreshedTokens: app.campfire.account.api.AbsToken? = null
++
++    // 1. Attempt standard /auth/refresh with the existing refresh token
++    val refreshToken = tokens?.refreshToken
++    if (refreshToken != null) {
++      val newTokenResponse = client.post {
++        url("${cleanServerUrl(user.serverUrl)}/auth/refresh")
++        header(HttpHeaders.RefreshToken, refreshToken)
++        markAsRefreshTokenRequest()
++      }
++
++      if (newTokenResponse.status.isSuccess()) {
++        try {
++          refreshedTokens = newTokenResponse.body<RefreshResponse>().asAbsToken()
++        } catch (e: Exception) {
++          bark("KtorClient", LogPriority.WARN, throwable = e) { "Something went wrong trying to parse refresh token response" }
++        }
++      } else {
++        bark("KtorClient", LogPriority.WARN) { "[${newTokenResponse.status}] Standard token refresh failed" }
+       }
+-      markAsRefreshTokenRequest()
+     }
+ 
+-    return@refreshTokens if (newTokenResponse.status.isSuccess()) {
++    if (refreshedTokens != null) {
++      accountManager.updateToken(user.id, refreshedTokens)
++      return@refreshTokens refreshedTokens.asBearerTokens()
++    }
++
++    // 2. Silent Background Auto-Healing: re-authenticate seamlessly with hardware-stored credentials
++    val creds = accountManager.getCredentials(user.id)
++    if (creds != null) {
++      bark("KtorClient", LogPriority.INFO) { "Refresh token expired or failed; attempting silent background auto-healing for '${user.name}'…" }
+       try {
+-        val newToken = newTokenResponse.body<RefreshResponse>().asAbsToken()
+-        if (newToken != null) {
+-          accountManager.updateToken(user.id, newToken)
+-          newToken.asBearerTokens()
++        val extraHeaders = accountManager.getExtraHeaders(user.id)
++        val loginResponse = client.post {
++          url("${cleanServerUrl(user.serverUrl)}/login")
++          header(HttpHeaders.ReturnTokens, "true")
++          extraHeaders?.forEach { (k, v) -> header(k, v) }
++          contentType(ContentType.Application.Json)
++          setBody(LoginRequest(username = creds.username, password = creds.password))
++          markAsRefreshTokenRequest()
++        }
++
++        if (loginResponse.status.isSuccess()) {
++          val healedToken = loginResponse.body<RefreshResponse>().asAbsToken()
++          if (healedToken != null) {
++            accountManager.updateToken(user.id, healedToken)
++            bark("KtorClient", LogPriority.INFO) { "Silent background auto-healing succeeded for '${user.name}'!" }
++            return@refreshTokens healedToken.asBearerTokens()
++          }
+         } else {
+-          bark("KtorClient", LogPriority.ERROR) { "No valid tokens in response, requiring authentication…" }
+-          accountManager.invalidateAccount(user)
+-          null
++          bark("KtorClient", LogPriority.WARN) { "Auto-healing login returned ${loginResponse.status}" }
+         }
+       } catch (e: Exception) {
+-        bark("KtorClient", LogPriority.ERROR) { "Something went wrong trying to parse refresh token response" }
+-        null
++        bark("KtorClient", LogPriority.ERROR, throwable = e) { "Error during silent background auto-healing" }
+       }
+-    } else {
+-      bark("KtorClient", LogPriority.ERROR) { "[${newTokenResponse.status}] Refresh token request failed!" }
+-      if (
+-        newTokenResponse.status == HttpStatusCode.Unauthorized ||
+-        newTokenResponse.status == HttpStatusCode.Forbidden
+-      ) {
+-        accountManager.invalidateAccount(user)
+-      }
+-      null
+     }
++
++    // 3. Both token refresh and auto-healing failed (e.g. password changed on server or no credentials)
++    bark("KtorClient", LogPriority.ERROR) { "Both token refresh and silent auto-healing failed; requiring re-authentication." }
++    accountManager.removeCredentials(user.id)
++    accountManager.invalidateAccount(user)
++    null
+   },
+   realm = null,
+ )
+diff --git a/data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt b/data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt
+index 93843f34..63225640 100644
+--- a/data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt
++++ b/data/network/impl/src/commonTest/kotlin/app/campfire/network/NetworkFakes.kt
+@@ -5,6 +5,7 @@ package app.campfire.network
+ 
+ import app.campfire.account.api.AbsToken
+ import app.campfire.account.api.AccountManager
++import app.campfire.account.api.UserCredentials
+ import app.campfire.account.api.UserSessionManager
+ import app.campfire.core.model.Server
+ import app.campfire.core.model.User
+@@ -67,6 +68,18 @@ internal class FakeAccountManager : AccountManager {
+     tokens[userId] = newToken
+   }
+ 
++  private val credentials = mutableMapOf<UserId, UserCredentials>()
++
++  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
++    this.credentials[userId] = credentials
++  }
++
++  override suspend fun getCredentials(userId: UserId): UserCredentials? = credentials[userId]
++
++  override suspend fun removeCredentials(userId: UserId) {
++    credentials.remove(userId)
++  }
++
+   override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = extraHeaders
+   override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
+   override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
 diff --git a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
 index c22878ec..bee7c4f2 100644
 --- a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
@@ -4176,10 +4534,18 @@ index c22878ec..bee7c4f2 100644
      libraryId: String,
      sortMode: String?,
 diff --git a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
-index 2798de1a..6f9fea73 100644
+index 2798de1a..71b7cf31 100644
 --- a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
 +++ b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
-@@ -60,13 +60,17 @@ class DefaultAuthRepository(
+@@ -4,6 +4,7 @@
+ package app.campfire.auth
+ 
+ import app.campfire.account.api.AccountManager
++import app.campfire.account.api.UserCredentials
+ import app.campfire.account.api.BackedUpAccount
+ import app.campfire.account.api.ServerRepository
+ import app.campfire.auth.api.AuthException
+@@ -60,15 +61,21 @@ class DefaultAuthRepository(
      userId: UserId?,
      networkSettings: NetworkSettings?,
    ): Result<Unit> {
@@ -4197,13 +4563,26 @@ index 2798de1a..6f9fea73 100644
 -      userId = userId,
 +      userId = targetUserId,
        networkSettings = networkSettings,
-     ).map { }
+-    ).map { }
++    ).map { user ->
++      accountManager.saveCredentials(user.id, UserCredentials(username, password))
++    }
    }
+ 
+   override suspend fun authenticate(
 diff --git a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
-index ef48384e..a7b783e3 100644
+index ef48384e..7b33cbe5 100644
 --- a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
 +++ b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/DefaultAuthRepositoryTest.kt
-@@ -216,6 +216,17 @@ class DefaultAuthRepositoryTest {
+@@ -7,6 +7,7 @@ import app.campfire.account.api.AbsToken
+ import app.campfire.account.api.AccountManager
+ import app.campfire.account.api.BackedUpAccount
+ import app.campfire.account.api.ServerRepository
++import app.campfire.account.api.UserCredentials
+ import app.campfire.auth.api.AuthException
+ import app.campfire.auth.local.UserStorageStrategy
+ import app.campfire.core.model.Server
+@@ -216,6 +217,17 @@ class DefaultAuthRepositoryTest {
      assertThat(existingUserStorage.stored).isTrue()
    }
  
@@ -4221,6 +4600,47 @@ index ef48384e..a7b783e3 100644
    @Test
    fun `restoring onto a server that already has an account fails without asking the server`() = runTest {
      serverRepository.all += server(SERVER_URL, userName = "alice")
+@@ -429,6 +441,18 @@ class DefaultAuthRepositoryTest {
+     override suspend fun logout(server: Server) = Unit
+     override suspend fun getToken(userId: UserId): AbsToken? = null
+     override suspend fun updateToken(userId: UserId, newToken: AbsToken) = Unit
++    var savedCredentials: Pair<UserId, UserCredentials>? = null
++
++    override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
++      savedCredentials = userId to credentials
++    }
++
++    override suspend fun getCredentials(userId: UserId): UserCredentials? = savedCredentials?.second
++
++    override suspend fun removeCredentials(userId: UserId) {
++      savedCredentials = null
++    }
++
+     override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = null
+     override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
+     override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
+diff --git a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
+index 684ec57e..411b066a 100644
+--- a/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
++++ b/features/auth/impl/src/commonTest/kotlin/app/campfire/auth/backup/DefaultBackedUpAccountRestorerTest.kt
+@@ -10,6 +10,7 @@ import app.campfire.account.api.RestorableAccount
+ import app.campfire.account.api.RestorableAccountRepository
+ import app.campfire.account.api.ServerRepository
+ import app.campfire.account.api.TokenBackup
++import app.campfire.account.api.UserCredentials
+ import app.campfire.auth.api.AuthException
+ import app.campfire.auth.api.AuthRepository
+ import app.campfire.auth.api.model.ServerStatus
+@@ -206,6 +207,9 @@ class DefaultBackedUpAccountRestorerTest {
+     override suspend fun logout(server: Server) = Unit
+     override suspend fun getToken(userId: UserId): AbsToken? = null
+     override suspend fun updateToken(userId: UserId, newToken: AbsToken) = Unit
++    override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) = Unit
++    override suspend fun getCredentials(userId: UserId): UserCredentials? = null
++    override suspend fun removeCredentials(userId: UserId) = Unit
+     override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = null
+     override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
+     override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
 diff --git a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt b/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
 index 890fc746..47e37726 100644
 --- a/features/author/impl/src/commonMain/kotlin/app/campfire/author/paging/AuthorsRemoteMediatorFactory.kt
@@ -9051,7 +9471,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..a57b0bb0 100644
+index e42923f9..6358144c 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9059,13 +9479,13 @@ index e42923f9..a57b0bb0 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.42
++campfire.version=1.2.43-rc1
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024299
++campfire.versionCode=1024301
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -10250,6 +10670,28 @@ index 4feda46f..12e72235 100644
    }
  
    @Test
+diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
+index 9d13b1f5..89f034b8 100644
+--- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
++++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/offline/OfflineDownloadFakes.kt
+@@ -6,6 +6,7 @@ package app.campfire.audioplayer.impl.offline
+ import app.campfire.account.api.AbsToken
+ import app.campfire.account.api.AccountManager
+ import app.campfire.account.api.TokenRefresher
++import app.campfire.account.api.UserCredentials
+ import app.campfire.account.api.UserSessionManager
+ import app.campfire.core.model.Server
+ import app.campfire.core.model.User
+@@ -62,6 +63,9 @@ internal class FakeAccountManager : AccountManager {
+     token = newToken
+   }
+ 
++  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) = Unit
++  override suspend fun getCredentials(userId: UserId): UserCredentials? = null
++  override suspend fun removeCredentials(userId: UserId) = Unit
+   override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = extraHeaders
+   override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
+   override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
 diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 index e248f31e..c28e4bff 100644
 --- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt

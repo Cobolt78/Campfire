@@ -10,6 +10,8 @@ import app.campfire.account.api.UserSessionManager
 import app.campfire.account.api.di.UserGraphManager
 import app.campfire.account.backup.AccountBackups
 import app.campfire.account.server.LogoutUseCase
+import app.campfire.account.api.UserCredentials
+import app.campfire.account.storage.CredentialStorage
 import app.campfire.account.storage.ExtraHeaderStorage
 import app.campfire.account.storage.TokenStorage
 import app.campfire.core.di.AppScope
@@ -39,6 +41,7 @@ class DefaultAccountManager(
   private val deviceSettings: DeviceSettings,
   private val userSessionManager: UserSessionManager,
   private val tokenStorage: TokenStorage,
+  private val credentialStorage: CredentialStorage,
   private val extraHeaderStorage: ExtraHeaderStorage,
   private val logoutUseCase: LogoutUseCase,
   private val serverRepository: ServerRepository,
@@ -85,6 +88,7 @@ class DefaultAccountManager(
   override suspend fun invalidateAccount(user: User) {
     // Invalidate token storage
     tokenStorage.remove(user.id)
+    credentialStorage.remove(user.id)
     applicationScope.launch { accountBackups.forget(user.id) }
 
     // Notify user using the global toaster
@@ -152,6 +156,7 @@ class DefaultAccountManager(
 
     // Delete the accounts token / data
     tokenStorage.remove(server.user.id)
+    credentialStorage.remove(server.user.id)
     extraHeaderStorage.remove(server.user.id)
     accountBackups.forget(server.user.id)
     userSettingsStore.clear(server.user.id)
@@ -202,5 +207,16 @@ class DefaultAccountManager(
     // Update persisted settings and observers
     deviceSettings.currentUserId = newSession.userId
     userSessionManager.current = newSession
+  }
+  override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) {
+    credentialStorage.put(userId, credentials)
+  }
+
+  override suspend fun getCredentials(userId: UserId): UserCredentials? {
+    return credentialStorage.get(userId)
+  }
+
+  override suspend fun removeCredentials(userId: UserId) {
+    credentialStorage.remove(userId)
   }
 }

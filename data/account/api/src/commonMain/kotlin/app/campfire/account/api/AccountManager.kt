@@ -80,4 +80,20 @@ interface AccountManager {
 
   /** The extra headers for [userId], re-emitting whenever they change. */
   fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>>
+
+  /**
+   * Save user login credentials in secure storage for silent background auto-healing.
+   */
+  suspend fun saveCredentials(userId: UserId, credentials: UserCredentials)
+
+  /**
+   * Retrieve stored login credentials for silent background auto-healing.
+   */
+  suspend fun getCredentials(userId: UserId): UserCredentials?
+
+  /**
+   * Remove stored login credentials.
+   */
+  suspend fun removeCredentials(userId: UserId)
 }
+

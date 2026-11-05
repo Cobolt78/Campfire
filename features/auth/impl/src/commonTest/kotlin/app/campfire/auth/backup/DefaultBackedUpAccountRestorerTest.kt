@@ -10,6 +10,7 @@ import app.campfire.account.api.RestorableAccount
 import app.campfire.account.api.RestorableAccountRepository
 import app.campfire.account.api.ServerRepository
 import app.campfire.account.api.TokenBackup
+import app.campfire.account.api.UserCredentials
 import app.campfire.auth.api.AuthException
 import app.campfire.auth.api.AuthRepository
 import app.campfire.auth.api.model.ServerStatus
@@ -206,6 +207,9 @@ class DefaultBackedUpAccountRestorerTest {
     override suspend fun logout(server: Server) = Unit
     override suspend fun getToken(userId: UserId): AbsToken? = null
     override suspend fun updateToken(userId: UserId, newToken: AbsToken) = Unit
+    override suspend fun saveCredentials(userId: UserId, credentials: UserCredentials) = Unit
+    override suspend fun getCredentials(userId: UserId): UserCredentials? = null
+    override suspend fun removeCredentials(userId: UserId) = Unit
     override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = null
     override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
     override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
