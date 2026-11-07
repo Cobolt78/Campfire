@@ -24,7 +24,7 @@ data class PlaylistDetailUiState(
   val playlistState: LoadState<out Playlist>,
   val playlistContentState: LoadState<out List<Playlist.Item.Expanded>>,
   val playlistItems: List<Playlist.Item.Expanded>,
-  val offlineStates: Map<LibraryItemId, OfflineDownload>,
+  val offlineStates: Map<String, OfflineDownload>,
   val progressStates: Map<MediaProgressKey, MediaProgress>,
   /** Items that "Mark all as finished" would change. */
   val unfinishedCount: Int,
@@ -43,6 +43,7 @@ sealed interface PlaylistDetailUiEvent : CircuitUiEvent {
   data class PlayClick(val item: Playlist.Item.Expanded) : PlaylistDetailUiEvent
   data class RemoveItem(val item: Playlist.Item.Expanded) : PlaylistDetailUiEvent
   data class DownloadAll(val doNotShowAgain: Boolean = true) : PlaylistDetailUiEvent
+  data class DownloadItems(val items: List<Playlist.Item.Expanded>) : PlaylistDetailUiEvent
 
   data object PlayAll : PlaylistDetailUiEvent
   data object ReorderStopped : PlaylistDetailUiEvent

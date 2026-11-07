@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc2] - 2026-11-08
+
+### Added
+
+- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
+  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
+  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
+  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size.
+  - Includes an interactive "Include completed items" checkbox with real-time recalculation of download size and item count.
+  - Added clear notification when all playlist items are already downloaded offline.
+  - Fixed support for downloading podcast episodes within playlists, ensuring both audiobooks and podcasts download properly.
+
 ## [1.2.45-rc1] - 2026-11-08
 
 ### Added

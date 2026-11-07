@@ -46,6 +46,7 @@ class PlaylistDetailPresenterTest {
   private val sessionsRepository = FakeSessionsRepository()
   private val playbackController = FakePlaybackController()
   private val playbackHistoryRepository = FakePlaybackHistoryRepository()
+  private val downloadManager = FakeOfflineDownloadManager()
 
   private fun presenter(userScope: CoroutineScope) = PlaylistDetailPresenter(
     screen = screen,
@@ -55,7 +56,7 @@ class PlaylistDetailPresenterTest {
     playbackController = playbackController,
     sessionsRepository = sessionsRepository,
     sessionQueue = FakeSessionQueue(),
-    downloadManager = FakeOfflineDownloadManager(),
+    downloadManager = downloadManager,
     userRepository = FakeUserRepository(),
     libraryViewSettings = TestLibraryViewSettings(),
     mediaProgressRepository = mediaProgressRepository,
@@ -213,6 +214,23 @@ class PlaylistDetailPresenterTest {
     fromPosition = Duration.ZERO,
     toPosition = null,
   )
+
+  @Test
+  fun downloadItems_passesItemsToOfflineDownloadManager() = runTest {
+    val bookItem = item("book-1", index = 0)
+    playlistsRepository.playlistItemsFlow.value = listOf(bookItem)
+
+    presenter.test {
+      val state = awaitItemMatching { it.playlistItems.size == 1 }
+
+      state.eventSink(PlaylistDetailUiEvent.DownloadItems(listOf(bookItem)))
+
+      assertThat(downloadManager.invocations.filterIsInstance<FakeOfflineDownloadManager.Invocation.Download>())
+        .containsExactly(FakeOfflineDownloadManager.Invocation.Download(bookItem.libraryItem))
+
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
 }
 
 private typealias MarkAllFinished = FakeMediaProgressRepository.Invocation.MarkAllFinished

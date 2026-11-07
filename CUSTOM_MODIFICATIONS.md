@@ -83,6 +83,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
 78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
+79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
 
 ---
 
@@ -2273,6 +2274,40 @@ Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
 * features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)
+
+### Problem Description
+Tapping the download button on the Playlist Detail screen floating toolbar often appeared to do nothing. In upstream Campfire, if books were already downloaded on the device, ExoPlayer silently ignored download requests with zero visual feedback or completion alert. If the playlist contained podcast episodes, `DownloadAll` passed podcast parent items where track lists were empty, causing downloads to fail completely. Additionally, there was no intelligent filtering to exclude completed items or already downloaded items, leading to wasted storage and repetitive downloading.
+
+### Solution & Implementation
+1. **Smart Partitioning & Calculation**:
+   - Partitioned distinct playlist items (`Playlist.Item.Expanded`) by checking `progressStates[item.progressKey]?.isFinished` and `offlineStates` (`isCompleted` or `isActive`).
+   - Separated items into `unlistenedDownloadable` and `completedDownloadable`.
+   - Calculated precise sizes for both audiobooks and podcast episodes via `item.sizeInBytes`.
+2. **Smart Confirmation Dialog (`ConfirmDownloadPlaylistDialog.kt`)**:
+   - Shows clear count and size estimates (e.g. *"Download 3 unlistened items (~1.4 GB)?"*).
+   - Provides interactive `"Include X completed items"` checkbox with dynamic real-time recalculation of total download bytes and button labels.
+   - Shows an `"All items downloaded"` dialog if everything in the playlist is already saved offline.
+   - Prompts cleanly to download completed items if all unlistened items are already saved.
+   - Enforces runtime `POST_NOTIFICATIONS` permission check before dispatching downloads.
+3. **Presenter & Podcast Episode Download Support**:
+   - In `PlaylistDetailPresenter.kt`, enhanced `offlineStates` to track both bare `libraryItemId` and composite `libraryItemId:episodeId` keys.
+   - Added `PlaylistDetailUiEvent.DownloadItems(items)` event handling that dispatches `downloadManager.download(item.libraryItem)` for audiobooks and `downloadManager.downloadEpisode(item.libraryItem, episode)` for podcast episodes.
+   - Added unit test `downloadItems_passesItemsToOfflineDownloadManager` in `PlaylistDetailPresenterTest.kt`.
+
+### Modified Files:
+* features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/composables/ConfirmDownloadPlaylistDialog.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
+* features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

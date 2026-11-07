@@ -59,4 +59,23 @@
   <string name="dialog_action_cancel">Cancel</string>
 
   <string name="playlist_item_series_sequence">%1$s #%2$s</string>
+  <!-- Smart Playlist Download strings and plurals -->
+  <string name="dialog_download_playlist_title">Download playlist?</string>
+  <string name="dialog_download_playlist_all_downloaded_title">All items downloaded</string>
+  <string name="dialog_download_playlist_all_downloaded_message">All items in this playlist are already downloaded and available for offline playback.</string>
+  <string name="dialog_download_playlist_all_finished_prefix">All unlistened items in this playlist are already downloaded. Download</string>
+  <string name="dialog_action_download">Download</string>
+  <string name="dialog_action_ok">OK</string>
+  <plurals name="dialog_download_playlist_items_count">
+    <item quantity="one">%1$d item</item>
+    <item quantity="other">%1$d items</item>
+  </plurals>
+  <plurals name="dialog_download_playlist_unlistened_items_count">
+    <item quantity="one">%1$d unlistened item</item>
+    <item quantity="other">%1$d unlistened items</item>
+  </plurals>
+  <plurals name="dialog_download_playlist_completed_items_count">
+    <item quantity="one">%1$d completed item</item>
+    <item quantity="other">%1$d completed items</item>
+  </plurals>
 </resources>

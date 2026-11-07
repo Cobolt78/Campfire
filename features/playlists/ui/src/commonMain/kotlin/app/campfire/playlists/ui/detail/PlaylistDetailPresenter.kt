@@ -19,6 +19,7 @@ import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.PlaybackController
 import app.campfire.audioplayer.history.PlaybackHistoryRepository
+import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.core.coroutines.CoroutineScopeHolder
 import app.campfire.core.coroutines.LoadState
@@ -70,7 +71,16 @@ class PlaylistDetailPresenter(
 
     val offlineStates by remember {
       downloadManager.observeAll()
-        .map { it.associateBy { item -> item.libraryItemId } }
+        .map { list ->
+          val map = mutableMapOf<String, OfflineDownload>()
+          for (item in list) {
+            map[item.libraryItemId] = item
+            if (item.episodeId != null) {
+              map["${item.libraryItemId}:${item.episodeId}"] = item
+            }
+          }
+          map
+        }
     }.collectAsState(emptyMap())
 
     val progressStates by remember {
@@ -236,6 +246,20 @@ class PlaylistDetailPresenter(
             .map { it.libraryItem }
             .distinctBy { it.id }
           downloadManager.downloadAll(uniqueLibraryItems)
+        }
+
+        is PlaylistDetailUiEvent.DownloadItems -> {
+          if (!currentUser.canDownload) return@PlaylistDetailUiState
+          analytics.send(ActionEvent("playlist", "download"))
+          val distinctItems = event.items.distinctBy { it.key }
+          distinctItems.forEach { item ->
+            val episode = item.episode
+            if (episode != null) {
+              downloadManager.downloadEpisode(item.libraryItem, episode)
+            } else {
+              downloadManager.download(item.libraryItem)
+            }
+          }
         }
 
         PlaylistDetailUiEvent.MarkAllFinished -> {

@@ -11,14 +11,26 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..f1a4ffba 100644
+index 1dcbc292..5a31f128 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,376 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,388 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.45-rc2] - 2026-11-08
++
++### Added
++
++- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
++  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
++  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
++  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size.
++  - Includes an interactive "Include completed items" checkbox with real-time recalculation of download size and item count.
++  - Added clear notification when all playlist items are already downloaded offline.
++  - Fixed support for downloading podcast episodes within playlists, ensuring both audiobooks and podcasts download properly.
++
 +## [1.2.45-rc1] - 2026-11-08
 +
 +### Added
@@ -393,10 +405,10 @@ index 1dcbc292..f1a4ffba 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..97df6a13 100644
+index e460bea1..efa3081e 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,53 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,54 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -447,10 +459,11 @@ index e460bea1..97df6a13 100644
 +76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 +77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
 +78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
++79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
  
  ---
  
-@@ -180,6 +227,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +228,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -458,7 +471,7 @@ index e460bea1..97df6a13 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +427,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +428,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -495,7 +508,7 @@ index e460bea1..97df6a13 100644
  
  ---
  
-@@ -891,8 +969,1310 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +970,1344 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -519,11 +532,11 @@ index e460bea1..97df6a13 100644
 +   - Guarded `StoreUserRepository.userFlow` and `observeCurrentUser()` to return cached user state immediately when not logged in, eliminating unauthenticated `/api/me` network calls and preventing uncaught `StoreReadResponse.Error` exceptions on the Compose event loop.
 +5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
 +   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
- 
++
 +---
- 
++
 +## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
- 
++
 +### Summary
 +Fixed a lockout bug where users attempting to log in on a previously registered server encountered the error `"You're already signed in to this server as <user>. Switch to that account, or sign out of it first."` despite entering the identical username. Additionally added an automatic session restore fallback in `DatabaseUserSessionRestorer` to recover the active account from the database if `deviceSettings.currentUserId` was lost or unset in `config.properties`.
 +
@@ -667,7 +680,7 @@ index e460bea1..97df6a13 100644
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
 +
 +---
- 
++
 +## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
 +
 +### Summary
@@ -964,7 +977,7 @@ index e460bea1..97df6a13 100644
 +### Root Cause
 +1. **Unwanted Item Placement Animations**: In Compose `LazyCampfireGrid` and `LazyColumn`, `Modifier.animateItem()` was attached to every item card and list row. Any time paging data updated or adjusted indices, Compose triggered physics spring animations that visibly slid cards across grid slots ("card reshuffle") and dropped frames.
 +2. **Destructive Background Page Purge**: When entering the screen, `RemoteMediator` began an asynchronous background refresh for Page 0. If the user scrolled down past Page 0 before the network completed, `deleteByInput()` wiped out all subsequent cached pages (Pages 1..N) from SQLite, suddenly shrinking the database list and violently snapping the user's scroll position upwards.
-+
+ 
 +### Key Changes
 +1. **Remove `Modifier.animateItem()` from Paginated Screens (`LibraryUi.kt`)**:
 +   - Removed `.animateItem()` from `LibraryItemCard` and `LibraryItemListItem`. Cards render statically and stay anchored in place without sliding or calculating animation physics.
@@ -972,7 +985,7 @@ index e460bea1..97df6a13 100644
 +   - Checked if Page 0 returned from network has identical item IDs and total count as currently stored in SQLite: if unchanged (the case 95% of the time), returns early with zero database modifications or invalidations.
 +   - If Page 0 changed while the user is already scrolled past Page 0 (`anchorPosition >= pageSize`), only replaces Page 0 (`deletePage(page = 0)`), preserving Pages 1..N that the user is currently reading.
 +   - If the user is at the top of the list, performs a clean `deleteByInput` refresh.
- 
++
 +### Modified Files:
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryUi.kt`
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
@@ -1118,13 +1131,13 @@ index e460bea1..97df6a13 100644
 +* `gradle.properties`
 +
 +---
-+
+ 
 +## 59. Dual Book-Time Readouts & Action Row Alignment Fix (v1.2.29)
-+
+ 
 +### Problem Description
 +1. In the expanded audiobook player, the whole-book progress indicator previously only showed the remaining time centered beneath the progress bar, omitting the elapsed listening time.
 +2. In the player bottom action row, the playback speed action button (`PlaybackSpeedAction.kt`) and end-of-chapter timer (`RunningTimerAction.kt`) were implemented as hardcoded 96dp wide boxes with unconstrained 18sp extra bold text. When multiple player tools were present, the ~48dp action slot caused the speed text (`"1.25x"`) to wrap into two lines, pushing `"1.25"` upwards and clipping `"x"` at the bottom container edge.
-+
+ 
 +### Solution & Key Implementation Details
 +1. **Dual Book-Time Readouts (`BookTimeProgressIndicator.kt`)**:
 +   - Replaced centered single-text readout with a full-width row (`BookTimeReadouts`) containing:
@@ -1180,7 +1193,7 @@ index e460bea1..97df6a13 100644
 +* `gradle.properties`
 +
 +---
-+
+ 
 +## 61. Android Auto & Notification Dual Progress Hierarchy (v1.2.31)
 +
 +### Problem Description
@@ -1803,6 +1816,40 @@ index e460bea1..97df6a13 100644
 +* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
 +* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
 +* features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++---
++
++## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)
++
++### Problem Description
++Tapping the download button on the Playlist Detail screen floating toolbar often appeared to do nothing. In upstream Campfire, if books were already downloaded on the device, ExoPlayer silently ignored download requests with zero visual feedback or completion alert. If the playlist contained podcast episodes, `DownloadAll` passed podcast parent items where track lists were empty, causing downloads to fail completely. Additionally, there was no intelligent filtering to exclude completed items or already downloaded items, leading to wasted storage and repetitive downloading.
++
++### Solution & Implementation
++1. **Smart Partitioning & Calculation**:
++   - Partitioned distinct playlist items (`Playlist.Item.Expanded`) by checking `progressStates[item.progressKey]?.isFinished` and `offlineStates` (`isCompleted` or `isActive`).
++   - Separated items into `unlistenedDownloadable` and `completedDownloadable`.
++   - Calculated precise sizes for both audiobooks and podcast episodes via `item.sizeInBytes`.
++2. **Smart Confirmation Dialog (`ConfirmDownloadPlaylistDialog.kt`)**:
++   - Shows clear count and size estimates (e.g. *"Download 3 unlistened items (~1.4 GB)?"*).
++   - Provides interactive `"Include X completed items"` checkbox with dynamic real-time recalculation of total download bytes and button labels.
++   - Shows an `"All items downloaded"` dialog if everything in the playlist is already saved offline.
++   - Prompts cleanly to download completed items if all unlistened items are already saved.
++   - Enforces runtime `POST_NOTIFICATIONS` permission check before dispatching downloads.
++3. **Presenter & Podcast Episode Download Support**:
++   - In `PlaylistDetailPresenter.kt`, enhanced `offlineStates` to track both bare `libraryItemId` and composite `libraryItemId:episodeId` keys.
++   - Added `PlaylistDetailUiEvent.DownloadItems(items)` event handling that dispatches `downloadManager.download(item.libraryItem)` for audiobooks and `downloadManager.downloadEpisode(item.libraryItem, episode)` for podcast episodes.
++   - Added unit test `downloadItems_passesItemsToOfflineDownloadManager` in `PlaylistDetailPresenterTest.kt`.
++
++### Modified Files:
++* features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
++* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/composables/ConfirmDownloadPlaylistDialog.kt
++* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
++* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
++* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
++* features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -6746,6 +6793,283 @@ index c73ce436..6d04fb4d 100644
    private suspend fun handleWrite(
      operation: PlaylistsStore.Operation,
      playlists: List<Playlist> = emptyList(),
+diff --git a/features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml b/features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
+index 418c8616..e7e84a7a 100644
+--- a/features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
++++ b/features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
+@@ -59,4 +59,23 @@
+   <string name="dialog_action_cancel">Cancel</string>
+ 
+   <string name="playlist_item_series_sequence">%1$s #%2$s</string>
++  <!-- Smart Playlist Download strings and plurals -->
++  <string name="dialog_download_playlist_title">Download playlist?</string>
++  <string name="dialog_download_playlist_all_downloaded_title">All items downloaded</string>
++  <string name="dialog_download_playlist_all_downloaded_message">All items in this playlist are already downloaded and available for offline playback.</string>
++  <string name="dialog_download_playlist_all_finished_prefix">All unlistened items in this playlist are already downloaded. Download</string>
++  <string name="dialog_action_download">Download</string>
++  <string name="dialog_action_ok">OK</string>
++  <plurals name="dialog_download_playlist_items_count">
++    <item quantity="one">%1$d item</item>
++    <item quantity="other">%1$d items</item>
++  </plurals>
++  <plurals name="dialog_download_playlist_unlistened_items_count">
++    <item quantity="one">%1$d unlistened item</item>
++    <item quantity="other">%1$d unlistened items</item>
++  </plurals>
++  <plurals name="dialog_download_playlist_completed_items_count">
++    <item quantity="one">%1$d completed item</item>
++    <item quantity="other">%1$d completed items</item>
++  </plurals>
+ </resources>
+diff --git a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
+index b30cff7c..f80a0275 100644
+--- a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
++++ b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
+@@ -19,6 +19,7 @@ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
+ import app.campfire.audioplayer.PlaybackController
+ import app.campfire.audioplayer.history.PlaybackHistoryRepository
++import app.campfire.audioplayer.offline.OfflineDownload
+ import app.campfire.audioplayer.offline.OfflineDownloadManager
+ import app.campfire.core.coroutines.CoroutineScopeHolder
+ import app.campfire.core.coroutines.LoadState
+@@ -70,7 +71,16 @@ class PlaylistDetailPresenter(
+ 
+     val offlineStates by remember {
+       downloadManager.observeAll()
+-        .map { it.associateBy { item -> item.libraryItemId } }
++        .map { list ->
++          val map = mutableMapOf<String, OfflineDownload>()
++          for (item in list) {
++            map[item.libraryItemId] = item
++            if (item.episodeId != null) {
++              map["${item.libraryItemId}:${item.episodeId}"] = item
++            }
++          }
++          map
++        }
+     }.collectAsState(emptyMap())
+ 
+     val progressStates by remember {
+@@ -238,6 +248,20 @@ class PlaylistDetailPresenter(
+           downloadManager.downloadAll(uniqueLibraryItems)
+         }
+ 
++        is PlaylistDetailUiEvent.DownloadItems -> {
++          if (!currentUser.canDownload) return@PlaylistDetailUiState
++          analytics.send(ActionEvent("playlist", "download"))
++          val distinctItems = event.items.distinctBy { it.key }
++          distinctItems.forEach { item ->
++            val episode = item.episode
++            if (episode != null) {
++              downloadManager.downloadEpisode(item.libraryItem, episode)
++            } else {
++              downloadManager.download(item.libraryItem)
++            }
++          }
++        }
++
+         PlaylistDetailUiEvent.MarkAllFinished -> {
+           if (isUpdatingProgress || unfinishedKeys.isEmpty()) return@PlaylistDetailUiState
+           analytics.send(ActionEvent("playlist", "mark_finished"))
+diff --git a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
+index 8243779f..e6a7095c 100644
+--- a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
++++ b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
+@@ -56,7 +56,8 @@ import app.campfire.common.compose.widgets.ItemCollectionSharedTransitionKey
+ import app.campfire.common.compose.widgets.LoadingListState
+ import app.campfire.common.compose.widgets.NavigationBackButton
+ import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
+-import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
++import app.campfire.audioplayer.offline.OfflineDownload
++import app.campfire.playlists.ui.detail.composables.ConfirmDownloadPlaylistDialog
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
+ import app.campfire.core.model.LibraryItemId
+@@ -131,31 +132,61 @@ fun PlaylistDetail(
+     )
+   }
+ 
++  val distinctPlaylistItems = remember(state.playlistItems) {
++    state.playlistItems.distinctBy { it.key }
++  }
++
++  val unlistenedDownloadable = remember(distinctPlaylistItems, state.offlineStates, state.progressStates) {
++    distinctPlaylistItems.filter { item ->
++      val isFinished = state.progressStates[item.progressKey]?.isFinished == true
++      val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
++      val isDownloaded = download?.let {
++        it.state == OfflineDownload.State.Completed || it.isActive
++      } == true
++      !isFinished && !isDownloaded
++    }
++  }
++
++  val completedDownloadable = remember(distinctPlaylistItems, state.offlineStates, state.progressStates) {
++    distinctPlaylistItems.filter { item ->
++      val isFinished = state.progressStates[item.progressKey]?.isFinished == true
++      val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
++      val isDownloaded = download?.let {
++        it.state == OfflineDownload.State.Completed || it.isActive
++      } == true
++      isFinished && !isDownloaded
++    }
++  }
++
+   var showConfirmDownloadDialog by remember { mutableStateOf(false) }
+-  var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
+-  val postNotificationPermissionState = rememberPostNotificationPermissionState {
+-    if (it) {
+-      state.eventSink(PlaylistDetailUiEvent.DownloadAll(doNotShowDownloadConfirmationAgain))
++  var pendingDownloadItems by remember { mutableStateOf<List<Playlist.Item.Expanded>?>(null) }
++  val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
++    if (granted) {
++      pendingDownloadItems?.let { items ->
++        state.eventSink(PlaylistDetailUiEvent.DownloadItems(items))
++      }
++      pendingDownloadItems = null
+       showConfirmDownloadDialog = false
+     }
+   }
+ 
+   if (showConfirmDownloadDialog) {
+-    val downloadConfirmItems = remember(state.playlistItems) {
+-      state.playlistItems.map { it.libraryItem }.distinctBy { it.id }
+-    }
+-    ConfirmDownloadDialog(
+-      downloadConfirmItems,
+-      onConfirm = { doNotShowAgain ->
++    ConfirmDownloadPlaylistDialog(
++      unlistenedItems = unlistenedDownloadable,
++      completedItems = completedDownloadable,
++      onConfirm = { itemsToDownload ->
+         if (postNotificationPermissionState is PermissionState.Granted) {
+-          state.eventSink(PlaylistDetailUiEvent.DownloadAll(doNotShowAgain))
++          state.eventSink(PlaylistDetailUiEvent.DownloadItems(itemsToDownload))
+           showConfirmDownloadDialog = false
+         } else {
+-          doNotShowDownloadConfirmationAgain = doNotShowAgain
++          pendingDownloadItems = itemsToDownload
+           postNotificationPermissionState.launchPermissionRequest()
+         }
+       },
+-      onDismissRequest = { showConfirmDownloadDialog = false },
++      onDismissRequest = {
++        showConfirmDownloadDialog = false
++        pendingDownloadItems = null
++      },
+     )
+   }
+ 
+@@ -194,11 +225,7 @@ fun PlaylistDetail(
+           }
+         },
+         onDownloadClick = {
+-          if (state.showConfirmDownloadDialog) {
+-            showConfirmDownloadDialog = true
+-          } else {
+-            state.eventSink(PlaylistDetailUiEvent.DownloadAll())
+-          }
++          showConfirmDownloadDialog = true
+         }.takeIf { state.canDownload },
+         isReordering = isReordering,
+         onReorderChange = { isReordering = it },
+@@ -248,7 +275,10 @@ fun PlaylistDetail(
+         onReorderStopped = {
+           state.eventSink(PlaylistDetailUiEvent.ReorderStopped)
+         },
+-        offlineStateSelector = { itemId -> state.offlineStates[itemId].asWidgetStatus() },
++        offlineStateSelector = { item ->
++          val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
++          download.asWidgetStatus()
++        },
+         mediaProgressSelector = { item -> state.progressStates[item.progressKey] },
+         isPlayingSelector = { item ->
+           val session = state.currentSession
+@@ -300,7 +330,7 @@ private fun LoadedContent(
+   onRemove: (Playlist.Item.Expanded) -> Unit,
+   onReorderItem: suspend (fromKey: String, toKey: String) -> Unit,
+   onReorderStopped: () -> Unit,
+-  offlineStateSelector: (LibraryItemId) -> OfflineStatus,
++  offlineStateSelector: (Playlist.Item.Expanded) -> OfflineStatus,
+   mediaProgressSelector: (Playlist.Item.Expanded) -> MediaProgress?,
+   isPlayingSelector: (Playlist.Item.Expanded) -> Boolean,
+   modifier: Modifier = Modifier,
+@@ -335,7 +365,7 @@ private fun LoadedContent(
+           item = item,
+           sharedTransitionKey = item.key + name,
+           sharedTransitionZIndex = (items.size - index) + 1f,
+-          offlineStatus = offlineStateSelector(item.libraryItem.id),
++          offlineStatus = offlineStateSelector(item),
+           mediaProgress = mediaProgressSelector(item),
+           isPlaying = isPlayingSelector(item),
+           onClick = {
+diff --git a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
+index 771a6fac..c9c42142 100644
+--- a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
++++ b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
+@@ -24,7 +24,7 @@ data class PlaylistDetailUiState(
+   val playlistState: LoadState<out Playlist>,
+   val playlistContentState: LoadState<out List<Playlist.Item.Expanded>>,
+   val playlistItems: List<Playlist.Item.Expanded>,
+-  val offlineStates: Map<LibraryItemId, OfflineDownload>,
++  val offlineStates: Map<String, OfflineDownload>,
+   val progressStates: Map<MediaProgressKey, MediaProgress>,
+   /** Items that "Mark all as finished" would change. */
+   val unfinishedCount: Int,
+@@ -43,6 +43,7 @@ sealed interface PlaylistDetailUiEvent : CircuitUiEvent {
+   data class PlayClick(val item: Playlist.Item.Expanded) : PlaylistDetailUiEvent
+   data class RemoveItem(val item: Playlist.Item.Expanded) : PlaylistDetailUiEvent
+   data class DownloadAll(val doNotShowAgain: Boolean = true) : PlaylistDetailUiEvent
++  data class DownloadItems(val items: List<Playlist.Item.Expanded>) : PlaylistDetailUiEvent
+ 
+   data object PlayAll : PlaylistDetailUiEvent
+   data object ReorderStopped : PlaylistDetailUiEvent
+diff --git a/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt b/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
+index 9177a149..e7b3e4c7 100644
+--- a/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
++++ b/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
+@@ -46,6 +46,7 @@ class PlaylistDetailPresenterTest {
+   private val sessionsRepository = FakeSessionsRepository()
+   private val playbackController = FakePlaybackController()
+   private val playbackHistoryRepository = FakePlaybackHistoryRepository()
++  private val downloadManager = FakeOfflineDownloadManager()
+ 
+   private fun presenter(userScope: CoroutineScope) = PlaylistDetailPresenter(
+     screen = screen,
+@@ -55,7 +56,7 @@ class PlaylistDetailPresenterTest {
+     playbackController = playbackController,
+     sessionsRepository = sessionsRepository,
+     sessionQueue = FakeSessionQueue(),
+-    downloadManager = FakeOfflineDownloadManager(),
++    downloadManager = downloadManager,
+     userRepository = FakeUserRepository(),
+     libraryViewSettings = TestLibraryViewSettings(),
+     mediaProgressRepository = mediaProgressRepository,
+@@ -213,6 +214,23 @@ class PlaylistDetailPresenterTest {
+     fromPosition = Duration.ZERO,
+     toPosition = null,
+   )
++
++  @Test
++  fun downloadItems_passesItemsToOfflineDownloadManager() = runTest {
++    val bookItem = item("book-1", index = 0)
++    playlistsRepository.playlistItemsFlow.value = listOf(bookItem)
++
++    presenter.test {
++      val state = awaitItemMatching { it.playlistItems.size == 1 }
++
++      state.eventSink(PlaylistDetailUiEvent.DownloadItems(listOf(bookItem)))
++
++      assertThat(downloadManager.invocations.filterIsInstance<FakeOfflineDownloadManager.Invocation.Download>())
++        .containsExactly(FakeOfflineDownloadManager.Invocation.Download(bookItem.libraryItem))
++
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
+ }
+ 
+ private typealias MarkAllFinished = FakeMediaProgressRepository.Invocation.MarkAllFinished
 diff --git a/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt b/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt
 index fd4031b1..e8274f7d 100644
 --- a/features/podcasts/impl/src/commonMain/kotlin/app/campfire/podcasts/paging/RecentEpisodesRemoteMediator.kt
@@ -7213,6 +7537,188 @@ index 6f5e1d90..e46259a1 100644
    data object MarkSeriesNotFinished : SeriesDetailUiEvent
 +  data class DownloadSeries(val items: List<LibraryItem>) : SeriesDetailUiEvent
  }
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/ConfirmDownloadSeriesDialog.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/ConfirmDownloadSeriesDialog.kt
+new file mode 100644
+index 00000000..c4318606
+--- /dev/null
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/ConfirmDownloadSeriesDialog.kt
+@@ -0,0 +1,176 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.series.ui.detail.composables
++
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Checkbox
++import androidx.compose.material3.HorizontalDivider
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.SpanStyle
++import androidx.compose.ui.text.buildAnnotatedString
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.withStyle
++import androidx.compose.ui.unit.dp
++import app.campfire.core.extensions.asReadableBytes
++import app.campfire.core.model.LibraryItem
++import campfire.features.series.ui.generated.resources.Res
++import campfire.features.series.ui.generated.resources.dialog_action_cancel
++import campfire.features.series.ui.generated.resources.dialog_action_download
++import campfire.features.series.ui.generated.resources.dialog_action_ok
++import campfire.features.series.ui.generated.resources.dialog_download_series_all_downloaded_message
++import campfire.features.series.ui.generated.resources.dialog_download_series_all_downloaded_title
++import campfire.features.series.ui.generated.resources.dialog_download_series_all_finished_prefix
++import campfire.features.series.ui.generated.resources.dialog_download_series_books_count
++import campfire.features.series.ui.generated.resources.dialog_download_series_completed_books_count
++import campfire.features.series.ui.generated.resources.dialog_download_series_title
++import campfire.features.series.ui.generated.resources.dialog_download_series_unlistened_books_count
++import org.jetbrains.compose.resources.pluralStringResource
++import org.jetbrains.compose.resources.stringResource
++
++@Composable
++internal fun ConfirmDownloadSeriesDialog(
++  unlistenedItems: List<LibraryItem>,
++  completedItems: List<LibraryItem>,
++  onConfirm: (List<LibraryItem>) -> Unit,
++  onDismissRequest: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  val allAlreadyDownloaded = unlistenedItems.isEmpty() && completedItems.isEmpty()
++
++  if (allAlreadyDownloaded) {
++    AlertDialog(
++      modifier = modifier,
++      onDismissRequest = onDismissRequest,
++      title = { Text(stringResource(Res.string.dialog_download_series_all_downloaded_title)) },
++      text = { Text(stringResource(Res.string.dialog_download_series_all_downloaded_message)) },
++      confirmButton = {
++        TextButton(onClick = onDismissRequest) {
++          Text(stringResource(Res.string.dialog_action_ok))
++        }
++      },
++    )
++    return
++  }
++
++  var includeCompleted by remember { mutableStateOf(false) }
++
++  val targetItems = remember(includeCompleted, unlistenedItems, completedItems) {
++    if (unlistenedItems.isEmpty()) {
++      completedItems
++    } else if (includeCompleted) {
++      unlistenedItems + completedItems
++    } else {
++      unlistenedItems
++    }
++  }
++
++  val totalBytes = remember(targetItems) {
++    targetItems.sumOf { it.media.sizeInBytes }
++  }
++
++  AlertDialog(
++    modifier = modifier,
++    onDismissRequest = onDismissRequest,
++    title = { Text(stringResource(Res.string.dialog_download_series_title)) },
++    text = {
++      Column {
++        if (unlistenedItems.isNotEmpty()) {
++          val countText = if (includeCompleted) {
++            pluralStringResource(
++              Res.plurals.dialog_download_series_books_count,
++              targetItems.size,
++              targetItems.size,
++            )
++          } else {
++            pluralStringResource(
++              Res.plurals.dialog_download_series_unlistened_books_count,
++              unlistenedItems.size,
++              unlistenedItems.size,
++            )
++          }
++          Text(
++            buildAnnotatedString {
++              append("Download ")
++              withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
++                append(countText)
++              }
++              append(" (~${totalBytes.asReadableBytes()})?")
++            },
++          )
++
++          if (completedItems.isNotEmpty()) {
++            Spacer(Modifier.height(16.dp))
++            HorizontalDivider()
++            Spacer(Modifier.height(8.dp))
++            Row(
++              verticalAlignment = Alignment.CenterVertically,
++              modifier = Modifier
++                .fillMaxWidth()
++                .clickable { includeCompleted = !includeCompleted }
++                .padding(vertical = 4.dp),
++            ) {
++              val completedLabel = pluralStringResource(
++                Res.plurals.dialog_download_series_completed_books_count,
++                completedItems.size,
++                completedItems.size,
++              )
++              Text(
++                text = "Include $completedLabel",
++                style = MaterialTheme.typography.bodyMedium,
++                modifier = Modifier.weight(1f),
++              )
++              Checkbox(
++                checked = includeCompleted,
++                onCheckedChange = { includeCompleted = it },
++              )
++            }
++          }
++        } else {
++          val countText = pluralStringResource(
++            Res.plurals.dialog_download_series_books_count,
++            completedItems.size,
++            completedItems.size,
++          )
++          Text(
++            buildAnnotatedString {
++              append(stringResource(Res.string.dialog_download_series_all_finished_prefix))
++              withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
++                append(countText)
++              }
++              append(" (~${totalBytes.asReadableBytes()})?")
++            },
++          )
++        }
++      }
++    },
++    confirmButton = {
++      TextButton(
++        onClick = { onConfirm(targetItems) },
++      ) {
++        Text("${stringResource(Res.string.dialog_action_download)} (${targetItems.size})")
++      }
++    },
++    dismissButton = {
++      TextButton(onClick = onDismissRequest) {
++        Text(stringResource(Res.string.dialog_action_cancel))
++      }
++    },
++  )
++}
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
 index de787f8e..3106b180 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
@@ -9976,7 +10482,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..390a3ff6 100644
+index e42923f9..9757a661 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9984,13 +10490,13 @@ index e42923f9..390a3ff6 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.45-rc1
++campfire.version=1.2.45-rc2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024501
++campfire.versionCode=1024502
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

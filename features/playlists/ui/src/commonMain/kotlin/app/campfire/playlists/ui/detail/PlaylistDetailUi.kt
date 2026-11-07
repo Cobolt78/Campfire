@@ -56,7 +56,8 @@ import app.campfire.common.compose.widgets.ItemCollectionSharedTransitionKey
 import app.campfire.common.compose.widgets.LoadingListState
 import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
-import app.campfire.common.compose.widgets.dialog.ConfirmDownloadDialog
+import app.campfire.audioplayer.offline.OfflineDownload
+import app.campfire.playlists.ui.detail.composables.ConfirmDownloadPlaylistDialog
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.LibraryItemId
@@ -131,31 +132,61 @@ fun PlaylistDetail(
     )
   }
 
+  val distinctPlaylistItems = remember(state.playlistItems) {
+    state.playlistItems.distinctBy { it.key }
+  }
+
+  val unlistenedDownloadable = remember(distinctPlaylistItems, state.offlineStates, state.progressStates) {
+    distinctPlaylistItems.filter { item ->
+      val isFinished = state.progressStates[item.progressKey]?.isFinished == true
+      val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
+      val isDownloaded = download?.let {
+        it.state == OfflineDownload.State.Completed || it.isActive
+      } == true
+      !isFinished && !isDownloaded
+    }
+  }
+
+  val completedDownloadable = remember(distinctPlaylistItems, state.offlineStates, state.progressStates) {
+    distinctPlaylistItems.filter { item ->
+      val isFinished = state.progressStates[item.progressKey]?.isFinished == true
+      val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
+      val isDownloaded = download?.let {
+        it.state == OfflineDownload.State.Completed || it.isActive
+      } == true
+      isFinished && !isDownloaded
+    }
+  }
+
   var showConfirmDownloadDialog by remember { mutableStateOf(false) }
-  var doNotShowDownloadConfirmationAgain by remember { mutableStateOf(false) }
-  val postNotificationPermissionState = rememberPostNotificationPermissionState {
-    if (it) {
-      state.eventSink(PlaylistDetailUiEvent.DownloadAll(doNotShowDownloadConfirmationAgain))
+  var pendingDownloadItems by remember { mutableStateOf<List<Playlist.Item.Expanded>?>(null) }
+  val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
+    if (granted) {
+      pendingDownloadItems?.let { items ->
+        state.eventSink(PlaylistDetailUiEvent.DownloadItems(items))
+      }
+      pendingDownloadItems = null
       showConfirmDownloadDialog = false
     }
   }
 
   if (showConfirmDownloadDialog) {
-    val downloadConfirmItems = remember(state.playlistItems) {
-      state.playlistItems.map { it.libraryItem }.distinctBy { it.id }
-    }
-    ConfirmDownloadDialog(
-      downloadConfirmItems,
-      onConfirm = { doNotShowAgain ->
+    ConfirmDownloadPlaylistDialog(
+      unlistenedItems = unlistenedDownloadable,
+      completedItems = completedDownloadable,
+      onConfirm = { itemsToDownload ->
         if (postNotificationPermissionState is PermissionState.Granted) {
-          state.eventSink(PlaylistDetailUiEvent.DownloadAll(doNotShowAgain))
+          state.eventSink(PlaylistDetailUiEvent.DownloadItems(itemsToDownload))
           showConfirmDownloadDialog = false
         } else {
-          doNotShowDownloadConfirmationAgain = doNotShowAgain
+          pendingDownloadItems = itemsToDownload
           postNotificationPermissionState.launchPermissionRequest()
         }
       },
-      onDismissRequest = { showConfirmDownloadDialog = false },
+      onDismissRequest = {
+        showConfirmDownloadDialog = false
+        pendingDownloadItems = null
+      },
     )
   }
 
@@ -194,11 +225,7 @@ fun PlaylistDetail(
           }
         },
         onDownloadClick = {
-          if (state.showConfirmDownloadDialog) {
-            showConfirmDownloadDialog = true
-          } else {
-            state.eventSink(PlaylistDetailUiEvent.DownloadAll())
-          }
+          showConfirmDownloadDialog = true
         }.takeIf { state.canDownload },
         isReordering = isReordering,
         onReorderChange = { isReordering = it },
@@ -248,7 +275,10 @@ fun PlaylistDetail(
         onReorderStopped = {
           state.eventSink(PlaylistDetailUiEvent.ReorderStopped)
         },
-        offlineStateSelector = { itemId -> state.offlineStates[itemId].asWidgetStatus() },
+        offlineStateSelector = { item ->
+          val download = state.offlineStates[item.key] ?: state.offlineStates[item.libraryItemId]
+          download.asWidgetStatus()
+        },
         mediaProgressSelector = { item -> state.progressStates[item.progressKey] },
         isPlayingSelector = { item ->
           val session = state.currentSession
@@ -300,7 +330,7 @@ private fun LoadedContent(
   onRemove: (Playlist.Item.Expanded) -> Unit,
   onReorderItem: suspend (fromKey: String, toKey: String) -> Unit,
   onReorderStopped: () -> Unit,
-  offlineStateSelector: (LibraryItemId) -> OfflineStatus,
+  offlineStateSelector: (Playlist.Item.Expanded) -> OfflineStatus,
   mediaProgressSelector: (Playlist.Item.Expanded) -> MediaProgress?,
   isPlayingSelector: (Playlist.Item.Expanded) -> Boolean,
   modifier: Modifier = Modifier,
@@ -335,7 +365,7 @@ private fun LoadedContent(
           item = item,
           sharedTransitionKey = item.key + name,
           sharedTransitionZIndex = (items.size - index) + 1f,
-          offlineStatus = offlineStateSelector(item.libraryItem.id),
+          offlineStatus = offlineStateSelector(item),
           mediaProgress = mediaProgressSelector(item),
           isPlaying = isPlayingSelector(item),
           onClick = {
