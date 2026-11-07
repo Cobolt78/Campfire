@@ -10,6 +10,7 @@ import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.Playlist
 import app.campfire.core.model.Session
+import app.campfire.playlists.ui.detail.composables.PlaylistSortOption
 import app.campfire.user.api.MediaProgressKey
 import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
@@ -44,6 +45,7 @@ sealed interface PlaylistDetailUiEvent : CircuitUiEvent {
   data class RemoveItem(val item: Playlist.Item.Expanded) : PlaylistDetailUiEvent
   data class DownloadAll(val doNotShowAgain: Boolean = true) : PlaylistDetailUiEvent
   data class DownloadItems(val items: List<Playlist.Item.Expanded>) : PlaylistDetailUiEvent
+  data class SortPlaylist(val sortOption: PlaylistSortOption) : PlaylistDetailUiEvent
 
   data object PlayAll : PlaylistDetailUiEvent
   data object ReorderStopped : PlaylistDetailUiEvent

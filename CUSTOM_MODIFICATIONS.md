@@ -84,6 +84,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
 78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
 79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
+80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
 
 ---
 
@@ -2308,6 +2309,37 @@ Tapping the download button on the Playlist Detail screen floating toolbar often
 * features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
 * features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
 * features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 80. Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)
+
+### Problem Description
+Previously, the dedicated Offline Downloads screen lacked sorting by audio length/duration and release date (date published). In addition, while playlists supported manual drag-and-drop reordering, there was no automated sorting capability to quickly organize large playlists (by title, author, length, date added, or release year), and users needed a safeguard to prevent unintentionally overwriting manual track sequences.
+
+### Solution & Implementation
+1. **Downloads Screen Sorting Options (`features/libraries/ui/.../downloads/`)**:
+   - Added `DownloadsSort.Duration` ("Length") and `DownloadsSort.PublishYear` ("Date Published") to `DownloadsSort`.
+   - In `DownloadsPresenter.kt`, implemented sorting by `media.durationInMillis` and `media.metadata.publishedYear` with secondary title tie-breaker and ascending/descending toggle support.
+2. **Playlist Detail Automated Sorting (`features/playlists/ui/.../detail/`)**:
+   - Added `PlaylistSortMenu.kt` providing `PlaylistSortOption` with 10 sorting variations: Title (A–Z / Z–A), Author (A–Z / Z–A), Duration (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
+   - Added `ConfirmSortPlaylistDialog.kt` prompting the user before applying the sort: *"Sorting by '[Sort Name]' will reorder the items in this playlist and override your custom order. This will be saved to your server. Do you want to continue?"*.
+   - Added `PlaylistDetailUiEvent.SortPlaylist` in `PlaylistDetailUiState.kt` and handled it in `PlaylistDetailPresenter.kt`, updating local UI state and persisting re-indexed playlist items to `playlistsRepository.updatePlaylist`.
+   - Added unit test `sortPlaylist_reordersItemsAndSavesToRepository` in `PlaylistDetailPresenterTest.kt`.
+
+### Modified Files:
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
+* features/playlists/ui/src/commonMain/composeResources/values/playlists_ui_strings.xml
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/composables/PlaylistSortMenu.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenter.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUi.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
+* features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
+* features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/list/FakePlaylistsRepository.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

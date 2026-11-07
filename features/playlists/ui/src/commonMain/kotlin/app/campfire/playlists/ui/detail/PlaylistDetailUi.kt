@@ -66,6 +66,9 @@ import app.campfire.core.model.Playlist
 import app.campfire.core.offline.OfflineStatus
 import app.campfire.playlists.api.screen.PlaylistDetailScreen
 import app.campfire.playlists.ui.detail.composables.ConfirmPlaylistProgressDialog
+import app.campfire.playlists.ui.detail.composables.ConfirmSortPlaylistDialog
+import app.campfire.playlists.ui.detail.composables.PlaylistSortMenu
+import app.campfire.playlists.ui.detail.composables.PlaylistSortOption
 import app.campfire.playlists.ui.detail.composables.PlaylistFloatingToolbar
 import app.campfire.playlists.ui.detail.composables.PlaylistHeader
 import app.campfire.playlists.ui.detail.composables.PlaylistListItem
@@ -129,6 +132,18 @@ fun PlaylistDetail(
         )
       },
       onDismiss = { confirmProgressAction = null },
+    )
+  }
+
+  var pendingSortOption by remember { mutableStateOf<PlaylistSortOption?>(null) }
+  pendingSortOption?.let { sortOption ->
+    ConfirmSortPlaylistDialog(
+      sortOption = sortOption,
+      onConfirm = {
+        state.eventSink(PlaylistDetailUiEvent.SortPlaylist(sortOption))
+        pendingSortOption = null
+      },
+      onDismiss = { pendingSortOption = null },
     )
   }
 
@@ -200,6 +215,13 @@ fun PlaylistDetail(
         scrollBehavior = scrollBehavior,
         onBack = { state.eventSink(PlaylistDetailUiEvent.Back) },
         actions = {
+          if (state.playlistItems.size > 1) {
+            PlaylistSortMenu(
+              onSortSelected = { sortOption ->
+                pendingSortOption = sortOption
+              },
+            )
+          }
           if (state.unfinishedCount > 0 || state.finishedCount > 0) {
             PlaylistProgressMenu(
               unfinishedCount = state.unfinishedCount,

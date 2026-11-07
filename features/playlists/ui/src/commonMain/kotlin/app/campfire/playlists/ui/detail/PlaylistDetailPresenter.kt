@@ -262,6 +262,24 @@ class PlaylistDetailPresenter(
           }
         }
 
+        is PlaylistDetailUiEvent.SortPlaylist -> {
+          analytics.send(ActionEvent("playlist", "sort"))
+          val comparator = event.sortOption.comparator
+          val sorted = playlistItems.sortedWith(comparator)
+          playlistItems.clear()
+          playlistItems.addAll(sorted)
+          scope.launch {
+            playlistsRepository.updatePlaylist(
+              playlistId = screen.playlistId,
+              name = playlistName,
+              description = playlistDescription,
+              items = playlistItems.mapIndexed { index, item ->
+                Playlist.Item.Minified(index, item.libraryItemId, item.episodeId)
+              },
+            )
+          }
+        }
+
         PlaylistDetailUiEvent.MarkAllFinished -> {
           if (isUpdatingProgress || unfinishedKeys.isEmpty()) return@PlaylistDetailUiState
           analytics.send(ActionEvent("playlist", "mark_finished"))

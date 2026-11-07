@@ -78,4 +78,11 @@
     <item quantity="one">%1$d completed item</item>
     <item quantity="other">%1$d completed items</item>
   </plurals>
+  <!-- Playlist Sorting strings -->
+  <string name="action_sort_playlist">Sort playlist</string>
+  <string name="dialog_sort_playlist_title">Sort playlist?</string>
+  <string name="dialog_sort_playlist_message">Sorting by "%1$s" will reorder the items in this playlist and override your custom order. This will be saved to your server.
+
+Do you want to continue?</string>
+  <string name="dialog_action_sort">Sort</string>
 </resources>

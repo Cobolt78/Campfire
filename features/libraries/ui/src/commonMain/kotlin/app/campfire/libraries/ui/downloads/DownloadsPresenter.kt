@@ -106,6 +106,12 @@ class DownloadsPresenter(
         DownloadsSort.Author -> compareBy(String.CASE_INSENSITIVE_ORDER) {
           it.libraryItem.media.metadata.authorName ?: ""
         }
+        DownloadsSort.Duration -> compareBy<DownloadedBookItem> {
+          it.libraryItem.media.durationInMillis
+        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
+        DownloadsSort.PublishYear -> compareBy<DownloadedBookItem> {
+          it.libraryItem.media.metadata.publishedYear?.toIntOrNull() ?: 0
+        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
         DownloadsSort.Size -> compareBy<DownloadedBookItem> {
           it.download.contentLength.coerceAtLeast(0L)
         }

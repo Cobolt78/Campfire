@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc3] - 2026-11-08
+
+### Added
+
+- **Enhanced Sorting on Offline Downloads Screen**:
+  - Added "Length" (Duration) and "Date Published" (Release Year) sorting options to the dedicated Downloads screen with full ascending/descending toggle support.
+
+- **Automated Playlist Sorting with Custom Order Safety Prompt**:
+  - Added a dedicated "Sort playlist" action menu to the Playlist Detail top bar.
+  - Supports sorting playlist items by Title (A–Z / Z–A), Author (A–Z / Z–A), Length (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
+  - Includes a clear confirmation dialog alerting users that automated sorting will reorder the playlist items and update their custom order on the server.
+
 ## [1.2.45-rc2] - 2026-11-08
 
 ### Added

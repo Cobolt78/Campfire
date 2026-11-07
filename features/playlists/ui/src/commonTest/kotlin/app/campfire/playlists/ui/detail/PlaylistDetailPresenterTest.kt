@@ -15,7 +15,10 @@ import app.campfire.core.coroutines.CoroutineScopeHolder
 import app.campfire.core.model.PlaybackActionType
 import app.campfire.core.model.Playlist
 import app.campfire.home.ui.libraryItem
+import app.campfire.home.ui.media
+import app.campfire.home.ui.mediaMetadata
 import app.campfire.playlists.api.screen.PlaylistDetailScreen
+import app.campfire.playlists.ui.detail.composables.PlaylistSortOption
 import app.campfire.playlists.ui.list.FakePlaylistsRepository
 import app.campfire.sessions.test.FakeSessionQueue
 import app.campfire.sessions.test.FakeSessionsRepository
@@ -198,11 +201,16 @@ class PlaylistDetailPresenterTest {
     libraryItemId: String,
     index: Int,
     episodeId: String? = null,
+    title: String? = null,
   ) = Playlist.Item.Expanded(
     index = index,
     libraryItemId = libraryItemId,
     episodeId = episodeId,
-    libraryItem = libraryItem(id = libraryItemId),
+    libraryItem = if (title != null) {
+      libraryItem(id = libraryItemId, media = media(metadata = mediaMetadata(title = title)))
+    } else {
+      libraryItem(id = libraryItemId)
+    },
   )
 
   private fun playAction(libraryItemId: String) = PlaybackAction(
@@ -227,6 +235,26 @@ class PlaylistDetailPresenterTest {
 
       assertThat(downloadManager.invocations.filterIsInstance<FakeOfflineDownloadManager.Invocation.Download>())
         .containsExactly(FakeOfflineDownloadManager.Invocation.Download(bookItem.libraryItem))
+
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun sortPlaylist_reordersItemsAndSavesToRepository() = runTest {
+    val itemZ = item("z-item", index = 0, title = "Zebra")
+    val itemA = item("a-item", index = 1, title = "Antelope")
+    playlistsRepository.playlistItemsFlow.value = listOf(itemZ, itemA)
+
+    presenter.test {
+      val state = awaitItemMatching { it.playlistItems.size == 2 }
+
+      state.eventSink(PlaylistDetailUiEvent.SortPlaylist(PlaylistSortOption.TitleAsc))
+
+      val sortedState = awaitItemMatching { it.playlistItems.first().libraryItemId == "a-item" }
+      assertThat(sortedState.playlistItems.map { it.libraryItemId }).containsExactly("a-item", "z-item")
+      assertThat(playlistsRepository.updatePlaylistInvocations.last().map { it.libraryItemId })
+        .containsExactly("a-item", "z-item")
 
       cancelAndIgnoreRemainingEvents()
     }

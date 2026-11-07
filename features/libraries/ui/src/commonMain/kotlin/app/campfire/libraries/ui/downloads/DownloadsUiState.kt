@@ -22,6 +22,8 @@ enum class DownloadsSort(val label: String) {
   DateAdded("Date Added"),
   Title("Title A–Z"),
   Author("Author A–Z"),
+  Duration("Length"),
+  PublishYear("Date Published"),
   Size("File Size"),
 }
 

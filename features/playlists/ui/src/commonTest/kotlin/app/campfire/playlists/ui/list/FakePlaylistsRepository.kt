@@ -36,12 +36,16 @@ class FakePlaylistsRepository(
     items: List<Playlist.Item.Minified>,
   ): Result<PlaylistId> = TODO()
 
+  val updatePlaylistInvocations = mutableListOf<List<Playlist.Item.Minified>>()
   override suspend fun updatePlaylist(
     playlistId: PlaylistId,
     name: String,
     description: String?,
     items: List<Playlist.Item.Minified>,
-  ): Result<Unit> = TODO()
+  ): Result<Unit> {
+    updatePlaylistInvocations += items
+    return Result.success(Unit)
+  }
 
   override suspend fun deletePlaylist(playlistId: PlaylistId): Result<Unit> = TODO()
 
