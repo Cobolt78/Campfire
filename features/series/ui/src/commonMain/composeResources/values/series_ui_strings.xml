@@ -30,4 +30,24 @@
   <string name="dialog_action_mark_finished">Mark finished</string>
   <string name="dialog_action_mark_not_finished">Mark not finished</string>
   <string name="dialog_action_cancel">Cancel</string>
+
+  <string name="action_download_series">Download series</string>
+  <string name="dialog_download_series_title">Download Series?</string>
+  <string name="dialog_download_series_all_downloaded_title">All Books Downloaded</string>
+  <string name="dialog_download_series_all_downloaded_message">All books in this series are already downloaded for offline listening.</string>
+  <string name="dialog_download_series_all_finished_prefix">You have completed all books in this series.\nDownload </string>
+  <plurals name="dialog_download_series_books_count">
+    <item quantity="one">%1$d book</item>
+    <item quantity="other">%1$d books</item>
+  </plurals>
+  <plurals name="dialog_download_series_unlistened_books_count">
+    <item quantity="one">%1$d unlistened book</item>
+    <item quantity="other">%1$d unlistened books</item>
+  </plurals>
+  <plurals name="dialog_download_series_completed_books_count">
+    <item quantity="one">%1$d completed book</item>
+    <item quantity="other">%1$d completed books</item>
+  </plurals>
+  <string name="dialog_action_download">Download</string>
+  <string name="dialog_action_ok">OK</string>
 </resources>

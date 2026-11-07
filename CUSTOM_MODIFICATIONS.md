@@ -82,6 +82,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
 76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
+78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
 
 ---
 
@@ -2236,6 +2237,42 @@ Previously, when a user logged out of Campfire, the logout use case completely p
 * data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
 * data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
 * features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)
+
+### Problem Description
+Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but had no whole-series download capabilities on the Series Detail screen. Users listening to extensive multi-book book series were forced to navigate into every individual book details screen one by one to trigger offline downloads. Furthermore, downloading an entire series blindly would re-download books the user had already completed or books already saved offline, consuming gigabytes of unnecessary device storage and bandwidth.
+
+### Solution & Implementation
+1. **Series Detail UI Download Actions**:
+   - Added a prominent `Download series` action icon button in the `CampfireTopAppBar` of `SeriesDetailUi.kt`.
+   - Added a `Download series` menu item in the 3-dot overflow menu `SeriesProgressMenu` in `SeriesProgressActions.kt`.
+2. **Smart Confirmation Dialog (`ConfirmDownloadSeriesDialog.kt`)**:
+   - Implemented an intuitive confirmation dialog that dynamically partitions owned series books:
+     - Automatically filters out books already completed (`userMediaProgress?.isFinished == true`) by default.
+     - Automatically filters out books already downloaded or actively downloading (`OfflineDownload.State.Completed` or `isActive == true`).
+   - Displays clear count and readable byte estimates (e.g. *"Download 4 unlistened books (~2.1 GB)?"*).
+   - Provides an interactive `"Include X completed books"` checkbox with dynamic real-time recalculation of total download bytes and button labels.
+   - Handles edge cases gracefully (e.g. all books finished, or all books already downloaded).
+   - Manages Android `POST_NOTIFICATIONS` runtime permission before dispatching downloads.
+3. **Presenter & Event Flow**:
+   - In `SeriesDetailPresenter.kt`, added `userRepository: UserRepository` to monitor `currentUser.canDownload`.
+   - Handled `SeriesDetailUiEvent.DownloadSeries(items)` to trigger `offlineDownloadManager.downloadAll(event.items)`.
+   - Added unit test `downloading series passes items to offlineDownloadManager` in `SeriesDetailPresenterTest.kt`.
+
+### Modified Files:
+* features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/ConfirmDownloadSeriesDialog.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
+* features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

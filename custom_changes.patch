@@ -11,14 +11,24 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..37e890e0 100644
+index 1dcbc292..f1a4ffba 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,366 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,376 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.45-rc1] - 2026-11-08
++
++### Added
++
++- **Smart Whole-Series Downloading with Unlistened Filtering**:
++  - Added a dedicated "Download series" button and 3-dot overflow menu action on the Series Detail screen.
++  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
++  - Added an interactive "Include completed books" toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
++  - Gracefully alerts the user if all books in the series are already downloaded.
++
 +## [1.2.44] - 2026-11-06
 +
 +### Added
@@ -383,10 +393,10 @@ index 1dcbc292..37e890e0 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..9d710429 100644
+index e460bea1..97df6a13 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,52 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,53 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -436,10 +446,11 @@ index e460bea1..9d710429 100644
 +75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
 +76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 +77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
++78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
  
  ---
  
-@@ -180,6 +226,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +227,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -447,7 +458,7 @@ index e460bea1..9d710429 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +426,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +427,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -484,7 +495,7 @@ index e460bea1..9d710429 100644
  
  ---
  
-@@ -891,8 +968,1274 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +969,1310 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -508,11 +519,11 @@ index e460bea1..9d710429 100644
 +   - Guarded `StoreUserRepository.userFlow` and `observeCurrentUser()` to return cached user state immediately when not logged in, eliminating unauthenticated `/api/me` network calls and preventing uncaught `StoreReadResponse.Error` exceptions on the Compose event loop.
 +5. **Audible Product URL International Redirect Override (`AudibleBookInfoProvider.kt`)**:
 +   - Appended `ipRedirectOverride=1` and `overrideBaseCountry=1` parameters to Audible product page URLs to prevent unwanted geo-redirection.
-+
+ 
 +---
-+
+ 
 +## 39. Existing Account Re-Authentication & Desktop Session Restore Fallback (v1.2.20)
-+
+ 
 +### Summary
 +Fixed a lockout bug where users attempting to log in on a previously registered server encountered the error `"You're already signed in to this server as <user>. Switch to that account, or sign out of it first."` despite entering the identical username. Additionally added an automatic session restore fallback in `DatabaseUserSessionRestorer` to recover the active account from the database if `deviceSettings.currentUserId` was lost or unset in `config.properties`.
 +
@@ -656,7 +667,7 @@ index e460bea1..9d710429 100644
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
 +
 +---
-+
+ 
 +## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
 +
 +### Summary
@@ -944,9 +955,9 @@ index e460bea1..9d710429 100644
 +* `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
 +
 +---
- 
++
 +## 53. Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)
- 
++
 +### Summary
 +Resolved scrolling hitching, card re-shuffling animations, and sudden upward screen snaps when browsing the Library, Recently Added, and other paged screens.
 +
@@ -961,7 +972,7 @@ index e460bea1..9d710429 100644
 +   - Checked if Page 0 returned from network has identical item IDs and total count as currently stored in SQLite: if unchanged (the case 95% of the time), returns early with zero database modifications or invalidations.
 +   - If Page 0 changed while the user is already scrolled past Page 0 (`anchorPosition >= pageSize`), only replaces Page 0 (`deletePage(page = 0)`), preserving Pages 1..N that the user is currently reading.
 +   - If the user is at the top of the list, performs a clean `deleteByInput` refresh.
-+
+ 
 +### Modified Files:
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryUi.kt`
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/paging/LibraryItemRemoteMediator.kt`
@@ -1202,7 +1213,7 @@ index e460bea1..9d710429 100644
 +* `gradle.properties`
 +
 +---
- 
++
 +## 62. Android Auto Single-File Chaptered Book Title Restoration (v1.2.32)
 +
 +### Problem Description
@@ -1224,7 +1235,7 @@ index e460bea1..9d710429 100644
 +   - `updatePlaylistMetadata()` now resolves the unformatted chapter title from `session.episode?.title ?: chapterTimeline?.chapterAt(overallTime.value)?.title`, ensuring real-time progress ticks keep the chapter and book title in sync.
 +4. **Defensive Title Deduplication (`MediaItemBuilder.formatChapterWithBookTitle`)**:
 +   - Added checks to prevent duplicate book titles if the chapter metadata already has the book title embedded (e.g. avoiding `Chapter 1 - Title - Title`).
- 
++
 +### Modified Files:
 +* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt`
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaItemBuilder.kt`
@@ -1453,7 +1464,7 @@ index e460bea1..9d710429 100644
 +   - Changed `appUpdateSource.checkForUpdates(force = false)` to `force = true` on both `HomeUiEvent.Refresh` and `HomeUiEvent.RefreshDiscoveries` so explicit user refresh gestures query GitHub immediately.
 +5. **Automatic Un-dismissal on Manual Check (`GitHubAppUpdateSource.kt`)**:
 +   - In `checkForUpdates(force = true)`, resets `appStateSettings.appUpdateDismissedVersionCode = 0L` whenever an update is found or cached, ensuring manual checks always un-suppress the update cards on both the home feed and navigation drawer.
- 
++
 +### Modified Files:
 +* app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 +* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
@@ -1756,6 +1767,42 @@ index e460bea1..9d710429 100644
 +* data/account/impl/src/commonMain/kotlin/app/campfire/account/server/LogoutUseCase.kt
 +* data/account/impl/src/commonTest/kotlin/app/campfire/account/restore/AccountRestoreStoreTest.kt
 +* features/auth/ui/src/commonMain/composeResources/values/auth_ui_strings.xml
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++---
++
++## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)
++
++### Problem Description
++Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but had no whole-series download capabilities on the Series Detail screen. Users listening to extensive multi-book book series were forced to navigate into every individual book details screen one by one to trigger offline downloads. Furthermore, downloading an entire series blindly would re-download books the user had already completed or books already saved offline, consuming gigabytes of unnecessary device storage and bandwidth.
++
++### Solution & Implementation
++1. **Series Detail UI Download Actions**:
++   - Added a prominent `Download series` action icon button in the `CampfireTopAppBar` of `SeriesDetailUi.kt`.
++   - Added a `Download series` menu item in the 3-dot overflow menu `SeriesProgressMenu` in `SeriesProgressActions.kt`.
++2. **Smart Confirmation Dialog (`ConfirmDownloadSeriesDialog.kt`)**:
++   - Implemented an intuitive confirmation dialog that dynamically partitions owned series books:
++     - Automatically filters out books already completed (`userMediaProgress?.isFinished == true`) by default.
++     - Automatically filters out books already downloaded or actively downloading (`OfflineDownload.State.Completed` or `isActive == true`).
++   - Displays clear count and readable byte estimates (e.g. *"Download 4 unlistened books (~2.1 GB)?"*).
++   - Provides an interactive `"Include X completed books"` checkbox with dynamic real-time recalculation of total download bytes and button labels.
++   - Handles edge cases gracefully (e.g. all books finished, or all books already downloaded).
++   - Manages Android `POST_NOTIFICATIONS` runtime permission before dispatching downloads.
++3. **Presenter & Event Flow**:
++   - In `SeriesDetailPresenter.kt`, added `userRepository: UserRepository` to monitor `currentUser.canDownload`.
++   - Handled `SeriesDetailUiEvent.DownloadSeries(items)` to trigger `offlineDownloadManager.downloadAll(event.items)`.
++   - Added unit test `downloading series passes items to offlineDownloadManager` in `SeriesDetailPresenterTest.kt`.
++
++### Modified Files:
++* features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/ConfirmDownloadSeriesDialog.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
++* features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -6762,6 +6809,35 @@ index a32545b2..7bf86e56 100644
    }
  
    override suspend fun load(
+diff --git a/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml b/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
+index bab90470..67c5391d 100644
+--- a/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
++++ b/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
+@@ -30,4 +30,24 @@
+   <string name="dialog_action_mark_finished">Mark finished</string>
+   <string name="dialog_action_mark_not_finished">Mark not finished</string>
+   <string name="dialog_action_cancel">Cancel</string>
++
++  <string name="action_download_series">Download series</string>
++  <string name="dialog_download_series_title">Download Series?</string>
++  <string name="dialog_download_series_all_downloaded_title">All Books Downloaded</string>
++  <string name="dialog_download_series_all_downloaded_message">All books in this series are already downloaded for offline listening.</string>
++  <string name="dialog_download_series_all_finished_prefix">You have completed all books in this series.\nDownload </string>
++  <plurals name="dialog_download_series_books_count">
++    <item quantity="one">%1$d book</item>
++    <item quantity="other">%1$d books</item>
++  </plurals>
++  <plurals name="dialog_download_series_unlistened_books_count">
++    <item quantity="one">%1$d unlistened book</item>
++    <item quantity="other">%1$d unlistened books</item>
++  </plurals>
++  <plurals name="dialog_download_series_completed_books_count">
++    <item quantity="one">%1$d completed book</item>
++    <item quantity="other">%1$d completed books</item>
++  </plurals>
++  <string name="dialog_action_download">Download</string>
++  <string name="dialog_action_ok">OK</string>
+ </resources>
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 index 3de4de99..a78c8d59 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
@@ -6966,6 +7042,216 @@ index 081fb827..073553c6 100644
    val isLoading: Boolean,
    val sortMode: ContinueSeriesSort,
    val sortAscending: Boolean,
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
+index c6d76c4c..321863b4 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenter.kt
+@@ -35,6 +35,7 @@ import app.campfire.core.model.loggableId
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.series.api.SeriesRepository
+ import app.campfire.sessions.api.SessionsRepository
++import app.campfire.user.api.UserRepository
+ import app.campfire.user.api.MediaProgressRepository
+ import com.slack.circuit.codegen.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+@@ -64,6 +65,7 @@ class SeriesDetailPresenter(
+   private val playbackHistoryRepository: PlaybackHistoryRepository,
+   @ForScope(UserScope::class) private val userScopeHolder: CoroutineScopeHolder,
+   private val analytics: Analytics,
++  private val userRepository: UserRepository,
+ ) : NonPausablePresenter<SeriesDetailUiState> {
+ 
+   @Suppress("UNCHECKED_CAST")
+@@ -132,6 +134,7 @@ class SeriesDetailPresenter(
+       seriesItems.partition { it.userMediaProgress?.isFinished == true }
+     }
+     var isUpdatingProgress by remember { mutableStateOf(false) }
++    val currentUser by userRepository.userFlow.collectAsState()
+ 
+     return SeriesDetailUiState(
+       seriesContentState = seriesContentState,
+@@ -140,6 +143,7 @@ class SeriesDetailPresenter(
+       unfinishedCount = unfinishedItems.size,
+       finishedCount = finishedItems.size,
+       isUpdatingProgress = isUpdatingProgress,
++      canDownload = currentUser.canDownload,
+     ) { event ->
+       when (event) {
+         SeriesDetailUiEvent.Back -> navigator.pop()
+@@ -171,6 +175,11 @@ class SeriesDetailPresenter(
+             ),
+           )
+         }
++        is SeriesDetailUiEvent.DownloadSeries -> {
++          if (!currentUser.canDownload || event.items.isEmpty()) return@SeriesDetailUiState
++          analytics.send(ActionEvent("series", "download"))
++          offlineDownloadManager.downloadAll(event.items)
++        }
+       }
+     }
+   }
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
+index 43414db0..5d9bcf48 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUi.kt
+@@ -32,6 +32,16 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.input.nestedscroll.nestedScroll
+ import androidx.compose.ui.unit.dp
++import androidx.compose.material3.Icon
++import androidx.compose.material3.IconButton
++import app.campfire.audioplayer.offline.OfflineDownload
++import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.Download
++import app.campfire.common.compose.permission.PermissionState
++import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
++import app.campfire.common.compose.widgets.IconButtonTooltip
++import app.campfire.series.ui.detail.composables.ConfirmDownloadSeriesDialog
++import campfire.features.series.ui.generated.resources.action_download_series
+ import app.campfire.audioplayer.offline.asWidgetStatus
+ import app.campfire.common.compose.CampfireWindowInsets
+ import app.campfire.common.compose.extensions.plus
+@@ -73,6 +83,34 @@ fun SeriesDetail(
+ ) = SharedElementTransitionScope {
+   val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
+   var confirmProgressAction by remember { mutableStateOf<SeriesProgressAction?>(null) }
++  val seriesItems = state.seriesContentState.dataOrNull.orEmpty()
++
++  val unlistenedDownloadable = remember(seriesItems, state.offlineStates) {
++    seriesItems.filter { item ->
++      val dl = state.offlineStates[item.id]
++      val isDownloadedOrActive = dl?.state == OfflineDownload.State.Completed || dl?.isActive == true
++      item.userMediaProgress?.isFinished != true && !isDownloadedOrActive
++    }
++  }
++
++  val completedDownloadable = remember(seriesItems, state.offlineStates) {
++    seriesItems.filter { item ->
++      val dl = state.offlineStates[item.id]
++      val isDownloadedOrActive = dl?.state == OfflineDownload.State.Completed || dl?.isActive == true
++      item.userMediaProgress?.isFinished == true && !isDownloadedOrActive
++    }
++  }
++
++  var showDownloadDialog by remember { mutableStateOf(false) }
++  var pendingDownloadItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
++
++  val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
++    if (granted && pendingDownloadItems.isNotEmpty()) {
++      state.eventSink(SeriesDetailUiEvent.DownloadSeries(pendingDownloadItems))
++      pendingDownloadItems = emptyList()
++      showDownloadDialog = false
++    }
++  }
+ 
+   Scaffold(
+     topBar = {
+@@ -86,11 +124,24 @@ fun SeriesDetail(
+           NavigationBackButton(onClick = { state.eventSink(SeriesDetailUiEvent.Back) })
+         },
+         actions = {
++          if (state.canDownload && seriesItems.isNotEmpty()) {
++            val downloadLabel = stringResource(Res.string.action_download_series)
++            IconButtonTooltip(text = downloadLabel) {
++              IconButton(onClick = { showDownloadDialog = true }) {
++                Icon(
++                  CampfireIcons.Rounded.Download,
++                  contentDescription = downloadLabel,
++                )
++              }
++            }
++          }
+           if (state.unfinishedCount > 0 || state.finishedCount > 0) {
+             SeriesProgressMenu(
+               unfinishedCount = state.unfinishedCount,
+               finishedCount = state.finishedCount,
+               enabled = !state.isUpdatingProgress,
++              canDownload = state.canDownload && seriesItems.isNotEmpty(),
++              onDownloadClick = { showDownloadDialog = true },
+               onActionClick = { confirmProgressAction = it },
+             )
+           }
+@@ -131,6 +182,23 @@ fun SeriesDetail(
+     }
+   }
+ 
++  if (showDownloadDialog) {
++    ConfirmDownloadSeriesDialog(
++      unlistenedItems = unlistenedDownloadable,
++      completedItems = completedDownloadable,
++      onConfirm = { itemsToDownload ->
++        if (postNotificationPermissionState is PermissionState.Granted) {
++          state.eventSink(SeriesDetailUiEvent.DownloadSeries(itemsToDownload))
++          showDownloadDialog = false
++        } else {
++          pendingDownloadItems = itemsToDownload
++          postNotificationPermissionState.launchPermissionRequest()
++        }
++      },
++      onDismissRequest = { showDownloadDialog = false },
++    )
++  }
++
+   confirmProgressAction?.let { action ->
+     ConfirmSeriesProgressDialog(
+       action = action,
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
+index 6f5e1d90..e46259a1 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/SeriesDetailUiState.kt
+@@ -22,6 +22,7 @@ data class SeriesDetailUiState(
+   val finishedCount: Int = 0,
+   /** A whole-series progress change is still working through the books. */
+   val isUpdatingProgress: Boolean = false,
++  val canDownload: Boolean = false,
+   val eventSink: (SeriesDetailUiEvent) -> Unit,
+ ) : CircuitUiState
+ 
+@@ -36,4 +37,5 @@ sealed interface SeriesDetailUiEvent : CircuitUiEvent {
+   data class MissingBookClick(val url: String) : SeriesDetailUiEvent
+   data object MarkSeriesFinished : SeriesDetailUiEvent
+   data object MarkSeriesNotFinished : SeriesDetailUiEvent
++  data class DownloadSeries(val items: List<LibraryItem>) : SeriesDetailUiEvent
+ }
+diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
+index de787f8e..3106b180 100644
+--- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
++++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/detail/composables/SeriesProgressActions.kt
+@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Modifier
+ import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.Download
++import campfire.features.series.ui.generated.resources.action_download_series
+ import app.campfire.common.compose.icons.rounded.MarkFinished
+ import app.campfire.common.compose.icons.rounded.MoreVert
+ import app.campfire.common.compose.icons.rounded.Replay
+@@ -52,6 +54,8 @@ internal fun SeriesProgressMenu(
+   unfinishedCount: Int,
+   finishedCount: Int,
+   enabled: Boolean,
++  canDownload: Boolean = false,
++  onDownloadClick: (() -> Unit)? = null,
+   onActionClick: (SeriesProgressAction) -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+@@ -76,6 +80,16 @@ internal fun SeriesProgressMenu(
+       onDismissRequest = { expanded = false },
+       shape = MaterialTheme.shapes.medium,
+     ) {
++      if (canDownload && onDownloadClick != null) {
++        DropdownMenuItem(
++          text = { Text(stringResource(Res.string.action_download_series)) },
++          leadingIcon = { Icon(CampfireIcons.Rounded.Download, contentDescription = null) },
++          onClick = {
++            expanded = false
++            onDownloadClick()
++          },
++        )
++      }
+       if (unfinishedCount > 0) {
+         DropdownMenuItem(
+           text = { Text(stringResource(Res.string.menu_item_mark_series_finished)) },
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt
 index 034a7c60..492e07c1 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesUi.kt
@@ -6997,6 +7283,75 @@ index 034a7c60..492e07c1 100644
    ) { paddingValues ->
      LoadedState(
        totalCount = state.totalCount,
+diff --git a/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt b/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
+index ac925c2e..f84453d8 100644
+--- a/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
++++ b/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
+@@ -24,6 +24,8 @@ import app.campfire.home.ui.media
+ import app.campfire.home.ui.mediaMetadata
+ import app.campfire.series.test.FakeSeriesRepository
+ import app.campfire.sessions.test.FakeSessionsRepository
++import app.campfire.user.test.FakeUserRepository
++import assertk.assertions.contains
+ import app.campfire.user.test.FakeMediaProgressRepository
+ import assertk.assertThat
+ import assertk.assertions.containsExactly
+@@ -46,6 +48,7 @@ class SeriesDetailPresenterTest {
+   private val mediaProgressRepository = FakeMediaProgressRepository()
+   private val sessionsRepository = FakeSessionsRepository()
+   private val playbackController = FakePlaybackController()
++  private val userRepository = FakeUserRepository()
+ 
+   private fun presenter(userScope: CoroutineScope) = SeriesDetailPresenter(
+     screen = screen,
+@@ -60,6 +63,7 @@ class SeriesDetailPresenterTest {
+     playbackHistoryRepository = FakePlaybackHistoryRepository(),
+     userScopeHolder = CoroutineScopeHolder { userScope },
+     analytics = FakeAnalytics(),
++    userRepository = userRepository,
+   )
+ 
+   private val TestScope.presenter get() = presenter(backgroundScope)
+@@ -229,6 +233,39 @@ class SeriesDetailPresenterTest {
+   private fun markedDeletedSessionIds() = sessionsRepository.invocations
+     .filterIsInstance<FakeSessionsRepository.Invocation.MarkDeleted>()
+     .map { it.libraryItemId }
++
++  @Test
++  fun `downloading series passes items to offlineDownloadManager`() = runTest {
++    val downloadManager = FakeOfflineDownloadManager()
++    val testPresenter = SeriesDetailPresenter(
++      screen = screen,
++      navigator = navigator,
++      repository = repository,
++      offlineDownloadManager = downloadManager,
++      bookInfoRegistry = registry,
++      bookInfoSettings = settings,
++      mediaProgressRepository = mediaProgressRepository,
++      sessionsRepository = sessionsRepository,
++      playbackController = playbackController,
++      playbackHistoryRepository = FakePlaybackHistoryRepository(),
++      userScopeHolder = CoroutineScopeHolder { backgroundScope },
++      analytics = FakeAnalytics(),
++      userRepository = userRepository,
++    )
++
++    repository.seriesLibraryItemsFlow.emit(listOf(unstarted))
++
++    testPresenter.test {
++      val state = awaitItemMatching { it.seriesContentState is LoadState.Loaded<*> }
++      assertThat(state.canDownload).isEqualTo(true)
++
++      state.eventSink(SeriesDetailUiEvent.DownloadSeries(listOf(unstarted)))
++      assertThat(downloadManager.invocations).contains(
++        FakeOfflineDownloadManager.Invocation.DownloadAll(listOf(unstarted)),
++      )
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
+ }
+ 
+ private suspend inline fun app.cash.turbine.ReceiveTurbine<SeriesDetailUiState>.awaitItemMatching(
 diff --git a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt b/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt
 index 005378be..0c508b9a 100644
 --- a/features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/DefaultSessionsRepository.kt
@@ -9621,7 +9976,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..8d53a52f 100644
+index e42923f9..390a3ff6 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -9629,13 +9984,13 @@ index e42923f9..8d53a52f 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.44
++campfire.version=1.2.45-rc1
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024499
++campfire.versionCode=1024501
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

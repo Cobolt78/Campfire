@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Download
+import campfire.features.series.ui.generated.resources.action_download_series
 import app.campfire.common.compose.icons.rounded.MarkFinished
 import app.campfire.common.compose.icons.rounded.MoreVert
 import app.campfire.common.compose.icons.rounded.Replay
@@ -52,6 +54,8 @@ internal fun SeriesProgressMenu(
   unfinishedCount: Int,
   finishedCount: Int,
   enabled: Boolean,
+  canDownload: Boolean = false,
+  onDownloadClick: (() -> Unit)? = null,
   onActionClick: (SeriesProgressAction) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -76,6 +80,16 @@ internal fun SeriesProgressMenu(
       onDismissRequest = { expanded = false },
       shape = MaterialTheme.shapes.medium,
     ) {
+      if (canDownload && onDownloadClick != null) {
+        DropdownMenuItem(
+          text = { Text(stringResource(Res.string.action_download_series)) },
+          leadingIcon = { Icon(CampfireIcons.Rounded.Download, contentDescription = null) },
+          onClick = {
+            expanded = false
+            onDownloadClick()
+          },
+        )
+      }
       if (unfinishedCount > 0) {
         DropdownMenuItem(
           text = { Text(stringResource(Res.string.menu_item_mark_series_finished)) },

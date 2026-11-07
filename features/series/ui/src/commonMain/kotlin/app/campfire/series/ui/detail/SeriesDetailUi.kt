@@ -32,6 +32,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import app.campfire.audioplayer.offline.OfflineDownload
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Download
+import app.campfire.common.compose.permission.PermissionState
+import app.campfire.common.compose.permission.rememberPostNotificationPermissionState
+import app.campfire.common.compose.widgets.IconButtonTooltip
+import app.campfire.series.ui.detail.composables.ConfirmDownloadSeriesDialog
+import campfire.features.series.ui.generated.resources.action_download_series
 import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.extensions.plus
@@ -73,6 +83,34 @@ fun SeriesDetail(
 ) = SharedElementTransitionScope {
   val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
   var confirmProgressAction by remember { mutableStateOf<SeriesProgressAction?>(null) }
+  val seriesItems = state.seriesContentState.dataOrNull.orEmpty()
+
+  val unlistenedDownloadable = remember(seriesItems, state.offlineStates) {
+    seriesItems.filter { item ->
+      val dl = state.offlineStates[item.id]
+      val isDownloadedOrActive = dl?.state == OfflineDownload.State.Completed || dl?.isActive == true
+      item.userMediaProgress?.isFinished != true && !isDownloadedOrActive
+    }
+  }
+
+  val completedDownloadable = remember(seriesItems, state.offlineStates) {
+    seriesItems.filter { item ->
+      val dl = state.offlineStates[item.id]
+      val isDownloadedOrActive = dl?.state == OfflineDownload.State.Completed || dl?.isActive == true
+      item.userMediaProgress?.isFinished == true && !isDownloadedOrActive
+    }
+  }
+
+  var showDownloadDialog by remember { mutableStateOf(false) }
+  var pendingDownloadItems by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
+
+  val postNotificationPermissionState = rememberPostNotificationPermissionState { granted ->
+    if (granted && pendingDownloadItems.isNotEmpty()) {
+      state.eventSink(SeriesDetailUiEvent.DownloadSeries(pendingDownloadItems))
+      pendingDownloadItems = emptyList()
+      showDownloadDialog = false
+    }
+  }
 
   Scaffold(
     topBar = {
@@ -86,11 +124,24 @@ fun SeriesDetail(
           NavigationBackButton(onClick = { state.eventSink(SeriesDetailUiEvent.Back) })
         },
         actions = {
+          if (state.canDownload && seriesItems.isNotEmpty()) {
+            val downloadLabel = stringResource(Res.string.action_download_series)
+            IconButtonTooltip(text = downloadLabel) {
+              IconButton(onClick = { showDownloadDialog = true }) {
+                Icon(
+                  CampfireIcons.Rounded.Download,
+                  contentDescription = downloadLabel,
+                )
+              }
+            }
+          }
           if (state.unfinishedCount > 0 || state.finishedCount > 0) {
             SeriesProgressMenu(
               unfinishedCount = state.unfinishedCount,
               finishedCount = state.finishedCount,
               enabled = !state.isUpdatingProgress,
+              canDownload = state.canDownload && seriesItems.isNotEmpty(),
+              onDownloadClick = { showDownloadDialog = true },
               onActionClick = { confirmProgressAction = it },
             )
           }
@@ -129,6 +180,23 @@ fun SeriesDetail(
         contentPadding = paddingValues,
       )
     }
+  }
+
+  if (showDownloadDialog) {
+    ConfirmDownloadSeriesDialog(
+      unlistenedItems = unlistenedDownloadable,
+      completedItems = completedDownloadable,
+      onConfirm = { itemsToDownload ->
+        if (postNotificationPermissionState is PermissionState.Granted) {
+          state.eventSink(SeriesDetailUiEvent.DownloadSeries(itemsToDownload))
+          showDownloadDialog = false
+        } else {
+          pendingDownloadItems = itemsToDownload
+          postNotificationPermissionState.launchPermissionRequest()
+        }
+      },
+      onDismissRequest = { showDownloadDialog = false },
+    )
   }
 
   confirmProgressAction?.let { action ->

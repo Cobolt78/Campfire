@@ -35,6 +35,7 @@ import app.campfire.core.model.loggableId
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.series.api.SeriesRepository
 import app.campfire.sessions.api.SessionsRepository
+import app.campfire.user.api.UserRepository
 import app.campfire.user.api.MediaProgressRepository
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
@@ -64,6 +65,7 @@ class SeriesDetailPresenter(
   private val playbackHistoryRepository: PlaybackHistoryRepository,
   @ForScope(UserScope::class) private val userScopeHolder: CoroutineScopeHolder,
   private val analytics: Analytics,
+  private val userRepository: UserRepository,
 ) : NonPausablePresenter<SeriesDetailUiState> {
 
   @Suppress("UNCHECKED_CAST")
@@ -132,6 +134,7 @@ class SeriesDetailPresenter(
       seriesItems.partition { it.userMediaProgress?.isFinished == true }
     }
     var isUpdatingProgress by remember { mutableStateOf(false) }
+    val currentUser by userRepository.userFlow.collectAsState()
 
     return SeriesDetailUiState(
       seriesContentState = seriesContentState,
@@ -140,6 +143,7 @@ class SeriesDetailPresenter(
       unfinishedCount = unfinishedItems.size,
       finishedCount = finishedItems.size,
       isUpdatingProgress = isUpdatingProgress,
+      canDownload = currentUser.canDownload,
     ) { event ->
       when (event) {
         SeriesDetailUiEvent.Back -> navigator.pop()
@@ -170,6 +174,11 @@ class SeriesDetailPresenter(
               sharedTransitionKey = event.libraryItem.id + screen.seriesName,
             ),
           )
+        }
+        is SeriesDetailUiEvent.DownloadSeries -> {
+          if (!currentUser.canDownload || event.items.isEmpty()) return@SeriesDetailUiState
+          analytics.send(ActionEvent("series", "download"))
+          offlineDownloadManager.downloadAll(event.items)
         }
       }
     }

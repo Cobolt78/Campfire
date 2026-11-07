@@ -24,6 +24,8 @@ import app.campfire.home.ui.media
 import app.campfire.home.ui.mediaMetadata
 import app.campfire.series.test.FakeSeriesRepository
 import app.campfire.sessions.test.FakeSessionsRepository
+import app.campfire.user.test.FakeUserRepository
+import assertk.assertions.contains
 import app.campfire.user.test.FakeMediaProgressRepository
 import assertk.assertThat
 import assertk.assertions.containsExactly
@@ -46,6 +48,7 @@ class SeriesDetailPresenterTest {
   private val mediaProgressRepository = FakeMediaProgressRepository()
   private val sessionsRepository = FakeSessionsRepository()
   private val playbackController = FakePlaybackController()
+  private val userRepository = FakeUserRepository()
 
   private fun presenter(userScope: CoroutineScope) = SeriesDetailPresenter(
     screen = screen,
@@ -60,6 +63,7 @@ class SeriesDetailPresenterTest {
     playbackHistoryRepository = FakePlaybackHistoryRepository(),
     userScopeHolder = CoroutineScopeHolder { userScope },
     analytics = FakeAnalytics(),
+    userRepository = userRepository,
   )
 
   private val TestScope.presenter get() = presenter(backgroundScope)
@@ -229,6 +233,39 @@ class SeriesDetailPresenterTest {
   private fun markedDeletedSessionIds() = sessionsRepository.invocations
     .filterIsInstance<FakeSessionsRepository.Invocation.MarkDeleted>()
     .map { it.libraryItemId }
+
+  @Test
+  fun `downloading series passes items to offlineDownloadManager`() = runTest {
+    val downloadManager = FakeOfflineDownloadManager()
+    val testPresenter = SeriesDetailPresenter(
+      screen = screen,
+      navigator = navigator,
+      repository = repository,
+      offlineDownloadManager = downloadManager,
+      bookInfoRegistry = registry,
+      bookInfoSettings = settings,
+      mediaProgressRepository = mediaProgressRepository,
+      sessionsRepository = sessionsRepository,
+      playbackController = playbackController,
+      playbackHistoryRepository = FakePlaybackHistoryRepository(),
+      userScopeHolder = CoroutineScopeHolder { backgroundScope },
+      analytics = FakeAnalytics(),
+      userRepository = userRepository,
+    )
+
+    repository.seriesLibraryItemsFlow.emit(listOf(unstarted))
+
+    testPresenter.test {
+      val state = awaitItemMatching { it.seriesContentState is LoadState.Loaded<*> }
+      assertThat(state.canDownload).isEqualTo(true)
+
+      state.eventSink(SeriesDetailUiEvent.DownloadSeries(listOf(unstarted)))
+      assertThat(downloadManager.invocations).contains(
+        FakeOfflineDownloadManager.Invocation.DownloadAll(listOf(unstarted)),
+      )
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
 }
 
 private suspend inline fun app.cash.turbine.ReceiveTurbine<SeriesDetailUiState>.awaitItemMatching(

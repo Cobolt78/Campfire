@@ -22,6 +22,7 @@ data class SeriesDetailUiState(
   val finishedCount: Int = 0,
   /** A whole-series progress change is still working through the books. */
   val isUpdatingProgress: Boolean = false,
+  val canDownload: Boolean = false,
   val eventSink: (SeriesDetailUiEvent) -> Unit,
 ) : CircuitUiState
 
@@ -36,4 +37,5 @@ sealed interface SeriesDetailUiEvent : CircuitUiEvent {
   data class MissingBookClick(val url: String) : SeriesDetailUiEvent
   data object MarkSeriesFinished : SeriesDetailUiEvent
   data object MarkSeriesNotFinished : SeriesDetailUiEvent
+  data class DownloadSeries(val items: List<LibraryItem>) : SeriesDetailUiEvent
 }

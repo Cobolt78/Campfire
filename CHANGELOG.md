@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc1] - 2026-11-08
+
+### Added
+
+- **Smart Whole-Series Downloading with Unlistened Filtering**:
+  - Added a dedicated "Download series" button and 3-dot overflow menu action on the Series Detail screen.
+  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
+  - Added an interactive "Include completed books" toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
+  - Gracefully alerts the user if all books in the series are already downloaded.
+
 ## [1.2.44] - 2026-11-06
 
 ### Added
