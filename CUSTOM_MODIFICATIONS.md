@@ -87,6 +87,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
 81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
 82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245-rc5)
+83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245-rc6)
 
 ---
 
@@ -2414,6 +2415,48 @@ Users observed a discrepancy between the Home screen's "Continue Series" horizon
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
 * features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)
+
+### Problem Description
+1. When offline (in airplane mode or data black spots), tapping on a book from the Home screen (Downloads, Continue Listening, or Continue Series) showed a blank cover or generic placeholder icon on Book Details and Expanded Player screens.
+2. Root Cause:
+   - On the Home screen, cards request small thumbnails (e.g. width=800 or width=600).
+   - On the Book Details and Player screens, hero covers request full-size renditions (e.g. width=1200).
+   - Coil keys disk cache entries strictly by the exact URL string. Because width=1200 was never fetched online, Coil suffered a cache miss, attempted a network fetch that failed immediately offline, and transitioned to an error state (blank/placeholder), ignoring the cached thumbnail already stored on disk.
+3. Offline downloads previously only queued audio files via ExoPlayer DownloadService without prefetching or pinning cover art into Coil cache.
+4. Users requested an alternate grid view option for the Offline Downloads screen matching the Continue Series alternate view, controlled by the Appearance settings toggle.
+
+### Solution & Implementation
+1. **Multi-Tier Resilient Disk/Memory Cache Fallback (CoverSizingInterceptor.kt)**:
+   - Added a 3rd fallback to CoverSizingInterceptor: when network requests fail (e.g. offline, airplane mode, or data black spot), the interceptor iterates through all available cache size buckets (1600, 1200, 800, 600, 400, 300, 200, 
+aw=1, and un-sized) with 
+etworkCachePolicy(CachePolicy.DISABLED).
+   - Instructs Coil to read strictly from disk/memory cache with zero network calls, instantly scaling up any previously viewed thumbnail rather than rendering blank covers.
+2. **Automatic High-Res Cover Art Prefetch on Download (AndroidOfflineDownloadManager.kt)**:
+   - In AndroidOfflineDownloadManager.download(item) and downloadEpisode(item, episode), automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) artwork into Coil's disk cache.
+   - Ensures crisp, full-resolution artwork is guaranteed to exist locally in offline storage for all downloaded audiobooks and podcast episodes.
+3. **Downloads Screen Alternate Grid View (DownloadsUi.kt, DownloadsPresenter.kt, DownloadsUiState.kt)**:
+   - Added lternateView: Boolean = false to DownloadsUiState and wired DownloadsPresenter to observe libraryViewSettings.observeContinueSeriesAlternateView().
+   - In DownloadsUi, when lternateView is enabled, renders a LazyVerticalGrid (Adaptive 160dp) featuring DownloadedBookGridCard with ElevatedContentCard, ItemImage, marquee title/author, file size, OfflineStatusIndicator, MediaFinishedIndicator, and MediaProgressBar.
+4. **Appearance Setting Description Update (AppearancePane.kt)**:
+   - Updated the setting title and description to Continue Series & Downloads Alternate View and Use an alternate grid view for the Continue Series and Downloads screens.
+
+### Modified Files:
+* app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt
+* app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
+* features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

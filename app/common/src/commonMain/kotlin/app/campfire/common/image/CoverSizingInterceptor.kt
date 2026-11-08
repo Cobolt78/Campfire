@@ -6,6 +6,7 @@ package app.campfire.common.image
 import app.campfire.core.image.CoverUrls
 import coil3.intercept.Interceptor
 import coil3.network.httpHeaders
+import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
@@ -23,6 +24,10 @@ import coil3.size.pxOrElse
  * If the server fails to serve the requested sized/WebP rendition (e.g. sharp resize or cache file
  * corruption on the server for that specific width), it falls back gracefully to the un-sized default
  * request, and then to `raw=1` (bypassing server-side thumbnail generation completely).
+ *
+ * When network fails completely (e.g. offline, airplane mode, or data black spot), it performs a multi-tier
+ * disk/memory cache fallback across all size buckets with network disabled, ensuring cached thumbnails
+ * scale up rather than rendering blank covers.
  */
 class CoverSizingInterceptor : Interceptor {
 
@@ -54,6 +59,46 @@ class CoverSizingInterceptor : Interceptor {
         .build()
       val rawResult = chain.withRequest(rawRequest).proceed()
       if (rawResult is SuccessResult) return rawResult
+    }
+
+    // 3rd Fallback (Offline / Disk Cache Resiliency):
+    // When network fails (e.g. offline, airplane mode, or data black spot), check if any other
+    // rendition of this cover exists in Coil's disk/memory cache. Setting networkCachePolicy(CachePolicy.DISABLED)
+    // instructs Coil to only read from disk/memory without making network requests.
+    val targetWidth = widthPx ?: CoverUrls.ARTWORK_WIDTH
+    val candidateWidths = CoverUrls.WIDTH_BUCKETS
+      .sortedWith(
+        compareBy<Int> { if (it <= targetWidth) 0 else 1 }
+          .thenByDescending { if (it <= targetWidth) it else -it },
+      )
+
+    for (bucket in candidateWidths) {
+      val candidateUrl = CoverUrls.sized(url, bucket)
+      if (candidateUrl == sizedUrl) continue
+      val cacheOnlyRequest = chain.request.newBuilder()
+        .data(candidateUrl)
+        .networkCachePolicy(CachePolicy.DISABLED)
+        .build()
+      val cachedResult = chain.withRequest(cacheOnlyRequest).proceed()
+      if (cachedResult is SuccessResult) return cachedResult
+    }
+
+    if (rawUrl != sizedUrl) {
+      val cachedRawRequest = chain.request.newBuilder()
+        .data(rawUrl)
+        .networkCachePolicy(CachePolicy.DISABLED)
+        .build()
+      val cachedRawResult = chain.withRequest(cachedRawRequest).proceed()
+      if (cachedRawResult is SuccessResult) return cachedRawResult
+    }
+
+    if (url != sizedUrl) {
+      val cachedUnsizedRequest = chain.request.newBuilder()
+        .data(url)
+        .networkCachePolicy(CachePolicy.DISABLED)
+        .build()
+      val cachedUnsizedResult = chain.withRequest(cachedUnsizedRequest).proceed()
+      if (cachedUnsizedResult is SuccessResult) return cachedUnsizedResult
     }
 
     return result

@@ -34,6 +34,7 @@ data class DownloadsUiState(
   val isLoading: Boolean,
   val sortMode: DownloadsSort,
   val sortAscending: Boolean,
+  val alternateView: Boolean = false,
   val eventSink: (DownloadsUiEvent) -> Unit,
 ) : CircuitUiState
 

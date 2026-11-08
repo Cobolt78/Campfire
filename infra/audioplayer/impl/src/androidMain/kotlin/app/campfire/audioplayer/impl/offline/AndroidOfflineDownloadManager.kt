@@ -18,6 +18,9 @@ import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.PodcastEpisode
 import app.campfire.core.model.PodcastEpisodeId
+import app.campfire.core.image.CoverUrls
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -149,6 +152,7 @@ class AndroidOfflineDownloadManager(
         true,
       )
     }
+    prefetchCover(item)
   }
 
   override fun downloadAll(items: List<LibraryItem>) {
@@ -181,6 +185,7 @@ class AndroidOfflineDownloadManager(
       request,
       true,
     )
+    prefetchCover(item)
   }
 
   override fun delete(item: LibraryItem) {
@@ -258,4 +263,18 @@ class AndroidOfflineDownloadManager(
 
   private fun episodeDownloadId(itemId: LibraryItemId, episodeId: PodcastEpisodeId): String =
     "$itemId:$episodeId"
+  private fun prefetchCover(item: LibraryItem) {
+    val coverUrl = item.media.coverImageUrl.takeIf { it.isNotBlank() } ?: return
+    try {
+      val imageLoader = SingletonImageLoader.get(application)
+      listOf(CoverUrls.ARTWORK_WIDTH, 800).forEach { width ->
+        val request = ImageRequest.Builder(application)
+          .data(CoverUrls.sized(coverUrl, width))
+          .build()
+        imageLoader.enqueue(request)
+      }
+    } catch (e: Exception) {
+      bark(throwable = e) { "Failed to prefetch cover for downloaded item ${item.id}" }
+    }
+  }
 }

@@ -11,14 +11,28 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..416f6a15 100644
+index 1dcbc292..96d05b06 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,425 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,439 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.45-rc6] - 2026-11-08
++
++### Added
++
++- **Multi-Tier Resilient Disk/Memory Cache Fallback in CoverSizingInterceptor**:
++  - When offline, in airplane mode, or in cellular black spots, cover requests that miss high-resolution buckets (such as width=1200 on Book Details or expanded Player) automatically fall back through all local cache size buckets (1600, 1200, 800, 600, 400, 300, 200, raw=1, and un-sized) with networkCachePolicy(CachePolicy.DISABLED).
++  - Instantly decodes and scales up any previously cached thumbnail from disk/memory cache instead of throwing an error or displaying a blank cover.
++- **Automatic High-Res Cover Art Prefetch for Offline Downloads**:
++  - When downloading audiobooks or podcast episodes via AndroidOfflineDownloadManager, automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) cover art into Coil's disk cache.
++  - Ensures full-resolution cover artwork is permanently available offline for all downloaded media.
++- **Alternate Grid View for Offline Downloads Screen**:
++  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, and progress bar overlays.
++  - Integrated with the existing Appearance setting toggle, updating its label and description to 'Continue Series & Downloads Alternate View'.
++
 +## [1.2.45-rc5] - 2026-11-08
 +
 +### Added
@@ -442,10 +456,10 @@ index 1dcbc292..416f6a15 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..00b623cb 100644
+index e460bea1..8f4a0f9b 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,57 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,58 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -500,10 +514,11 @@ index e460bea1..00b623cb 100644
 +80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
 +81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
 +82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245-rc5)
++83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245-rc6)
  
  ---
  
-@@ -180,6 +231,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +232,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -511,7 +526,7 @@ index e460bea1..00b623cb 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +431,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +432,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -548,7 +563,7 @@ index e460bea1..00b623cb 100644
  
  ---
  
-@@ -891,8 +973,1447 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +974,1489 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -720,9 +735,9 @@ index e460bea1..00b623cb 100644
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
 +
 +---
-+
+ 
 +## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
-+
+ 
 +### Summary
 +Added offline downloaded status indicators (`OfflineStatusIndicator`) to book covers in the dedicated Continue Series screen (`ContinueSeriesUi.kt`) across both the standard list card view and the alternate grid card view. Users can now immediately identify which next-up series books are downloaded to the device without having to open individual book detail screens.
 +
@@ -842,7 +857,7 @@ index e460bea1..00b623cb 100644
 +* `app/android/base-proguard-rules.pro`
 +
 +---
-+
+ 
 +## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
  
 +### Summary
@@ -858,7 +873,7 @@ index e460bea1..00b623cb 100644
 +   - Completely eliminates false-positive warnings when connected to home Wi-Fi, produces zero background radio listener overhead, and correctly warns only when the active default connection is cellular or metered.
 +2. **Added 'Propose, Don't Sneak' Refactoring Invariant (`GEMINI.md`)**:
 +   - Added Section 5 to `GEMINI.md` mandating strict blast-radius discipline during bug fixes and migrations (no unsolicited architectural refactors or rewriting working code without prior user proposal and approval).
-+
+ 
 +### Modified Files:
 +* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
 +* `GEMINI.md`
@@ -984,12 +999,12 @@ index e460bea1..00b623cb 100644
 +
 +### Summary
 +Fixed an issue where book cover thumbnails (e.g. *Blood Is Thicker than Lots of Stuff*) appeared blank or as placeholder icons in library lists, search results, and mini players despite rendering properly on the book detail screen.
- 
++
 +### Root Cause
 +1. In `CoverSizingInterceptor.kt`, image URLs were modified to request server-resized WebP images (e.g. `?width=200&format=webp`).
 +2. Audiobookshelf's server stores pre-resized image caches (`_200.webp`, `_800.webp`, `_1200.webp`). When sharp resize errors or cache corruption occur on specific dimension variants on the server, the server returns HTTP 500 or 0 bytes for that specific thumbnail size.
 +3. Detail views succeeded because they requested `width=1200` (which was cached and intact on the server). Because the interceptor had no fallback mechanism, failure of the `width=200` request resulted in an unhandled Coil error, leaving thumbnail covers completely blank.
- 
++
 +### Key Changes
 +1. **Raw Cover URL Helper (`CoverUrls.kt`)**:
 +   - Implemented `CoverUrls.raw(url)` which strips dimension/format query parameters and appends `raw=1` (Audiobookshelf's raw uncompressed image endpoint).
@@ -1006,7 +1021,7 @@ index e460bea1..00b623cb 100644
 +* `core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt`
 +* `app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt`
 +* `app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt`
- 
++
 +---
 +
 +## 53. Paging Stabilization: Card Reshuffle Removal & Non-Destructive Background Refresh (v1.2.24)
@@ -1046,7 +1061,7 @@ index e460bea1..00b623cb 100644
 +   - Extended `shouldResetOnUpdate` to cover `RecentlyAdded`, `RecentSeries`, `ContinueListening`, and `ListenAgain`.
 +   - When shelf entities update and the shelf is scrolled (`firstVisibleItemIndex > 0`), automatically scrolls back to index 0 (`listState.scrollToItem(0)`).
 +   - The newest books and series immediately render at the front (far left) of the shelf upon arrival.
- 
++
 +### Modified Files:
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 +
@@ -1996,6 +2011,48 @@ index e460bea1..00b623cb 100644
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++
++---
++
++## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)
++
++### Problem Description
++1. When offline (in airplane mode or data black spots), tapping on a book from the Home screen (Downloads, Continue Listening, or Continue Series) showed a blank cover or generic placeholder icon on Book Details and Expanded Player screens.
++2. Root Cause:
++   - On the Home screen, cards request small thumbnails (e.g. width=800 or width=600).
++   - On the Book Details and Player screens, hero covers request full-size renditions (e.g. width=1200).
++   - Coil keys disk cache entries strictly by the exact URL string. Because width=1200 was never fetched online, Coil suffered a cache miss, attempted a network fetch that failed immediately offline, and transitioned to an error state (blank/placeholder), ignoring the cached thumbnail already stored on disk.
++3. Offline downloads previously only queued audio files via ExoPlayer DownloadService without prefetching or pinning cover art into Coil cache.
++4. Users requested an alternate grid view option for the Offline Downloads screen matching the Continue Series alternate view, controlled by the Appearance settings toggle.
++
++### Solution & Implementation
++1. **Multi-Tier Resilient Disk/Memory Cache Fallback (CoverSizingInterceptor.kt)**:
++   - Added a 3rd fallback to CoverSizingInterceptor: when network requests fail (e.g. offline, airplane mode, or data black spot), the interceptor iterates through all available cache size buckets (1600, 1200, 800, 600, 400, 300, 200, 
++aw=1, and un-sized) with 
++etworkCachePolicy(CachePolicy.DISABLED).
++   - Instructs Coil to read strictly from disk/memory cache with zero network calls, instantly scaling up any previously viewed thumbnail rather than rendering blank covers.
++2. **Automatic High-Res Cover Art Prefetch on Download (AndroidOfflineDownloadManager.kt)**:
++   - In AndroidOfflineDownloadManager.download(item) and downloadEpisode(item, episode), automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) artwork into Coil's disk cache.
++   - Ensures crisp, full-resolution artwork is guaranteed to exist locally in offline storage for all downloaded audiobooks and podcast episodes.
++3. **Downloads Screen Alternate Grid View (DownloadsUi.kt, DownloadsPresenter.kt, DownloadsUiState.kt)**:
++   - Added lternateView: Boolean = false to DownloadsUiState and wired DownloadsPresenter to observe libraryViewSettings.observeContinueSeriesAlternateView().
++   - In DownloadsUi, when lternateView is enabled, renders a LazyVerticalGrid (Adaptive 160dp) featuring DownloadedBookGridCard with ElevatedContentCard, ItemImage, marquee title/author, file size, OfflineStatusIndicator, MediaFinishedIndicator, and MediaProgressBar.
++4. **Appearance Setting Description Update (AppearancePane.kt)**:
++   - Updated the setting title and description to Continue Series & Downloads Alternate View and Use an alternate grid view for the Continue Series and Downloads screens.
++
++### Modified Files:
++* app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt
++* app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
++* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
++* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
++* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
++* features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -2601,20 +2658,21 @@ index 00000000..15a0de5f
 +  </capability>
 +</shortcuts>
 diff --git a/app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt b/app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt
-index ba73d732..afbfa29a 100644
+index ba73d732..fcfa0fb0 100644
 --- a/app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt
 +++ b/app/common/src/commonMain/kotlin/app/campfire/common/image/CoverSizingInterceptor.kt
-@@ -6,7 +6,9 @@ package app.campfire.common.image
+@@ -6,7 +6,10 @@ package app.campfire.common.image
  import app.campfire.core.image.CoverUrls
  import coil3.intercept.Interceptor
  import coil3.network.httpHeaders
++import coil3.request.CachePolicy
 +import coil3.request.ErrorResult
  import coil3.request.ImageResult
 +import coil3.request.SuccessResult
  import coil3.size.pxOrElse
  
  /**
-@@ -17,6 +19,10 @@ import coil3.size.pxOrElse
+@@ -17,6 +20,14 @@ import coil3.size.pxOrElse
   * grid request a small width while the expanded player requests a large one — no call-site changes
   * needed. The rewritten URL becomes the memory/disk cache key, so each rendition is cached independently
   * and [CoverUrls.sized] is the single source of truth for anyone that needs to look an entry up directly.
@@ -2622,10 +2680,14 @@ index ba73d732..afbfa29a 100644
 + * If the server fails to serve the requested sized/WebP rendition (e.g. sharp resize or cache file
 + * corruption on the server for that specific width), it falls back gracefully to the un-sized default
 + * request, and then to `raw=1` (bypassing server-side thumbnail generation completely).
++ *
++ * When network fails completely (e.g. offline, airplane mode, or data black spot), it performs a multi-tier
++ * disk/memory cache fallback across all size buckets with network disabled, ensuring cached thumbnails
++ * scale up rather than rendering blank covers.
   */
  class CoverSizingInterceptor : Interceptor {
  
-@@ -33,7 +39,24 @@ class CoverSizingInterceptor : Interceptor {
+@@ -33,7 +44,64 @@ class CoverSizingInterceptor : Interceptor {
        .data(sizedUrl)
        .httpHeaders(headers)
        .build()
@@ -2647,15 +2709,55 @@ index ba73d732..afbfa29a 100644
 +      if (rawResult is SuccessResult) return rawResult
 +    }
 +
++    // 3rd Fallback (Offline / Disk Cache Resiliency):
++    // When network fails (e.g. offline, airplane mode, or data black spot), check if any other
++    // rendition of this cover exists in Coil's disk/memory cache. Setting networkCachePolicy(CachePolicy.DISABLED)
++    // instructs Coil to only read from disk/memory without making network requests.
++    val targetWidth = widthPx ?: CoverUrls.ARTWORK_WIDTH
++    val candidateWidths = CoverUrls.WIDTH_BUCKETS
++      .sortedWith(
++        compareBy<Int> { if (it <= targetWidth) 0 else 1 }
++          .thenByDescending { if (it <= targetWidth) it else -it },
++      )
++
++    for (bucket in candidateWidths) {
++      val candidateUrl = CoverUrls.sized(url, bucket)
++      if (candidateUrl == sizedUrl) continue
++      val cacheOnlyRequest = chain.request.newBuilder()
++        .data(candidateUrl)
++        .networkCachePolicy(CachePolicy.DISABLED)
++        .build()
++      val cachedResult = chain.withRequest(cacheOnlyRequest).proceed()
++      if (cachedResult is SuccessResult) return cachedResult
++    }
++
++    if (rawUrl != sizedUrl) {
++      val cachedRawRequest = chain.request.newBuilder()
++        .data(rawUrl)
++        .networkCachePolicy(CachePolicy.DISABLED)
++        .build()
++      val cachedRawResult = chain.withRequest(cachedRawRequest).proceed()
++      if (cachedRawResult is SuccessResult) return cachedRawResult
++    }
++
++    if (url != sizedUrl) {
++      val cachedUnsizedRequest = chain.request.newBuilder()
++        .data(url)
++        .networkCachePolicy(CachePolicy.DISABLED)
++        .build()
++      val cachedUnsizedResult = chain.withRequest(cachedUnsizedRequest).proceed()
++      if (cachedUnsizedResult is SuccessResult) return cachedUnsizedResult
++    }
++
 +    return result
    }
  
    internal companion object {
 diff --git a/app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt b/app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt
-index 2becf9ee..476e3ef9 100644
+index 2becf9ee..bc8277d9 100644
 --- a/app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt
 +++ b/app/common/src/commonTest/kotlin/app/campfire/common/image/CoverSizingInterceptorTest.kt
-@@ -6,11 +6,13 @@ package app.campfire.common.image
+@@ -6,11 +6,14 @@ package app.campfire.common.image
  import app.campfire.core.image.CoverUrls
  import assertk.assertThat
  import assertk.assertions.isEqualTo
@@ -2665,11 +2767,12 @@ index 2becf9ee..476e3ef9 100644
  import coil3.PlatformContext
  import coil3.intercept.Interceptor
  import coil3.network.httpHeaders
++import coil3.request.CachePolicy
 +import coil3.request.ErrorResult
  import coil3.request.ImageRequest
  import coil3.request.ImageResult
  import coil3.request.SuccessResult
-@@ -69,6 +71,30 @@ class CoverSizingInterceptorTest {
+@@ -69,6 +72,50 @@ class CoverSizingInterceptorTest {
      assertThat(chain.proceedCount).isEqualTo(1)
    }
  
@@ -2697,10 +2800,30 @@ index 2becf9ee..476e3ef9 100644
 +    assertThat((result as SuccessResult).request.data).isEqualTo("$cover&raw=1")
 +  }
 +
++  @Test
++  fun falls_back_to_cached_rendition_when_network_fails() = runTest {
++    val chain = FakeChain(
++      request(cover),
++      Size(Dimension(1200), Dimension(1200)),
++      shouldFail = { req ->
++        // Simulate offline: all network requests fail. Cache-only request succeeds if width=800.
++        val isCacheOnly = req.networkCachePolicy == CachePolicy.DISABLED
++        if (isCacheOnly) {
++          !req.data.toString().contains("width=800")
++        } else {
++          true
++        }
++      },
++    )
++    val result = interceptor.intercept(chain)
++    assertThat(result).isInstanceOf<SuccessResult>()
++    assertThat((result as SuccessResult).request.data).isEqualTo("$cover&width=800")
++  }
++
    private fun request(url: String) = ImageRequest.Builder(PlatformContext.INSTANCE).data(url).build()
  
    /** Records the request handed to [proceed] after [withRequest]; null when proceeded with the original. */
-@@ -76,22 +102,27 @@ class CoverSizingInterceptorTest {
+@@ -76,22 +123,27 @@ class CoverSizingInterceptorTest {
      override val request: ImageRequest,
      override val size: Size,
      private val replaced: Boolean = false,
@@ -6908,10 +7031,37 @@ index cd54b662..3935d0a0 100644
    val eventSink: (PodcastEpisodeUiEvent) -> Unit,
  ) : CircuitUiState
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
-index aab8c51e..de9d37c4 100644
+index aab8c51e..6377faf2 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
-@@ -106,6 +106,12 @@ class DownloadsPresenter(
+@@ -18,6 +18,7 @@ import app.campfire.common.screens.DownloadsScreen
+ import app.campfire.core.di.UserScope
+ import app.campfire.libraries.api.LibraryItemRepository
+ import app.campfire.libraries.api.screen.LibraryItemScreen
++import app.campfire.settings.api.LibraryViewSettings
+ import app.campfire.user.api.MediaProgressRepository
+ import com.slack.circuit.codegen.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+@@ -39,6 +40,7 @@ class DownloadsPresenter(
+   private val offlineDownloadManager: OfflineDownloadManager,
+   private val libraryItemRepository: LibraryItemRepository,
+   private val mediaProgressRepository: MediaProgressRepository,
++  private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
+ ) : NonPausablePresenter<DownloadsUiState> {
+ 
+@@ -81,6 +83,10 @@ class DownloadsPresenter(
+         .catch { emit(emptyMap()) }
+     }.collectAsState(null)
+ 
++    val alternateView by remember {
++      libraryViewSettings.observeContinueSeriesAlternateView()
++    }.collectAsState(false)
++
+     val isLoading = completedDownloads == null || userMediaProgress == null
+ 
+     val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending) {
+@@ -106,6 +112,12 @@ class DownloadsPresenter(
          DownloadsSort.Author -> compareBy(String.CASE_INSENSITIVE_ORDER) {
            it.libraryItem.media.metadata.authorName ?: ""
          }
@@ -6924,8 +7074,16 @@ index aab8c51e..de9d37c4 100644
          DownloadsSort.Size -> compareBy<DownloadedBookItem> {
            it.download.contentLength.coerceAtLeast(0L)
          }
+@@ -128,6 +140,7 @@ class DownloadsPresenter(
+       isLoading = isLoading,
+       sortMode = sortMode,
+       sortAscending = sortAscending,
++      alternateView = alternateView,
+     ) { event ->
+       when (event) {
+         DownloadsUiEvent.Back -> navigator.pop()
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
-index 2625a62b..c1c5c85b 100644
+index 2625a62b..9e964575 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 @@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
@@ -6936,20 +7094,35 @@ index 2625a62b..c1c5c85b 100644
  import androidx.compose.foundation.layout.exclude
  import androidx.compose.foundation.layout.fillMaxSize
  import androidx.compose.foundation.layout.fillMaxWidth
-@@ -46,9 +47,11 @@ import app.campfire.common.compose.widgets.CampfireTopAppBar
+@@ -44,11 +45,26 @@ import app.campfire.common.compose.icons.rounded.SortAsc
+ import app.campfire.common.compose.icons.rounded.SortDesc
+ import app.campfire.common.compose.widgets.CampfireTopAppBar
  import app.campfire.common.compose.widgets.EmptyState
++import androidx.compose.foundation.basicMarquee
++import androidx.compose.foundation.layout.aspectRatio
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.lazy.grid.GridCells
++import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
++import androidx.compose.foundation.lazy.grid.items
++import androidx.compose.ui.layout.ContentScale
++import app.campfire.common.compose.widgets.ElevatedContentCard
++import app.campfire.common.compose.widgets.ItemImage
  import app.campfire.common.compose.widgets.LibraryItemListItem
++import app.campfire.common.compose.widgets.MediaFinishedIndicator
++import app.campfire.common.compose.widgets.MediaProgressBar
++import app.campfire.common.compose.widgets.OfflineStatusIndicator
  import app.campfire.common.compose.widgets.NavigationBackButton
 -import app.campfire.common.compose.widgets.adaptiveExitUntilCollapsedScrollBehavior
 +import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
  import app.campfire.common.screens.DownloadsScreen
++import app.campfire.core.model.LibraryItem
  import app.campfire.core.di.UserScope
 +import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 +import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
  import com.slack.circuit.codegen.annotations.CircuitInject
  import kotlin.math.roundToInt
  
-@@ -59,7 +62,8 @@ fun Downloads(
+@@ -59,7 +75,8 @@ fun Downloads(
    state: DownloadsUiState,
    modifier: Modifier = Modifier,
  ) {
@@ -6959,7 +7132,7 @@ index 2625a62b..c1c5c85b 100644
    var showSortMenu by remember { mutableStateOf(false) }
  
    Scaffold(
-@@ -129,7 +133,9 @@ fun Downloads(
+@@ -129,7 +146,9 @@ fun Downloads(
        )
      },
      modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -6970,8 +7143,179 @@ index 2625a62b..c1c5c85b 100644
    ) { paddingValues ->
      when {
        state.isLoading -> {
+@@ -153,35 +172,60 @@ fun Downloads(
+       }
+ 
+       else -> {
+-        LazyColumn(
+-          modifier = Modifier.fillMaxSize(),
+-          contentPadding = PaddingValues(
+-            top = paddingValues.calculateTopPadding() + 8.dp,
+-            bottom = paddingValues.calculateBottomPadding() + 16.dp,
+-            start = 16.dp,
+-            end = 16.dp,
+-          ),
+-          verticalArrangement = Arrangement.spacedBy(8.dp),
+-        ) {
+-          items(
+-            items = state.items,
+-            key = { it.libraryItem.id },
+-          ) { item ->
+-            val subtitle = buildString {
+-              item.libraryItem.media.metadata.authorName?.let { append(it) }
+-              if (item.download.contentLength > 0) {
+-                if (isNotEmpty()) append(" • ")
+-                append(formatFileSize(item.download.contentLength))
+-              }
++        if (state.alternateView) {
++          LazyVerticalGrid(
++            columns = GridCells.Adaptive(minSize = 160.dp),
++            modifier = Modifier.fillMaxSize(),
++            contentPadding = PaddingValues(
++              top = paddingValues.calculateTopPadding() + 8.dp,
++              bottom = paddingValues.calculateBottomPadding() + 16.dp,
++              start = 16.dp,
++              end = 16.dp,
++            ),
++            horizontalArrangement = Arrangement.spacedBy(12.dp),
++            verticalArrangement = Arrangement.spacedBy(12.dp),
++          ) {
++            items(
++              items = state.items,
++              key = { it.libraryItem.id },
++            ) { item ->
++              DownloadedBookGridCard(
++                item = item,
++                onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
++              )
+             }
++          }
++        } else {
++          LazyColumn(
++            modifier = Modifier.fillMaxSize(),
++            contentPadding = PaddingValues(
++              top = paddingValues.calculateTopPadding() + 8.dp,
++              bottom = paddingValues.calculateBottomPadding() + 16.dp,
++              start = 16.dp,
++              end = 16.dp,
++            ),
++            verticalArrangement = Arrangement.spacedBy(8.dp),
++          ) {
++            items(
++              items = state.items,
++              key = { it.libraryItem.id },
++            ) { item ->
++              val subtitle = buildString {
++                item.libraryItem.media.metadata.authorName?.let { append(it) }
++                if (item.download.contentLength > 0) {
++                  if (isNotEmpty()) append(" • ")
++                  append(formatFileSize(item.download.contentLength))
++                }
++              }
+ 
+-            LibraryItemListItem(
+-              libraryItem = item.libraryItem,
+-              onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
+-              mediaProgress = item.progress,
+-              offlineStatus = item.download.asWidgetStatus(),
+-              subtitleOverride = subtitle.ifEmpty { null },
+-            )
++              LibraryItemListItem(
++                libraryItem = item.libraryItem,
++                onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
++                mediaProgress = item.progress,
++                offlineStatus = item.download.asWidgetStatus(),
++                subtitleOverride = subtitle.ifEmpty { null },
++              )
++            }
+           }
+         }
+       }
+@@ -201,3 +245,82 @@ private fun formatFileSize(bytes: Long): String {
+     else -> "$bytes B"
+   }
+ }
++
++@Composable
++private fun DownloadedBookGridCard(
++  item: DownloadedBookItem,
++  onBookClick: (LibraryItem) -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  ElevatedContentCard(
++    modifier = modifier,
++    onClick = { onBookClick(item.libraryItem) },
++  ) {
++    Column {
++      Box(modifier = Modifier.aspectRatio(1f).fillMaxWidth()) {
++        ItemImage(
++          imageUrl = item.libraryItem.media.coverImageUrl,
++          contentDescription = item.libraryItem.media.metadata.title,
++          modifier = Modifier.fillMaxSize(),
++          contentScale = ContentScale.Crop,
++        )
++
++        OfflineStatusIndicator(
++          status = item.download.asWidgetStatus(),
++          size = 18.dp,
++          modifier = Modifier
++            .align(Alignment.TopEnd)
++            .padding(8.dp),
++        )
++
++        val isFinished = item.progress?.isFinished == true
++        if (isFinished) {
++          MediaFinishedIndicator(
++            size = 20.dp,
++            modifier = Modifier
++              .align(Alignment.TopStart)
++              .padding(8.dp),
++          )
++        } else if (item.progress != null && item.progress.actualProgress > 0f) {
++          MediaProgressBar(
++            mediaProgress = item.progress,
++            trackHeight = 4.dp,
++            modifier = Modifier
++              .align(Alignment.BottomCenter)
++              .fillMaxWidth(),
++          )
++        }
++      }
++
++      Column(modifier = Modifier.padding(12.dp)) {
++        Text(
++          text = item.libraryItem.media.metadata.title ?: "Untitled",
++          style = MaterialTheme.typography.titleSmall,
++          fontWeight = FontWeight.SemiBold,
++          maxLines = 1,
++          modifier = Modifier.basicMarquee(),
++        )
++
++        Spacer(modifier = Modifier.height(2.dp))
++
++        val subtitle = buildString {
++          item.libraryItem.media.metadata.authorName?.let { append(it) }
++          if (item.download.contentLength > 0) {
++            if (isNotEmpty()) append(" • ")
++            append(formatFileSize(item.download.contentLength))
++          }
++        }
++
++        if (subtitle.isNotEmpty()) {
++          Text(
++            text = subtitle,
++            style = MaterialTheme.typography.bodySmall,
++            maxLines = 1,
++            modifier = Modifier.basicMarquee(),
++            color = MaterialTheme.colorScheme.onSurfaceVariant,
++          )
++        }
++      }
++    }
++  }
++}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
-index b1e9594a..3d58ad9b 100644
+index b1e9594a..4f9cf05e 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
 @@ -22,6 +22,8 @@ enum class DownloadsSort(val label: String) {
@@ -6982,6 +7326,14 @@ index b1e9594a..3d58ad9b 100644
 +  PublishYear("Date Published"),
    Size("File Size"),
  }
+ 
+@@ -32,6 +34,7 @@ data class DownloadsUiState(
+   val isLoading: Boolean,
+   val sortMode: DownloadsSort,
+   val sortAscending: Boolean,
++  val alternateView: Boolean = false,
+   val eventSink: (DownloadsUiEvent) -> Unit,
+ ) : CircuitUiState
  
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
 index cbf48b77..f246c8c1 100644
@@ -11039,6 +11391,21 @@ index 2ce324d6..905dd47b 100644
      is SettingsUiEvent.SleepSettingEvent -> when (event) {
        is ShakeToReset -> send("shake_to_reset", Updated, event.enabled)
        is ShakeSensitivity -> send("shake_sensitivity", Updated, event.sensitivity.storageKey)
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
+index d7735e05..48b7f40c 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
+@@ -94,8 +94,8 @@ internal fun AppearancePane(
+     SwitchSetting(
+       value = state.appearanceSettings.continueSeriesAlternateView,
+       onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView(it)) },
+-      headlineContent = { Text("Continue Series Alternate View") },
+-      supportingContent = { Text("Use an alternate grid view for the Continue Series screen") },
++      headlineContent = { Text("Continue Series & Downloads Alternate View") },
++      supportingContent = { Text("Use an alternate grid view for the Continue Series and Downloads screens") },
+     )
+   }
+ }
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 new file mode 100644
 index 00000000..03c46fec
@@ -11759,7 +12126,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..40aa19e5 100644
+index e42923f9..9a25a08e 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -11767,13 +12134,13 @@ index e42923f9..40aa19e5 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.45-rc5
++campfire.version=1.2.45-rc6
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024505
++campfire.versionCode=1024506
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -12532,6 +12899,55 @@ index 3be504c0..537b0fc1 100644
  
 -  return controller.packageName != appPackageName
 +  return true
+ }
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
+index 36438551..ea1c3021 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
+@@ -18,6 +18,9 @@ import app.campfire.core.model.LibraryItem
+ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.PodcastEpisode
+ import app.campfire.core.model.PodcastEpisodeId
++import app.campfire.core.image.CoverUrls
++import coil3.SingletonImageLoader
++import coil3.request.ImageRequest
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+ import dev.zacsweers.metro.SingleIn
+@@ -149,6 +152,7 @@ class AndroidOfflineDownloadManager(
+         true,
+       )
+     }
++    prefetchCover(item)
+   }
+ 
+   override fun downloadAll(items: List<LibraryItem>) {
+@@ -181,6 +185,7 @@ class AndroidOfflineDownloadManager(
+       request,
+       true,
+     )
++    prefetchCover(item)
+   }
+ 
+   override fun delete(item: LibraryItem) {
+@@ -258,4 +263,18 @@ class AndroidOfflineDownloadManager(
+ 
+   private fun episodeDownloadId(itemId: LibraryItemId, episodeId: PodcastEpisodeId): String =
+     "$itemId:$episodeId"
++  private fun prefetchCover(item: LibraryItem) {
++    val coverUrl = item.media.coverImageUrl.takeIf { it.isNotBlank() } ?: return
++    try {
++      val imageLoader = SingletonImageLoader.get(application)
++      listOf(CoverUrls.ARTWORK_WIDTH, 800).forEach { width ->
++        val request = ImageRequest.Builder(application)
++          .data(CoverUrls.sized(coverUrl, width))
++          .build()
++        imageLoader.enqueue(request)
++      }
++    } catch (e: Exception) {
++      bark(throwable = e) { "Failed to prefetch cover for downloaded item ${item.id}" }
++    }
++  }
  }
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilder.kt
 index a3ea1c29..c87139c9 100644

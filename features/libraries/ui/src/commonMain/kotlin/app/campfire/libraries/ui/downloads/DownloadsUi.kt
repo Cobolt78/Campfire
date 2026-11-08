@@ -45,10 +45,23 @@ import app.campfire.common.compose.icons.rounded.SortAsc
 import app.campfire.common.compose.icons.rounded.SortDesc
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.EmptyState
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.layout.ContentScale
+import app.campfire.common.compose.widgets.ElevatedContentCard
+import app.campfire.common.compose.widgets.ItemImage
 import app.campfire.common.compose.widgets.LibraryItemListItem
+import app.campfire.common.compose.widgets.MediaFinishedIndicator
+import app.campfire.common.compose.widgets.MediaProgressBar
+import app.campfire.common.compose.widgets.OfflineStatusIndicator
 import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 import app.campfire.common.screens.DownloadsScreen
+import app.campfire.core.model.LibraryItem
 import app.campfire.core.di.UserScope
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
@@ -159,35 +172,60 @@ fun Downloads(
       }
 
       else -> {
-        LazyColumn(
-          modifier = Modifier.fillMaxSize(),
-          contentPadding = PaddingValues(
-            top = paddingValues.calculateTopPadding() + 8.dp,
-            bottom = paddingValues.calculateBottomPadding() + 16.dp,
-            start = 16.dp,
-            end = 16.dp,
-          ),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          items(
-            items = state.items,
-            key = { it.libraryItem.id },
-          ) { item ->
-            val subtitle = buildString {
-              item.libraryItem.media.metadata.authorName?.let { append(it) }
-              if (item.download.contentLength > 0) {
-                if (isNotEmpty()) append(" • ")
-                append(formatFileSize(item.download.contentLength))
-              }
+        if (state.alternateView) {
+          LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 160.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+              top = paddingValues.calculateTopPadding() + 8.dp,
+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
+              start = 16.dp,
+              end = 16.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+          ) {
+            items(
+              items = state.items,
+              key = { it.libraryItem.id },
+            ) { item ->
+              DownloadedBookGridCard(
+                item = item,
+                onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
+              )
             }
+          }
+        } else {
+          LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+              top = paddingValues.calculateTopPadding() + 8.dp,
+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
+              start = 16.dp,
+              end = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            items(
+              items = state.items,
+              key = { it.libraryItem.id },
+            ) { item ->
+              val subtitle = buildString {
+                item.libraryItem.media.metadata.authorName?.let { append(it) }
+                if (item.download.contentLength > 0) {
+                  if (isNotEmpty()) append(" • ")
+                  append(formatFileSize(item.download.contentLength))
+                }
+              }
 
-            LibraryItemListItem(
-              libraryItem = item.libraryItem,
-              onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
-              mediaProgress = item.progress,
-              offlineStatus = item.download.asWidgetStatus(),
-              subtitleOverride = subtitle.ifEmpty { null },
-            )
+              LibraryItemListItem(
+                libraryItem = item.libraryItem,
+                onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
+                mediaProgress = item.progress,
+                offlineStatus = item.download.asWidgetStatus(),
+                subtitleOverride = subtitle.ifEmpty { null },
+              )
+            }
           }
         }
       }
@@ -205,5 +243,84 @@ private fun formatFileSize(bytes: Long): String {
     mb >= 1.0 -> "${(mb * 10).roundToInt() / 10.0} MB"
     kb >= 1.0 -> "${(kb * 10).roundToInt() / 10.0} KB"
     else -> "$bytes B"
+  }
+}
+
+@Composable
+private fun DownloadedBookGridCard(
+  item: DownloadedBookItem,
+  onBookClick: (LibraryItem) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  ElevatedContentCard(
+    modifier = modifier,
+    onClick = { onBookClick(item.libraryItem) },
+  ) {
+    Column {
+      Box(modifier = Modifier.aspectRatio(1f).fillMaxWidth()) {
+        ItemImage(
+          imageUrl = item.libraryItem.media.coverImageUrl,
+          contentDescription = item.libraryItem.media.metadata.title,
+          modifier = Modifier.fillMaxSize(),
+          contentScale = ContentScale.Crop,
+        )
+
+        OfflineStatusIndicator(
+          status = item.download.asWidgetStatus(),
+          size = 18.dp,
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(8.dp),
+        )
+
+        val isFinished = item.progress?.isFinished == true
+        if (isFinished) {
+          MediaFinishedIndicator(
+            size = 20.dp,
+            modifier = Modifier
+              .align(Alignment.TopStart)
+              .padding(8.dp),
+          )
+        } else if (item.progress != null && item.progress.actualProgress > 0f) {
+          MediaProgressBar(
+            mediaProgress = item.progress,
+            trackHeight = 4.dp,
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .fillMaxWidth(),
+          )
+        }
+      }
+
+      Column(modifier = Modifier.padding(12.dp)) {
+        Text(
+          text = item.libraryItem.media.metadata.title ?: "Untitled",
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          modifier = Modifier.basicMarquee(),
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        val subtitle = buildString {
+          item.libraryItem.media.metadata.authorName?.let { append(it) }
+          if (item.download.contentLength > 0) {
+            if (isNotEmpty()) append(" • ")
+            append(formatFileSize(item.download.contentLength))
+          }
+        }
+
+        if (subtitle.isNotEmpty()) {
+          Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            modifier = Modifier.basicMarquee(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      }
+    }
   }
 }

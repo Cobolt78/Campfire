@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc6] - 2026-11-08
+
+### Added
+
+- **Multi-Tier Resilient Disk/Memory Cache Fallback in CoverSizingInterceptor**:
+  - When offline, in airplane mode, or in cellular black spots, cover requests that miss high-resolution buckets (such as width=1200 on Book Details or expanded Player) automatically fall back through all local cache size buckets (1600, 1200, 800, 600, 400, 300, 200, raw=1, and un-sized) with networkCachePolicy(CachePolicy.DISABLED).
+  - Instantly decodes and scales up any previously cached thumbnail from disk/memory cache instead of throwing an error or displaying a blank cover.
+- **Automatic High-Res Cover Art Prefetch for Offline Downloads**:
+  - When downloading audiobooks or podcast episodes via AndroidOfflineDownloadManager, automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) cover art into Coil's disk cache.
+  - Ensures full-resolution cover artwork is permanently available offline for all downloaded media.
+- **Alternate Grid View for Offline Downloads Screen**:
+  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, and progress bar overlays.
+  - Integrated with the existing Appearance setting toggle, updating its label and description to 'Continue Series & Downloads Alternate View'.
+
 ## [1.2.45-rc5] - 2026-11-08
 
 ### Added

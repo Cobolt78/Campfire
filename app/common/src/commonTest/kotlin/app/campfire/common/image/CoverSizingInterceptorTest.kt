@@ -12,6 +12,7 @@ import coil3.Image
 import coil3.PlatformContext
 import coil3.intercept.Interceptor
 import coil3.network.httpHeaders
+import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
@@ -93,6 +94,26 @@ class CoverSizingInterceptorTest {
     val result = interceptor.intercept(chain)
     assertThat(result).isInstanceOf<SuccessResult>()
     assertThat((result as SuccessResult).request.data).isEqualTo("$cover&raw=1")
+  }
+
+  @Test
+  fun falls_back_to_cached_rendition_when_network_fails() = runTest {
+    val chain = FakeChain(
+      request(cover),
+      Size(Dimension(1200), Dimension(1200)),
+      shouldFail = { req ->
+        // Simulate offline: all network requests fail. Cache-only request succeeds if width=800.
+        val isCacheOnly = req.networkCachePolicy == CachePolicy.DISABLED
+        if (isCacheOnly) {
+          !req.data.toString().contains("width=800")
+        } else {
+          true
+        }
+      },
+    )
+    val result = interceptor.intercept(chain)
+    assertThat(result).isInstanceOf<SuccessResult>()
+    assertThat((result as SuccessResult).request.data).isEqualTo("$cover&width=800")
   }
 
   private fun request(url: String) = ImageRequest.Builder(PlatformContext.INSTANCE).data(url).build()

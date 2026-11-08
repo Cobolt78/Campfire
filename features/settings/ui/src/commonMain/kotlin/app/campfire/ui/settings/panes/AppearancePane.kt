@@ -94,8 +94,8 @@ internal fun AppearancePane(
     SwitchSetting(
       value = state.appearanceSettings.continueSeriesAlternateView,
       onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView(it)) },
-      headlineContent = { Text("Continue Series Alternate View") },
-      supportingContent = { Text("Use an alternate grid view for the Continue Series screen") },
+      headlineContent = { Text("Continue Series & Downloads Alternate View") },
+      supportingContent = { Text("Use an alternate grid view for the Continue Series and Downloads screens") },
     )
   }
 }

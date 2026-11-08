@@ -18,6 +18,7 @@ import app.campfire.common.screens.DownloadsScreen
 import app.campfire.core.di.UserScope
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
+import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.user.api.MediaProgressRepository
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
@@ -39,6 +40,7 @@ class DownloadsPresenter(
   private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryItemRepository: LibraryItemRepository,
   private val mediaProgressRepository: MediaProgressRepository,
+  private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
 ) : NonPausablePresenter<DownloadsUiState> {
 
@@ -80,6 +82,10 @@ class DownloadsPresenter(
         }
         .catch { emit(emptyMap()) }
     }.collectAsState(null)
+
+    val alternateView by remember {
+      libraryViewSettings.observeContinueSeriesAlternateView()
+    }.collectAsState(false)
 
     val isLoading = completedDownloads == null || userMediaProgress == null
 
@@ -134,6 +140,7 @@ class DownloadsPresenter(
       isLoading = isLoading,
       sortMode = sortMode,
       sortAscending = sortAscending,
+      alternateView = alternateView,
     ) { event ->
       when (event) {
         DownloadsUiEvent.Back -> navigator.pop()
