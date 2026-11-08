@@ -11,15 +11,15 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..96d05b06 100644
+index 1dcbc292..24019e7e 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,439 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,414 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.45-rc6] - 2026-11-08
++## [1.2.45] - 2026-11-09
 +
 +### Added
 +
@@ -30,25 +30,34 @@ index 1dcbc292..96d05b06 100644
 +  - When downloading audiobooks or podcast episodes via AndroidOfflineDownloadManager, automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) cover art into Coil's disk cache.
 +  - Ensures full-resolution cover artwork is permanently available offline for all downloaded media.
 +- **Alternate Grid View for Offline Downloads Screen**:
-+  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, and progress bar overlays.
++  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, OfflineStatusIndicator, MediaFinishedIndicator checkmarks, and MediaProgressBar overlays.
 +  - Integrated with the existing Appearance setting toggle, updating its label and description to 'Continue Series & Downloads Alternate View'.
-+
-+## [1.2.45-rc5] - 2026-11-08
-+
-+### Added
-+
 +- **Dedicated Full Fetch & Pull-To-Refresh on Continue Series Screen**:
-+  - Added `refreshContinueSeries()` to `SeriesRepository` executing a silent background fetch querying Audiobookshelf's personalized endpoint with `limit=250`.
-+  - Added Material 3 `PullToRefreshBox` and `CampfireLoadingIndicator` to the dedicated Continue Series screen for manual refresh.
++  - Added refreshContinueSeries() to SeriesRepository executing a silent background fetch querying Audiobookshelf's personalized endpoint with limit=250.
++  - Added Material 3 PullToRefreshBox and CampfireLoadingIndicator to the dedicated Continue Series screen for manual refresh.
 +  - Automatically indexes all continue series and next-up book junctions into local SQLite off the UI thread without any screen freeze or ANR.
++- **Smart Whole-Series Downloading with Unlistened Filtering**:
++  - Added a dedicated 'Download series' button and 3-dot overflow menu action on the Series Detail screen.
++  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
++  - Added an interactive 'Include completed books' toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
++  - Gracefully alerts the user if all books in the series are already downloaded.
++- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
++  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
++  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
++  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size with dynamic recalculation when toggling 'Include completed items'.
++  - Full support for downloading both audiobooks and podcast episodes within playlists.
++- **Enhanced Sorting on Offline Downloads Screen**:
++  - Added 'Length' (Duration) and 'Date Published' (Release Year) sorting options to the dedicated Downloads screen with full ascending/descending toggle support.
++- **Automated Playlist Sorting with Custom Order Safety Prompt**:
++  - Added a dedicated 'Sort playlist' action menu to the Playlist Detail top bar.
++  - Supports sorting playlist items by Title (A–Z / Z–A), Author (A–Z / Z–A), Length (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
++  - Includes a clear confirmation dialog alerting users that automated sorting will reorder the playlist items and update their custom order on the server.
 +
 +### Changed
 +
 +- **Strict 10-Item Cap on Home Screen Carousels**:
-+  - Enforced a strict `.take(10)` cap across all Home screen horizontal shelf carousels (except Downloads) in `HomePresenter`, keeping the Home screen lightweight, snappy, and compact while the dedicated Continue Series screen displays all series.
-+  - Added optional `limit: Int? = null` parameter to `AudioBookShelfApi.getPersonalizedHome` allowing targeted client-side limit overrides.
-+
-+## [1.2.45-rc4] - 2026-11-08
++  - Enforced a strict .take(10) cap across all Home screen horizontal shelf carousels (except Downloads) in HomePresenter, keeping the Home screen lightweight, snappy, and compact while the dedicated Continue Series screen displays all series.
++  - Added optional limit: Int? = null parameter to AudioBookShelfApi.getPersonalizedHome allowing targeted client-side limit overrides.
 +
 +### Fixed
 +
@@ -57,40 +66,6 @@ index 1dcbc292..96d05b06 100644
 +  - Linked incoming books from the personalized continue-series shelf to their respective series and junction rows (seriesBookJoin) when saving the home feed in HomeSourceOfTruthFactory.
 +  - Added self-healing database queries (insertMissingShelfSeries & insertMissingShelfJoins) to guarantee all books on the continue-series shelf are immediately indexed and joined with their series in local SQLite.
 +  - Resolved premature series exclusion in ContinueSeriesPresenter where partially cached series were incorrectly marked 100% completed (completedCount >= total).
-+
-+## [1.2.45-rc3] - 2026-11-08
-+
-+### Added
-+
-+- **Enhanced Sorting on Offline Downloads Screen**:
-+  - Added "Length" (Duration) and "Date Published" (Release Year) sorting options to the dedicated Downloads screen with full ascending/descending toggle support.
-+
-+- **Automated Playlist Sorting with Custom Order Safety Prompt**:
-+  - Added a dedicated "Sort playlist" action menu to the Playlist Detail top bar.
-+  - Supports sorting playlist items by Title (A–Z / Z–A), Author (A–Z / Z–A), Length (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
-+  - Includes a clear confirmation dialog alerting users that automated sorting will reorder the playlist items and update their custom order on the server.
-+
-+## [1.2.45-rc2] - 2026-11-08
-+
-+### Added
-+
-+- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
-+  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
-+  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
-+  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size.
-+  - Includes an interactive "Include completed items" checkbox with real-time recalculation of download size and item count.
-+  - Added clear notification when all playlist items are already downloaded offline.
-+  - Fixed support for downloading podcast episodes within playlists, ensuring both audiobooks and podcasts download properly.
-+
-+## [1.2.45-rc1] - 2026-11-08
-+
-+### Added
-+
-+- **Smart Whole-Series Downloading with Unlistened Filtering**:
-+  - Added a dedicated "Download series" button and 3-dot overflow menu action on the Series Detail screen.
-+  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
-+  - Added an interactive "Include completed books" toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
-+  - Gracefully alerts the user if all books in the series are already downloaded.
 +
 +## [1.2.44] - 2026-11-06
 +
@@ -456,7 +431,7 @@ index 1dcbc292..96d05b06 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..8f4a0f9b 100644
+index e460bea1..9fd4c093 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -36,6 +36,58 @@ This document captures all custom features, bug fixes, and UI improvements added
@@ -509,12 +484,12 @@ index e460bea1..8f4a0f9b 100644
 +75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
 +76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 +77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
-+78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
-+79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
-+80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
-+81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
-+82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245-rc5)
-+83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245-rc6)
++78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245)
++79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245)
++80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245)
++81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245)
++82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245)
++83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
  
  ---
  
@@ -1841,7 +1816,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)
++## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45)
 +
 +### Problem Description
 +Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but had no whole-series download capabilities on the Series Detail screen. Users listening to extensive multi-book book series were forced to navigate into every individual book details screen one by one to trigger offline downloads. Furthermore, downloading an entire series blindly would re-download books the user had already completed or books already saved offline, consuming gigabytes of unnecessary device storage and bandwidth.
@@ -1877,7 +1852,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)
++## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45)
 +
 +### Problem Description
 +Tapping the download button on the Playlist Detail screen floating toolbar often appeared to do nothing. In upstream Campfire, if books were already downloaded on the device, ExoPlayer silently ignored download requests with zero visual feedback or completion alert. If the playlist contained podcast episodes, `DownloadAll` passed podcast parent items where track lists were empty, causing downloads to fail completely. Additionally, there was no intelligent filtering to exclude completed items or already downloaded items, leading to wasted storage and repetitive downloading.
@@ -1911,7 +1886,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 80. Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)
++## 80. Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45)
 +
 +### Problem Description
 +Previously, the dedicated Offline Downloads screen lacked sorting by audio length/duration and release date (date published). In addition, while playlists supported manual drag-and-drop reordering, there was no automated sorting capability to quickly organize large playlists (by title, author, length, date added, or release year), and users needed a safeguard to prevent unintentionally overwriting manual track sequences.
@@ -1942,7 +1917,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 81. Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)
++## 81. Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)
 +
 +### Problem Description
 +Users observed a discrepancy between the Home screen's "Continue Series" horizontal shelf (which displayed 10 next-up books returned by the Audiobookshelf server) and the dedicated "Continue Series" screen (which showed only 4 series). The discrepancy was caused by four issues:
@@ -1974,7 +1949,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 82. Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)
++## 82. Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)
 +
 +### Problem Description
 +1. Audiobookshelf's personalized home feed endpoint (`/api/libraries/{id}/personalized`) defaults to returning at most 10 items per shelf when no `limit` parameter is provided. Because Campfire did not provide a limit, only 10 books were returned for the `continue-series` shelf.
@@ -2015,7 +1990,7 @@ index e460bea1..8f4a0f9b 100644
 +
 +---
 +
-+## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)
++## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)
 +
 +### Problem Description
 +1. When offline (in airplane mode or data black spots), tapping on a book from the Home screen (Downloads, Continue Listening, or Continue Series) showed a blank cover or generic placeholder icon on Book Details and Expanded Player screens.
@@ -7385,6 +7360,93 @@ index 48031e7a..6fa0df7d 100644
          )
        }
      }
+diff --git a/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
+new file mode 100644
+index 00000000..80fe7819
+--- /dev/null
++++ b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
+@@ -0,0 +1,81 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.libraries.ui.downloads
++
++import app.campfire.analytics.test.FakeAnalytics
++import app.campfire.audioplayer.offline.OfflineDownload
++import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
++import app.campfire.common.screens.DownloadsScreen
++import app.campfire.core.model.preview.libraryItem
++import app.campfire.libraries.test.FakeLibraryItemRepository
++import app.campfire.settings.test.TestLibraryViewSettings
++import app.campfire.user.test.FakeMediaProgressRepository
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import assertk.assertions.isFalse
++import assertk.assertions.isTrue
++import com.slack.circuit.test.FakeNavigator
++import com.slack.circuit.test.test
++import kotlin.test.Test
++import kotlinx.coroutines.test.runTest
++
++class DownloadsPresenterTest {
++
++  private val navigator = FakeNavigator(DownloadsScreen)
++  private val offlineDownloadManager = FakeOfflineDownloadManager()
++  private val libraryItemRepository = FakeLibraryItemRepository()
++  private val mediaProgressRepository = FakeMediaProgressRepository()
++  private val libraryViewSettings = TestLibraryViewSettings()
++  private val analytics = FakeAnalytics()
++
++  private fun presenter() = DownloadsPresenter(
++    navigator = navigator,
++    offlineDownloadManager = offlineDownloadManager,
++    libraryItemRepository = libraryItemRepository,
++    mediaProgressRepository = mediaProgressRepository,
++    libraryViewSettings = libraryViewSettings,
++    analytics = analytics,
++  )
++
++  @Test
++  fun respects_alternate_view_setting() = runTest {
++    libraryViewSettings.continueSeriesAlternateView = false
++    val item = libraryItem(id = "item_1")
++    libraryItemRepository.libraryItem = item
++    offlineDownloadManager.observeAllFlow.emit(
++      listOf(OfflineDownload(libraryItemId = item.id, state = OfflineDownload.State.Completed)),
++    )
++    mediaProgressRepository.allProgressFlow.emit(emptyList())
++
++    presenter().test {
++      var item = awaitItem()
++      while (item.isLoading) {
++        item = awaitItem()
++      }
++      assertThat(item.alternateView).isFalse()
++
++      libraryViewSettings.continueSeriesAlternateView = true
++      val updated = awaitItem()
++      assertThat(updated.alternateView).isTrue()
++    }
++  }
++
++  @Test
++  fun toggles_sort_direction_when_same_sort_selected() = runTest {
++    presenter().test {
++      val initial = awaitItem()
++      assertThat(initial.sortMode).isEqualTo(DownloadsSort.RecentlyPlayed)
++      assertThat(initial.sortAscending).isFalse()
++
++      initial.eventSink(DownloadsUiEvent.SelectSort(DownloadsSort.RecentlyPlayed))
++      val reversed = awaitItem()
++      assertThat(reversed.sortAscending).isTrue()
++
++      initial.eventSink(DownloadsUiEvent.SelectSort(DownloadsSort.Title))
++      val titleSort = awaitItem()
++      assertThat(titleSort.sortMode).isEqualTo(DownloadsSort.Title)
++      assertThat(titleSort.sortAscending).isTrue()
++    }
++  }
++}
 diff --git a/features/playlists/impl/src/commonMain/kotlin/app/campfire/playlists/StorePlaylistsRepository.kt b/features/playlists/impl/src/commonMain/kotlin/app/campfire/playlists/StorePlaylistsRepository.kt
 index fba28530..5571ade9 100644
 --- a/features/playlists/impl/src/commonMain/kotlin/app/campfire/playlists/StorePlaylistsRepository.kt
@@ -12126,7 +12188,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..9a25a08e 100644
+index e42923f9..06a739c2 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12134,13 +12196,13 @@ index e42923f9..9a25a08e 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.45-rc6
++campfire.version=1.2.45
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024506
++campfire.versionCode=1024599
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

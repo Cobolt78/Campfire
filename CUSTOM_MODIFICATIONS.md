@@ -82,12 +82,12 @@ This document captures all custom features, bug fixes, and UI improvements added
 75. [USB-C DAC Dongle & Headset Multi-Press Control Unification (v1.2.42)](#75-usb-c-dac-dongle--headset-multi-press-control-unification-v1242)
 76. [Silent Background Auto-Healing & Hardware-Secured Credential Re-Authentication (v1.2.43)](#76-silent-background-auto-healing--hardware-secured-credential-re-authentication-v1243)
 77. [Preserved Campsite & Username on Logout with One-Tap Re-Authentication (v1.2.44)](#77-preserved-campsite--username-on-logout-with-one-tap-re-authentication-v1244)
-78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
-79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
-80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
-81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
-82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245-rc5)
-83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245-rc6)
+78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245)
+79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245)
+80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245)
+81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245)
+82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245)
+83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 
 ---
 
@@ -2248,7 +2248,7 @@ Previously, when a user logged out of Campfire, the logout use case completely p
 
 ---
 
-## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)
+## 78. Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45)
 
 ### Problem Description
 Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but had no whole-series download capabilities on the Series Detail screen. Users listening to extensive multi-book book series were forced to navigate into every individual book details screen one by one to trigger offline downloads. Furthermore, downloading an entire series blindly would re-download books the user had already completed or books already saved offline, consuming gigabytes of unnecessary device storage and bandwidth.
@@ -2284,7 +2284,7 @@ Previously, Campfire offered batch downloading on playlists (`DownloadAll`), but
 
 ---
 
-## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)
+## 79. Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45)
 
 ### Problem Description
 Tapping the download button on the Playlist Detail screen floating toolbar often appeared to do nothing. In upstream Campfire, if books were already downloaded on the device, ExoPlayer silently ignored download requests with zero visual feedback or completion alert. If the playlist contained podcast episodes, `DownloadAll` passed podcast parent items where track lists were empty, causing downloads to fail completely. Additionally, there was no intelligent filtering to exclude completed items or already downloaded items, leading to wasted storage and repetitive downloading.
@@ -2318,7 +2318,7 @@ Tapping the download button on the Playlist Detail screen floating toolbar often
 
 ---
 
-## 80. Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)
+## 80. Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45)
 
 ### Problem Description
 Previously, the dedicated Offline Downloads screen lacked sorting by audio length/duration and release date (date published). In addition, while playlists supported manual drag-and-drop reordering, there was no automated sorting capability to quickly organize large playlists (by title, author, length, date added, or release year), and users needed a safeguard to prevent unintentionally overwriting manual track sequences.
@@ -2349,7 +2349,7 @@ Previously, the dedicated Offline Downloads screen lacked sorting by audio lengt
 
 ---
 
-## 81. Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)
+## 81. Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)
 
 ### Problem Description
 Users observed a discrepancy between the Home screen's "Continue Series" horizontal shelf (which displayed 10 next-up books returned by the Audiobookshelf server) and the dedicated "Continue Series" screen (which showed only 4 series). The discrepancy was caused by four issues:
@@ -2381,7 +2381,7 @@ Users observed a discrepancy between the Home screen's "Continue Series" horizon
 
 ---
 
-## 82. Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)
+## 82. Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)
 
 ### Problem Description
 1. Audiobookshelf's personalized home feed endpoint (`/api/libraries/{id}/personalized`) defaults to returning at most 10 items per shelf when no `limit` parameter is provided. Because Campfire did not provide a limit, only 10 books were returned for the `continue-series` shelf.
@@ -2422,7 +2422,7 @@ Users observed a discrepancy between the Home screen's "Continue Series" horizon
 
 ---
 
-## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45-rc6)
+## 83. Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)
 
 ### Problem Description
 1. When offline (in airplane mode or data black spots), tapping on a book from the Home screen (Downloads, Continue Listening, or Continue Series) showed a blank cover or generic placeholder icon on Book Details and Expanded Player screens.

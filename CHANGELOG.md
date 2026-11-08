@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.45-rc6] - 2026-11-08
+## [1.2.45] - 2026-11-09
 
 ### Added
 
@@ -28,25 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - When downloading audiobooks or podcast episodes via AndroidOfflineDownloadManager, automatically enqueues a background prefetch for high-resolution (width=1200) and standard (width=800) cover art into Coil's disk cache.
   - Ensures full-resolution cover artwork is permanently available offline for all downloaded media.
 - **Alternate Grid View for Offline Downloads Screen**:
-  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, and progress bar overlays.
+  - Added alternate grid view layout to DownloadsUi mirroring Continue Series alternate view, powered by ElevatedContentCard, ItemImage, marquee text, file size, OfflineStatusIndicator, MediaFinishedIndicator checkmarks, and MediaProgressBar overlays.
   - Integrated with the existing Appearance setting toggle, updating its label and description to 'Continue Series & Downloads Alternate View'.
-
-## [1.2.45-rc5] - 2026-11-08
-
-### Added
-
 - **Dedicated Full Fetch & Pull-To-Refresh on Continue Series Screen**:
-  - Added `refreshContinueSeries()` to `SeriesRepository` executing a silent background fetch querying Audiobookshelf's personalized endpoint with `limit=250`.
-  - Added Material 3 `PullToRefreshBox` and `CampfireLoadingIndicator` to the dedicated Continue Series screen for manual refresh.
+  - Added refreshContinueSeries() to SeriesRepository executing a silent background fetch querying Audiobookshelf's personalized endpoint with limit=250.
+  - Added Material 3 PullToRefreshBox and CampfireLoadingIndicator to the dedicated Continue Series screen for manual refresh.
   - Automatically indexes all continue series and next-up book junctions into local SQLite off the UI thread without any screen freeze or ANR.
+- **Smart Whole-Series Downloading with Unlistened Filtering**:
+  - Added a dedicated 'Download series' button and 3-dot overflow menu action on the Series Detail screen.
+  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
+  - Added an interactive 'Include completed books' toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
+  - Gracefully alerts the user if all books in the series are already downloaded.
+- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
+  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
+  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
+  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size with dynamic recalculation when toggling 'Include completed items'.
+  - Full support for downloading both audiobooks and podcast episodes within playlists.
+- **Enhanced Sorting on Offline Downloads Screen**:
+  - Added 'Length' (Duration) and 'Date Published' (Release Year) sorting options to the dedicated Downloads screen with full ascending/descending toggle support.
+- **Automated Playlist Sorting with Custom Order Safety Prompt**:
+  - Added a dedicated 'Sort playlist' action menu to the Playlist Detail top bar.
+  - Supports sorting playlist items by Title (A–Z / Z–A), Author (A–Z / Z–A), Length (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
+  - Includes a clear confirmation dialog alerting users that automated sorting will reorder the playlist items and update their custom order on the server.
 
 ### Changed
 
 - **Strict 10-Item Cap on Home Screen Carousels**:
-  - Enforced a strict `.take(10)` cap across all Home screen horizontal shelf carousels (except Downloads) in `HomePresenter`, keeping the Home screen lightweight, snappy, and compact while the dedicated Continue Series screen displays all series.
-  - Added optional `limit: Int? = null` parameter to `AudioBookShelfApi.getPersonalizedHome` allowing targeted client-side limit overrides.
-
-## [1.2.45-rc4] - 2026-11-08
+  - Enforced a strict .take(10) cap across all Home screen horizontal shelf carousels (except Downloads) in HomePresenter, keeping the Home screen lightweight, snappy, and compact while the dedicated Continue Series screen displays all series.
+  - Added optional limit: Int? = null parameter to AudioBookShelfApi.getPersonalizedHome allowing targeted client-side limit overrides.
 
 ### Fixed
 
@@ -55,40 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Linked incoming books from the personalized continue-series shelf to their respective series and junction rows (seriesBookJoin) when saving the home feed in HomeSourceOfTruthFactory.
   - Added self-healing database queries (insertMissingShelfSeries & insertMissingShelfJoins) to guarantee all books on the continue-series shelf are immediately indexed and joined with their series in local SQLite.
   - Resolved premature series exclusion in ContinueSeriesPresenter where partially cached series were incorrectly marked 100% completed (completedCount >= total).
-
-## [1.2.45-rc3] - 2026-11-08
-
-### Added
-
-- **Enhanced Sorting on Offline Downloads Screen**:
-  - Added "Length" (Duration) and "Date Published" (Release Year) sorting options to the dedicated Downloads screen with full ascending/descending toggle support.
-
-- **Automated Playlist Sorting with Custom Order Safety Prompt**:
-  - Added a dedicated "Sort playlist" action menu to the Playlist Detail top bar.
-  - Supports sorting playlist items by Title (A–Z / Z–A), Author (A–Z / Z–A), Length (Shortest / Longest), Date Added (Newest / Oldest), and Release Date (Newest / Oldest).
-  - Includes a clear confirmation dialog alerting users that automated sorting will reorder the playlist items and update their custom order on the server.
-
-## [1.2.45-rc2] - 2026-11-08
-
-### Added
-
-- **Smart Whole-Playlist Downloading with Unlistened Filtering**:
-  - Overhauled the download button in the floating toolbar on the Playlist Detail screen to use smart unlistened filtering.
-  - Automatically detects and filters out items already completed and items already downloaded or actively downloading.
-  - Shows a smart confirmation dialog displaying the exact unlistened item count and calculated download size.
-  - Includes an interactive "Include completed items" checkbox with real-time recalculation of download size and item count.
-  - Added clear notification when all playlist items are already downloaded offline.
-  - Fixed support for downloading podcast episodes within playlists, ensuring both audiobooks and podcasts download properly.
-
-## [1.2.45-rc1] - 2026-11-08
-
-### Added
-
-- **Smart Whole-Series Downloading with Unlistened Filtering**:
-  - Added a dedicated "Download series" button and 3-dot overflow menu action on the Series Detail screen.
-  - Implemented a smart confirmation dialog that automatically filters out finished books and books already downloaded/active by default, queuing only unlistened books for offline listening.
-  - Added an interactive "Include completed books" toggle in the dialog that dynamically recalculates total download size and item count if re-downloading finished books is desired.
-  - Gracefully alerts the user if all books in the series are already downloaded.
 
 ## [1.2.44] - 2026-11-06
 
