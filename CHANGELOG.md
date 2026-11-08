@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc4] - 2026-11-08
+
+### Fixed
+
+- **Continue Series Parity Between Home Screen and Dedicated Screen**:
+  - Fixed a join bug in SQLite selectContinueSeries where shelfJoin.entityId (storing book IDs) was compared against series.id, preventing series on the server's personalized continue-series shelf from being recognized.
+  - Linked incoming books from the personalized continue-series shelf to their respective series and junction rows (seriesBookJoin) when saving the home feed in HomeSourceOfTruthFactory.
+  - Added self-healing database queries (insertMissingShelfSeries & insertMissingShelfJoins) to guarantee all books on the continue-series shelf are immediately indexed and joined with their series in local SQLite.
+  - Resolved premature series exclusion in ContinueSeriesPresenter where partially cached series were incorrectly marked 100% completed (completedCount >= total).
+
 ## [1.2.45-rc3] - 2026-11-08
 
 ### Added

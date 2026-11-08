@@ -85,6 +85,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 78. [Smart Whole-Series Downloading with Unlistened Filtering (v1.2.45-rc1)](#78-smart-whole-series-downloading-with-unlistened-filtering-v1245-rc1)
 79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
 80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
+81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
 
 ---
 
@@ -2340,6 +2341,38 @@ Previously, the dedicated Offline Downloads screen lacked sorting by audio lengt
 * features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailUiState.kt
 * features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
 * features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/list/FakePlaylistsRepository.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 81. Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)
+
+### Problem Description
+Users observed a discrepancy between the Home screen's "Continue Series" horizontal shelf (which displayed 10 next-up books returned by the Audiobookshelf server) and the dedicated "Continue Series" screen (which showed only 4 series). The discrepancy was caused by four issues:
+1. SQLite query join mismatch: `selectContinueSeries` in `series.sq` joined `shelfJoin` on `shelfJoin.entityId = series.id`. Because Audiobookshelf returns the `continue-series` shelf as a shelf of books (`ShelfType.BOOK`), `shelfJoin.entityId` stores book IDs (`libraryItemId`), never series IDs. As a result, the join condition never matched and failed to include series present on the server shelf.
+2. Missing local series & junction links: When the Home feed downloaded the `continue-series` shelf books, `HomeSourceOfTruthFactory` saved them to `libraryItem` and `media` but omitted inserting the series and junction rows (`seriesBookJoin`), leaving unread books unlinked to their series in local SQLite.
+3. Premature series completion filtering: In `ContinueSeriesPresenter`, partially cached series where only read books were in the database were evaluated as `completedCount >= total` (e.g. 1 of 1 books completed), incorrectly filtering them out as finished even though the server explicitly indicated an unread sequel was waiting.
+
+### Solution & Implementation
+1. **SQLite Query Overhaul (`data/db/core/.../series.sq` & `seriesBookJoin.sq`)**:
+   - Fixed `selectContinueSeries` to join `shelfJoin` via either `seriesBookJoin` or `media.metadata_series_id`, correctly detecting when a series has a next-up book on the personalized `continue-series` shelf.
+   - Added `insertMissingShelfSeries` in `series.sq` and `insertMissingShelfJoins` in `seriesBookJoin.sq` to automatically populate any missing series and junction rows from existing `shelfJoin` data on startup.
+2. **Repository-Level Self-Healing Sync (`features/series/impl/.../StoreSeriesRepository.kt`)**:
+   - In `continueSeriesFlow`, added an immediate database transaction executing `insertMissingShelfSeries` and `insertMissingShelfJoins`, ensuring instant parity on existing installs without waiting for a full cache refresh.
+3. **Home Feed Series Ingestion (`features/home/impl/.../HomeSourceOfTruthFactory.kt`)**:
+   - Updated `writeLibraryItems` to accept `userId` and `libraryId` and automatically insert `DbSeries` and `SeriesBookJoin` rows whenever minified books carry `series` metadata.
+4. **Presenter Sequence Preservation (`features/series/ui/.../ContinueSeriesPresenter.kt`)**:
+   - Prevented premature exclusion when `series.firstBookUnreadId != null`.
+   - Updated `nextUp` selection to prioritize `series.firstBookUnreadId` matching the exact book designated by the server.
+
+### Modified Files:
+* data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
+* data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
+* features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeSourceOfTruthFactory.kt
+* features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

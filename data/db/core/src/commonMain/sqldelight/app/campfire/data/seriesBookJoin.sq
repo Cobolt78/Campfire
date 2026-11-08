@@ -21,3 +21,11 @@ deleteForSeriesItem:
 DELETE FROM seriesBookJoin
 WHERE seriesId = :seriesId
 AND libraryItemId = :libraryItemId;
+
+insertMissingShelfJoins:
+INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
+SELECT media.metadata_series_id, shelfJoin.entityId
+FROM shelfJoin
+JOIN media ON media.libraryItemId = shelfJoin.entityId
+WHERE shelfJoin.shelfId LIKE 'continue-series_%'
+  AND media.metadata_series_id IS NOT NULL;

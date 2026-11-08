@@ -9,7 +9,9 @@ import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.model.LibraryId
 import app.campfire.core.model.ShelfType
 import app.campfire.core.model.UserId
+import app.campfire.data.Series as DbSeries
 import app.campfire.data.SeriesBookJoin
+import app.campfire.network.models.MinifiedBookMetadata
 import app.campfire.data.ShelfJoin
 import app.campfire.data.mapping.asDbModel
 import app.campfire.home.api.model.Shelf
@@ -130,7 +132,7 @@ class HomeSourceOfTruthFactory(
     libraryId: LibraryId,
     shelf: NetworkShelf,
   ): Unit = when (shelf) {
-    is NetworkShelf.BookShelf -> writeLibraryItems(shelf.entities)
+    is NetworkShelf.BookShelf -> writeLibraryItems(userId, libraryId, shelf.entities)
     is NetworkShelf.PodcastShelf -> writePodcastLibraryItems(shelf.entities)
     is NetworkShelf.EpisodeShelf -> writePodcastLibraryItems(shelf.entities)
     is NetworkShelf.AuthorShelf -> writeAuthors(shelf.entities)
@@ -177,6 +179,8 @@ class HomeSourceOfTruthFactory(
 
   @Suppress("UnusedReceiverParameter")
   private suspend fun SuspendingTransactionWithoutReturn.writeLibraryItems(
+    userId: UserId,
+    libraryId: LibraryId,
     libraryItems: List<LibraryItemMinified.Book>,
   ) {
     libraryItems.forEach { item ->
@@ -185,6 +189,31 @@ class HomeSourceOfTruthFactory(
 
       db.libraryItemsQueries.insertOrIgnore(libraryItem)
       db.mediaQueries.insertOrIgnore(media)
+
+      (item.media.metadata as? MinifiedBookMetadata)?.series?.let { s ->
+        db.seriesQueries.insertOrIgnore(
+          DbSeries(
+            id = s.id,
+            name = s.name,
+            description = null,
+            addedAt = libraryItem.addedAt,
+            updatedAt = libraryItem.updatedAt,
+            userId = userId,
+            libraryId = libraryId,
+            inProgress = true,
+            hasActiveBook = false,
+            hideFromContinueListening = false,
+            bookInProgressLastUpdate = null,
+            firstBookUnreadId = libraryItem.id,
+          ),
+        )
+        db.seriesBookJoinQueries.insert(
+          SeriesBookJoin(
+            seriesId = s.id,
+            libraryItemId = libraryItem.id,
+          ),
+        )
+      }
     }
   }
 

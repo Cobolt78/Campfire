@@ -325,6 +325,12 @@ class StoreSeriesRepository(
   private val continueSeriesFlow: Flow<List<Series>> by lazy {
     userRepository.observeCurrentUser()
       .flatMapLatest { user ->
+        withContext(dispatcherProvider.databaseWrite) {
+          db.transaction {
+            db.seriesQueries.insertMissingShelfSeries(user.id)
+            db.seriesBookJoinQueries.insertMissingShelfJoins()
+          }
+        }
         db.seriesQueries
           .selectContinueSeries(
             libraryId = user.selectedLibraryId,

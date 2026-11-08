@@ -84,17 +84,18 @@ class ContinueSeriesPresenter(
             p != null && !p.isFinished && p.progress > 0
           }
 
-          if (!hasStartedAny || completedCount >= total || hasActiveBook) {
+          if (!hasStartedAny || (completedCount >= total && series.firstBookUnreadId == null) || hasActiveBook) {
             return@mapNotNull null
           }
 
-          val nextUp = books.firstOrNull { book ->
-            val p = progressMap[book.id]
-            p != null && !p.isFinished && p.progress > 0
-          } ?: books.firstOrNull { book ->
-            val p = progressMap[book.id]
-            p == null || !p.isFinished
-          } ?: books.first()
+          val nextUp = (series.firstBookUnreadId?.let { unreadId -> books.firstOrNull { it.id == unreadId } })
+            ?: books.firstOrNull { book ->
+              val p = progressMap[book.id]
+              p != null && !p.isFinished && p.progress > 0
+            } ?: books.firstOrNull { book ->
+              val p = progressMap[book.id]
+              p == null || !p.isFinished
+            } ?: books.first()
 
           val nextUpProgress = progressMap[nextUp.id]
           val lastReadTime = maxOf(
