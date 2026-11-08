@@ -23,7 +23,11 @@ import app.campfire.core.session.serverUrl
 import app.campfire.core.settings.ContentSortMode
 import app.campfire.core.settings.SortDirection
 import app.campfire.core.util.runIfNotNull
+import app.campfire.data.Series as DbSeries
 import app.campfire.data.SeriesBookJoin
+import app.campfire.data.ShelfJoin
+import app.campfire.network.models.MinifiedBookMetadata
+import app.campfire.network.models.Shelf as NetworkShelf
 import app.campfire.data.mapping.asDbModel
 import app.campfire.data.mapping.asDomainModel
 import app.campfire.data.mapping.asFetcherResult
@@ -402,4 +406,94 @@ class StoreSeriesRepository(
   }
 
   override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
+
+  override suspend fun refreshContinueSeries(): Result<Unit> {
+    return runCatching {
+      val user = userRepository.getCurrentUser()
+      val networkShelves = api.getPersonalizedHome(
+        libraryId = user.selectedLibraryId,
+        bustCache = true,
+        limit = 250,
+      ).getOrThrow()
+
+      val continueShelf = networkShelves.firstOrNull { it.id.startsWith("continue-series") }
+        ?: return Result.success(Unit)
+
+      withContext(dispatcherProvider.databaseWrite) {
+        db.transaction {
+          when (continueShelf) {
+            is NetworkShelf.BookShelf -> {
+              val books = continueShelf.entities
+              books.forEach { item ->
+                val libraryItem = item.asDbModel()
+                val media = item.media.asDbModel(item.id)
+                db.libraryItemsQueries.insertOrIgnore(libraryItem)
+                db.mediaQueries.insertOrIgnore(media)
+
+                (item.media.metadata as? MinifiedBookMetadata)?.series?.let { s ->
+                  db.seriesQueries.insertOrIgnore(
+                    DbSeries(
+                      id = s.id,
+                      name = s.name,
+                      description = null,
+                      addedAt = libraryItem.addedAt,
+                      updatedAt = libraryItem.updatedAt,
+                      userId = user.id,
+                      libraryId = user.selectedLibraryId,
+                      inProgress = true,
+                      hasActiveBook = false,
+                      hideFromContinueListening = false,
+                      bookInProgressLastUpdate = null,
+                      firstBookUnreadId = libraryItem.id,
+                    ),
+                  )
+                  db.seriesBookJoinQueries.insert(
+                    SeriesBookJoin(
+                      seriesId = s.id,
+                      libraryItemId = libraryItem.id,
+                    ),
+                  )
+                }
+              }
+
+              val shelfId = "${continueShelf.id}_${user.id}_${user.selectedLibraryId}"
+              db.shelfQueries.deleteJoinsForShelf(shelfId)
+              books.forEachIndexed { index, item ->
+                db.shelfQueries.insertJoins(
+                  ShelfJoin(
+                    shelfId = shelfId,
+                    entityId = item.id,
+                    shelfOrder = index,
+                    episodeId = "",
+                  ),
+                )
+              }
+            }
+            is NetworkShelf.SeriesShelf -> {
+              val seriesList = continueShelf.entities
+              seriesList.forEach { series ->
+                db.seriesQueries.insertOrIgnore(series.asDbModel(user.id, user.selectedLibraryId))
+              }
+              val shelfId = "${continueShelf.id}_${user.id}_${user.selectedLibraryId}"
+              db.shelfQueries.deleteJoinsForShelf(shelfId)
+              seriesList.forEachIndexed { index, series ->
+                db.shelfQueries.insertJoins(
+                  ShelfJoin(
+                    shelfId = shelfId,
+                    entityId = series.id,
+                    shelfOrder = index,
+                    episodeId = "",
+                  ),
+                )
+              }
+            }
+            else -> Unit
+          }
+
+          db.seriesQueries.insertMissingShelfSeries(user.id)
+          db.seriesBookJoinQueries.insertMissingShelfJoins()
+        }
+      }
+    }
+  }
 }

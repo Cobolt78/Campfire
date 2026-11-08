@@ -34,6 +34,7 @@ data class ContinueSeriesUiState(
   val items: List<ContinueSeriesItem>,
   val offlineStates: Map<LibraryItemId, OfflineDownload> = emptyMap(),
   val isLoading: Boolean,
+  val isRefreshing: Boolean = false,
   val sortMode: ContinueSeriesSort,
   val sortAscending: Boolean,
   val alternateView: Boolean,
@@ -42,6 +43,7 @@ data class ContinueSeriesUiState(
 
 sealed interface ContinueSeriesUiEvent : CircuitUiEvent {
   data object Back : ContinueSeriesUiEvent
+  data object Refresh : ContinueSeriesUiEvent
   data class OpenSeries(val series: Series) : ContinueSeriesUiEvent
   data class OpenBook(val book: LibraryItem) : ContinueSeriesUiEvent
   data class SelectSort(val sort: ContinueSeriesSort) : ContinueSeriesUiEvent

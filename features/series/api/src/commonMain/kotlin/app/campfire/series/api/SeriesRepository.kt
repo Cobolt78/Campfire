@@ -46,4 +46,6 @@ interface SeriesRepository {
   fun observeSeriesLibraryItems(seriesId: String): Flow<List<LibraryItem>>
 
   fun observeContinueSeries(): Flow<List<Series>>
+
+  suspend fun refreshContinueSeries(): Result<Unit>
 }

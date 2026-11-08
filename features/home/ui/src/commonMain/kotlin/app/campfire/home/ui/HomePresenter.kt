@@ -186,7 +186,17 @@ class HomePresenter(
             )
           }
 
-          withUpcoming.toPersistentList()
+          val cappedShelves = withUpcoming.map { shelf ->
+            if (shelf.id != "downloads" && shelf.entities is LoadState.Loaded) {
+              shelf.copy(
+                entities = LoadState.Loaded(shelf.entities.data.take(10)),
+              )
+            } else {
+              shelf
+            }
+          }
+
+          cappedShelves.toPersistentList()
         }
       }
     }

@@ -86,6 +86,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 79. [Smart Whole-Playlist Downloading with Unlistened Filtering (v1.2.45-rc2)](#79-smart-whole-playlist-downloading-with-unlistened-filtering-v1245-rc2)
 80. [Enhanced Offline Downloads & Playlist Sorting Capabilities (v1.2.45-rc3)](#80-enhanced-offline-downloads--playlist-sorting-capabilities-v1245-rc3)
 81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45-rc4)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245-rc4)
+82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245-rc5)
 
 ---
 
@@ -2373,6 +2374,46 @@ Users observed a discrepancy between the Home screen's "Continue Series" horizon
 * features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeSourceOfTruthFactory.kt
 * features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 82. Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45-rc5)
+
+### Problem Description
+1. Audiobookshelf's personalized home feed endpoint (`/api/libraries/{id}/personalized`) defaults to returning at most 10 items per shelf when no `limit` parameter is provided. Because Campfire did not provide a limit, only 10 books were returned for the `continue-series` shelf.
+2. The dedicated "Continue Series" screen read only from the local SQLite database without performing its own background fetch. Consequently, users with more than 10 continue-series eligible books only saw the 10 items received by the Home feed.
+3. Users requested maintaining the Home screen horizontal carousels at a clean, compact 10 items while allowing the dedicated Continue Series screen to display all eligible continue series (up to 250) instantly from local cache with silent background synchronization and pull-to-refresh.
+
+### Solution & Implementation
+1. **API Limit Parameter Support (`AudioBookShelfApi.kt` & `KtorAudioBookShelfApi.kt`)**:
+   - Added optional `limit: Int? = null` parameter to `getPersonalizedHome(libraryId, bustCache, limit)`.
+   - In `KtorAudioBookShelfApi`, appended `parameters.append("limit", limit.toString())` when non-null.
+2. **Repository Dedicated Full Fetch (`SeriesRepository.kt` & `StoreSeriesRepository.kt`)**:
+   - Added `suspend fun refreshContinueSeries(): Result<Unit>` to `SeriesRepository`.
+   - In `StoreSeriesRepository`, implemented `refreshContinueSeries()` to query `api.getPersonalizedHome(user.selectedLibraryId, bustCache = true, limit = 250)`.
+   - Ingests all returned `continue-series` books, extracts their parent series and sequence positions, and saves them to `libraryItem`, `media`, `series`, and `seriesBookJoin`.
+   - Updates `shelfJoin` for `continue-series_${user.id}_${user.selectedLibraryId}` and executes self-healing queries `insertMissingShelfSeries` and `insertMissingShelfJoins`.
+3. **Presenter Silent Background Fetch & Pull-To-Refresh (`ContinueSeriesPresenter.kt`, `ContinueSeriesUiState.kt`, `ContinueSeriesUi.kt`)**:
+   - Added `isRefreshing: Boolean` to `ContinueSeriesUiState` and `Refresh` event to `ContinueSeriesUiEvent`.
+   - In `ContinueSeriesPresenter`, runs `seriesRepository.refreshContinueSeries()` in the background on screen launch (`LaunchedEffect(Unit)`) and on manual pull-to-refresh. Content continues to render instantly (0ms) from local cache/memory.
+   - In `ContinueSeriesUi`, wrapped content in Material 3 `PullToRefreshBox` with `CampfireLoadingIndicator`.
+4. **Strict 10-Item Cap on Home Screen Carousels (`HomePresenter.kt`)**:
+   - In `HomePresenter`, applied `.take(10)` to loaded entities across all Home screen horizontal shelves (except Downloads), guaranteeing the Home screen remains fast, compact, and strictly capped at 10 items.
+
+### Modified Files:
+* data/network/api/src/commonMain/kotlin/app/campfire/network/AudioBookShelfApi.kt
+* data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
+* data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
+* features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt
+* features/series/test/src/commonMain/kotlin/app/campfire/series/test/FakeSeriesRepository.kt
+* features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUiState.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

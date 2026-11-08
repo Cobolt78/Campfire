@@ -56,4 +56,6 @@ class FakeSeriesRepository : SeriesRepository {
 
   val continueSeriesFlow = MutableSharedFlow<List<Series>>(replay = 1)
   override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
+
+  override suspend fun refreshContinueSeries(): Result<Unit> = Result.success(Unit)
 }

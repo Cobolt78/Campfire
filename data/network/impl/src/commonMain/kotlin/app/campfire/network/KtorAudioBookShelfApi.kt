@@ -151,11 +151,18 @@ class KtorAudioBookShelfApi(
     }
   }
 
-  override suspend fun getPersonalizedHome(libraryId: String, bustCache: Boolean): Result<List<Shelf>> {
+  override suspend fun getPersonalizedHome(
+    libraryId: String,
+    bustCache: Boolean,
+    limit: Int?,
+  ): Result<List<Shelf>> {
     return trySendRequest<List<Shelf>> {
       hydratedClientRequest(
         {
           appendPathSegments("api", "libraries", libraryId, "personalized")
+          if (limit != null) {
+            parameters.append("limit", limit.toString())
+          }
           if (bustCache) {
             parameters.append("t", Clock.System.now().toEpochMilliseconds().toString())
           }

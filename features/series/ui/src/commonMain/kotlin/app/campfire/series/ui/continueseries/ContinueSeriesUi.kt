@@ -34,6 +34,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,6 +63,7 @@ import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.ChevronRight
 import app.campfire.common.compose.icons.rounded.SortAsc
 import app.campfire.common.compose.icons.rounded.SortDesc
+import app.campfire.common.compose.widgets.CampfireLoadingIndicator
 import app.campfire.common.compose.widgets.CampfireTopAppBar
 import app.campfire.common.compose.widgets.ElevatedContentCard
 import app.campfire.common.compose.widgets.EmptyState
@@ -87,6 +90,7 @@ fun ContinueSeries(
   val scrollBehavior = adaptiveEnterAlwaysScrollBehavior()
   AttachScrollBehaviorToLocalNavigationBar(scrollBehavior)
   var showSortMenu by remember { mutableStateOf(false) }
+  val ptrState = rememberPullToRefreshState()
 
   Scaffold(
     topBar = {
@@ -147,73 +151,85 @@ fun ContinueSeries(
       .exclude(OverlappedNavigationBarInsets)
       .add(CampfireNavigationBarWindowInsets),
   ) { paddingValues ->
-    when {
-      state.isLoading -> {
-        Box(
-          modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues),
-          contentAlignment = Alignment.Center,
-        ) {
-          CircularProgressIndicator()
-        }
-      }
-
-      state.items.isEmpty() -> {
-        EmptyState(
-          message = "No series currently in progress",
-          modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues),
+    PullToRefreshBox(
+      state = ptrState,
+      isRefreshing = state.isRefreshing,
+      onRefresh = { state.eventSink(ContinueSeriesUiEvent.Refresh) },
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(paddingValues),
+      indicator = {
+        CampfireLoadingIndicator(
+          state = ptrState,
+          isRefreshing = state.isRefreshing && state.items.isNotEmpty(),
+          modifier = Modifier.align(Alignment.TopCenter),
         )
-      }
-
-      else -> {
-        if (state.alternateView) {
-          LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 160.dp),
+      },
+    ) {
+      when {
+        state.isLoading -> {
+          Box(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-              top = paddingValues.calculateTopPadding() + 8.dp,
-              bottom = paddingValues.calculateBottomPadding() + 16.dp,
-              start = 16.dp,
-              end = 16.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentAlignment = Alignment.Center,
           ) {
-            items(
-              items = state.items,
-              key = { it.series.id },
-            ) { item ->
-              ContinueSeriesGridCard(
-                item = item,
-                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
-                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
-              )
-            }
+            CircularProgressIndicator()
           }
-        } else {
-          LazyColumn(
+        }
+
+        state.items.isEmpty() -> {
+          EmptyState(
+            message = "No series currently in progress",
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-              top = paddingValues.calculateTopPadding() + 8.dp,
-              bottom = paddingValues.calculateBottomPadding() + 16.dp,
-              start = 16.dp,
-              end = 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-          ) {
-            items(
-              items = state.items,
-              key = { it.series.id },
-            ) { item ->
-              ContinueSeriesCard(
-                item = item,
-                offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
-                onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
-                onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
-              )
+          )
+        }
+
+        else -> {
+          if (state.alternateView) {
+            LazyVerticalGrid(
+              columns = GridCells.Adaptive(minSize = 160.dp),
+              modifier = Modifier.fillMaxSize(),
+              contentPadding = PaddingValues(
+                top = 8.dp,
+                bottom = 16.dp,
+                start = 16.dp,
+                end = 16.dp,
+              ),
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              items(
+                items = state.items,
+                key = { it.series.id },
+              ) { item ->
+                ContinueSeriesGridCard(
+                  item = item,
+                  offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
+                  onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
+                )
+              }
+            }
+          } else {
+            LazyColumn(
+              modifier = Modifier.fillMaxSize(),
+              contentPadding = PaddingValues(
+                top = 8.dp,
+                bottom = 16.dp,
+                start = 16.dp,
+                end = 16.dp,
+              ),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              items(
+                items = state.items,
+                key = { it.series.id },
+              ) { item ->
+                ContinueSeriesCard(
+                  item = item,
+                  offlineStatus = state.offlineStates[item.nextUpBook.id].asWidgetStatus(),
+                  onSeriesClick = { state.eventSink(ContinueSeriesUiEvent.OpenSeries(it)) },
+                  onBookClick = { state.eventSink(ContinueSeriesUiEvent.OpenBook(it)) },
+                )
+              }
             }
           }
         }

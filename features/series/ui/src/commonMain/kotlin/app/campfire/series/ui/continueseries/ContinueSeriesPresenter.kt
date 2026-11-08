@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import app.campfire.analytics.Analytics
@@ -31,6 +32,7 @@ import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -63,6 +65,24 @@ class ContinueSeriesPresenter(
 
     var cachedItems by rememberRetained {
       mutableStateOf(memoryCache)
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    fun refresh() {
+      coroutineScope.launch {
+        isRefreshing = true
+        try {
+          seriesRepository.refreshContinueSeries()
+        } finally {
+          isRefreshing = false
+        }
+      }
+    }
+
+    LaunchedEffect(Unit) {
+      refresh()
     }
 
     LaunchedEffect(sortMode, sortAscending) {
@@ -147,12 +167,14 @@ class ContinueSeriesPresenter(
       items = cachedItems ?: emptyList(),
       offlineStates = offlineDownloads,
       isLoading = isLoading,
+      isRefreshing = isRefreshing,
       sortMode = sortMode,
       sortAscending = sortAscending,
       alternateView = alternateView,
     ) { event ->
       when (event) {
         ContinueSeriesUiEvent.Back -> navigator.pop()
+        ContinueSeriesUiEvent.Refresh -> refresh()
 
         is ContinueSeriesUiEvent.OpenSeries -> {
           analytics.send(ContentSelected(ContentType.Series))

@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.45-rc5] - 2026-11-08
+
+### Added
+
+- **Dedicated Full Fetch & Pull-To-Refresh on Continue Series Screen**:
+  - Added `refreshContinueSeries()` to `SeriesRepository` executing a silent background fetch querying Audiobookshelf's personalized endpoint with `limit=250`.
+  - Added Material 3 `PullToRefreshBox` and `CampfireLoadingIndicator` to the dedicated Continue Series screen for manual refresh.
+  - Automatically indexes all continue series and next-up book junctions into local SQLite off the UI thread without any screen freeze or ANR.
+
+### Changed
+
+- **Strict 10-Item Cap on Home Screen Carousels**:
+  - Enforced a strict `.take(10)` cap across all Home screen horizontal shelf carousels (except Downloads) in `HomePresenter`, keeping the Home screen lightweight, snappy, and compact while the dedicated Continue Series screen displays all series.
+  - Added optional `limit: Int? = null` parameter to `AudioBookShelfApi.getPersonalizedHome` allowing targeted client-side limit overrides.
+
 ## [1.2.45-rc4] - 2026-11-08
 
 ### Fixed

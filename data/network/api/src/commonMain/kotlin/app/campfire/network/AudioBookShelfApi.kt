@@ -88,7 +88,11 @@ interface AudioBookShelfApi {
    * Get a Library's Personalized View
    * This endpoint returns a library's personalized view for home page display.
    */
-  suspend fun getPersonalizedHome(libraryId: String, bustCache: Boolean = false): Result<List<Shelf>>
+  suspend fun getPersonalizedHome(
+    libraryId: String,
+    bustCache: Boolean = false,
+    limit: Int? = null,
+  ): Result<List<Shelf>>
 
   /**
    * Get a podcast library's most recently published episodes, sorted publishedAt DESC. The server
