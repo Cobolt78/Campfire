@@ -97,11 +97,14 @@ class ContinueSeriesPresenter(
 
           val hasStartedAny = series.inProgress || books.any { book ->
             val p = progressMap[book.id]
-            p != null && (p.isFinished || p.progress > 0)
+            p != null && (p.isFinished || p.progress > 0 || p.currentTime > 0)
           }
           val hasActiveBook = books.any { book ->
             val p = progressMap[book.id]
-            p != null && !p.isFinished && p.progress > 0
+            p != null && !p.isFinished && (p.progress > 0 || p.currentTime > 0)
+          } || progressMap.values.any { p ->
+            !p.isFinished && (p.progress > 0 || p.currentTime > 0) &&
+              books.any { it.id == p.libraryItemId }
           }
 
           if (!hasStartedAny || (completedCount >= total && series.firstBookUnreadId == null) || hasActiveBook) {
@@ -110,9 +113,6 @@ class ContinueSeriesPresenter(
 
           val nextUp = (series.firstBookUnreadId?.let { unreadId -> books.firstOrNull { it.id == unreadId } })
             ?: books.firstOrNull { book ->
-              val p = progressMap[book.id]
-              p != null && !p.isFinished && p.progress > 0
-            } ?: books.firstOrNull { book ->
               val p = progressMap[book.id]
               p == null || !p.isFinished
             } ?: books.first()
@@ -209,5 +209,9 @@ class ContinueSeriesPresenter(
   companion object {
     @kotlin.concurrent.Volatile
     private var memoryCache: List<ContinueSeriesItem>? = null
+
+    internal fun clearMemoryCache() {
+      memoryCache = null
+    }
   }
 }

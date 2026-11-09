@@ -88,6 +88,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245)
 82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245)
 83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
+84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 
 ---
 
@@ -2457,6 +2458,51 @@ etworkCachePolicy(CachePolicy.DISABLED).
 * features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 * features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 84. Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)
+
+### Problem Description
+1. When a user was actively listening to a book in a series (e.g. *Cross the Line*, Alex Cross Book 24), the Audiobookshelf server intentionally excluded the series from the Home screen's `continue-series` shelf because that series is currently represented on the `continue-listening` shelf.
+2. However, tapping into the dedicated "Continue Series" screen showed the Alex Cross series with *Cross the Line* still displayed, creating duplicate appearances across screens, causing confusion, and risking plot spoilers.
+3. Root Causes:
+   - Floating-point progress rounding vs. raw timestamps: Audiobookshelf's server checks `mp.currentTime > 0` for in-progress media. Campfire's SQLite queries and presenter previously only checked `mp.progress > 0`. For newly started or long audiobooks, small playback positions produced `progress = 0.0` while `currentTime > 0`, allowing active books to slip through local suppression.
+   - Separate query branches in `selectContinueSeries`: In `series.sq`, the `EXISTS in shelfJoin` branch lacked an active book suppression check, so series cached in `shelfJoin` prior to playback were not filtered out.
+   - Missing media series junction indexing: Active books ingested from the Home feed's `continue-listening` shelf were saved in `libraryItem` and `media` but lacked explicit entries in `seriesBookJoin`. When checking `seriesBookJoin` for active books, the query could not link the in-progress book to the series.
+   - In `ContinueSeriesPresenter`, a fallback in `nextUp` selection prioritized in-progress books over unread sequels.
+
+### Solution & Implementation
+1. **Top-Level Active Book Exclusion in SQLite (`data/db/core/.../series.sq`)**:
+   - Re-architected `selectContinueSeries` to apply a strict top-level `NOT EXISTS` check across both `seriesBookJoin` and direct `media.metadata_series_id` links.
+   - Evaluated `(mp_active.progress > 0 OR mp_active.currentTime > 0)`, ensuring even 1 second of playback instantly and reliably suppresses the series from Continue Series.
+2. **Self-Healing Media Series Junction Query (`data/db/core/.../seriesBookJoin.sq`)**:
+   - Added `insertMissingMediaSeriesJoins`:
+     ```sql
+     INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
+     SELECT media.metadata_series_id, media.libraryItemId
+     FROM media
+     WHERE media.metadata_series_id IS NOT NULL;
+     ```
+   - Automatically executed in `StoreSeriesRepository.kt` on startup and refresh so all locally stored media items with series metadata are properly linked.
+3. **Presenter-Level Active Book Suppression (`features/series/ui/.../ContinueSeriesPresenter.kt`)**:
+   - Updated `hasActiveBook` in `ContinueSeriesPresenter` to check `(p.progress > 0 || p.currentTime > 0)` and cross-reference all active progress entries against series books.
+   - Removed the active book fallback in `nextUp` book resolution so only genuinely unread sequels are chosen.
+   - Added companion `clearMemoryCache()` for reliable state resetting.
+4. **Automated Unit Testing (`features/series/ui/.../ContinueSeriesPresenterTest.kt`)**:
+   - Implemented unit tests verifying that series with active in-progress books (`currentTime > 0`, `isFinished = false`) are strictly excluded, while series with finished books and unread sequels are included.
+
+### Modified Files:
+* data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
+* data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
+* features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
+* features/series/ui/build.gradle.kts
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
+* features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

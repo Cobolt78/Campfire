@@ -333,6 +333,7 @@ class StoreSeriesRepository(
           db.transaction {
             db.seriesQueries.insertMissingShelfSeries(user.id)
             db.seriesBookJoinQueries.insertMissingShelfJoins()
+            db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
           }
         }
         db.seriesQueries
@@ -492,6 +493,7 @@ class StoreSeriesRepository(
 
           db.seriesQueries.insertMissingShelfSeries(user.id)
           db.seriesBookJoinQueries.insertMissingShelfJoins()
+          db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
         }
       }
     }

@@ -11,14 +11,25 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index 1dcbc292..24019e7e 100644
+index 1dcbc292..86dc15ac 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,414 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,425 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.46] - 2026-11-09
++
++### Fixed
++
++- **Active Book In-Progress Suppression & Strict Parity for Continue Series**:
++  - Excluded any series containing an active book in progress from the dedicated Continue Series screen and SQLite query (`selectContinueSeries`), perfectly matching Audiobookshelf server behavior.
++  - Expanded active book detection in both SQL and Kotlin layers to evaluate both `currentTime > 0` and `progress > 0` (preventing unrounded small playback positions from bypassing suppression).
++  - Enforced active book exclusion across both junction links (`seriesBookJoin`) and direct media series metadata (`media.metadata_series_id`), preventing active books arriving from Home feed shelves without full series downloads from slipping through.
++  - Added self-healing `insertMissingMediaSeriesJoins` query to automatically index all local media series junctions on startup and refresh.
++  - Eliminated fallback in `ContinueSeriesPresenter` that prioritized active in-progress books over unread sequels.
++
 +## [1.2.45] - 2026-11-09
 +
 +### Added
@@ -431,10 +442,10 @@ index 1dcbc292..24019e7e 100644
  ## [1.2.20]
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
-index e460bea1..9fd4c093 100644
+index e460bea1..d096fcc5 100644
 --- a/CUSTOM_MODIFICATIONS.md
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -36,6 +36,58 @@ This document captures all custom features, bug fixes, and UI improvements added
+@@ -36,6 +36,59 @@ This document captures all custom features, bug fixes, and UI improvements added
  29. [Shared Element Transition Layout Lockup Fix (v1.2.13)](#29-shared-element-transition-layout-lockup-fix-v1213)
  30. [ANR Freeze Resolution: Database Offloading & Batch Series Querying (v1.2.14)](#30-anr-freeze-resolution-database-offloading--batch-series-querying-v1214)
  31. [Book Detail Series Slot Repositioning (v1.2.15)](#31-book-detail-series-slot-repositioning-v1215)
@@ -490,10 +501,11 @@ index e460bea1..9fd4c093 100644
 +81. [Continue Series Parity Between Home Screen & Dedicated Screen (v1.2.45)](#81-continue-series-parity-between-home-screen--dedicated-screen-v1245)
 +82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245)
 +83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
++84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
  
  ---
  
-@@ -180,6 +232,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
+@@ -180,6 +233,7 @@ Fixed a bug where pausing playback did not freeze the sleep timer countdown on t
  * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
  * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
  * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
@@ -501,7 +513,7 @@ index e460bea1..9fd4c093 100644
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
  * `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
-@@ -379,6 +432,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
+@@ -379,6 +433,36 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
  | `features/series/impl/.../SeriesSourceOfTruthFactory.kt` | Single batch query & offloaded reader to databaseRead |
  | `features/series/impl/.../StoreSeriesRepository.kt` | Offloaded observeSeriesLibraryItems to databaseRead |
  | `features/libraries/ui/.../BookPresenter.kt` | Direct allSeries observation offloaded to databaseRead |
@@ -538,7 +550,7 @@ index e460bea1..9fd4c093 100644
  
  ---
  
-@@ -891,8 +974,1489 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
+@@ -891,8 +975,1534 @@ Refined the series book number badge (`#N`) on book cover art to reduce visual f
  2. **Crash Prevention (`app/android/build.gradle.kts`)**:
     - Gracefully handled absent `google-services.json` on custom build flavors to avoid runtime startup crashes.
  
@@ -710,7 +722,7 @@ index e460bea1..9fd4c093 100644
 +* `features/libraries/impl/src/commonMain/kotlin/app/campfire/libraries/db/FilteredItemQueryHelper.kt`
 +
 +---
- 
++
 +## 43. Continue Series Downloaded Indicator in List & Grid Views (v1.2.21)
  
 +### Summary
@@ -725,7 +737,7 @@ index e460bea1..9fd4c093 100644
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(6.dp)` on the book cover poster in `ContinueSeriesCard` (list view).
 +   - Added `OfflineStatusIndicator` with size `18.dp` at `Alignment.TopEnd` with `padding(8.dp)` on the cover box in `ContinueSeriesGridCard` (alternate grid view).
 +   - Mapped `state.offlineStates[item.nextUpBook.id].asWidgetStatus()` to both cards, rendering the standard green download arrow on dark scrim circle for downloaded books, progress wheels for active downloads, and nothing when not downloaded.
-+
+ 
 +### Modified Files:
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt`
@@ -751,7 +763,7 @@ index e460bea1..9fd4c093 100644
 +   - Maintained `sharedTransitionKey: String = ""` parameter defaults in `CoverImageSlot` and `TitleSlot` constructors to ensure 100% binary/source compatibility with presenters and tests.
 +   - Preserved `LibraryItemScreen(libraryItemId, sharedTransitionKey)` so navigation callers remain completely untouched.
 +   - Transitions back to the Home screen now take < 100ms with zero stutter.
-+
+ 
 +### Modified Files:
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/CoverImageSlot.kt`
@@ -785,7 +797,7 @@ index e460bea1..9fd4c093 100644
 +   - Added a standard rounding tolerance (`chapter.start.seconds > totalDuration + 2.seconds || floor(chapter.end).seconds > totalDuration + 5.seconds`), eliminating false-positive warning banners while still catching genuinely corrupt chapter metadata.
 +5. **Release Logcat Output (`CampfireApplication.kt`)**:
 +   - Enabled `Heartwood.grow(AndroidBark())` in release builds with `LogRedaction.enabled = !BuildConfig.DEBUG`, allowing diagnostic logging in `adb logcat` during device testing.
-+
+ 
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/model/Session.kt`
 +* `features/sessions/impl/src/commonMain/kotlin/app/campfire/sessions/db/SqlDelightSessionDataSource.kt`
@@ -832,9 +844,9 @@ index e460bea1..9fd4c093 100644
 +* `app/android/base-proguard-rules.pro`
 +
 +---
- 
++
 +## 47. Cellular Download Check Simplification & False-Positive Warning Resolution (v1.2.21)
- 
++
 +### Summary
 +Resolved an issue where tapping Download on a book while connected to home Wi-Fi triggered a false-positive "Mobile Data Warning" dialog whenever the phone had mobile data enabled.
 +
@@ -848,7 +860,7 @@ index e460bea1..9fd4c093 100644
 +   - Completely eliminates false-positive warnings when connected to home Wi-Fi, produces zero background radio listener overhead, and correctly warns only when the active default connection is cellular or metered.
 +2. **Added 'Propose, Don't Sneak' Refactoring Invariant (`GEMINI.md`)**:
 +   - Added Section 5 to `GEMINI.md` mandating strict blast-radius discipline during bug fixes and migrations (no unsolicited architectural refactors or rewriting working code without prior user proposal and approval).
- 
++
 +### Modified Files:
 +* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
 +* `GEMINI.md`
@@ -1064,7 +1076,7 @@ index e460bea1..9fd4c093 100644
 +4. **Backward-Compatible Serialization (`EqualizerSettingsImpl.kt`)**:
 +   - Appended `pitchSemitones` as a 6th field in `EqualizerProfile.serialize()`.
 +   - `asEqualizerProfile()` accepts both legacy 5-field strings (defaulting `pitchSemitones = 0f`) and 6-field strings, guaranteeing zero migration issues or settings corruption for existing users.
-+
+ 
 +### Modified Files:
 +* `core/src/commonMain/kotlin/app/campfire/core/audio/Equalizer.kt`
 +* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
@@ -2025,6 +2037,51 @@ index e460bea1..9fd4c093 100644
 +* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 +* features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
 +* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
++
++
++---
++
++## 84. Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)
++
++### Problem Description
++1. When a user was actively listening to a book in a series (e.g. *Cross the Line*, Alex Cross Book 24), the Audiobookshelf server intentionally excluded the series from the Home screen's `continue-series` shelf because that series is currently represented on the `continue-listening` shelf.
++2. However, tapping into the dedicated "Continue Series" screen showed the Alex Cross series with *Cross the Line* still displayed, creating duplicate appearances across screens, causing confusion, and risking plot spoilers.
++3. Root Causes:
++   - Floating-point progress rounding vs. raw timestamps: Audiobookshelf's server checks `mp.currentTime > 0` for in-progress media. Campfire's SQLite queries and presenter previously only checked `mp.progress > 0`. For newly started or long audiobooks, small playback positions produced `progress = 0.0` while `currentTime > 0`, allowing active books to slip through local suppression.
++   - Separate query branches in `selectContinueSeries`: In `series.sq`, the `EXISTS in shelfJoin` branch lacked an active book suppression check, so series cached in `shelfJoin` prior to playback were not filtered out.
++   - Missing media series junction indexing: Active books ingested from the Home feed's `continue-listening` shelf were saved in `libraryItem` and `media` but lacked explicit entries in `seriesBookJoin`. When checking `seriesBookJoin` for active books, the query could not link the in-progress book to the series.
++   - In `ContinueSeriesPresenter`, a fallback in `nextUp` selection prioritized in-progress books over unread sequels.
++
++### Solution & Implementation
++1. **Top-Level Active Book Exclusion in SQLite (`data/db/core/.../series.sq`)**:
++   - Re-architected `selectContinueSeries` to apply a strict top-level `NOT EXISTS` check across both `seriesBookJoin` and direct `media.metadata_series_id` links.
++   - Evaluated `(mp_active.progress > 0 OR mp_active.currentTime > 0)`, ensuring even 1 second of playback instantly and reliably suppresses the series from Continue Series.
++2. **Self-Healing Media Series Junction Query (`data/db/core/.../seriesBookJoin.sq`)**:
++   - Added `insertMissingMediaSeriesJoins`:
++     ```sql
++     INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
++     SELECT media.metadata_series_id, media.libraryItemId
++     FROM media
++     WHERE media.metadata_series_id IS NOT NULL;
++     ```
++   - Automatically executed in `StoreSeriesRepository.kt` on startup and refresh so all locally stored media items with series metadata are properly linked.
++3. **Presenter-Level Active Book Suppression (`features/series/ui/.../ContinueSeriesPresenter.kt`)**:
++   - Updated `hasActiveBook` in `ContinueSeriesPresenter` to check `(p.progress > 0 || p.currentTime > 0)` and cross-reference all active progress entries against series books.
++   - Removed the active book fallback in `nextUp` book resolution so only genuinely unread sequels are chosen.
++   - Added companion `clearMemoryCache()` for reliable state resetting.
++4. **Automated Unit Testing (`features/series/ui/.../ContinueSeriesPresenterTest.kt`)**:
++   - Implemented unit tests verifying that series with active in-progress books (`currentTime > 0`, `isFinished = false`) are strictly excluded, while series with finished books and unread sequels are included.
++
++### Modified Files:
++* data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
++* data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
++* features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
++* features/series/ui/build.gradle.kts
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
++* features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
@@ -4363,22 +4420,40 @@ index 41bf70c4..b924e4a7 100644
 +  ): Boolean = syncServerResult
  }
 diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
-index 38cde29b..8d2ce00f 100644
+index 38cde29b..fea813f7 100644
 --- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
 +++ b/data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq
-@@ -72,27 +72,70 @@ WHERE id = ?
+@@ -72,27 +72,80 @@ WHERE id = ?
  
  selectContinueSeries:
  SELECT series.* FROM series
 -LEFT JOIN shelfJoin ON shelfJoin.entityId = series.id AND shelfJoin.shelfId LIKE 'continue-series_%'
  WHERE series.libraryId = :libraryId
-   AND (
+-  AND (
 -    series.inProgress = 1
 -    OR shelfJoin.entityId IS NOT NULL
 -    OR EXISTS (
 -      SELECT 1 FROM seriesBookJoin sbj_start
 -      JOIN mediaProgress mp_start ON mp_start.libraryItemId = sbj_start.libraryItemId AND mp_start.userId = :userId
 -      WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.isFinished = 1)
+-    )
+-  )
+   AND NOT EXISTS (
+     SELECT 1 FROM seriesBookJoin sbj_active
+     JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
+-    WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND mp_active.progress > 0
++    WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND (mp_active.progress > 0 OR mp_active.currentTime > 0)
+   )
+-  AND EXISTS (
+-    SELECT 1 FROM seriesBookJoin sbj_unread
+-    LEFT JOIN mediaProgress mp_done ON mp_done.libraryItemId = sbj_unread.libraryItemId AND mp_done.userId = :userId AND mp_done.isFinished = 1
+-    WHERE sbj_unread.seriesId = series.id AND mp_done.libraryItemId IS NULL
++  AND NOT EXISTS (
++    SELECT 1 FROM media m_active
++    JOIN mediaProgress mp_m_active ON mp_m_active.libraryItemId = m_active.libraryItemId AND mp_m_active.userId = :userId
++    WHERE m_active.metadata_series_id = series.id AND mp_m_active.isFinished = 0 AND (mp_m_active.progress > 0 OR mp_m_active.currentTime > 0)
++  )
++  AND (
 +    EXISTS (
 +      SELECT 1 FROM shelfJoin sj
 +      LEFT JOIN seriesBookJoin sbj_sj ON sbj_sj.libraryItemId = sj.entityId
@@ -4392,30 +4467,20 @@ index 38cde29b..8d2ce00f 100644
 +        OR EXISTS (
 +          SELECT 1 FROM seriesBookJoin sbj_start
 +          JOIN mediaProgress mp_start ON mp_start.libraryItemId = sbj_start.libraryItemId AND mp_start.userId = :userId
-+          WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.isFinished = 1)
++          WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.currentTime > 0 OR mp_start.isFinished = 1)
 +        )
-+      )
-+      AND NOT EXISTS (
-+        SELECT 1 FROM seriesBookJoin sbj_active
-+        JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
-+        WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND mp_active.progress > 0
++        OR EXISTS (
++          SELECT 1 FROM media m_start
++          JOIN mediaProgress mp_m_start ON mp_m_start.libraryItemId = m_start.libraryItemId AND mp_m_start.userId = :userId
++          WHERE m_start.metadata_series_id = series.id AND (mp_m_start.progress > 0 OR mp_m_start.currentTime > 0 OR mp_m_start.isFinished = 1)
++        )
 +      )
 +      AND EXISTS (
 +        SELECT 1 FROM seriesBookJoin sbj_unread
 +        LEFT JOIN mediaProgress mp_done ON mp_done.libraryItemId = sbj_unread.libraryItemId AND mp_done.userId = :userId AND mp_done.isFinished = 1
 +        WHERE sbj_unread.seriesId = series.id AND mp_done.libraryItemId IS NULL
 +      )
-     )
--  )
--  AND NOT EXISTS (
--    SELECT 1 FROM seriesBookJoin sbj_active
--    JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
--    WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND mp_active.progress > 0
--  )
--  AND EXISTS (
--    SELECT 1 FROM seriesBookJoin sbj_unread
--    LEFT JOIN mediaProgress mp_done ON mp_done.libraryItemId = sbj_unread.libraryItemId AND mp_done.userId = :userId AND mp_done.isFinished = 1
--    WHERE sbj_unread.seriesId = series.id AND mp_done.libraryItemId IS NULL
++    )
    )
  GROUP BY series.id
  ORDER BY COALESCE(series.bookInProgressLastUpdate, series.updatedAt) DESC;
@@ -4455,10 +4520,10 @@ index 38cde29b..8d2ce00f 100644
 +  AND media.metadata_series_id IS NOT NULL;
 +
 diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
-index 9dbe24ce..160bd695 100644
+index 9dbe24ce..c5ae39f3 100644
 --- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
 +++ b/data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq
-@@ -21,3 +21,11 @@ deleteForSeriesItem:
+@@ -21,3 +21,17 @@ deleteForSeriesItem:
  DELETE FROM seriesBookJoin
  WHERE seriesId = :seriesId
  AND libraryItemId = :libraryItemId;
@@ -4470,6 +4535,12 @@ index 9dbe24ce..160bd695 100644
 +JOIN media ON media.libraryItemId = shelfJoin.entityId
 +WHERE shelfJoin.shelfId LIKE 'continue-series_%'
 +  AND media.metadata_series_id IS NOT NULL;
++
++insertMissingMediaSeriesJoins:
++INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
++SELECT media.metadata_series_id, media.libraryItemId
++FROM media
++WHERE media.metadata_series_id IS NOT NULL;
 diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/session.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/session.sq
 index 1100f5be..f50922f3 100644
 --- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/session.sq
@@ -8444,7 +8515,7 @@ index 68ceccf4..edb20179 100644
 +  suspend fun refreshContinueSeries(): Result<Unit>
  }
 diff --git a/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt b/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
-index 7cf7ebd6..6b787727 100644
+index 7cf7ebd6..fc1cd8c7 100644
 --- a/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
 +++ b/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
 @@ -23,7 +23,11 @@ import app.campfire.core.session.serverUrl
@@ -8459,7 +8530,7 @@ index 7cf7ebd6..6b787727 100644
  import app.campfire.data.mapping.asDbModel
  import app.campfire.data.mapping.asDomainModel
  import app.campfire.data.mapping.asFetcherResult
-@@ -325,6 +329,12 @@ class StoreSeriesRepository(
+@@ -325,6 +329,13 @@ class StoreSeriesRepository(
    private val continueSeriesFlow: Flow<List<Series>> by lazy {
      userRepository.observeCurrentUser()
        .flatMapLatest { user ->
@@ -8467,12 +8538,13 @@ index 7cf7ebd6..6b787727 100644
 +          db.transaction {
 +            db.seriesQueries.insertMissingShelfSeries(user.id)
 +            db.seriesBookJoinQueries.insertMissingShelfJoins()
++            db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
 +          }
 +        }
          db.seriesQueries
            .selectContinueSeries(
              libraryId = user.selectedLibraryId,
-@@ -396,4 +406,94 @@ class StoreSeriesRepository(
+@@ -396,4 +407,95 @@ class StoreSeriesRepository(
    }
  
    override fun observeContinueSeries(): Flow<List<Series>> = continueSeriesFlow
@@ -8562,6 +8634,7 @@ index 7cf7ebd6..6b787727 100644
 +
 +          db.seriesQueries.insertMissingShelfSeries(user.id)
 +          db.seriesBookJoinQueries.insertMissingShelfJoins()
++          db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
 +        }
 +      }
 +    }
@@ -8610,6 +8683,18 @@ index 65a39df2..79ef5764 100644
 +
 +  override suspend fun refreshContinueSeries(): Result<Unit> = Result.success(Unit)
  }
+diff --git a/features/series/ui/build.gradle.kts b/features/series/ui/build.gradle.kts
+index 01092936..7d96bba1 100644
+--- a/features/series/ui/build.gradle.kts
++++ b/features/series/ui/build.gradle.kts
+@@ -33,6 +33,7 @@ kotlin {
+         implementation(projects.data.bookinfo.test)
+         implementation(projects.features.series.test)
+         implementation(projects.features.sessions.test)
++        implementation(projects.features.settings.test)
+         implementation(projects.features.user.test)
+         implementation(projects.infra.audioplayer.test)
+       }
 diff --git a/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml b/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
 index bab90470..67c5391d 100644
 --- a/features/series/ui/src/commonMain/composeResources/values/series_ui_strings.xml
@@ -8640,7 +8725,7 @@ index bab90470..67c5391d 100644
 +  <string name="dialog_action_ok">OK</string>
  </resources>
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
-index 3de4de99..bc1e986a 100644
+index 3de4de99..7e777d96 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 @@ -9,11 +9,14 @@ import androidx.compose.runtime.collectAsState
@@ -8709,8 +8794,20 @@ index 3de4de99..bc1e986a 100644
      LaunchedEffect(sortMode, sortAscending) {
        combine(
          seriesRepository.observeContinueSeries(),
-@@ -76,17 +104,18 @@ class ContinueSeriesPresenter(
-             p != null && !p.isFinished && p.progress > 0
+@@ -69,24 +97,25 @@ class ContinueSeriesPresenter(
+ 
+           val hasStartedAny = series.inProgress || books.any { book ->
+             val p = progressMap[book.id]
+-            p != null && (p.isFinished || p.progress > 0)
++            p != null && (p.isFinished || p.progress > 0 || p.currentTime > 0)
+           }
+           val hasActiveBook = books.any { book ->
+             val p = progressMap[book.id]
+-            p != null && !p.isFinished && p.progress > 0
++            p != null && !p.isFinished && (p.progress > 0 || p.currentTime > 0)
++          } || progressMap.values.any { p ->
++            !p.isFinished && (p.progress > 0 || p.currentTime > 0) &&
++              books.any { it.id == p.libraryItemId }
            }
  
 -          if (!hasStartedAny || completedCount >= total || hasActiveBook) {
@@ -8727,9 +8824,6 @@ index 3de4de99..bc1e986a 100644
 -          } ?: books.first()
 +          val nextUp = (series.firstBookUnreadId?.let { unreadId -> books.firstOrNull { it.id == unreadId } })
 +            ?: books.firstOrNull { book ->
-+              val p = progressMap[book.id]
-+              p != null && !p.isFinished && p.progress > 0
-+            } ?: books.firstOrNull { book ->
 +              val p = progressMap[book.id]
 +              p == null || !p.isFinished
 +            } ?: books.first()
@@ -8765,6 +8859,16 @@ index 3de4de99..bc1e986a 100644
  
          is ContinueSeriesUiEvent.OpenSeries -> {
            analytics.send(ContentSelected(ContentType.Series))
+@@ -167,5 +209,9 @@ class ContinueSeriesPresenter(
+   companion object {
+     @kotlin.concurrent.Volatile
+     private var memoryCache: List<ContinueSeriesItem>? = null
++
++    internal fun clearMemoryCache() {
++      memoryCache = null
++    }
+   }
+ }
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
 index f836081c..e7491533 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesUi.kt
@@ -9480,6 +9584,105 @@ index 034a7c60..492e07c1 100644
    ) { paddingValues ->
      LoadedState(
        totalCount = state.totalCount,
+diff --git a/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt b/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt
+new file mode 100644
+index 00000000..ecac039c
+--- /dev/null
++++ b/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt
+@@ -0,0 +1,93 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.series.ui.continueseries
++
++import app.campfire.analytics.test.FakeAnalytics
++import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
++import app.campfire.common.screens.ContinueSeriesScreen
++import app.campfire.common.test.mediaProgress
++import app.campfire.home.ui.libraryItem
++import app.campfire.home.ui.media
++import app.campfire.home.ui.mediaMetadata
++import app.campfire.home.ui.series
++import app.campfire.series.test.FakeSeriesRepository
++import app.campfire.settings.test.TestLibraryViewSettings
++import app.campfire.user.test.FakeMediaProgressRepository
++import assertk.assertThat
++import assertk.assertions.isEmpty
++import assertk.assertions.isEqualTo
++import com.slack.circuit.test.FakeNavigator
++import com.slack.circuit.test.test
++import kotlin.test.BeforeTest
++import kotlin.test.Test
++import kotlinx.coroutines.test.runTest
++
++class ContinueSeriesPresenterTest {
++
++  private val seriesRepository = FakeSeriesRepository()
++  private val mediaProgressRepository = FakeMediaProgressRepository()
++  private val libraryViewSettings = TestLibraryViewSettings()
++  private val navigator = FakeNavigator(ContinueSeriesScreen)
++  private val offlineDownloadManager = FakeOfflineDownloadManager()
++  private val analytics = FakeAnalytics()
++
++  private fun presenter() = ContinueSeriesPresenter(
++    seriesRepository = seriesRepository,
++    mediaProgressRepository = mediaProgressRepository,
++    libraryViewSettings = libraryViewSettings,
++    navigator = navigator,
++    offlineDownloadManager = offlineDownloadManager,
++    analytics = analytics,
++  )
++
++  @BeforeTest
++  fun setup() {
++    ContinueSeriesPresenter.clearMemoryCache()
++  }
++
++  @Test
++  fun seriesWithActiveBookInProgressIsExcluded() = runTest {
++    val book1 = libraryItem(id = "b1", media = media(metadata = mediaMetadata(title = "Book 1")))
++    val book2 = libraryItem(id = "b2", media = media(metadata = mediaMetadata(title = "Book 2")))
++    val testSeries = series(id = "s1", name = "Alex Cross", books = listOf(book1, book2))
++
++    // Book 1 is finished, Book 2 has currentTime > 0 and is not finished (active in progress)
++    val p1 = mediaProgress(libraryItemId = "b1", isFinished = true, progress = 1f, currentTime = 1000f)
++    val p2 = mediaProgress(libraryItemId = "b2", isFinished = false, progress = 0f, currentTime = 45f)
++
++    seriesRepository.continueSeriesFlow.tryEmit(listOf(testSeries))
++    mediaProgressRepository.allProgressFlow.tryEmit(listOf(p1, p2))
++
++    presenter().test {
++      var state = awaitItem()
++      while (state.isLoading) {
++        state = awaitItem()
++      }
++      // Since Book 2 is active in progress, the series must be excluded from Continue Series
++      assertThat(state.items).isEmpty()
++    }
++  }
++
++  @Test
++  fun seriesWithFinishedBookAndUnreadSequelIsIncluded() = runTest {
++    val book1 = libraryItem(id = "b1", media = media(metadata = mediaMetadata(title = "Book 1")))
++    val book2 = libraryItem(id = "b2", media = media(metadata = mediaMetadata(title = "Book 2")))
++    val testSeries = series(id = "s1", name = "Alex Cross", books = listOf(book1, book2))
++
++    // Book 1 is finished, Book 2 is unread
++    val p1 = mediaProgress(libraryItemId = "b1", isFinished = true, progress = 1f, currentTime = 1000f)
++
++    seriesRepository.continueSeriesFlow.tryEmit(listOf(testSeries))
++    mediaProgressRepository.allProgressFlow.tryEmit(listOf(p1))
++
++    presenter().test {
++      var state = awaitItem()
++      while (state.items.isEmpty()) {
++        state = awaitItem()
++      }
++      assertThat(state.items.size).isEqualTo(1)
++      assertThat(state.items.first().nextUpBook.id).isEqualTo("b2")
++    }
++  }
++}
 diff --git a/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt b/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
 index ac925c2e..f84453d8 100644
 --- a/features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/detail/SeriesDetailPresenterTest.kt
@@ -12188,7 +12391,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index e42923f9..06a739c2 100644
+index e42923f9..58278aac 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -12196,13 +12399,13 @@ index e42923f9..06a739c2 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.20
-+campfire.version=1.2.45
++campfire.version=1.2.46
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1022099
-+campfire.versionCode=1024599
++campfire.versionCode=1024699
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

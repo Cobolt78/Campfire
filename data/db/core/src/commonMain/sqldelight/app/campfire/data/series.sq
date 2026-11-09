@@ -73,6 +73,16 @@ WHERE id = ?
 selectContinueSeries:
 SELECT series.* FROM series
 WHERE series.libraryId = :libraryId
+  AND NOT EXISTS (
+    SELECT 1 FROM seriesBookJoin sbj_active
+    JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
+    WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND (mp_active.progress > 0 OR mp_active.currentTime > 0)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM media m_active
+    JOIN mediaProgress mp_m_active ON mp_m_active.libraryItemId = m_active.libraryItemId AND mp_m_active.userId = :userId
+    WHERE m_active.metadata_series_id = series.id AND mp_m_active.isFinished = 0 AND (mp_m_active.progress > 0 OR mp_m_active.currentTime > 0)
+  )
   AND (
     EXISTS (
       SELECT 1 FROM shelfJoin sj
@@ -87,13 +97,13 @@ WHERE series.libraryId = :libraryId
         OR EXISTS (
           SELECT 1 FROM seriesBookJoin sbj_start
           JOIN mediaProgress mp_start ON mp_start.libraryItemId = sbj_start.libraryItemId AND mp_start.userId = :userId
-          WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.isFinished = 1)
+          WHERE sbj_start.seriesId = series.id AND (mp_start.progress > 0 OR mp_start.currentTime > 0 OR mp_start.isFinished = 1)
         )
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM seriesBookJoin sbj_active
-        JOIN mediaProgress mp_active ON mp_active.libraryItemId = sbj_active.libraryItemId AND mp_active.userId = :userId
-        WHERE sbj_active.seriesId = series.id AND mp_active.isFinished = 0 AND mp_active.progress > 0
+        OR EXISTS (
+          SELECT 1 FROM media m_start
+          JOIN mediaProgress mp_m_start ON mp_m_start.libraryItemId = m_start.libraryItemId AND mp_m_start.userId = :userId
+          WHERE m_start.metadata_series_id = series.id AND (mp_m_start.progress > 0 OR mp_m_start.currentTime > 0 OR mp_m_start.isFinished = 1)
+        )
       )
       AND EXISTS (
         SELECT 1 FROM seriesBookJoin sbj_unread

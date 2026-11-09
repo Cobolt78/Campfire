@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.46] - 2026-11-09
+
+### Fixed
+
+- **Active Book In-Progress Suppression & Strict Parity for Continue Series**:
+  - Excluded any series containing an active book in progress from the dedicated Continue Series screen and SQLite query (`selectContinueSeries`), perfectly matching Audiobookshelf server behavior.
+  - Expanded active book detection in both SQL and Kotlin layers to evaluate both `currentTime > 0` and `progress > 0` (preventing unrounded small playback positions from bypassing suppression).
+  - Enforced active book exclusion across both junction links (`seriesBookJoin`) and direct media series metadata (`media.metadata_series_id`), preventing active books arriving from Home feed shelves without full series downloads from slipping through.
+  - Added self-healing `insertMissingMediaSeriesJoins` query to automatically index all local media series junctions on startup and refresh.
+  - Eliminated fallback in `ContinueSeriesPresenter` that prioritized active in-progress books over unread sequels.
+
 ## [1.2.45] - 2026-11-09
 
 ### Added

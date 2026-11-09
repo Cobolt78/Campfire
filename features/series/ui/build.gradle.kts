@@ -33,6 +33,7 @@ kotlin {
         implementation(projects.data.bookinfo.test)
         implementation(projects.features.series.test)
         implementation(projects.features.sessions.test)
+        implementation(projects.features.settings.test)
         implementation(projects.features.user.test)
         implementation(projects.infra.audioplayer.test)
       }
