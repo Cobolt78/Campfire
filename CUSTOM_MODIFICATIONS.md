@@ -89,6 +89,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 82. [Dedicated Full Fetch on Continue Series Screen & Home Screen 10-Item Shelf Cap (v1.2.45)](#82-dedicated-full-fetch-on-continue-series-screen--home-screen-10-item-shelf-cap-v1245)
 83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
+85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 
 ---
 
@@ -463,6 +464,13 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `data/db/mapping/.../LibraryItemDao.kt` | Added `hydrateLightweightById` skipping child audio/chapter queries |
 | `features/playlists/impl/.../PlaylistsSourceOfTruthFactory.kt` | Capped playlist cover hydration to 8 items in `readAll` |
 | `features/playlists/impl/.../StorePlaylistsRepository.kt` | Use lightweight hydration in `observePlaylistItems` & disabled large log dumps |
+| `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Exposed `isPlaying` property for immediate playback state inspection |
+| `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Immediate synchronous unpause bypassing multi-click delay to guarantee foreground service start exemption |
+| `features/settings/ui/.../battery/BatteryOptimization.kt` | Multiplatform abstraction for querying battery optimization and launching system battery settings |
+| `features/settings/ui/.../battery/AndroidBatteryOptimization.kt` | Android implementation using PowerManager and ACTION_APPLICATION_DETAILS_SETTINGS |
+| `features/settings/ui/.../SettingsPresenter.kt` | Observed battery optimization status and routed system settings opening event |
+| `features/settings/ui/.../panes/PlaybackPane.kt` | Added Battery Optimization setting item with real-time status and configure button |
+| `features/settings/ui/.../panes/HeadsetControlsPane.kt` | Added battery optimization tip under Bluetooth playback controls |
 
 ---
 
@@ -2503,6 +2511,53 @@ etworkCachePolicy(CachePolicy.DISABLED).
 * features/series/ui/build.gradle.kts
 * features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 * features/series/ui/src/commonTest/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenterTest.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 85. Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)
+
+### Problem Description
+1. When playing an audiobook on a Bluetooth headset or car kit while the device screen is off and locked, pausing and then unpausing via the Bluetooth headset button worked initially, but playback stopped/paused again after approximately 10 to 11 seconds.
+2. Unpausing again repeated the 10-second playback cycle until the phone was unlocked, after which playback worked normally with the screen locked.
+3. **Root Cause Analysis**:
+   - On Android 12+ (API 31+) and specifically Android 14/One UI 6+, strict Background Service Start Restrictions (`ForegroundServiceStartNotAllowedException`) prohibit apps from calling `startForeground()` from the background unless granted an active exemption (such as handling a high-priority push, media button, or UI interaction).
+   - In `MediaSessionCallback.kt`, headset button clicks were delayed by 350ms (`HEADSET_MULTI_CLICK_TIMEOUT_MS`) to detect potential multi-clicks (double-click to skip forward, triple-click to rewind).
+   - However, when the media button broadcast `ACTION_UP` was received while playback was paused and the service was not in the foreground, delaying the call by 350ms caused the `MediaButtonReceiver` system broadcast transaction window to close *before* `handleHeadsetPlayPause()` and `player.play()` were invoked.
+   - When `AudioPlayerService` subsequently called `startForeground()`, Android rejected it with `ForegroundServiceStartNotAllowedException: Service.startForeground() not allowed due to mAllowStartForeground false`.
+   - Consequently, the service remained in the background (`[bg-s]`). Android's `AppOpsService` logged `CONTROL_AUDIO (foreground): Access: [bg-s] ... duration=+11s20ms` and Samsung's `FreecessController` (`ActivityManager: freezing ... app.campfire.android`) froze the process after 10-11 seconds.
+   - Unlocking the phone brought `MainActivity` to the foreground, which immediately satisfied foreground service conditions and thawed the process.
+
+### Solution & Implementation
+1. **Immediate Synchronous Playback Resumption (`infra/audioplayer/impl/.../MediaSessionCallback.kt`)**:
+   - Inspected `player.isPlaying` directly when receiving `KeyEvent.KEYCODE_HEADSETHOOK`, `KEYCODE_MEDIA_PLAY_PAUSE`, or `KEYCODE_MEDIA_PLAY` on `ACTION_UP`.
+   - If playback is currently paused (`!player.isPlaying`), bypass the 350ms coroutine debounce delay and immediately/synchronously execute `handleHeadsetPlayPause()`.
+   - This ensures `startForeground()` is called while the `MediaButtonReceiver` exemption is actively held, guaranteeing proper promotion to the foreground and uninterrupted playback while locked.
+   - If playback is already active (`player.isPlaying`), the 350ms delay remains in place so double-click (skip forward) and triple-click (rewind) gestures continue to work seamlessly during playback.
+2. **ExoPlayer State Inspection (`infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt`)**:
+   - Exposed `val isPlaying: Boolean get() = player.isPlaying` on `ExoPlayerAudioPlayer` for zero-overhead, real-time playback state checks.
+3. **Cross-Platform Battery Optimization Abstraction (`features/settings/ui/.../battery/`)**:
+   - Defined `BatteryOptimization` interface with `isIgnoringBatteryOptimizations: StateFlow<Boolean>`, `isSupported: Boolean`, and `openBatteryOptimizationSettings()`.
+   - Implemented `AndroidBatteryOptimization` using `PowerManager.isIgnoringBatteryOptimizations(context.packageName)` and launching `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` with fallback to `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`.
+   - Provided `NoOpBatteryOptimization` implementations for iOS and JVM desktop targets.
+4. **Settings UI & Guidance (`features/settings/ui/...`)**:
+   - Added "Background Playback & Battery" section to `PlaybackPane.kt` showing current battery status ("Unrestricted" vs "Optimized") and a "Configure / Settings" button.
+   - Added guidance tip to `HeadsetControlsPane.kt` informing users about setting battery optimization to Unrestricted to prevent OEM background freezing.
+
+### Modified Files:
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/battery/BatteryOptimization.kt
+* features/settings/ui/src/androidMain/kotlin/app/campfire/ui/settings/battery/AndroidBatteryOptimization.kt
+* features/settings/ui/src/iosMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
+* features/settings/ui/src/jvmMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

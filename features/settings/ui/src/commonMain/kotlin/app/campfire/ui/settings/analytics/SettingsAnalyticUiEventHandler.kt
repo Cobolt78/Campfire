@@ -138,6 +138,7 @@ class SettingsAnalyticUiEventHandler(
         send("wavy_playback_slider", Updated, event.enabled)
       is SettingsUiEvent.PlaybackSettingEvent.ScrollingTitles ->
         send("scrolling_titles", Updated, event.enabled)
+      is SettingsUiEvent.PlaybackSettingEvent.OpenBatteryOptimizationSettings -> Unit
     }
 
     is SettingsUiEvent.HeadsetControlsSettingEvent -> when (event) {

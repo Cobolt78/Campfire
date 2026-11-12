@@ -116,6 +116,15 @@ internal fun HeadsetControlsPane(
       modifier = Modifier.padding(horizontal = 16.dp),
     )
 
+    Spacer(Modifier.height(6.dp))
+
+    Text(
+      text = "Tip: If playback pauses unexpectedly after ~10 seconds with the phone locked, ensure Battery is set to 'Unrestricted' under Playback Settings.",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.primary,
+      modifier = Modifier.padding(horizontal = 16.dp),
+    )
+
     Spacer(Modifier.height(12.dp))
 
     RemoteControlActionDropdownSetting(

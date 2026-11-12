@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.47] - 2026-11-13
+
+### Fixed
+
+- **Immediate Synchronous Bluetooth/Headset Playback Resumption**:
+  - Resolved an issue on Android 12+ (API 31+) where unpausing playback via Bluetooth headphones while the phone was locked resulted in playback pausing again after ~10 seconds.
+  - Bypassed the 350ms multi-click delay when playback is paused, ensuring `handleHeadsetPlayPause()` and `player.play()` execute immediately and synchronously on `ACTION_UP`.
+  - Guarantees `startForeground()` runs inside the active `MediaButtonReceiver` broadcast transaction window, preventing `ForegroundServiceStartNotAllowedException` and protecting background playback from Samsung One UI / Android Freecess suspension and audio cutoff.
+
+### Added
+
+- **Battery Optimization & Background Playback Setting**:
+  - Added a dedicated "Battery Optimization" setting in Playback Settings with real-time status detection (`isIgnoringBatteryOptimizations`).
+  - Added one-tap "Configure / Settings" button directing users straight to system app details so they can set Campfire's battery usage to "Unrestricted", preventing the OS from sleeping or throttling background network sockets and audio services.
+  - Added helpful guidance tip in Headset & Remote Controls settings.
+
 ## [1.2.46] - 2026-11-09
 
 ### Fixed

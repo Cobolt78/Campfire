@@ -535,6 +535,9 @@ class ExoPlayerAudioPlayer(
     ).also { fadeJob = it }
   }
 
+  val isPlaying: Boolean
+    get() = player.isPlaying
+
   override fun playPause() {
     if (player.isPlaying) {
       player.pause()

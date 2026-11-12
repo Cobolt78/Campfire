@@ -35,6 +35,7 @@ import app.campfire.core.model.Server
 import app.campfire.core.permission.LocalNetworkPermissionController
 import app.campfire.core.session.UserSession
 import app.campfire.core.session.requiredUser
+import app.campfire.ui.settings.battery.BatteryOptimization
 import app.campfire.core.session.user
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -154,6 +155,7 @@ class SettingsPresenter(
   private val serverReachability: ServerReachability,
   private val networkMonitor: NetworkMonitor,
   private val localNetworkPermission: LocalNetworkPermissionController,
+  private val batteryOptimization: BatteryOptimization,
 ) : NonPausablePresenter<SettingsUiState> {
 
   @Composable
@@ -298,6 +300,8 @@ class SettingsPresenter(
     val localNetworkMissing by remember { localNetworkPermission.observePermissionMissing() }
       .collectAsState(false)
     var localNetworkDenied by remember { mutableStateOf(false) }
+    val isIgnoringBatteryOptimizations by remember { batteryOptimization.observeIgnoringBatteryOptimizations() }
+      .collectAsState(batteryOptimization.isIgnoringBatteryOptimizations())
     val appUpdateSignInDismissed by remember { appStateSettings.observeAppUpdateSignInDismissed() }
       .collectAsState()
     var appUpdateInvalidator by remember { mutableIntStateOf(0) }
@@ -368,6 +372,8 @@ class SettingsPresenter(
         bookTimeInPlaybackUi = bookTimeInPlaybackUi,
         playbackWavyScrubber = playbackWavyScrubber,
         scrollingTitles = scrollingTitles,
+        batteryOptimizationSupported = batteryOptimization.isSupported,
+        isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
       ),
       headsetControlsSettings = HeadsetControlsSettingsInfo(
         singleButtonDoublePressAction = singleButtonDoublePressAction,
@@ -568,6 +574,7 @@ class SettingsPresenter(
           is BookTimeInPlaybackUi -> playbackSettings.bookTimeInPlaybackUi = event.enabled
           is PlaybackWavyScrubber -> playbackSettings.playbackWavyScrubber = event.enabled
           is ScrollingTitles -> playbackSettings.scrollingTitles = event.enabled
+          SettingsUiEvent.PlaybackSettingEvent.OpenBatteryOptimizationSettings -> batteryOptimization.openSettings()
         }
 
         is SettingsUiEvent.SleepSettingEvent -> when (event) {

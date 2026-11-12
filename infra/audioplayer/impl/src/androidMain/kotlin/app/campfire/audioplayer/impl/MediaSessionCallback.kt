@@ -284,6 +284,21 @@ internal class MediaSessionCallback(
                 return super.onMediaButtonEvent(session, controllerInfo, intent)
               }
 
+              if (!player.isPlaying) {
+                // If playback is currently paused or stopped, resume immediately and synchronously.
+                //
+                // Under Android 12+ (API 31+), starting a Foreground Service from the background is
+                // forbidden (ForegroundServiceStartNotAllowedException) unless executed during the
+                // active MediaButtonReceiver broadcast transaction. Deferring resumption across a
+                // 350ms delay in a background coroutine drops the broadcast window, causing Android
+                // to reject startForeground(), leaving the service in the background where Samsung
+                // Freecess and Android AppOps freeze/cut off audio after ~10 seconds.
+                headsetHookClickCount = 0
+                headsetHookJob?.cancel()
+                handleHeadsetPlayPause()
+                return true
+              }
+
               headsetHookClickCount++
               headsetHookJob?.cancel()
 

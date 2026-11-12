@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Power
 import app.campfire.settings.api.MinPauseThresholdRange
 import app.campfire.settings.api.ResumeRewindRange
 import app.campfire.settings.api.SyncIntervalRange
@@ -23,6 +27,7 @@ import app.campfire.ui.settings.composables.DurationSliderSetting
 import app.campfire.ui.settings.composables.Header
 import app.campfire.ui.settings.composables.PlaybackSpeedOptionsSetting
 import app.campfire.ui.settings.composables.ResumeRewindPreviewRow
+import app.campfire.ui.settings.composables.SettingListItem
 import app.campfire.ui.settings.composables.StreamingMethodSetting
 import app.campfire.ui.settings.composables.SwitchSetting
 import app.campfire.ui.settings.composables.TimeJumpSetting
@@ -322,6 +327,40 @@ internal fun PlaybackPane(
       headlineContent = { Text(stringResource(Res.string.setting_playback_history_title)) },
       supportingContent = { Text(stringResource(Res.string.setting_playback_history_subtitle)) },
     )
+
+    if (state.playbackSettings.batteryOptimizationSupported) {
+      Header(
+        title = { Text("Background Playback & Battery") },
+      )
+
+      SettingListItem(
+        headlineContent = { Text("Battery Optimization") },
+        supportingContent = {
+          Text(
+            if (state.playbackSettings.isIgnoringBatteryOptimizations) {
+              "Battery usage is Unrestricted. Background playback is protected from OS suspension."
+            } else {
+              "Set to 'Unrestricted' in system settings to prevent Android and Samsung One UI from freezing or pausing playback when your screen is locked."
+            },
+          )
+        },
+        leadingContent = {
+          Icon(
+            imageVector = CampfireIcons.Rounded.Power,
+            contentDescription = null,
+          )
+        },
+        trailingContent = {
+          FilledTonalButton(
+            onClick = {
+              state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
+            },
+          ) {
+            Text(if (state.playbackSettings.isIgnoringBatteryOptimizations) "Settings" else "Configure")
+          }
+        },
+      )
+    }
   }
 }
 

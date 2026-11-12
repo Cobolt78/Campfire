@@ -135,6 +135,8 @@ data class PlaybackSettingsInfo(
   val bookTimeInPlaybackUi: Boolean,
   val playbackWavyScrubber: Boolean,
   val scrollingTitles: Boolean,
+  val batteryOptimizationSupported: Boolean = false,
+  val isIgnoringBatteryOptimizations: Boolean = false,
 )
 
 @Immutable
@@ -298,6 +300,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
     data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
     data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
+    data object OpenBatteryOptimizationSettings : PlaybackSettingEvent
   }
 
   // Headset & Remote Control Setting Events
