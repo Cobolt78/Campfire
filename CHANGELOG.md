@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.48-rc1] - 2026-11-13
+
+### Added
+
+- **1-Tap System Dialog for Unrestricted Battery (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
+  - Added `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to AndroidManifest.
+  - Tapping "Fix Now (1-Tap)" launches the native OS dialog allowing users to whitelist Campfire with a single tap, bypassing manual navigation into system settings.
+- **Proactive Home Screen Background Playback Warning Banner**:
+  - Displays a high-visibility, dismissible alert card on the Home Screen when Campfire detects battery optimization is currently set to "Optimized".
+  - Explains the risk of Samsung / Android freezing playback or cutting off audio after 10 seconds when the screen is locked, providing a one-tap "Fix Now" action and a "Dismiss" option.
+- **In-App Manual Configuration Guidance Dialog**:
+  - Added a step-by-step visual guidance dialog in Playback Settings clearly explaining the two actions needed in system settings: 1. Tap Battery (highlighted) -> 2. Select Unrestricted.
+  - Automatically deep-links to App Info with `:settings:fragment_args_key = "battery"` to scroll to and highlight the Battery preference on supported Android versions.
+
 ## [1.2.47] - 2026-11-13
 
 ### Fixed

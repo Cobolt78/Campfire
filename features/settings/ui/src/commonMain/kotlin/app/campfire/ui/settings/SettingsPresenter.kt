@@ -35,7 +35,7 @@ import app.campfire.core.model.Server
 import app.campfire.core.permission.LocalNetworkPermissionController
 import app.campfire.core.session.UserSession
 import app.campfire.core.session.requiredUser
-import app.campfire.ui.settings.battery.BatteryOptimization
+import app.campfire.audioplayer.battery.BatteryOptimization
 import app.campfire.core.session.user
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -574,6 +574,7 @@ class SettingsPresenter(
           is BookTimeInPlaybackUi -> playbackSettings.bookTimeInPlaybackUi = event.enabled
           is PlaybackWavyScrubber -> playbackSettings.playbackWavyScrubber = event.enabled
           is ScrollingTitles -> playbackSettings.scrollingTitles = event.enabled
+          SettingsUiEvent.PlaybackSettingEvent.RequestIgnoreBatteryOptimizations -> batteryOptimization.requestIgnoreBatteryOptimizations()
           SettingsUiEvent.PlaybackSettingEvent.OpenBatteryOptimizationSettings -> batteryOptimization.openSettings()
         }
 

@@ -16,6 +16,8 @@ import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
+import app.campfire.audioplayer.battery.BatteryOptimization
+import app.campfire.audioplayer.battery.NoOpBatteryOptimization
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.bookinfo.api.BookInfoRegistry
 import app.campfire.bookinfo.api.UpcomingRelease
@@ -82,6 +84,7 @@ class HomePresenter(
   private val bookInfoRegistry: BookInfoRegistry,
   private val analytics: Analytics,
   private val appUpdateSource: AppUpdateSource,
+  private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
 ) : NonPausablePresenter<HomeUiState> {
 
   @Suppress("UNCHECKED_CAST")
@@ -91,6 +94,16 @@ class HomePresenter(
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
     var isRefreshingDiscoveries by remember { mutableStateOf(false) }
+    var isBatteryWarningDismissed by remember { mutableStateOf(false) }
+
+    val showBatteryWarning = if (batteryOptimization.isSupported && !isBatteryWarningDismissed) {
+      val isIgnoring by remember(batteryOptimization) {
+        batteryOptimization.observeIgnoringBatteryOptimizations()
+      }.collectAsState(batteryOptimization.isIgnoringBatteryOptimizations())
+      !isIgnoring
+    } else {
+      false
+    }
 
     // Observe just the shelf information. We will use this to compose the remaining elements
     val domainFeed by remember {
@@ -226,6 +239,7 @@ class HomePresenter(
       progressStates = userMediaProgress,
       isRefreshing = isRefreshing,
       isRefreshingDiscoveries = isRefreshingDiscoveries,
+      showBatteryWarning = showBatteryWarning,
     ) { event ->
       when (event) {
         is HomeUiEvent.OpenLibraryItem -> {
@@ -329,6 +343,14 @@ class HomePresenter(
               }
             }
           }
+        }
+
+        HomeUiEvent.RequestIgnoreBatteryOptimizations -> {
+          batteryOptimization.requestIgnoreBatteryOptimizations()
+        }
+
+        HomeUiEvent.DismissBatteryWarning -> {
+          isBatteryWarningDismissed = true
         }
       }
     }

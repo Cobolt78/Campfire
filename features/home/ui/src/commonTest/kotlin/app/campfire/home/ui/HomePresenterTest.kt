@@ -5,6 +5,8 @@ package app.campfire.home.ui
 
 import app.campfire.analytics.events.AnalyticEvent
 import app.campfire.analytics.test.FakeAnalytics
+import app.campfire.audioplayer.battery.BatteryOptimization
+import app.campfire.audioplayer.battery.NoOpBatteryOptimization
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
 import app.campfire.bookinfo.api.ProviderId
@@ -77,6 +79,7 @@ class HomePresenterTest {
     repository: HomeRepository,
     registry: BookInfoRegistry = FakeBookInfoRegistry(),
     updateSource: AppUpdateSource = fakeAppUpdateSource,
+    batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
   ): HomePresenter {
     return HomePresenter(
       navigator = navigator,
@@ -87,7 +90,46 @@ class HomePresenterTest {
       bookInfoRegistry = registry,
       analytics = analytics,
       appUpdateSource = updateSource,
+      batteryOptimization = batteryOptimization,
     )
+  }
+
+  @Test
+  fun present_BatteryOptimizationWarning_shownWhenSupportedAndOptimized() = runTest {
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { emptyFlow() },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = false)
+    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
+
+    presenter.test {
+      val state = awaitItem()
+      assertThat(state.showBatteryWarning).isTrue()
+
+      state.eventSink(HomeUiEvent.DismissBatteryWarning)
+      val dismissedState = awaitItem()
+      assertThat(dismissedState.showBatteryWarning).isFalse()
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun present_BatteryOptimizationWarning_hiddenWhenUnrestricted() = runTest {
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { emptyFlow() },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = true)
+    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
+
+    presenter.test {
+      val state = awaitItem()
+      assertThat(state.showBatteryWarning).isFalse()
+      cancelAndIgnoreRemainingEvents()
+    }
   }
 
   @Test
@@ -308,6 +350,7 @@ class HomePresenterTest {
             )
           }
       }
+      cancelAndIgnoreRemainingEvents()
     }
   }
 
@@ -349,6 +392,7 @@ class HomePresenterTest {
           key(MediaProgressKey("two_2")).isNotNull()
         }
       }
+      cancelAndIgnoreRemainingEvents()
     }
   }
 
@@ -390,6 +434,7 @@ class HomePresenterTest {
           key("two_2").isNotNull()
         }
       }
+      cancelAndIgnoreRemainingEvents()
     }
   }
 

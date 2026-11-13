@@ -4,25 +4,44 @@
 package app.campfire.home.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
+import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Close
+import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.common.compose.tracing.TraceEffect
 import app.campfire.common.compose.widgets.CampfireLoadingIndicator
 import app.campfire.common.compose.widgets.EmptyState
@@ -118,6 +137,9 @@ fun HomeScreen(
           LoadedState(
             shelves = state.homeFeed.data,
             appUpdateWidget = appUpdateWidget,
+            showBatteryWarning = state.showBatteryWarning,
+            onFixBatteryClick = { state.eventSink(HomeUiEvent.RequestIgnoreBatteryOptimizations) },
+            onDismissBatteryClick = { state.eventSink(HomeUiEvent.DismissBatteryWarning) },
             offlineStatus = { libraryItemId ->
               state.offlineStates[libraryItemId].asWidgetStatus()
             },
@@ -164,6 +186,9 @@ fun HomeScreen(
 private fun LoadedState(
   shelves: List<UiShelf<ShelfEntity>>,
   appUpdateWidget: AppUpdateWidget,
+  showBatteryWarning: Boolean,
+  onFixBatteryClick: () -> Unit,
+  onDismissBatteryClick: () -> Unit,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
   progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
   onItemClick: (UiShelf<*>, Any) -> Unit,
@@ -181,6 +206,75 @@ private fun LoadedState(
     contentPadding = contentPadding,
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
+    if (showBatteryWarning) {
+      item(key = "battery_optimization_warning") {
+        ElevatedCard(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+          colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+          ),
+        ) {
+          Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Icon(
+                imageVector = CampfireIcons.Rounded.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+              )
+              Text(
+                text = "Background Playback Limited",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+              )
+              IconButton(
+                onClick = onDismissBatteryClick,
+                modifier = Modifier.size(24.dp),
+              ) {
+                Icon(
+                  imageVector = CampfireIcons.Rounded.Close,
+                  contentDescription = "Dismiss",
+                  modifier = Modifier.size(16.dp),
+                )
+              }
+            }
+            Text(
+              text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              TextButton(onClick = onDismissBatteryClick) {
+                Text("Dismiss")
+              }
+              Spacer(modifier = Modifier.width(8.dp))
+              Button(
+                onClick = onFixBatteryClick,
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.error,
+                  contentColor = MaterialTheme.colorScheme.onError,
+                ),
+              ) {
+                Text("Fix Now (1-Tap)")
+              }
+            }
+          }
+        }
+      }
+    }
+
     item(key = "app_update_banner") {
       appUpdateWidget.Content(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

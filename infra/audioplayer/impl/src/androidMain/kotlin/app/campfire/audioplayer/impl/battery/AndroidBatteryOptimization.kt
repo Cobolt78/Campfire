@@ -1,15 +1,17 @@
 // Copyright 2026, Drew Heavner and the Campfire project contributors
 // SPDX-License-Identifier: GPL-3.0-only
 
-package app.campfire.ui.settings.battery
+package app.campfire.audioplayer.impl.battery
 
 import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import app.campfire.audioplayer.battery.BatteryOptimization
 import app.campfire.core.di.AppScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.core.lifecycle.AppLifecycleObserver
@@ -52,9 +54,26 @@ class AndroidBatteryOptimization(
 
   override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = ignoringOptimizations.asStateFlow()
 
+  override fun requestIgnoreBatteryOptimizations() {
+    val requestIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+      data = Uri.parse("package:${application.packageName}")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+      application.startActivity(requestIntent)
+    } catch (_: Exception) {
+      openSettings()
+    }
+  }
+
   override fun openSettings() {
     val detailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
       data = Uri.fromParts("package", application.packageName, null)
+      putExtra(":settings:fragment_args_key", "battery")
+      val args = Bundle().apply {
+        putString(":settings:fragment_args_key", "battery")
+      }
+      putExtra(":settings:show_fragment_args", args)
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     try {

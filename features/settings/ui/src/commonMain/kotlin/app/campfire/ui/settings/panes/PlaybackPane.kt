@@ -4,19 +4,38 @@
 package app.campfire.ui.settings.panes
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.CheckCircle
 import app.campfire.common.compose.icons.rounded.Power
+import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.settings.api.MinPauseThresholdRange
 import app.campfire.settings.api.ResumeRewindRange
 import app.campfire.settings.api.SyncIntervalRange
@@ -333,33 +352,119 @@ internal fun PlaybackPane(
         title = { Text("Background Playback & Battery") },
       )
 
-      SettingListItem(
-        headlineContent = { Text("Battery Optimization") },
-        supportingContent = {
-          Text(
-            if (state.playbackSettings.isIgnoringBatteryOptimizations) {
-              "Battery usage is Unrestricted. Background playback is protected from OS suspension."
-            } else {
-              "Set to 'Unrestricted' in system settings to prevent Android and Samsung One UI from freezing or pausing playback when your screen is locked."
-            },
-          )
-        },
-        leadingContent = {
-          Icon(
-            imageVector = CampfireIcons.Rounded.Power,
-            contentDescription = null,
-          )
-        },
-        trailingContent = {
-          FilledTonalButton(
-            onClick = {
-              state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
-            },
+      var showGuideDialog by remember { mutableStateOf(false) }
+
+      if (showGuideDialog) {
+        AlertDialog(
+          onDismissRequest = { showGuideDialog = false },
+          title = { Text("Manual Battery Configuration") },
+          text = {
+            Text(
+              "To stop Android and Samsung One UI from pausing background playback or freezing Bluetooth controls:\n\n" +
+                "1. On the App Info screen, tap 'Battery' (it will be highlighted).\n" +
+                "2. Change the selection to 'Unrestricted'."
+            )
+          },
+          confirmButton = {
+            Button(
+              onClick = {
+                showGuideDialog = false
+                state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
+              },
+            ) {
+              Text("Open App Settings")
+            }
+          },
+          dismissButton = {
+            TextButton(
+              onClick = { showGuideDialog = false },
+            ) {
+              Text("Cancel")
+            }
+          },
+        )
+      }
+
+      if (state.playbackSettings.isIgnoringBatteryOptimizations) {
+        SettingListItem(
+          headlineContent = { Text("Battery Optimization") },
+          supportingContent = {
+            Text("Battery usage is Unrestricted. Background playback is protected from OS suspension.")
+          },
+          leadingContent = {
+            Icon(
+              imageVector = CampfireIcons.Rounded.CheckCircle,
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+            )
+          },
+          trailingContent = {
+            OutlinedButton(
+              onClick = {
+                state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
+              },
+            ) {
+              Text("Settings")
+            }
+          },
+        )
+      } else {
+        ElevatedCard(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+          colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+          ),
+        ) {
+          Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
           ) {
-            Text(if (state.playbackSettings.isIgnoringBatteryOptimizations) "Settings" else "Configure")
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Icon(
+                imageVector = CampfireIcons.Rounded.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+              )
+              Text(
+                text = "Background Playback Limited",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+              )
+            }
+            Text(
+              text = "Battery usage is currently 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze background downloads. Set to Unrestricted for uninterrupted listening.",
+              style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              TextButton(
+                onClick = { showGuideDialog = true },
+              ) {
+                Text("Manual Guide")
+              }
+              Spacer(modifier = Modifier.width(8.dp))
+              Button(
+                onClick = { state.eventSink(PlaybackSettingEvent.RequestIgnoreBatteryOptimizations) },
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.error,
+                  contentColor = MaterialTheme.colorScheme.onError,
+                ),
+              ) {
+                Text("Fix Now (1-Tap)")
+              }
+            }
           }
-        },
-      )
+        }
+      }
     }
   }
 }

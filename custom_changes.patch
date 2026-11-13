@@ -11,14 +11,28 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..01644d41 100644
+index c0278c85..cafdaf9e 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,480 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,494 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.48-rc1] - 2026-11-13
++
++### Added
++
++- **1-Tap System Dialog for Unrestricted Battery (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
++  - Added `android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` to AndroidManifest.
++  - Tapping "Fix Now (1-Tap)" launches the native OS dialog allowing users to whitelist Campfire with a single tap, bypassing manual navigation into system settings.
++- **Proactive Home Screen Background Playback Warning Banner**:
++  - Displays a high-visibility, dismissible alert card on the Home Screen when Campfire detects battery optimization is currently set to "Optimized".
++  - Explains the risk of Samsung / Android freezing playback or cutting off audio after 10 seconds when the screen is locked, providing a one-tap "Fix Now" action and a "Dismiss" option.
++- **In-App Manual Configuration Guidance Dialog**:
++  - Added a step-by-step visual guidance dialog in Playback Settings clearly explaining the two actions needed in system settings: 1. Tap Battery (highlighted) -> 2. Select Unrestricted.
++  - Automatically deep-links to App Info with `:settings:fragment_args_key = "battery"` to scroll to and highlight the Battery preference on supported Android versions.
++
 +## [1.2.47] - 2026-11-13
 +
 +### Fixed
@@ -498,10 +512,10 @@ index c0278c85..01644d41 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..ebca4331
+index 00000000..b7b76752
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2563 @@
+@@ -0,0 +1,2610 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -594,6 +608,7 @@ index 00000000..ebca4331
 +83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 +84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 +85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
++86. [1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner--manual-guidance-v1248-rc1)
 +
 +---
 +
@@ -970,8 +985,10 @@ index 00000000..ebca4331
 +| `features/playlists/impl/.../StorePlaylistsRepository.kt` | Use lightweight hydration in `observePlaylistItems` & disabled large log dumps |
 +| `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Exposed `isPlaying` property for immediate playback state inspection |
 +| `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Immediate synchronous unpause bypassing multi-click delay to guarantee foreground service start exemption |
-+| `features/settings/ui/.../battery/BatteryOptimization.kt` | Multiplatform abstraction for querying battery optimization and launching system battery settings |
-+| `features/settings/ui/.../battery/AndroidBatteryOptimization.kt` | Android implementation using PowerManager and ACTION_APPLICATION_DETAILS_SETTINGS |
++| `infra/audioplayer/api/.../battery/BatteryOptimization.kt` | Multiplatform abstraction for querying battery optimization, 1-tap system request, and launching system battery settings |
++| `infra/audioplayer/impl/.../battery/AndroidBatteryOptimization.kt` | Android implementation using PowerManager, ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, and ACTION_APPLICATION_DETAILS_SETTINGS with preference highlight |
++| `features/home/ui/.../HomePresenter.kt` | Observed battery optimization status and surfaced showBatteryWarning state |
++| `features/home/ui/.../HomeUi.kt` | Rendered dismissible Background Playback Limited warning banner with 1-Tap Fix button |
 +| `features/settings/ui/.../SettingsPresenter.kt` | Observed battery optimization status and routed system settings opening event |
 +| `features/settings/ui/.../panes/PlaybackPane.kt` | Added Battery Optimization setting item with real-time status and configure button |
 +| `features/settings/ui/.../panes/HeadsetControlsPane.kt` | Added battery optimization tip under Bluetooth playback controls |
@@ -3065,6 +3082,50 @@ index 00000000..ebca4331
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++---
++
++## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)
++
++### Problem Description
++1. In v1.2.47, battery optimization status was surfaced in Settings -> Playback, but users had to manually navigate deep into Settings to realize their playback might be affected by OS power-saving policies.
++2. Clicking the "Configure" button opened the generic system App Info page. The user was required to know that they needed to find and tap "Battery", and then select "Unrestricted".
++3. On OEM systems like Samsung One UI, deep sub-settings activities for battery cannot be directly launched without system permissions, and internal AOSP preference highlight animations are overridden by Samsung's proprietary Device Care interface.
++
++### Solution & Implementation
++1. **1-Tap Direct OS System Dialog (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
++   - Added `<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />` to `app/android/src/main/AndroidManifest.xml`.
++   - Implemented `requestIgnoreBatteryOptimizations()` in `BatteryOptimization` / `AndroidBatteryOptimization` to launch `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
++   - Allows users to whitelist Campfire with a single tap in the native OS prompt without ever leaving Campfire or searching through system menus.
++2. **Proactive Home Screen Background Playback Warning Banner (`HomeUi.kt`, `HomePresenter.kt`, `HomeUiState.kt`)**:
++   - Elevated `BatteryOptimization` to `infra:audioplayer:api` and `infra:audioplayer:impl`, making it accessible across both settings and home feed domains.
++   - Surfaced `showBatteryWarning` in `HomeUiState` when battery optimization is supported, the app is set to "Optimized", and the banner has not been dismissed.
++   - Rendered a high-visibility, dismissible warning card at the top of the Home feed with a 1-tap **"Fix Now (1-Tap)"** action and a **"Dismiss"** option.
++3. **Manual 2-Step Configuration Guidance & Preference Highlighting (`PlaybackPane.kt`, `AndroidBatteryOptimization.kt`)**:
++   - Added a "Manual Guide" dialog in `PlaybackPane` clearly explaining the exact 2 steps: 1. Tap **Battery** (highlighted) -> 2. Select **Unrestricted**.
++   - Passed `:settings:fragment_args_key = "battery"` and `:settings:show_fragment_args` when opening App Info, ensuring the system Settings app auto-scrolls down to and highlights the Battery entry on supported Android versions.
++4. **Comprehensive Unit Testing (`HomePresenterTest.kt`)**:
++   - Added unit test verification for `showBatteryWarning` state transitions and dismissal events.
++   - Fixed unconsumed event handling in `present_ShelvesWithEntitiesState`, `present_UserMediaProgress_mapsToLoadedItems`, and `present_OfflineDownloads_mapsToLoadedItems` using `cancelAndIgnoreRemainingEvents()`.
++
++### Modified Files:
++* app/android/src/main/AndroidManifest.xml
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
++* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
++* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
++* infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt
++* infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/NoOpBatteryOptimization.kt
++* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt
++* infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
++* infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -3181,18 +3242,19 @@ index 5f36eb58..78496c6d 100644
  class DebugAppUpdateSource(
    private val fake: FakeAppUpdateSource,
 diff --git a/app/android/src/main/AndroidManifest.xml b/app/android/src/main/AndroidManifest.xml
-index 0e30e5db..8941dffa 100644
+index 0e30e5db..a3e6b60f 100644
 --- a/app/android/src/main/AndroidManifest.xml
 +++ b/app/android/src/main/AndroidManifest.xml
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,8 @@
      be requested at runtime (prot=dangerous) before the first local-network request.
    -->
    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 +  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
++  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
  
    <application
      android:name=".CampfireApplication"
-@@ -39,8 +40,26 @@
+@@ -39,8 +41,26 @@
          <category android:name="android.intent.category.INFO" />
          <category android:name="android.intent.category.LAUNCHER" />
        </intent-filter>
@@ -8122,10 +8184,10 @@ index d004f020..700fcfd3 100644
 +  <string name="discover_refresh_cd">Refresh discoveries</string>
  </resources>
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index 84b0ef8a..7a5b7fc1 100644
+index 84b0ef8a..b9c73eb9 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-@@ -5,51 +5,71 @@ package app.campfire.home.ui
+@@ -5,51 +5,73 @@ package app.campfire.home.ui
  
  import androidx.compose.runtime.Composable
  import androidx.compose.runtime.collectAsState
@@ -8141,6 +8203,8 @@ index 84b0ef8a..7a5b7fc1 100644
 +import app.campfire.analytics.events.ActionEvent
  import app.campfire.analytics.events.ContentSelected
  import app.campfire.analytics.events.ContentType
++import app.campfire.audioplayer.battery.BatteryOptimization
++import app.campfire.audioplayer.battery.NoOpBatteryOptimization
  import app.campfire.audioplayer.offline.OfflineDownloadManager
  import app.campfire.bookinfo.api.BookInfoRegistry
  import app.campfire.bookinfo.api.UpcomingRelease
@@ -8198,7 +8262,7 @@ index 84b0ef8a..7a5b7fc1 100644
  
  @CircuitInject(HomeScreen::class, UserScope::class)
  @Inject
-@@ -58,16 +78,19 @@ class HomePresenter(
+@@ -58,16 +80,30 @@ class HomePresenter(
    private val homeRepository: HomeRepository,
    private val mediaProgressRepository: MediaProgressRepository,
    private val offlineDownloadManager: OfflineDownloadManager,
@@ -8206,6 +8270,7 @@ index 84b0ef8a..7a5b7fc1 100644
    private val bookInfoRegistry: BookInfoRegistry,
    private val analytics: Analytics,
 +  private val appUpdateSource: AppUpdateSource,
++  private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
  ) : NonPausablePresenter<HomeUiState> {
  
    @Suppress("UNCHECKED_CAST")
@@ -8216,10 +8281,20 @@ index 84b0ef8a..7a5b7fc1 100644
 +    val coroutineScope = rememberCoroutineScope()
      var isRefreshing by remember { mutableStateOf(false) }
 +    var isRefreshingDiscoveries by remember { mutableStateOf(false) }
++    var isBatteryWarningDismissed by remember { mutableStateOf(false) }
++
++    val showBatteryWarning = if (batteryOptimization.isSupported && !isBatteryWarningDismissed) {
++      val isIgnoring by remember(batteryOptimization) {
++        batteryOptimization.observeIgnoringBatteryOptimizations()
++      }.collectAsState(batteryOptimization.isIgnoringBatteryOptimizations())
++      !isIgnoring
++    } else {
++      false
++    }
  
      // Observe just the shelf information. We will use this to compose the remaining elements
      val domainFeed by remember {
-@@ -104,22 +127,24 @@ class HomePresenter(
+@@ -104,22 +140,24 @@ class HomePresenter(
        bookInfoRegistry.observeCachedUpcoming()
      }.collectAsState(emptyList())
  
@@ -8258,7 +8333,7 @@ index 84b0ef8a..7a5b7fc1 100644
  
      val userMediaProgress by remember {
        mediaProgressRepository.observeAllProgress()
-@@ -130,18 +155,69 @@ class HomePresenter(
+@@ -130,18 +168,69 @@ class HomePresenter(
          }
      }.collectAsState(persistentMapOf())
  
@@ -8339,11 +8414,12 @@ index 84b0ef8a..7a5b7fc1 100644
      }.collectAsState(persistentMapOf())
  
      return HomeUiState(
-@@ -149,33 +225,108 @@ class HomePresenter(
+@@ -149,36 +238,120 @@ class HomePresenter(
        offlineStates = offlineDownloads,
        progressStates = userMediaProgress,
        isRefreshing = isRefreshing,
 +      isRefreshingDiscoveries = isRefreshingDiscoveries,
++      showBatteryWarning = showBatteryWarning,
      ) { event ->
        when (event) {
          is HomeUiEvent.OpenLibraryItem -> {
@@ -8422,9 +8498,9 @@ index 84b0ef8a..7a5b7fc1 100644
 +            event.shelfId.startsWith(ShelfIds.NewestAuthors) -> {
 +              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.NewestAuthors))
 +              navigator.goTo(AuthorsScreen)
-+            }
-+          }
-+        }
+             }
+           }
+         }
 +
 +        HomeUiEvent.Refresh -> {
 +          if (!isRefreshing) {
@@ -8452,10 +8528,21 @@ index 84b0ef8a..7a5b7fc1 100644
 +              } finally {
 +                isRefreshingDiscoveries = false
 +              }
-             }
-           }
-         }
-@@ -226,3 +377,207 @@ private fun insertUpcomingShelf(
++            }
++          }
++        }
++
++        HomeUiEvent.RequestIgnoreBatteryOptimizations -> {
++          batteryOptimization.requestIgnoreBatteryOptimizations()
++        }
++
++        HomeUiEvent.DismissBatteryWarning -> {
++          isBatteryWarningDismissed = true
++        }
+       }
+     }
+   }
+@@ -226,3 +399,207 @@ private fun insertUpcomingShelf(
      shelves + upcomingShelf
    }
  }
@@ -8664,10 +8751,55 @@ index 84b0ef8a..7a5b7fc1 100644
 +  return shelves
 +}
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
-index 24b2d42a..b2dcf94b 100644
+index 24b2d42a..77e181be 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
-@@ -44,6 +44,7 @@ import app.campfire.home.ui.composables.ShelfListItem
+@@ -4,25 +4,44 @@
+ package app.campfire.home.ui
+ 
+ import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.PaddingValues
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
+ import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.layout.width
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyListState
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.foundation.lazy.rememberLazyListState
++import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.CardDefaults
++import androidx.compose.material3.ElevatedCard
+ import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.Icon
++import androidx.compose.material3.IconButton
++import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Scaffold
+ import androidx.compose.material3.SearchBarDefaults
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
+ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+ import androidx.compose.runtime.Composable
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.input.nestedscroll.nestedScroll
++import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
+ import app.campfire.audioplayer.offline.asWidgetStatus
+ import app.campfire.common.compose.CampfireWindowInsets
++import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.Close
++import app.campfire.common.compose.icons.rounded.Warning
+ import app.campfire.common.compose.tracing.TraceEffect
+ import app.campfire.common.compose.widgets.CampfireLoadingIndicator
+ import app.campfire.common.compose.widgets.EmptyState
+@@ -44,6 +63,7 @@ import app.campfire.home.ui.composables.ShelfListItem
  import app.campfire.ui.appbar.CampfireAppBar
  import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
  import app.campfire.user.api.MediaProgressKey
@@ -8675,7 +8807,7 @@ index 24b2d42a..b2dcf94b 100644
  import campfire.features.home.ui.generated.resources.Res
  import campfire.features.home.ui.generated.resources.home_feed_load_error
  import com.slack.circuit.codegen.annotations.CircuitInject
-@@ -55,6 +56,10 @@ import org.jetbrains.compose.resources.stringResource
+@@ -55,6 +75,10 @@ import org.jetbrains.compose.resources.stringResource
  fun HomeScreen(
    state: HomeUiState,
    campfireAppbar: CampfireAppBar,
@@ -8686,15 +8818,18 @@ index 24b2d42a..b2dcf94b 100644
    modifier: Modifier = Modifier,
  ) {
    val appBarBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
-@@ -112,6 +117,7 @@ fun HomeScreen(
+@@ -112,6 +136,10 @@ fun HomeScreen(
          } else {
            LoadedState(
              shelves = state.homeFeed.data,
 +            appUpdateWidget = appUpdateWidget,
++            showBatteryWarning = state.showBatteryWarning,
++            onFixBatteryClick = { state.eventSink(HomeUiEvent.RequestIgnoreBatteryOptimizations) },
++            onDismissBatteryClick = { state.eventSink(HomeUiEvent.DismissBatteryWarning) },
              offlineStatus = { libraryItemId ->
                state.offlineStates[libraryItemId].asWidgetStatus()
              },
-@@ -121,6 +127,9 @@ fun HomeScreen(
+@@ -121,6 +149,9 @@ fun HomeScreen(
              contentPadding = paddingValues,
              modifier = Modifier.fillMaxSize(),
              onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
@@ -8704,11 +8839,14 @@ index 24b2d42a..b2dcf94b 100644
              onItemClick = { shelf, item ->
                when (item) {
                  is LibraryItem -> state.eventSink(
-@@ -154,10 +163,14 @@ fun HomeScreen(
+@@ -154,10 +185,17 @@ fun HomeScreen(
  @Composable
  private fun LoadedState(
    shelves: List<UiShelf<ShelfEntity>>,
 +  appUpdateWidget: AppUpdateWidget,
++  showBatteryWarning: Boolean,
++  onFixBatteryClick: () -> Unit,
++  onDismissBatteryClick: () -> Unit,
    offlineStatus: (LibraryItemId) -> OfflineStatus,
    progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
    onItemClick: (UiShelf<*>, Any) -> Unit,
@@ -8719,11 +8857,80 @@ index 24b2d42a..b2dcf94b 100644
    modifier: Modifier = Modifier,
    contentPadding: PaddingValues = PaddingValues(),
    state: LazyListState = rememberLazyListState(),
-@@ -168,11 +181,23 @@ private fun LoadedState(
+@@ -168,11 +206,92 @@ private fun LoadedState(
      contentPadding = contentPadding,
      verticalArrangement = Arrangement.spacedBy(8.dp),
    ) {
 -    items(shelves) { shelf ->
++    if (showBatteryWarning) {
++      item(key = "battery_optimization_warning") {
++        ElevatedCard(
++          modifier = Modifier
++            .fillMaxWidth()
++            .padding(horizontal = 16.dp, vertical = 4.dp),
++          colors = CardDefaults.elevatedCardColors(
++            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
++            contentColor = MaterialTheme.colorScheme.onErrorContainer,
++          ),
++        ) {
++          Column(
++            modifier = Modifier.padding(16.dp),
++            verticalArrangement = Arrangement.spacedBy(8.dp),
++          ) {
++            Row(
++              verticalAlignment = Alignment.CenterVertically,
++              horizontalArrangement = Arrangement.spacedBy(8.dp),
++            ) {
++              Icon(
++                imageVector = CampfireIcons.Rounded.Warning,
++                contentDescription = null,
++                tint = MaterialTheme.colorScheme.error,
++              )
++              Text(
++                text = "Background Playback Limited",
++                style = MaterialTheme.typography.titleMedium,
++                fontWeight = FontWeight.Bold,
++                modifier = Modifier.weight(1f),
++              )
++              IconButton(
++                onClick = onDismissBatteryClick,
++                modifier = Modifier.size(24.dp),
++              ) {
++                Icon(
++                  imageVector = CampfireIcons.Rounded.Close,
++                  contentDescription = "Dismiss",
++                  modifier = Modifier.size(16.dp),
++                )
++              }
++            }
++            Text(
++              text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
++              style = MaterialTheme.typography.bodyMedium,
++            )
++            Row(
++              modifier = Modifier.fillMaxWidth(),
++              horizontalArrangement = Arrangement.End,
++              verticalAlignment = Alignment.CenterVertically,
++            ) {
++              TextButton(onClick = onDismissBatteryClick) {
++                Text("Dismiss")
++              }
++              Spacer(modifier = Modifier.width(8.dp))
++              Button(
++                onClick = onFixBatteryClick,
++                colors = ButtonDefaults.buttonColors(
++                  containerColor = MaterialTheme.colorScheme.error,
++                  contentColor = MaterialTheme.colorScheme.onError,
++                ),
++              ) {
++                Text("Fix Now (1-Tap)")
++              }
++            }
++          }
++        }
++      }
++    }
++
 +    item(key = "app_update_banner") {
 +      appUpdateWidget.Content(
 +        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -8745,26 +8952,29 @@ index 24b2d42a..b2dcf94b 100644
          progressStatus = progressStatus,
        )
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
-index 49b4aa70..a9045db2 100644
+index 49b4aa70..80b2fce4 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
-@@ -26,7 +26,8 @@ data class HomeUiState(
+@@ -26,7 +26,9 @@ data class HomeUiState(
    val homeFeed: FeedResponse<out PersistentList<UiShelf<ShelfEntity>>>,
    val offlineStates: ImmutableMap<LibraryItemId, OfflineDownload>,
    val progressStates: ImmutableMap<MediaProgressKey, MediaProgress>,
 -  val isRefreshing: Boolean,
 +  val isRefreshing: Boolean = false,
 +  val isRefreshingDiscoveries: Boolean = false,
++  val showBatteryWarning: Boolean = false,
    val eventSink: (HomeUiEvent) -> Unit,
  ) : CircuitUiState
  
-@@ -62,5 +63,7 @@ sealed interface HomeUiEvent : CircuitUiEvent {
+@@ -62,5 +64,9 @@ sealed interface HomeUiEvent : CircuitUiEvent {
    data class OpenAuthor(val author: Author) : HomeUiEvent
    data class OpenUpcomingBook(val url: String) : HomeUiEvent
    data object OpenUpcomingScreen : HomeUiEvent
 +  data class OpenShelf(val shelfId: String) : HomeUiEvent
    data object Refresh : HomeUiEvent
 +  data object RefreshDiscoveries : HomeUiEvent
++  data object RequestIgnoreBatteryOptimizations : HomeUiEvent
++  data object DismissBatteryWarning : HomeUiEvent
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
 index 585f6e98..183c951a 100644
@@ -8999,10 +9209,19 @@ index c6c916b9..4d05326e 100644
    }
  }
 diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
-index 5e6478ef..fdb09bc7 100644
+index 5e6478ef..254b19c0 100644
 --- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 +++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
-@@ -26,6 +26,10 @@ import app.campfire.home.api.model.ShelfIds
+@@ -5,6 +5,8 @@ package app.campfire.home.ui
+ 
+ import app.campfire.analytics.events.AnalyticEvent
+ import app.campfire.analytics.test.FakeAnalytics
++import app.campfire.audioplayer.battery.BatteryOptimization
++import app.campfire.audioplayer.battery.NoOpBatteryOptimization
+ import app.campfire.audioplayer.offline.OfflineDownload
+ import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
+ import app.campfire.bookinfo.api.ProviderId
+@@ -26,6 +28,10 @@ import app.campfire.home.api.model.ShelfIds
  import app.campfire.libraries.api.screen.LibraryItemScreen
  import app.campfire.user.api.MediaProgressKey
  import app.campfire.user.test.FakeMediaProgressRepository
@@ -9013,7 +9232,7 @@ index 5e6478ef..fdb09bc7 100644
  import assertk.Assert
  import assertk.all
  import assertk.assertThat
-@@ -40,6 +44,9 @@ import assertk.assertions.isNotNull
+@@ -40,6 +46,9 @@ import assertk.assertions.isNotNull
  import assertk.assertions.isTrue
  import assertk.assertions.key
  import assertk.assertions.prop
@@ -9023,7 +9242,7 @@ index 5e6478ef..fdb09bc7 100644
  import com.slack.circuit.test.FakeNavigator
  import com.slack.circuit.test.test
  import kotlin.test.Test
-@@ -56,6 +63,32 @@ class HomePresenterTest {
+@@ -56,22 +65,81 @@ class HomePresenterTest {
    val analytics = FakeAnalytics()
    val offlineDownloadManager = FakeOfflineDownloadManager()
    val mediaProgressRepository = FakeMediaProgressRepository()
@@ -9041,6 +9260,7 @@ index 5e6478ef..fdb09bc7 100644
 +    repository: HomeRepository,
 +    registry: BookInfoRegistry = FakeBookInfoRegistry(),
 +    updateSource: AppUpdateSource = fakeAppUpdateSource,
++    batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
 +  ): HomePresenter {
 +    return HomePresenter(
 +      navigator = navigator,
@@ -9051,12 +9271,15 @@ index 5e6478ef..fdb09bc7 100644
 +      bookInfoRegistry = registry,
 +      analytics = analytics,
 +      appUpdateSource = updateSource,
++      batteryOptimization = batteryOptimization,
 +    )
 +  }
  
    @Test
-   fun present_LoadingState() = runTest {
-@@ -64,14 +97,7 @@ class HomePresenterTest {
+-  fun present_LoadingState() = runTest {
++  fun present_BatteryOptimizationWarning_shownWhenSupportedAndOptimized() = runTest {
+     val repository = FakeHomeRepository(
+       homeFeedFlowFactory = { emptyFlow() },
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9067,12 +9290,49 @@ index 5e6478ef..fdb09bc7 100644
 -      offlineDownloadManager = offlineDownloadManager,
 -      bookInfoRegistry = FakeBookInfoRegistry(),
 -      analytics = analytics,
--    )
++    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = false)
++    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
++
++    presenter.test {
++      val state = awaitItem()
++      assertThat(state.showBatteryWarning).isTrue()
++
++      state.eventSink(HomeUiEvent.DismissBatteryWarning)
++      val dismissedState = awaitItem()
++      assertThat(dismissedState.showBatteryWarning).isFalse()
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun present_BatteryOptimizationWarning_hiddenWhenUnrestricted() = runTest {
++    val repository = FakeHomeRepository(
++      homeFeedFlowFactory = { emptyFlow() },
++      mediaProgressFlowFactory = { emptyFlow() },
++      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
++    )
++    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = true)
++    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
++
++    presenter.test {
++      val state = awaitItem()
++      assertThat(state.showBatteryWarning).isFalse()
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun present_LoadingState() = runTest {
++    val repository = FakeHomeRepository(
++      homeFeedFlowFactory = { emptyFlow() },
++      mediaProgressFlowFactory = { emptyFlow() },
++      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+     )
 +    val presenter = createPresenter(repository)
  
      presenter.test {
        val state = awaitItem()
-@@ -94,14 +120,7 @@ class HomePresenterTest {
+@@ -94,14 +162,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9088,7 +9348,7 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        // First item is always loading state
-@@ -137,7 +156,7 @@ class HomePresenterTest {
+@@ -137,7 +198,7 @@ class HomePresenterTest {
    fun present_CachedUpcoming_InsertsShelfAfterDiscover() = runTest {
      val shelves = listOf(
        shelf(ShelfIds.Discover, "Discover", 2),
@@ -9097,7 +9357,7 @@ index 5e6478ef..fdb09bc7 100644
      )
      val repository = FakeHomeRepository(
        homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
-@@ -160,14 +179,7 @@ class HomePresenterTest {
+@@ -160,14 +221,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -9113,7 +9373,7 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -193,8 +205,9 @@ class HomePresenterTest {
+@@ -193,8 +247,9 @@ class HomePresenterTest {
                )
            },
          )
@@ -9124,7 +9384,7 @@ index 5e6478ef..fdb09bc7 100644
      }
    }
  
-@@ -222,14 +235,7 @@ class HomePresenterTest {
+@@ -222,14 +277,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -9140,7 +9400,7 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -261,14 +267,7 @@ class HomePresenterTest {
+@@ -261,14 +309,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9156,7 +9416,15 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        // First item is always loading state
-@@ -335,14 +334,7 @@ class HomePresenterTest {
+@@ -309,6 +350,7 @@ class HomePresenterTest {
+             )
+           }
+       }
++      cancelAndIgnoreRemainingEvents()
+     }
+   }
+ 
+@@ -335,14 +377,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9172,7 +9440,15 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        // Pull Loading State
-@@ -383,14 +375,7 @@ class HomePresenterTest {
+@@ -357,6 +392,7 @@ class HomePresenterTest {
+           key(MediaProgressKey("two_2")).isNotNull()
+         }
+       }
++      cancelAndIgnoreRemainingEvents()
+     }
+   }
+ 
+@@ -383,14 +419,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9188,7 +9464,15 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        // Pull Loading State
-@@ -415,14 +400,7 @@ class HomePresenterTest {
+@@ -405,6 +434,7 @@ class HomePresenterTest {
+           key("two_2").isNotNull()
+         }
+       }
++      cancelAndIgnoreRemainingEvents()
+     }
+   }
+ 
+@@ -415,14 +445,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9204,7 +9488,7 @@ index 5e6478ef..fdb09bc7 100644
      val libraryItemId = "test_library_item"
      val sharedTransitionKey = "shared_key"
      val libraryItem = libraryItem(libraryItemId)
-@@ -444,14 +422,7 @@ class HomePresenterTest {
+@@ -444,14 +467,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9220,7 +9504,7 @@ index 5e6478ef..fdb09bc7 100644
      val authorId = "test_authorId"
      val authorName = "test_author_name"
      val author = author(authorId, authorName)
-@@ -473,14 +444,7 @@ class HomePresenterTest {
+@@ -473,14 +489,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9236,7 +9520,7 @@ index 5e6478ef..fdb09bc7 100644
      val seriesId = "test_seriesId"
      val seriesName = "test_series_name"
      val series = series(seriesId, seriesName)
-@@ -504,14 +468,7 @@ class HomePresenterTest {
+@@ -504,14 +513,7 @@ class HomePresenterTest {
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
        onRefreshHomeFeed = { refreshGate.await() },
      )
@@ -9252,7 +9536,7 @@ index 5e6478ef..fdb09bc7 100644
  
      presenter.test {
        val idle = awaitItem()
-@@ -529,6 +486,34 @@ class HomePresenterTest {
+@@ -529,6 +531,34 @@ class HomePresenterTest {
        assertThat(repository.refreshCount).isEqualTo(1)
      }
    }
@@ -15802,83 +16086,6 @@ index 012f349d..b2827c99 100644
 +    observeBoolean(::continueSeriesAlternateView)
 +      .stateIn(testScope, SharingStarted.Lazily, continueSeriesAlternateView)
  }
-diff --git a/features/settings/ui/src/androidMain/kotlin/app/campfire/ui/settings/battery/AndroidBatteryOptimization.kt b/features/settings/ui/src/androidMain/kotlin/app/campfire/ui/settings/battery/AndroidBatteryOptimization.kt
-new file mode 100644
-index 00000000..1210228d
---- /dev/null
-+++ b/features/settings/ui/src/androidMain/kotlin/app/campfire/ui/settings/battery/AndroidBatteryOptimization.kt
-@@ -0,0 +1,71 @@
-+// Copyright 2026, Drew Heavner and the Campfire project contributors
-+// SPDX-License-Identifier: GPL-3.0-only
-+
-+package app.campfire.ui.settings.battery
-+
-+import android.app.Application
-+import android.content.ActivityNotFoundException
-+import android.content.Context
-+import android.content.Intent
-+import android.net.Uri
-+import android.os.PowerManager
-+import android.provider.Settings
-+import app.campfire.core.di.AppScope
-+import app.campfire.core.di.qualifier.ForScope
-+import app.campfire.core.lifecycle.AppLifecycleObserver
-+import app.campfire.core.lifecycle.AppLifecycleState
-+import dev.zacsweers.metro.ContributesBinding
-+import dev.zacsweers.metro.Inject
-+import kotlinx.coroutines.CoroutineScope
-+import kotlinx.coroutines.flow.Flow
-+import kotlinx.coroutines.flow.MutableStateFlow
-+import kotlinx.coroutines.flow.asStateFlow
-+import kotlinx.coroutines.flow.filter
-+import kotlinx.coroutines.launch
-+
-+@ContributesBinding(AppScope::class)
-+@Inject
-+class AndroidBatteryOptimization(
-+  private val application: Application,
-+  appLifecycleObserver: AppLifecycleObserver,
-+  @ForScope(AppScope::class) scope: CoroutineScope,
-+) : BatteryOptimization {
-+
-+  override val isSupported: Boolean = true
-+
-+  private val ignoringOptimizations = MutableStateFlow(isIgnoringBatteryOptimizations())
-+
-+  init {
-+    scope.launch {
-+      appLifecycleObserver.state
-+        .filter { it == AppLifecycleState.Foreground }
-+        .collect {
-+          ignoringOptimizations.value = isIgnoringBatteryOptimizations()
-+        }
-+    }
-+  }
-+
-+  override fun isIgnoringBatteryOptimizations(): Boolean {
-+    val powerManager = application.getSystemService(Context.POWER_SERVICE) as? PowerManager
-+    return powerManager?.isIgnoringBatteryOptimizations(application.packageName) == true
-+  }
-+
-+  override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = ignoringOptimizations.asStateFlow()
-+
-+  override fun openSettings() {
-+    val detailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-+      data = Uri.fromParts("package", application.packageName, null)
-+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-+    }
-+    try {
-+      application.startActivity(detailsIntent)
-+    } catch (_: ActivityNotFoundException) {
-+      try {
-+        val batteryIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
-+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-+        }
-+        application.startActivity(batteryIntent)
-+      } catch (_: Exception) {}
-+    }
-+  }
-+}
 diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 index 6eba5bd2..c6588e28 100644
 --- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
@@ -15915,14 +16122,14 @@ index 6eba5bd2..c6588e28 100644
    <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
    <string name="shake_sensitivity_very_low">Very low</string>
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-index 5c4d5e98..fbb0780f 100644
+index 5c4d5e98..aadca437 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 @@ -35,6 +35,7 @@ import app.campfire.core.model.Server
  import app.campfire.core.permission.LocalNetworkPermissionController
  import app.campfire.core.session.UserSession
  import app.campfire.core.session.requiredUser
-+import app.campfire.ui.settings.battery.BatteryOptimization
++import app.campfire.audioplayer.battery.BatteryOptimization
  import app.campfire.core.session.user
  import app.campfire.libraries.api.LibraryItemRepository
  import app.campfire.libraries.api.screen.LibraryItemScreen
@@ -16095,15 +16302,16 @@ index 5c4d5e98..fbb0780f 100644
          is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
            is PlaybackRateChanged -> {
              val rates = playbackSettings.playbackRates.toMutableList()
-@@ -511,6 +574,7 @@ class SettingsPresenter(
+@@ -511,6 +574,8 @@ class SettingsPresenter(
            is BookTimeInPlaybackUi -> playbackSettings.bookTimeInPlaybackUi = event.enabled
            is PlaybackWavyScrubber -> playbackSettings.playbackWavyScrubber = event.enabled
            is ScrollingTitles -> playbackSettings.scrollingTitles = event.enabled
++          SettingsUiEvent.PlaybackSettingEvent.RequestIgnoreBatteryOptimizations -> batteryOptimization.requestIgnoreBatteryOptimizations()
 +          SettingsUiEvent.PlaybackSettingEvent.OpenBatteryOptimizationSettings -> batteryOptimization.openSettings()
          }
  
          is SettingsUiEvent.SleepSettingEvent -> when (event) {
-@@ -527,6 +591,7 @@ class SettingsPresenter(
+@@ -527,6 +592,7 @@ class SettingsPresenter(
            is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
            is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
            is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
@@ -16176,7 +16384,7 @@ index cb636714..99ec6444 100644
        state = state,
        onBackClick = onBackClick,
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-index b1842dbf..81db1012 100644
+index b1842dbf..a3d8ec3f 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 @@ -22,6 +22,7 @@ import app.campfire.settings.api.ResumeRewindTier
@@ -16268,10 +16476,11 @@ index b1842dbf..81db1012 100644
      data class DownloadOnWifiOnly(val enabled: Boolean) : DownloadsSettingEvent
      data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
      data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
-@@ -278,6 +300,16 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -278,6 +300,17 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
      data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
      data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
++    data object RequestIgnoreBatteryOptimizations : PlaybackSettingEvent
 +    data object OpenBatteryOptimizationSettings : PlaybackSettingEvent
 +  }
 +
@@ -16285,7 +16494,7 @@ index b1842dbf..81db1012 100644
    }
  
    // Sleep Setting Events
-@@ -291,6 +323,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -291,6 +324,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
      data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
      data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
@@ -16294,7 +16503,7 @@ index b1842dbf..81db1012 100644
  
    sealed interface AboutSettingEvent : SettingsUiEvent {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
-index d871b2e3..1080a9f6 100644
+index d871b2e3..f66bed46 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 @@ -88,11 +88,14 @@ class SettingsAnalyticUiEventHandler(
@@ -16312,10 +16521,11 @@ index d871b2e3..1080a9f6 100644
        is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
          send("download_on_wifi_only", Updated, event.enabled.toString())
        }
-@@ -135,6 +138,20 @@ class SettingsAnalyticUiEventHandler(
+@@ -135,6 +138,21 @@ class SettingsAnalyticUiEventHandler(
          send("wavy_playback_slider", Updated, event.enabled)
        is SettingsUiEvent.PlaybackSettingEvent.ScrollingTitles ->
          send("scrolling_titles", Updated, event.enabled)
++      is SettingsUiEvent.PlaybackSettingEvent.RequestIgnoreBatteryOptimizations -> Unit
 +      is SettingsUiEvent.PlaybackSettingEvent.OpenBatteryOptimizationSettings -> Unit
 +    }
 +
@@ -16333,7 +16543,7 @@ index d871b2e3..1080a9f6 100644
      }
  
      is SettingsUiEvent.SleepSettingEvent -> when (event) {
-@@ -151,6 +168,7 @@ class SettingsAnalyticUiEventHandler(
+@@ -151,6 +169,7 @@ class SettingsAnalyticUiEventHandler(
        is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
        is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
        is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
@@ -16341,26 +16551,6 @@ index d871b2e3..1080a9f6 100644
      }
  
      is SettingsUiEvent.AboutSettingEvent -> when (event) {
-diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/battery/BatteryOptimization.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/battery/BatteryOptimization.kt
-new file mode 100644
-index 00000000..2274e041
---- /dev/null
-+++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/battery/BatteryOptimization.kt
-@@ -0,0 +1,14 @@
-+// Copyright 2026, Drew Heavner and the Campfire project contributors
-+// SPDX-License-Identifier: GPL-3.0-only
-+
-+package app.campfire.ui.settings.battery
-+
-+import kotlinx.coroutines.flow.Flow
-+import kotlinx.coroutines.flow.flowOf
-+
-+interface BatteryOptimization {
-+  val isSupported: Boolean get() = false
-+  fun isIgnoringBatteryOptimizations(): Boolean = false
-+  fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = flowOf(isIgnoringBatteryOptimizations())
-+  fun openSettings()
-+}
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
 index b5b7e1bd..48b7f40c 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
@@ -16695,26 +16885,49 @@ index 00000000..e9ec9857
 +  }
 +}
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
-index 7e0fa6f4..a40fd171 100644
+index 7e0fa6f4..52c294f2 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
-@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Column
+@@ -4,15 +4,38 @@
+ package app.campfire.ui.settings.panes
+ 
+ import androidx.compose.animation.AnimatedVisibility
++import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
  import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
  import androidx.compose.foundation.layout.height
  import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.width
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.CardDefaults
++import androidx.compose.material3.ElevatedCard
 +import androidx.compose.material3.FilledTonalButton
 +import androidx.compose.material3.Icon
  import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
  import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
  import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
  import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.font.FontWeight
  import androidx.compose.ui.unit.dp
 +import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.CheckCircle
 +import app.campfire.common.compose.icons.rounded.Power
++import app.campfire.common.compose.icons.rounded.Warning
  import app.campfire.settings.api.MinPauseThresholdRange
  import app.campfire.settings.api.ResumeRewindRange
  import app.campfire.settings.api.SyncIntervalRange
-@@ -23,6 +27,7 @@ import app.campfire.ui.settings.composables.DurationSliderSetting
+@@ -23,6 +46,7 @@ import app.campfire.ui.settings.composables.DurationSliderSetting
  import app.campfire.ui.settings.composables.Header
  import app.campfire.ui.settings.composables.PlaybackSpeedOptionsSetting
  import app.campfire.ui.settings.composables.ResumeRewindPreviewRow
@@ -16722,7 +16935,7 @@ index 7e0fa6f4..a40fd171 100644
  import app.campfire.ui.settings.composables.StreamingMethodSetting
  import app.campfire.ui.settings.composables.SwitchSetting
  import app.campfire.ui.settings.composables.TimeJumpSetting
-@@ -86,24 +91,28 @@ internal fun PlaybackPane(
+@@ -86,24 +110,28 @@ internal fun PlaybackPane(
      onBackClick = onBackClick,
      modifier = modifier,
    ) {
@@ -16763,7 +16976,7 @@ index 7e0fa6f4..a40fd171 100644
      )
  
      TimeJumpSetting(
-@@ -125,14 +134,6 @@ internal fun PlaybackPane(
+@@ -125,14 +153,6 @@ internal fun PlaybackPane(
        supportingContent = { Text(stringResource(Res.string.setting_playback_mp3seeking_subtitle)) },
      )
  
@@ -16778,7 +16991,7 @@ index 7e0fa6f4..a40fd171 100644
  
      Header(
        title = { Text(stringResource(Res.string.header_playback_speed_options)) },
-@@ -326,9 +327,45 @@ internal fun PlaybackPane(
+@@ -326,9 +346,131 @@ internal fun PlaybackPane(
        headlineContent = { Text(stringResource(Res.string.setting_playback_history_title)) },
        supportingContent = { Text(stringResource(Res.string.setting_playback_history_subtitle)) },
      )
@@ -16788,33 +17001,119 @@ index 7e0fa6f4..a40fd171 100644
 +        title = { Text("Background Playback & Battery") },
 +      )
 +
-+      SettingListItem(
-+        headlineContent = { Text("Battery Optimization") },
-+        supportingContent = {
-+          Text(
-+            if (state.playbackSettings.isIgnoringBatteryOptimizations) {
-+              "Battery usage is Unrestricted. Background playback is protected from OS suspension."
-+            } else {
-+              "Set to 'Unrestricted' in system settings to prevent Android and Samsung One UI from freezing or pausing playback when your screen is locked."
-+            },
-+          )
-+        },
-+        leadingContent = {
-+          Icon(
-+            imageVector = CampfireIcons.Rounded.Power,
-+            contentDescription = null,
-+          )
-+        },
-+        trailingContent = {
-+          FilledTonalButton(
-+            onClick = {
-+              state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
-+            },
++      var showGuideDialog by remember { mutableStateOf(false) }
++
++      if (showGuideDialog) {
++        AlertDialog(
++          onDismissRequest = { showGuideDialog = false },
++          title = { Text("Manual Battery Configuration") },
++          text = {
++            Text(
++              "To stop Android and Samsung One UI from pausing background playback or freezing Bluetooth controls:\n\n" +
++                "1. On the App Info screen, tap 'Battery' (it will be highlighted).\n" +
++                "2. Change the selection to 'Unrestricted'."
++            )
++          },
++          confirmButton = {
++            Button(
++              onClick = {
++                showGuideDialog = false
++                state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
++              },
++            ) {
++              Text("Open App Settings")
++            }
++          },
++          dismissButton = {
++            TextButton(
++              onClick = { showGuideDialog = false },
++            ) {
++              Text("Cancel")
++            }
++          },
++        )
++      }
++
++      if (state.playbackSettings.isIgnoringBatteryOptimizations) {
++        SettingListItem(
++          headlineContent = { Text("Battery Optimization") },
++          supportingContent = {
++            Text("Battery usage is Unrestricted. Background playback is protected from OS suspension.")
++          },
++          leadingContent = {
++            Icon(
++              imageVector = CampfireIcons.Rounded.CheckCircle,
++              contentDescription = null,
++              tint = MaterialTheme.colorScheme.primary,
++            )
++          },
++          trailingContent = {
++            OutlinedButton(
++              onClick = {
++                state.eventSink(PlaybackSettingEvent.OpenBatteryOptimizationSettings)
++              },
++            ) {
++              Text("Settings")
++            }
++          },
++        )
++      } else {
++        ElevatedCard(
++          modifier = Modifier
++            .fillMaxWidth()
++            .padding(horizontal = 16.dp, vertical = 8.dp),
++          colors = CardDefaults.elevatedCardColors(
++            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
++            contentColor = MaterialTheme.colorScheme.onErrorContainer,
++          ),
++        ) {
++          Column(
++            modifier = Modifier.padding(16.dp),
++            verticalArrangement = Arrangement.spacedBy(8.dp),
 +          ) {
-+            Text(if (state.playbackSettings.isIgnoringBatteryOptimizations) "Settings" else "Configure")
++            Row(
++              verticalAlignment = Alignment.CenterVertically,
++              horizontalArrangement = Arrangement.spacedBy(8.dp),
++            ) {
++              Icon(
++                imageVector = CampfireIcons.Rounded.Warning,
++                contentDescription = null,
++                tint = MaterialTheme.colorScheme.error,
++              )
++              Text(
++                text = "Background Playback Limited",
++                style = MaterialTheme.typography.titleMedium,
++                fontWeight = FontWeight.Bold,
++              )
++            }
++            Text(
++              text = "Battery usage is currently 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze background downloads. Set to Unrestricted for uninterrupted listening.",
++              style = MaterialTheme.typography.bodyMedium,
++            )
++            Row(
++              modifier = Modifier.fillMaxWidth(),
++              horizontalArrangement = Arrangement.End,
++              verticalAlignment = Alignment.CenterVertically,
++            ) {
++              TextButton(
++                onClick = { showGuideDialog = true },
++              ) {
++                Text("Manual Guide")
++              }
++              Spacer(modifier = Modifier.width(8.dp))
++              Button(
++                onClick = { state.eventSink(PlaybackSettingEvent.RequestIgnoreBatteryOptimizations) },
++                colors = ButtonDefaults.buttonColors(
++                  containerColor = MaterialTheme.colorScheme.error,
++                  contentColor = MaterialTheme.colorScheme.onError,
++                ),
++              ) {
++                Text("Fix Now (1-Tap)")
++              }
++            }
 +          }
-+        },
-+      )
++        }
++      }
 +    }
    }
  }
@@ -16861,50 +17160,6 @@ index 16dfd2f2..5ac06410 100644
        // Shake to Reset
        SwitchSetting(
          value = state.sleepSettings.shakeToReset,
-diff --git a/features/settings/ui/src/iosMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt b/features/settings/ui/src/iosMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
-new file mode 100644
-index 00000000..afdc665c
---- /dev/null
-+++ b/features/settings/ui/src/iosMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
-@@ -0,0 +1,16 @@
-+// Copyright 2026, Drew Heavner and the Campfire project contributors
-+// SPDX-License-Identifier: GPL-3.0-only
-+
-+package app.campfire.ui.settings.battery
-+
-+import app.campfire.core.di.AppScope
-+import dev.zacsweers.metro.ContributesBinding
-+import dev.zacsweers.metro.Inject
-+
-+@ContributesBinding(AppScope::class)
-+@Inject
-+class NoOpBatteryOptimization : BatteryOptimization {
-+  override val isSupported: Boolean = false
-+  override fun isIgnoringBatteryOptimizations(): Boolean = false
-+  override fun openSettings() {}
-+}
-diff --git a/features/settings/ui/src/jvmMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt b/features/settings/ui/src/jvmMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
-new file mode 100644
-index 00000000..afdc665c
---- /dev/null
-+++ b/features/settings/ui/src/jvmMain/kotlin/app/campfire/ui/settings/battery/NoOpBatteryOptimization.kt
-@@ -0,0 +1,16 @@
-+// Copyright 2026, Drew Heavner and the Campfire project contributors
-+// SPDX-License-Identifier: GPL-3.0-only
-+
-+package app.campfire.ui.settings.battery
-+
-+import app.campfire.core.di.AppScope
-+import dev.zacsweers.metro.ContributesBinding
-+import dev.zacsweers.metro.Inject
-+
-+@ContributesBinding(AppScope::class)
-+@Inject
-+class NoOpBatteryOptimization : BatteryOptimization {
-+  override val isSupported: Boolean = false
-+  override fun isIgnoringBatteryOptimizations(): Boolean = false
-+  override fun openSettings() {}
-+}
 diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt
 index 953d9434..8d3087c0 100644
 --- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt
@@ -17290,7 +17545,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..12a9b101 100644
+index f41126a7..76c28e6b 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -17298,13 +17553,13 @@ index f41126a7..12a9b101 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.47
++campfire.version=1.2.48-rc1
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1024799
++campfire.versionCode=1024801
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -17328,6 +17583,60 @@ index 270a7c16..325e3566 100644
  
 -private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
 +private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-(rc|test)(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
+diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt
+new file mode 100644
+index 00000000..42296664
+--- /dev/null
++++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt
+@@ -0,0 +1,14 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.battery
++
++import kotlinx.coroutines.flow.Flow
++
++interface BatteryOptimization {
++  val isSupported: Boolean
++  fun isIgnoringBatteryOptimizations(): Boolean
++  fun observeIgnoringBatteryOptimizations(): Flow<Boolean>
++  fun requestIgnoreBatteryOptimizations()
++  fun openSettings()
++}
+diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/NoOpBatteryOptimization.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/NoOpBatteryOptimization.kt
+new file mode 100644
+index 00000000..4fc122c1
+--- /dev/null
++++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/NoOpBatteryOptimization.kt
+@@ -0,0 +1,28 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.battery
++
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.asStateFlow
++
++class NoOpBatteryOptimization(
++  override val isSupported: Boolean = false,
++  isIgnoring: Boolean = true,
++) : BatteryOptimization {
++
++  private val ignoringFlow = MutableStateFlow(isIgnoring)
++
++  override fun isIgnoringBatteryOptimizations(): Boolean = ignoringFlow.value
++
++  override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = ignoringFlow.asStateFlow()
++
++  fun setIgnoringBatteryOptimizations(value: Boolean) {
++    ignoringFlow.value = value
++  }
++
++  override fun requestIgnoreBatteryOptimizations() {}
++
++  override fun openSettings() {}
++}
 diff --git a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml b/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
 index 8c91c0a0..e03c0efd 100644
 --- a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
@@ -18147,6 +18456,102 @@ index a22d7695..99a79130 100644
 +    private const val HEADSET_MULTI_CLICK_TIMEOUT_MS = 350L
    }
  }
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt
+new file mode 100644
+index 00000000..75d23687
+--- /dev/null
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt
+@@ -0,0 +1,90 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.impl.battery
++
++import android.app.Application
++import android.content.ActivityNotFoundException
++import android.content.Context
++import android.content.Intent
++import android.net.Uri
++import android.os.Bundle
++import android.os.PowerManager
++import android.provider.Settings
++import app.campfire.audioplayer.battery.BatteryOptimization
++import app.campfire.core.di.AppScope
++import app.campfire.core.di.qualifier.ForScope
++import app.campfire.core.lifecycle.AppLifecycleObserver
++import app.campfire.core.lifecycle.AppLifecycleState
++import dev.zacsweers.metro.ContributesBinding
++import dev.zacsweers.metro.Inject
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.flow.filter
++import kotlinx.coroutines.launch
++
++@ContributesBinding(AppScope::class)
++@Inject
++class AndroidBatteryOptimization(
++  private val application: Application,
++  appLifecycleObserver: AppLifecycleObserver,
++  @ForScope(AppScope::class) scope: CoroutineScope,
++) : BatteryOptimization {
++
++  override val isSupported: Boolean = true
++
++  private val ignoringOptimizations = MutableStateFlow(isIgnoringBatteryOptimizations())
++
++  init {
++    scope.launch {
++      appLifecycleObserver.state
++        .filter { it == AppLifecycleState.Foreground }
++        .collect {
++          ignoringOptimizations.value = isIgnoringBatteryOptimizations()
++        }
++    }
++  }
++
++  override fun isIgnoringBatteryOptimizations(): Boolean {
++    val powerManager = application.getSystemService(Context.POWER_SERVICE) as? PowerManager
++    return powerManager?.isIgnoringBatteryOptimizations(application.packageName) == true
++  }
++
++  override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = ignoringOptimizations.asStateFlow()
++
++  override fun requestIgnoreBatteryOptimizations() {
++    val requestIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
++      data = Uri.parse("package:${application.packageName}")
++      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++    }
++    try {
++      application.startActivity(requestIntent)
++    } catch (_: Exception) {
++      openSettings()
++    }
++  }
++
++  override fun openSettings() {
++    val detailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
++      data = Uri.fromParts("package", application.packageName, null)
++      putExtra(":settings:fragment_args_key", "battery")
++      val args = Bundle().apply {
++        putString(":settings:fragment_args_key", "battery")
++      }
++      putExtra(":settings:show_fragment_args", args)
++      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++    }
++    try {
++      application.startActivity(detailsIntent)
++    } catch (_: ActivityNotFoundException) {
++      try {
++        val batteryIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
++          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++        }
++        application.startActivity(batteryIntent)
++      } catch (_: Exception) {}
++    }
++  }
++}
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
 index 3933cdd1..e069dec2 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt
@@ -19074,6 +19479,60 @@ index 0d531b30..b6cee351 100644
    }
  
    @Test
+diff --git a/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt b/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
+new file mode 100644
+index 00000000..c5a4477a
+--- /dev/null
++++ b/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
+@@ -0,0 +1,21 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.impl.battery
++
++import app.campfire.audioplayer.battery.BatteryOptimization
++import app.campfire.core.di.AppScope
++import dev.zacsweers.metro.ContributesBinding
++import dev.zacsweers.metro.Inject
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.emptyFlow
++
++@ContributesBinding(AppScope::class)
++@Inject
++class IosBatteryOptimization : BatteryOptimization {
++  override val isSupported: Boolean = false
++  override fun isIgnoringBatteryOptimizations(): Boolean = true
++  override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = emptyFlow()
++  override fun requestIgnoreBatteryOptimizations() {}
++  override fun openSettings() {}
++}
+diff --git a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
+new file mode 100644
+index 00000000..8e56fe7f
+--- /dev/null
++++ b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
+@@ -0,0 +1,21 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.impl.battery
++
++import app.campfire.audioplayer.battery.BatteryOptimization
++import app.campfire.core.di.AppScope
++import dev.zacsweers.metro.ContributesBinding
++import dev.zacsweers.metro.Inject
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.emptyFlow
++
++@ContributesBinding(AppScope::class)
++@Inject
++class JvmBatteryOptimization : BatteryOptimization {
++  override val isSupported: Boolean = false
++  override fun isIgnoringBatteryOptimizations(): Boolean = true
++  override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = emptyFlow()
++  override fun requestIgnoreBatteryOptimizations() {}
++  override fun openSettings() {}
++}
 diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayerTest.kt
 index 4feda46f..12e72235 100644
 --- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayerTest.kt

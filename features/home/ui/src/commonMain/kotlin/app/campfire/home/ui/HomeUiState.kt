@@ -28,6 +28,7 @@ data class HomeUiState(
   val progressStates: ImmutableMap<MediaProgressKey, MediaProgress>,
   val isRefreshing: Boolean = false,
   val isRefreshingDiscoveries: Boolean = false,
+  val showBatteryWarning: Boolean = false,
   val eventSink: (HomeUiEvent) -> Unit,
 ) : CircuitUiState
 
@@ -66,4 +67,6 @@ sealed interface HomeUiEvent : CircuitUiEvent {
   data class OpenShelf(val shelfId: String) : HomeUiEvent
   data object Refresh : HomeUiEvent
   data object RefreshDiscoveries : HomeUiEvent
+  data object RequestIgnoreBatteryOptimizations : HomeUiEvent
+  data object DismissBatteryWarning : HomeUiEvent
 }

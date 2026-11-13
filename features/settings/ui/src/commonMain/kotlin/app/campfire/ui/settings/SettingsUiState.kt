@@ -300,6 +300,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
     data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
     data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
+    data object RequestIgnoreBatteryOptimizations : PlaybackSettingEvent
     data object OpenBatteryOptimizationSettings : PlaybackSettingEvent
   }
 

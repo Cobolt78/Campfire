@@ -90,6 +90,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
+86. [1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner--manual-guidance-v1248-rc1)
 
 ---
 
@@ -466,8 +467,10 @@ $env:ANDROID_HOME = "C:\Android\Sdk"
 | `features/playlists/impl/.../StorePlaylistsRepository.kt` | Use lightweight hydration in `observePlaylistItems` & disabled large log dumps |
 | `infra/audioplayer/impl/.../ExoPlayerAudioPlayer.kt` | Exposed `isPlaying` property for immediate playback state inspection |
 | `infra/audioplayer/impl/.../MediaSessionCallback.kt` | Immediate synchronous unpause bypassing multi-click delay to guarantee foreground service start exemption |
-| `features/settings/ui/.../battery/BatteryOptimization.kt` | Multiplatform abstraction for querying battery optimization and launching system battery settings |
-| `features/settings/ui/.../battery/AndroidBatteryOptimization.kt` | Android implementation using PowerManager and ACTION_APPLICATION_DETAILS_SETTINGS |
+| `infra/audioplayer/api/.../battery/BatteryOptimization.kt` | Multiplatform abstraction for querying battery optimization, 1-tap system request, and launching system battery settings |
+| `infra/audioplayer/impl/.../battery/AndroidBatteryOptimization.kt` | Android implementation using PowerManager, ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, and ACTION_APPLICATION_DETAILS_SETTINGS with preference highlight |
+| `features/home/ui/.../HomePresenter.kt` | Observed battery optimization status and surfaced showBatteryWarning state |
+| `features/home/ui/.../HomeUi.kt` | Rendered dismissible Background Playback Limited warning banner with 1-Tap Fix button |
 | `features/settings/ui/.../SettingsPresenter.kt` | Observed battery optimization status and routed system settings opening event |
 | `features/settings/ui/.../panes/PlaybackPane.kt` | Added Battery Optimization setting item with real-time status and configure button |
 | `features/settings/ui/.../panes/HeadsetControlsPane.kt` | Added battery optimization tip under Bluetooth playback controls |
@@ -2558,6 +2561,50 @@ etworkCachePolicy(CachePolicy.DISABLED).
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
 * features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+---
+
+## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)
+
+### Problem Description
+1. In v1.2.47, battery optimization status was surfaced in Settings -> Playback, but users had to manually navigate deep into Settings to realize their playback might be affected by OS power-saving policies.
+2. Clicking the "Configure" button opened the generic system App Info page. The user was required to know that they needed to find and tap "Battery", and then select "Unrestricted".
+3. On OEM systems like Samsung One UI, deep sub-settings activities for battery cannot be directly launched without system permissions, and internal AOSP preference highlight animations are overridden by Samsung's proprietary Device Care interface.
+
+### Solution & Implementation
+1. **1-Tap Direct OS System Dialog (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
+   - Added `<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />` to `app/android/src/main/AndroidManifest.xml`.
+   - Implemented `requestIgnoreBatteryOptimizations()` in `BatteryOptimization` / `AndroidBatteryOptimization` to launch `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+   - Allows users to whitelist Campfire with a single tap in the native OS prompt without ever leaving Campfire or searching through system menus.
+2. **Proactive Home Screen Background Playback Warning Banner (`HomeUi.kt`, `HomePresenter.kt`, `HomeUiState.kt`)**:
+   - Elevated `BatteryOptimization` to `infra:audioplayer:api` and `infra:audioplayer:impl`, making it accessible across both settings and home feed domains.
+   - Surfaced `showBatteryWarning` in `HomeUiState` when battery optimization is supported, the app is set to "Optimized", and the banner has not been dismissed.
+   - Rendered a high-visibility, dismissible warning card at the top of the Home feed with a 1-tap **"Fix Now (1-Tap)"** action and a **"Dismiss"** option.
+3. **Manual 2-Step Configuration Guidance & Preference Highlighting (`PlaybackPane.kt`, `AndroidBatteryOptimization.kt`)**:
+   - Added a "Manual Guide" dialog in `PlaybackPane` clearly explaining the exact 2 steps: 1. Tap **Battery** (highlighted) -> 2. Select **Unrestricted**.
+   - Passed `:settings:fragment_args_key = "battery"` and `:settings:show_fragment_args` when opening App Info, ensuring the system Settings app auto-scrolls down to and highlights the Battery entry on supported Android versions.
+4. **Comprehensive Unit Testing (`HomePresenterTest.kt`)**:
+   - Added unit test verification for `showBatteryWarning` state transitions and dismissal events.
+   - Fixed unconsumed event handling in `present_ShelvesWithEntitiesState`, `present_UserMediaProgress_mapsToLoadedItems`, and `present_OfflineDownloads_mapsToLoadedItems` using `cancelAndIgnoreRemainingEvents()`.
+
+### Modified Files:
+* app/android/src/main/AndroidManifest.xml
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
+* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
+* features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/PlaybackPane.kt
+* infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt
+* infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/NoOpBatteryOptimization.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt
+* infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
+* infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
