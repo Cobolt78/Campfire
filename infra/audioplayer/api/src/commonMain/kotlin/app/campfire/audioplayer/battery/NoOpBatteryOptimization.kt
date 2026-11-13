@@ -25,4 +25,6 @@ class NoOpBatteryOptimization(
   override fun requestIgnoreBatteryOptimizations() {}
 
   override fun openSettings() {}
+
+  override fun refresh() {}
 }

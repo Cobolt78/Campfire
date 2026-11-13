@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.48-rc2] - 2026-11-13
+
+### Fixed
+
+- **Immediate Real-Time Battery Whitelist UI Transition**:
+  - Fixed an issue where granting unrestricted battery usage via the 1-tap system dialog ("Stop optimising battery usage? [Allow]") left the red warning card on screen until navigating away and back.
+  - Implemented real-time polling upon dialog launch, `Application.ActivityLifecycleCallbacks` resume hooks, and system whitelist change broadcast listening (`android.os.action.POWER_SAVE_WHITELIST_CHANGED`) so the screen dynamically transitions from the red warning card to the black "Unrestricted" status item the moment "Allow" / "OK" is tapped.
+
 ## [1.2.48-rc1] - 2026-11-13
 
 ### Added

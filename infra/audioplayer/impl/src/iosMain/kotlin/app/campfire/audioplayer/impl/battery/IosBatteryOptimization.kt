@@ -18,4 +18,5 @@ class IosBatteryOptimization : BatteryOptimization {
   override fun observeIgnoringBatteryOptimizations(): Flow<Boolean> = emptyFlow()
   override fun requestIgnoreBatteryOptimizations() {}
   override fun openSettings() {}
+  override fun refresh() {}
 }

@@ -11,4 +11,5 @@ interface BatteryOptimization {
   fun observeIgnoringBatteryOptimizations(): Flow<Boolean>
   fun requestIgnoreBatteryOptimizations()
   fun openSettings()
+  fun refresh()
 }

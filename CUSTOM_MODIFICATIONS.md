@@ -90,7 +90,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
-86. [1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner--manual-guidance-v1248-rc1)
+86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248-rc1--v1248-rc2)
 
 ---
 
@@ -2567,12 +2567,13 @@ etworkCachePolicy(CachePolicy.DISABLED).
 
 ---
 
-## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner & Manual Guidance (v1.2.48-rc1)
+## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)
 
 ### Problem Description
 1. In v1.2.47, battery optimization status was surfaced in Settings -> Playback, but users had to manually navigate deep into Settings to realize their playback might be affected by OS power-saving policies.
 2. Clicking the "Configure" button opened the generic system App Info page. The user was required to know that they needed to find and tap "Battery", and then select "Unrestricted".
 3. On OEM systems like Samsung One UI, deep sub-settings activities for battery cannot be directly launched without system permissions, and internal AOSP preference highlight animations are overridden by Samsung's proprietary Device Care interface.
+4. In v1.2.48-rc1, tapping "Fix Now (1-Tap)" successfully launched the native Android system dialog and whitelisted the app when tapping "OK", but the UI on screen remained on the red warning card until navigating away and back because `ProcessLifecycleOwner` does not trigger `onStart`/`onStop` for dialogs and `AppLifecycleObserver` did not emit a new state.
 
 ### Solution & Implementation
 1. **1-Tap Direct OS System Dialog (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
@@ -2586,7 +2587,12 @@ etworkCachePolicy(CachePolicy.DISABLED).
 3. **Manual 2-Step Configuration Guidance & Preference Highlighting (`PlaybackPane.kt`, `AndroidBatteryOptimization.kt`)**:
    - Added a "Manual Guide" dialog in `PlaybackPane` clearly explaining the exact 2 steps: 1. Tap **Battery** (highlighted) -> 2. Select **Unrestricted**.
    - Passed `:settings:fragment_args_key = "battery"` and `:settings:show_fragment_args` when opening App Info, ensuring the system Settings app auto-scrolls down to and highlights the Battery entry on supported Android versions.
-4. **Comprehensive Unit Testing (`HomePresenterTest.kt`)**:
+4. **Immediate Real-Time Battery Whitelist UI Transition (`AndroidBatteryOptimization.kt`, `BatteryOptimization.kt`) (v1.2.48-rc2)**:
+   - Added an active 200ms polling routine in coroutine scope upon triggering `requestIgnoreBatteryOptimizations()` or `openSettings()` so that the moment the user taps "OK" / "Allow", the state flow updates within 200ms without delay.
+   - Registered `Application.ActivityLifecycleCallbacks` to immediately call `refresh()` whenever the host activity resumes (`onActivityResumed`) upon returning from any dialog or settings screen.
+   - Registered a dynamic `BroadcastReceiver` for `"android.os.action.POWER_SAVE_WHITELIST_CHANGED"` (`PowerManager.ACTION_POWER_SAVE_WHITELIST_CHANGED`) to capture system-level whitelist changes dynamically.
+   - Added `fun refresh()` to the `BatteryOptimization` interface across all targets (Android, iOS, JVM, NoOp).
+5. **Comprehensive Unit Testing (`HomePresenterTest.kt`)**:
    - Added unit test verification for `showBatteryWarning` state transitions and dismissal events.
    - Fixed unconsumed event handling in `present_ShelvesWithEntitiesState`, `present_UserMediaProgress_mapsToLoadedItems`, and `present_OfflineDownloads_mapsToLoadedItems` using `cancelAndIgnoreRemainingEvents()`.
 
