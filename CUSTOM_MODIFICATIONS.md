@@ -90,7 +90,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
-86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248-rc1--v1248-rc2)
+86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 
 ---
 
@@ -2567,7 +2567,7 @@ etworkCachePolicy(CachePolicy.DISABLED).
 
 ---
 
-## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)
+## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)
 
 ### Problem Description
 1. In v1.2.47, battery optimization status was surfaced in Settings -> Playback, but users had to manually navigate deep into Settings to realize their playback might be affected by OS power-saving policies.

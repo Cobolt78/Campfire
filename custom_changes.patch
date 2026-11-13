@@ -11,23 +11,15 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..617ed527 100644
+index c0278c85..504c64be 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,502 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,500 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.48-rc2] - 2026-11-13
-+
-+### Fixed
-+
-+- **Immediate Real-Time Battery Whitelist UI Transition**:
-+  - Fixed an issue where granting unrestricted battery usage via the 1-tap system dialog ("Stop optimising battery usage? [Allow]") left the red warning card on screen until navigating away and back.
-+  - Implemented real-time polling upon dialog launch, `Application.ActivityLifecycleCallbacks` resume hooks, and system whitelist change broadcast listening (`android.os.action.POWER_SAVE_WHITELIST_CHANGED`) so the screen dynamically transitions from the red warning card to the black "Unrestricted" status item the moment "Allow" / "OK" is tapped.
-+
-+## [1.2.48-rc1] - 2026-11-13
++## [1.2.48] - 2026-11-13
 +
 +### Added
 +
@@ -40,6 +32,12 @@ index c0278c85..617ed527 100644
 +- **In-App Manual Configuration Guidance Dialog**:
 +  - Added a step-by-step visual guidance dialog in Playback Settings clearly explaining the two actions needed in system settings: 1. Tap Battery (highlighted) -> 2. Select Unrestricted.
 +  - Automatically deep-links to App Info with `:settings:fragment_args_key = "battery"` to scroll to and highlight the Battery preference on supported Android versions.
++
++### Fixed
++
++- **Immediate Real-Time Battery Whitelist UI Transition**:
++  - Fixed an issue where granting unrestricted battery usage via the 1-tap system dialog ("Stop optimising battery usage? [Allow]") left the red warning card on screen until navigating away and back.
++  - Implemented real-time polling upon dialog launch, `Application.ActivityLifecycleCallbacks` resume hooks, and system whitelist change broadcast listening (`android.os.action.POWER_SAVE_WHITELIST_CHANGED`) so the screen dynamically transitions from the red warning card to the black "Unrestricted" status item the moment "Allow" / "OK" is tapped.
 +
 +## [1.2.47] - 2026-11-13
 +
@@ -520,7 +518,7 @@ index c0278c85..617ed527 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..ea78ad2f
+index 00000000..442c5386
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -0,0 +1,2616 @@
@@ -616,7 +614,7 @@ index 00000000..ea78ad2f
 +83. [Offline Cover Art Multi-Tier Disk Cache Fallback, Auto-Prefetch on Download & Downloads Alternate View (v1.2.45)](#83-offline-cover-art-multi-tier-disk-cache-fallback-auto-prefetch-on-download--downloads-alternate-view-v1245)
 +84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 +85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
-+86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248-rc1--v1248-rc2)
++86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 +
 +---
 +
@@ -3093,7 +3091,7 @@ index 00000000..ea78ad2f
 +
 +---
 +
-+## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48-rc1 / v1.2.48-rc2)
++## 86. 1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)
 +
 +### Problem Description
 +1. In v1.2.47, battery optimization status was surfaced in Settings -> Playback, but users had to manually navigate deep into Settings to realize their playback might be affected by OS power-saving policies.
@@ -17559,7 +17557,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..58e1cc8f 100644
+index f41126a7..106de0cf 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -17567,13 +17565,13 @@ index f41126a7..58e1cc8f 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.48-rc2
++campfire.version=1.2.48
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1024802
++campfire.versionCode=1024899
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
