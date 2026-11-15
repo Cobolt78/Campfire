@@ -4,25 +4,31 @@
 package app.campfire.sessions.ui.sheets.speed
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ModalBottomSheetLayout
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.rememberModalBottomSheetState
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,9 +56,12 @@ import app.campfire.analytics.events.Speed
 import app.campfire.audioplayer.AudioPlayerHolder
 import app.campfire.common.compose.analytics.Impression
 import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.Add
 import app.campfire.common.compose.icons.rounded.Book
 import app.campfire.common.compose.icons.rounded.Globe
+import app.campfire.common.compose.icons.rounded.Remove
 import app.campfire.common.compose.theme.CampfireTheme
+import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.common.compose.widgets.PlaybackSpeedDialog
 import app.campfire.common.compose.widgets.PlaybackSpeedRange
 import app.campfire.common.compose.widgets.sheets.AdaptiveSheetOverlay
@@ -66,11 +77,15 @@ import campfire.features.sessions.ui.generated.resources.session_scope_global
 import campfire.features.sessions.ui.generated.resources.session_scope_per_book
 import campfire.features.sessions.ui.generated.resources.speed_bottomsheet_title
 import campfire.features.sessions.ui.generated.resources.speed_custom_open
-import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
+import campfire.features.sessions.ui.generated.resources.speed_decrease
+import campfire.features.sessions.ui.generated.resources.speed_increase
 import com.slack.circuit.overlay.OverlayHost
 import dev.zacsweers.metro.ContributesTo
 import ir.mahozad.multiplatform.wavyslider.WaveDirection
 import ir.mahozad.multiplatform.wavyslider.material3.WavySlider
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -214,6 +229,28 @@ internal fun PlaybackSpeedSheet(
 
     Spacer(Modifier.height(16.dp))
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isDragged by interactionSource.collectIsDraggedAsState()
+    val isInteracting = isPressed || isDragged
+
+    var sliderValue by remember { mutableStateOf(currentSpeed) }
+    val haptics = LocalHapticFeedback.current
+
+    LaunchedEffect(currentSpeed) {
+      if (!isInteracting && sliderValue != currentSpeed) {
+        sliderValue = currentSpeed
+      }
+    }
+
+    val commitSpeed: (Float) -> Unit = { newSpeed ->
+      val clamped = newSpeed.roundToHundredths().coerceIn(PlaybackSpeedRange)
+      sliderValue = clamped
+      if (clamped != currentSpeed) {
+        onSpeedChange(clamped)
+      }
+    }
+
     SingleChoiceSegmentedButtonRow(
       modifier = Modifier
         .align(Alignment.CenterHorizontally)
@@ -225,81 +262,142 @@ internal fun PlaybackSpeedSheet(
           shape = SegmentedButtonDefaults.itemShape(index, speedOptions.size, RoundedCornerShape(16.dp)),
           selected = isCurrentSpeed,
           label = { Text("${defaultSpeed.readableHundredths}x") },
-          onClick = { onSpeedChange(defaultSpeed) },
+          onClick = { commitSpeed(defaultSpeed) },
         )
       }
     }
 
     Spacer(Modifier.height(16.dp))
 
+    var showCustomSpeedDialog by remember { mutableStateOf(false) }
+    val customSpeedLabel = stringResource(Res.string.speed_custom_open)
+    val decreaseSpeedLabel = stringResource(Res.string.speed_decrease)
+    val increaseSpeedLabel = stringResource(Res.string.speed_increase)
+
     Row(
       modifier = Modifier
-        .height(56.dp)
-        .fillMaxSize()
-        .padding(horizontal = 20.dp),
+        .fillMaxWidth()
+        .padding(horizontal = 24.dp),
+      horizontalArrangement = Arrangement.Center,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      var sliderValue by remember { mutableStateOf(currentSpeed) }
-
-      LaunchedEffect(currentSpeed) {
-        if (sliderValue != currentSpeed) {
-          sliderValue = currentSpeed
+      IconButtonTooltip(text = decreaseSpeedLabel) {
+        FilledTonalIconButton(
+          enabled = sliderValue > PlaybackSpeedRange.start,
+          onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            commitSpeed(stepSpeed(sliderValue, -1))
+          },
+        ) {
+          Icon(
+            imageVector = CampfireIcons.Rounded.Remove,
+            contentDescription = decreaseSpeedLabel,
+          )
         }
       }
 
-      val sliderProgressNormalized = sliderValue / (PlaybackSpeedRange.start + PlaybackSpeedRange.length)
-      val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
-      val waveHeight = lerp(WaveHeightRange.start, WaveHeightRange.endInclusive, sliderProgressNormalized)
-      val waveVelocity = lerp(WaveVelocityRange.start, WaveVelocityRange.endInclusive, sliderProgressNormalized)
-      val waveThickness = lerp(WaveThicknessRange.start, WaveThicknessRange.endInclusive, sliderProgressNormalized)
+      Spacer(Modifier.width(16.dp))
 
-      val setSpeed: (Float) -> Unit = { raw ->
-        val speed = raw.roundToHundredths().coerceIn(PlaybackSpeedRange)
-        // Rounding to hundredths means nearby drag frames resolve to the same value; only push real changes
-        if (speed != sliderValue) {
-          sliderValue = speed
-          onSpeedChange(speed)
-        }
+      Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+          .clip(RoundedCornerShape(12.dp))
+          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true },
+      ) {
+        Text(
+          text = "${sliderValue.readableHundredths}x",
+          textAlign = TextAlign.Center,
+          style = MaterialTheme.typography.titleLarge,
+          fontWeight = FontWeight.ExtraBold,
+          modifier = Modifier
+            .widthIn(min = 84.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
       }
 
+      Spacer(Modifier.width(16.dp))
+
+      IconButtonTooltip(text = increaseSpeedLabel) {
+        FilledTonalIconButton(
+          enabled = sliderValue < PlaybackSpeedRange.endInclusive,
+          onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            commitSpeed(stepSpeed(sliderValue, +1))
+          },
+        ) {
+          Icon(
+            imageVector = CampfireIcons.Rounded.Add,
+            contentDescription = increaseSpeedLabel,
+          )
+        }
+      }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    val sliderProgressNormalized = ((sliderValue - PlaybackSpeedRange.start) / PlaybackSpeedRange.length)
+      .coerceIn(0f, 1f)
+    val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
+    val waveHeight = lerp(WaveHeightRange.start, WaveHeightRange.endInclusive, sliderProgressNormalized)
+    val waveVelocity = lerp(WaveVelocityRange.start, WaveVelocityRange.endInclusive, sliderProgressNormalized)
+    val waveThickness = lerp(WaveThicknessRange.start, WaveThicknessRange.endInclusive, sliderProgressNormalized)
+
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 24.dp),
+    ) {
       WavySlider(
         value = sliderValue,
         valueRange = PlaybackSpeedRange,
-        onValueChange = setSpeed,
+        interactionSource = interactionSource,
+        onValueChange = { raw ->
+          val snapped = raw.snapToSpeedStep()
+          if (snapped != sliderValue) {
+            sliderValue = snapped
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+          }
+        },
+        onValueChangeFinished = {
+          if (sliderValue != currentSpeed) {
+            onSpeedChange(sliderValue)
+          }
+        },
         waveLength = waveLength,
         waveHeight = waveHeight,
         waveVelocity = waveVelocity to WaveDirection.TAIL,
         waveThickness = waveThickness,
         incremental = true,
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.fillMaxWidth(),
       )
 
-      var showCustomSpeedDialog by remember { mutableStateOf(false) }
-      val customSpeedLabel = stringResource(Res.string.speed_custom_open)
-
-      Text(
-        text = "${sliderValue.readableHundredths}x",
-        textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.ExtraBold,
-        modifier = Modifier
-          .padding(start = 12.dp)
-          .clip(RoundedCornerShape(12.dp))
-          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true }
-          .padding(horizontal = 8.dp, vertical = 12.dp)
-          .width(44.dp),
-      )
-
-      if (showCustomSpeedDialog) {
-        PlaybackSpeedDialog(
-          initialSpeed = sliderValue,
-          onDismiss = { showCustomSpeedDialog = false },
-          onConfirm = { speed ->
-            showCustomSpeedDialog = false
-            setSpeed(speed)
-          },
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Text(
+          text = "${PlaybackSpeedRange.start.readableHundredths}x",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+          text = "${PlaybackSpeedRange.endInclusive.readableHundredths}x",
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
+    }
+
+    if (showCustomSpeedDialog) {
+      PlaybackSpeedDialog(
+        initialSpeed = sliderValue,
+        onDismiss = { showCustomSpeedDialog = false },
+        onConfirm = { speed ->
+          showCustomSpeedDialog = false
+          commitSpeed(speed)
+        },
+      )
     }
 
     Spacer(Modifier.height(24.dp))
@@ -327,6 +425,21 @@ private fun PlaybackSpeedSheetPreview() {
     ) {
     }
   }
+}
+
+internal fun Float.snapToSpeedStep(): Float {
+  val steppedHundredths = (this * 20f).roundToInt() * 5
+  return (steppedHundredths / 100f).coerceIn(PlaybackSpeedRange)
+}
+
+internal fun stepSpeed(current: Float, stepsDelta: Int): Float {
+  val currentSteps = if (stepsDelta > 0) {
+    floor(current * 20f + 0.001f).toInt()
+  } else {
+    ceil(current * 20f - 0.001f).toInt()
+  }
+  val targetHundredths = (currentSteps + stepsDelta) * 5
+  return (targetHundredths / 100f).coerceIn(PlaybackSpeedRange)
 }
 
 private val WavelengthRange = 40.dp.rangeTo(135.dp)

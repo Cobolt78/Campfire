@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.49-rc1] - 2026-11-15
+
+### Changed
+
+- **Redesigned Playback Speed Bottom Sheet for Precision & Comfort**:
+  - Replaced the narrow inline slider layout with `-` / `+` fine-adjustment stepper buttons flanking a clickable current speed pill (`0.05x` per tap), positioned above a full-width linear `0.5x–3.0x` slider with `0.5x` and `3x` range labels.
+  - Snaps slider movement cleanly to `0.05x` increments with tactile haptic feedback ticks as you scrub across steps.
+  - Deferred audio speed commitment while dragging so the player speed only updates when you release your finger (while stepper taps, presets, and custom speed entries still apply immediately).
+
 ## [1.2.48] - 2026-11-13
 
 ### Added

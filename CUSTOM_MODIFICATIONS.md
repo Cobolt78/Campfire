@@ -91,6 +91,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
+87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249-rc1)
 
 ---
 
@@ -2611,6 +2612,39 @@ etworkCachePolicy(CachePolicy.DISABLED).
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/battery/AndroidBatteryOptimization.kt
 * infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
 * infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)
+
+### Problem
+In the in-player playback speed bottom sheet (`PlaybackSpeedBottomSheet`), the `WavySlider` was placed horizontally inline next to the speed badge, leaving a narrow drag track (`0.5x..3.0x`) that sent continuous un-snapped float updates on every drag pixel (`onValueChange`) directly to the audio engine. Even tiny finger movements caused the speed to jump rapidly across multiple `0.1x` increments while fighting the listener's ears in real time.
+
+### Solution & Implementation
+1. **Stepper Controls & Full-Width Linear Slider Layout (`PlaybackSpeedBottomSheet.kt`, `Remove.kt`, `sessions_ui_strings.xml`)**:
+   - Added `CampfireIcons.Rounded.Remove` (`Remove.kt`) and string resources `speed_decrease` / `speed_increase` (`sessions_ui_strings.xml`).
+   - Replaced the side-by-side slider + readout row with:
+     - A centered stepper row featuring `-` and `+` `FilledTonalIconButton`s (`0.05x` adjustment per tap via `stepSpeed(current, delta)`) flanking the clickable `titleLarge` speed readout pill (`Surface`, opens `PlaybackSpeedDialog`), enforcing `PlaybackSpeedRange` (`0.5f..3f`) enabled bounds.
+     - A dedicated full-width `WavySlider` row beneath the steppers with `0.5x` and `3x` range end labels underneath.
+2. **Discrete `0.05x` Snapping & Haptic Feedback**:
+   - Added `internal fun Float.snapToSpeedStep()` to quantize values cleanly to `0.05x` steps within `PlaybackSpeedRange` (preventing float drift), and `internal fun stepSpeed(current: Float, stepsDelta: Int)` for single-step alignment and clamping.
+   - Emits `HapticFeedbackType.SegmentFrequentTick` whenever a slider drag crosses into a new `0.05x` step.
+3. **Commit-on-Release Drag Behavior**:
+   - Guarded `LaunchedEffect(currentSpeed)` with `isInteracting` (`interactionSource` pressed or dragged) so external state cannot clobber an active drag.
+   - Slider `onValueChange` updates only local `sliderValue` while dragging; `onSpeedChange(sliderValue)` is invoked in `onValueChangeFinished` once the user releases their finger.
+   - Stepper buttons (`-`/`+`), speed preset chips, and custom speed dialog confirmation still apply speed changes immediately.
+4. **Unit & Compose UI Tests (`PlaybackSpeedSheetTest.kt`)**:
+   - Verified `snapToSpeedStep`, `stepSpeed`, stepper `+0.05x`/`-0.05x` and min/max button enabled states, and slider drag-vs-release commit semantics.
+
+### Modified Files:
+* common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Remove.kt
+* features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
+* features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
+* features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

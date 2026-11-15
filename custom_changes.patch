@@ -11,14 +11,23 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..504c64be 100644
+index c0278c85..40d8c8cb 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,500 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,509 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.49-rc1] - 2026-11-15
++
++### Changed
++
++- **Redesigned Playback Speed Bottom Sheet for Precision & Comfort**:
++  - Replaced the narrow inline slider layout with `-` / `+` fine-adjustment stepper buttons flanking a clickable current speed pill (`0.05x` per tap), positioned above a full-width linear `0.5x–3.0x` slider with `0.5x` and `3x` range labels.
++  - Snaps slider movement cleanly to `0.05x` increments with tactile haptic feedback ticks as you scrub across steps.
++  - Deferred audio speed commitment while dragging so the player speed only updates when you release your finger (while stepper taps, presets, and custom speed entries still apply immediately).
++
 +## [1.2.48] - 2026-11-13
 +
 +### Added
@@ -518,10 +527,10 @@ index c0278c85..504c64be 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..442c5386
+index 00000000..bba7e8a8
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2616 @@
+@@ -0,0 +1,2650 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -615,6 +624,7 @@ index 00000000..442c5386
 +84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 +85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 +86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
++87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249-rc1)
 +
 +---
 +
@@ -3138,6 +3148,39 @@ index 00000000..442c5386
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++
++---
++
++## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)
++
++### Problem
++In the in-player playback speed bottom sheet (`PlaybackSpeedBottomSheet`), the `WavySlider` was placed horizontally inline next to the speed badge, leaving a narrow drag track (`0.5x..3.0x`) that sent continuous un-snapped float updates on every drag pixel (`onValueChange`) directly to the audio engine. Even tiny finger movements caused the speed to jump rapidly across multiple `0.1x` increments while fighting the listener's ears in real time.
++
++### Solution & Implementation
++1. **Stepper Controls & Full-Width Linear Slider Layout (`PlaybackSpeedBottomSheet.kt`, `Remove.kt`, `sessions_ui_strings.xml`)**:
++   - Added `CampfireIcons.Rounded.Remove` (`Remove.kt`) and string resources `speed_decrease` / `speed_increase` (`sessions_ui_strings.xml`).
++   - Replaced the side-by-side slider + readout row with:
++     - A centered stepper row featuring `-` and `+` `FilledTonalIconButton`s (`0.05x` adjustment per tap via `stepSpeed(current, delta)`) flanking the clickable `titleLarge` speed readout pill (`Surface`, opens `PlaybackSpeedDialog`), enforcing `PlaybackSpeedRange` (`0.5f..3f`) enabled bounds.
++     - A dedicated full-width `WavySlider` row beneath the steppers with `0.5x` and `3x` range end labels underneath.
++2. **Discrete `0.05x` Snapping & Haptic Feedback**:
++   - Added `internal fun Float.snapToSpeedStep()` to quantize values cleanly to `0.05x` steps within `PlaybackSpeedRange` (preventing float drift), and `internal fun stepSpeed(current: Float, stepsDelta: Int)` for single-step alignment and clamping.
++   - Emits `HapticFeedbackType.SegmentFrequentTick` whenever a slider drag crosses into a new `0.05x` step.
++3. **Commit-on-Release Drag Behavior**:
++   - Guarded `LaunchedEffect(currentSpeed)` with `isInteracting` (`interactionSource` pressed or dragged) so external state cannot clobber an active drag.
++   - Slider `onValueChange` updates only local `sliderValue` while dragging; `onSpeedChange(sliderValue)` is invoked in `onValueChangeFinished` once the user releases their finger.
++   - Stepper buttons (`-`/`+`), speed preset chips, and custom speed dialog confirmation still apply speed changes immediately.
++4. **Unit & Compose UI Tests (`PlaybackSpeedSheetTest.kt`)**:
++   - Verified `snapToSpeedStep`, `stepSpeed`, stepper `+0.05x`/`-0.05x` and min/max button enabled states, and slider drag-vs-release commit semantics.
++
++### Modified Files:
++* common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Remove.kt
++* features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
++* features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
++* features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
++* gradle.properties
++* CHANGELOG.md
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -4427,6 +4470,48 @@ index 00000000..f6e18618
 +      verticalLineToRelative(70f)
 +      quadToRelative(0f, 17f, -11.5f, 28.5f)
 +      reflectiveQuadTo(610f, 640f)
++      close()
++    }
++  }.build()
++}
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Remove.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Remove.kt
+new file mode 100644
+index 00000000..f168210f
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Remove.kt
+@@ -0,0 +1,36 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.icons.rounded
++
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.SolidColor
++import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.graphics.vector.path
++import androidx.compose.ui.unit.dp
++import app.campfire.common.compose.icons.CampfireIcons
++
++val CampfireIcons.Rounded.Remove: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
++  ImageVector.Builder(
++    name = "Remove",
++    defaultWidth = 24.dp,
++    defaultHeight = 24.dp,
++    viewportWidth = 960f,
++    viewportHeight = 960f,
++  ).apply {
++    path(fill = SolidColor(Color.Black)) {
++      moveTo(240f, 520f)
++      quadToRelative(-17f, 0f, -28.5f, -11.5f)
++      reflectiveQuadTo(200f, 480f)
++      quadToRelative(0f, -17f, 11.5f, -28.5f)
++      reflectiveQuadTo(240f, 440f)
++      horizontalLineToRelative(480f)
++      quadToRelative(17f, 0f, 28.5f, 11.5f)
++      reflectiveQuadTo(760f, 480f)
++      quadToRelative(0f, 17f, -11.5f, 28.5f)
++      reflectiveQuadTo(720f, 520f)
++      lineTo(240f, 520f)
 +      close()
 +    }
 +  }.build()
@@ -14608,19 +14693,22 @@ index e852e895..46afc77a 100644
  
      val itemId = session.libraryItem.id
 diff --git a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-index 20f60c09..f3b0cfa8 100644
+index 20f60c09..3a1e2c96 100644
 --- a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 +++ b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-@@ -16,6 +16,8 @@
+@@ -15,7 +15,11 @@
+ 
    <string name="speed_bottomsheet_title">Playback speed</string>
    <string name="speed_custom_open">Enter custom speed</string>
++  <string name="speed_decrease">Decrease speed by 0.05x</string>
++  <string name="speed_increase">Increase speed by 0.05x</string>
    <string name="speed_per_book_toggle">Use a separate playback speed for this book</string>
 +  <string name="session_scope_global">All Books (Global)</string>
 +  <string name="session_scope_per_book">This Book Only</string>
  
    <string name="equalizer_bottomsheet_title">Equalizer</string>
    <string name="action_equalizer">Equalizer</string>
-@@ -31,6 +33,7 @@
+@@ -31,6 +35,7 @@
    <string name="equalizer_preset_custom">Custom</string>
    <string name="equalizer_loudness_label">Loudness</string>
    <string name="equalizer_bass_label">Bass</string>
@@ -15271,18 +15359,66 @@ index 278dcf20..62210af7 100644
                get() = TODO("Not yet implemented")
                set(value) {}
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
-index 792e8267..41976fe9 100644
+index 792e8267..c0334c76 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
-@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
+@@ -4,24 +4,31 @@
+ package app.campfire.sessions.ui.sheets.speed
+ 
+ import androidx.compose.foundation.clickable
++import androidx.compose.foundation.interaction.MutableInteractionSource
++import androidx.compose.foundation.interaction.collectIsDraggedAsState
++import androidx.compose.foundation.interaction.collectIsPressedAsState
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
  import androidx.compose.foundation.layout.Row
  import androidx.compose.foundation.layout.Spacer
- import androidx.compose.foundation.layout.fillMaxSize
+-import androidx.compose.foundation.layout.fillMaxSize
 +import androidx.compose.foundation.layout.fillMaxWidth
  import androidx.compose.foundation.layout.height
  import androidx.compose.foundation.layout.navigationBarsPadding
  import androidx.compose.foundation.layout.padding
-@@ -61,6 +62,8 @@ import app.campfire.core.model.LibraryItemId
+ import androidx.compose.foundation.layout.size
+ import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.layout.widthIn
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material.ModalBottomSheetLayout
+ import androidx.compose.material.ModalBottomSheetValue
+ import androidx.compose.material.rememberModalBottomSheetState
++import androidx.compose.material3.FilledTonalIconButton
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.SegmentedButton
+ import androidx.compose.material3.SegmentedButtonDefaults
+ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+-import androidx.compose.material3.Switch
++import androidx.compose.material3.Surface
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.LaunchedEffect
+@@ -33,6 +40,8 @@ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.draw.clip
++import androidx.compose.ui.hapticfeedback.HapticFeedbackType
++import androidx.compose.ui.platform.LocalHapticFeedback
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextAlign
+ import androidx.compose.ui.tooling.preview.Preview
+@@ -47,9 +56,12 @@ import app.campfire.analytics.events.Speed
+ import app.campfire.audioplayer.AudioPlayerHolder
+ import app.campfire.common.compose.analytics.Impression
+ import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.Add
+ import app.campfire.common.compose.icons.rounded.Book
+ import app.campfire.common.compose.icons.rounded.Globe
++import app.campfire.common.compose.icons.rounded.Remove
+ import app.campfire.common.compose.theme.CampfireTheme
++import app.campfire.common.compose.widgets.IconButtonTooltip
+ import app.campfire.common.compose.widgets.PlaybackSpeedDialog
+ import app.campfire.common.compose.widgets.PlaybackSpeedRange
+ import app.campfire.common.compose.widgets.sheets.AdaptiveSheetOverlay
+@@ -61,13 +73,19 @@ import app.campfire.core.model.LibraryItemId
  import app.campfire.sessions.ui.sheets.SessionSheetLayout
  import app.campfire.settings.api.PlaybackSettings
  import campfire.features.sessions.ui.generated.resources.Res
@@ -15290,8 +15426,20 @@ index 792e8267..41976fe9 100644
 +import campfire.features.sessions.ui.generated.resources.session_scope_per_book
  import campfire.features.sessions.ui.generated.resources.speed_bottomsheet_title
  import campfire.features.sessions.ui.generated.resources.speed_custom_open
- import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
-@@ -173,25 +176,42 @@ internal fun PlaybackSpeedSheet(
+-import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
++import campfire.features.sessions.ui.generated.resources.speed_decrease
++import campfire.features.sessions.ui.generated.resources.speed_increase
+ import com.slack.circuit.overlay.OverlayHost
+ import dev.zacsweers.metro.ContributesTo
+ import ir.mahozad.multiplatform.wavyslider.WaveDirection
+ import ir.mahozad.multiplatform.wavyslider.material3.WavySlider
++import kotlin.math.ceil
++import kotlin.math.floor
++import kotlin.math.roundToInt
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.flow.emptyFlow
+ import kotlinx.coroutines.flow.flatMapLatest
+@@ -173,27 +191,66 @@ internal fun PlaybackSpeedSheet(
    SessionSheetLayout(
      modifier = modifier,
      title = { Text(stringResource(Res.string.speed_bottomsheet_title)) },
@@ -15347,7 +15495,245 @@ index 792e8267..41976fe9 100644
 +
      Spacer(Modifier.height(16.dp))
  
++    val interactionSource = remember { MutableInteractionSource() }
++    val isPressed by interactionSource.collectIsPressedAsState()
++    val isDragged by interactionSource.collectIsDraggedAsState()
++    val isInteracting = isPressed || isDragged
++
++    var sliderValue by remember { mutableStateOf(currentSpeed) }
++    val haptics = LocalHapticFeedback.current
++
++    LaunchedEffect(currentSpeed) {
++      if (!isInteracting && sliderValue != currentSpeed) {
++        sliderValue = currentSpeed
++      }
++    }
++
++    val commitSpeed: (Float) -> Unit = { newSpeed ->
++      val clamped = newSpeed.roundToHundredths().coerceIn(PlaybackSpeedRange)
++      sliderValue = clamped
++      if (clamped != currentSpeed) {
++        onSpeedChange(clamped)
++      }
++    }
++
      SingleChoiceSegmentedButtonRow(
+       modifier = Modifier
+         .align(Alignment.CenterHorizontally)
+@@ -205,83 +262,144 @@ internal fun PlaybackSpeedSheet(
+           shape = SegmentedButtonDefaults.itemShape(index, speedOptions.size, RoundedCornerShape(16.dp)),
+           selected = isCurrentSpeed,
+           label = { Text("${defaultSpeed.readableHundredths}x") },
+-          onClick = { onSpeedChange(defaultSpeed) },
++          onClick = { commitSpeed(defaultSpeed) },
+         )
+       }
+     }
+ 
+     Spacer(Modifier.height(16.dp))
+ 
++    var showCustomSpeedDialog by remember { mutableStateOf(false) }
++    val customSpeedLabel = stringResource(Res.string.speed_custom_open)
++    val decreaseSpeedLabel = stringResource(Res.string.speed_decrease)
++    val increaseSpeedLabel = stringResource(Res.string.speed_increase)
++
+     Row(
+       modifier = Modifier
+-        .height(56.dp)
+-        .fillMaxSize()
+-        .padding(horizontal = 20.dp),
++        .fillMaxWidth()
++        .padding(horizontal = 24.dp),
++      horizontalArrangement = Arrangement.Center,
+       verticalAlignment = Alignment.CenterVertically,
+     ) {
+-      var sliderValue by remember { mutableStateOf(currentSpeed) }
+-
+-      LaunchedEffect(currentSpeed) {
+-        if (sliderValue != currentSpeed) {
+-          sliderValue = currentSpeed
++      IconButtonTooltip(text = decreaseSpeedLabel) {
++        FilledTonalIconButton(
++          enabled = sliderValue > PlaybackSpeedRange.start,
++          onClick = {
++            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++            commitSpeed(stepSpeed(sliderValue, -1))
++          },
++        ) {
++          Icon(
++            imageVector = CampfireIcons.Rounded.Remove,
++            contentDescription = decreaseSpeedLabel,
++          )
+         }
+       }
+ 
+-      val sliderProgressNormalized = sliderValue / (PlaybackSpeedRange.start + PlaybackSpeedRange.length)
+-      val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
+-      val waveHeight = lerp(WaveHeightRange.start, WaveHeightRange.endInclusive, sliderProgressNormalized)
+-      val waveVelocity = lerp(WaveVelocityRange.start, WaveVelocityRange.endInclusive, sliderProgressNormalized)
+-      val waveThickness = lerp(WaveThicknessRange.start, WaveThicknessRange.endInclusive, sliderProgressNormalized)
+-
+-      val setSpeed: (Float) -> Unit = { raw ->
+-        val speed = raw.roundToHundredths().coerceIn(PlaybackSpeedRange)
+-        // Rounding to hundredths means nearby drag frames resolve to the same value; only push real changes
+-        if (speed != sliderValue) {
+-          sliderValue = speed
+-          onSpeedChange(speed)
++      Spacer(Modifier.width(16.dp))
++
++      Surface(
++        shape = RoundedCornerShape(12.dp),
++        color = MaterialTheme.colorScheme.surfaceContainerHigh,
++        modifier = Modifier
++          .clip(RoundedCornerShape(12.dp))
++          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true },
++      ) {
++        Text(
++          text = "${sliderValue.readableHundredths}x",
++          textAlign = TextAlign.Center,
++          style = MaterialTheme.typography.titleLarge,
++          fontWeight = FontWeight.ExtraBold,
++          modifier = Modifier
++            .widthIn(min = 84.dp)
++            .padding(horizontal = 16.dp, vertical = 8.dp),
++        )
++      }
++
++      Spacer(Modifier.width(16.dp))
++
++      IconButtonTooltip(text = increaseSpeedLabel) {
++        FilledTonalIconButton(
++          enabled = sliderValue < PlaybackSpeedRange.endInclusive,
++          onClick = {
++            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++            commitSpeed(stepSpeed(sliderValue, +1))
++          },
++        ) {
++          Icon(
++            imageVector = CampfireIcons.Rounded.Add,
++            contentDescription = increaseSpeedLabel,
++          )
+         }
+       }
++    }
+ 
++    Spacer(Modifier.height(12.dp))
++
++    val sliderProgressNormalized = ((sliderValue - PlaybackSpeedRange.start) / PlaybackSpeedRange.length)
++      .coerceIn(0f, 1f)
++    val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
++    val waveHeight = lerp(WaveHeightRange.start, WaveHeightRange.endInclusive, sliderProgressNormalized)
++    val waveVelocity = lerp(WaveVelocityRange.start, WaveVelocityRange.endInclusive, sliderProgressNormalized)
++    val waveThickness = lerp(WaveThicknessRange.start, WaveThicknessRange.endInclusive, sliderProgressNormalized)
++
++    Column(
++      modifier = Modifier
++        .fillMaxWidth()
++        .padding(horizontal = 24.dp),
++    ) {
+       WavySlider(
+         value = sliderValue,
+         valueRange = PlaybackSpeedRange,
+-        onValueChange = setSpeed,
++        interactionSource = interactionSource,
++        onValueChange = { raw ->
++          val snapped = raw.snapToSpeedStep()
++          if (snapped != sliderValue) {
++            sliderValue = snapped
++            haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
++          }
++        },
++        onValueChangeFinished = {
++          if (sliderValue != currentSpeed) {
++            onSpeedChange(sliderValue)
++          }
++        },
+         waveLength = waveLength,
+         waveHeight = waveHeight,
+         waveVelocity = waveVelocity to WaveDirection.TAIL,
+         waveThickness = waveThickness,
+         incremental = true,
+-        modifier = Modifier.weight(1f),
+-      )
+-
+-      var showCustomSpeedDialog by remember { mutableStateOf(false) }
+-      val customSpeedLabel = stringResource(Res.string.speed_custom_open)
+-
+-      Text(
+-        text = "${sliderValue.readableHundredths}x",
+-        textAlign = TextAlign.Center,
+-        style = MaterialTheme.typography.labelLarge,
+-        fontWeight = FontWeight.ExtraBold,
+-        modifier = Modifier
+-          .padding(start = 12.dp)
+-          .clip(RoundedCornerShape(12.dp))
+-          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true }
+-          .padding(horizontal = 8.dp, vertical = 12.dp)
+-          .width(44.dp),
++        modifier = Modifier.fillMaxWidth(),
+       )
+ 
+-      if (showCustomSpeedDialog) {
+-        PlaybackSpeedDialog(
+-          initialSpeed = sliderValue,
+-          onDismiss = { showCustomSpeedDialog = false },
+-          onConfirm = { speed ->
+-            showCustomSpeedDialog = false
+-            setSpeed(speed)
+-          },
++      Row(
++        modifier = Modifier.fillMaxWidth(),
++        horizontalArrangement = Arrangement.SpaceBetween,
++      ) {
++        Text(
++          text = "${PlaybackSpeedRange.start.readableHundredths}x",
++          style = MaterialTheme.typography.labelSmall,
++          color = MaterialTheme.colorScheme.onSurfaceVariant,
++        )
++        Text(
++          text = "${PlaybackSpeedRange.endInclusive.readableHundredths}x",
++          style = MaterialTheme.typography.labelSmall,
++          color = MaterialTheme.colorScheme.onSurfaceVariant,
+         )
+       }
+     }
+ 
++    if (showCustomSpeedDialog) {
++      PlaybackSpeedDialog(
++        initialSpeed = sliderValue,
++        onDismiss = { showCustomSpeedDialog = false },
++        onConfirm = { speed ->
++          showCustomSpeedDialog = false
++          commitSpeed(speed)
++        },
++      )
++    }
++
+     Spacer(Modifier.height(24.dp))
+   }
+ }
+@@ -309,6 +427,21 @@ private fun PlaybackSpeedSheetPreview() {
+   }
+ }
+ 
++internal fun Float.snapToSpeedStep(): Float {
++  val steppedHundredths = (this * 20f).roundToInt() * 5
++  return (steppedHundredths / 100f).coerceIn(PlaybackSpeedRange)
++}
++
++internal fun stepSpeed(current: Float, stepsDelta: Int): Float {
++  val currentSteps = if (stepsDelta > 0) {
++    floor(current * 20f + 0.001f).toInt()
++  } else {
++    ceil(current * 20f - 0.001f).toInt()
++  }
++  val targetHundredths = (currentSteps + stepsDelta) * 5
++  return (targetHundredths / 100f).coerceIn(PlaybackSpeedRange)
++}
++
+ private val WavelengthRange = 40.dp.rangeTo(135.dp)
+ private val WaveHeightRange = 0.dp.rangeTo(40.dp)
+ private val WaveVelocityRange = 50.dp.rangeTo(120.dp)
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
 index 299f5180..71fb7375 100644
 --- a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
@@ -15465,6 +15851,156 @@ index 299f5180..71fb7375 100644
    private fun presenterWith(controller: FakeAudioOutputController) = PlaybackPresenter(
      sessionQueue = sessionQueue,
      sessionsRepository = sessionsRepository,
+diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
+new file mode 100644
+index 00000000..d29c3128
+--- /dev/null
++++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
+@@ -0,0 +1,144 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.sessions.ui.sheets.speed
++
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.geometry.Offset
++import androidx.compose.ui.semantics.SemanticsProperties
++import androidx.compose.ui.test.ExperimentalTestApi
++import androidx.compose.ui.test.SemanticsMatcher
++import androidx.compose.ui.test.assertIsEnabled
++import androidx.compose.ui.test.assertIsNotEnabled
++import androidx.compose.ui.test.onNodeWithContentDescription
++import androidx.compose.ui.test.onNodeWithText
++import androidx.compose.ui.test.performClick
++import androidx.compose.ui.test.performTouchInput
++import androidx.compose.ui.test.runComposeUiTest
++import app.campfire.common.compose.theme.CampfireTheme
++import app.campfire.common.compose.widgets.PlaybackSpeedRange
++import assertk.assertThat
++import assertk.assertions.containsExactly
++import assertk.assertions.isEmpty
++import assertk.assertions.isEqualTo
++import assertk.assertions.isNotEqualTo
++import kotlin.test.Test
++
++@OptIn(ExperimentalTestApi::class)
++class PlaybackSpeedSheetTest {
++
++  @Test
++  fun `snapToSpeedStep snaps values to nearest 0_05 increment within bounds`() {
++    assertThat(1.22f.snapToSpeedStep()).isEqualTo(1.20f)
++    assertThat(1.23f.snapToSpeedStep()).isEqualTo(1.25f)
++    assertThat(1.27f.snapToSpeedStep()).isEqualTo(1.25f)
++    assertThat(1.28f.snapToSpeedStep()).isEqualTo(1.30f)
++    assertThat(0.2f.snapToSpeedStep()).isEqualTo(0.50f)
++    assertThat(3.4f.snapToSpeedStep()).isEqualTo(3.00f)
++  }
++
++  @Test
++  fun `stepSpeed advances by exact 0_05 increments and aligns off-grid values`() {
++    assertThat(stepSpeed(1.00f, +1)).isEqualTo(1.05f)
++    assertThat(stepSpeed(1.05f, +1)).isEqualTo(1.10f)
++    assertThat(stepSpeed(1.25f, -1)).isEqualTo(1.20f)
++    assertThat(stepSpeed(1.20f, -1)).isEqualTo(1.15f)
++    // Off-grid custom values snap to the next step in the requested direction
++    assertThat(stepSpeed(1.23f, +1)).isEqualTo(1.25f)
++    assertThat(stepSpeed(1.23f, -1)).isEqualTo(1.20f)
++    // Clamped at min/max
++    assertThat(stepSpeed(0.50f, -1)).isEqualTo(0.50f)
++    assertThat(stepSpeed(3.00f, +1)).isEqualTo(3.00f)
++  }
++
++  @Test
++  fun `stepper buttons adjust speed by 0_05x and respect min max bounds`() = runComposeUiTest {
++    mainClock.autoAdvance = false
++    val speedChanges = mutableListOf<Float>()
++    var currentSpeed by mutableStateOf(1.25f)
++
++    setContent {
++      CampfireTheme {
++        PlaybackSpeedSheet(
++          currentSpeed = currentSpeed,
++          speedOptions = listOf(1f, 1.25f, 1.5f),
++          perBookSpeedEnabled = false,
++          onSpeedChange = {
++            currentSpeed = it
++            speedChanges += it
++          },
++          onPerBookSpeedChange = {},
++        )
++      }
++    }
++    mainClock.advanceTimeByFrame()
++
++    onNodeWithContentDescription("Increase speed by 0.05x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.30f)
++
++    onNodeWithContentDescription("Decrease speed by 0.05x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.25f)
++
++    assertThat(speedChanges).containsExactly(1.30f, 1.25f)
++
++    currentSpeed = PlaybackSpeedRange.start
++    repeat(2) { mainClock.advanceTimeByFrame() }
++    onNodeWithContentDescription("Decrease speed by 0.05x").assertIsNotEnabled()
++    onNodeWithContentDescription("Increase speed by 0.05x").assertIsEnabled()
++
++    currentSpeed = PlaybackSpeedRange.endInclusive
++    repeat(2) { mainClock.advanceTimeByFrame() }
++    onNodeWithContentDescription("Increase speed by 0.05x").assertIsNotEnabled()
++    onNodeWithContentDescription("Decrease speed by 0.05x").assertIsEnabled()
++  }
++
++  @Test
++  fun `slider does not commit speed while dragging and commits snapped 0_05x on release`() = runComposeUiTest {
++    mainClock.autoAdvance = false
++    val committedSpeeds = mutableListOf<Float>()
++    var currentSpeed by mutableStateOf(1.0f)
++
++    setContent {
++      CampfireTheme {
++        PlaybackSpeedSheet(
++          currentSpeed = currentSpeed,
++          speedOptions = listOf(1f, 1.5f, 2f),
++          perBookSpeedEnabled = false,
++          onSpeedChange = {
++            currentSpeed = it
++            committedSpeeds += it
++          },
++          onPerBookSpeedChange = {},
++        )
++      }
++    }
++    mainClock.advanceTimeByFrame()
++
++    val slider = onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo))
++
++    // Press and move right without lifting yet
++    slider.performTouchInput {
++      down(centerLeft + Offset(width * 0.2f, 0f))
++      moveTo(centerLeft + Offset(width * 0.6f, 0f))
++    }
++    mainClock.advanceTimeByFrame()
++
++    // While finger is still held down, audio playback speed must NOT have been applied yet
++    assertThat(committedSpeeds).isEmpty()
++    assertThat(currentSpeed).isEqualTo(1.0f)
++
++    // Release finger -> speed commits now to a clean 0.05x step
++    slider.performTouchInput {
++      up()
++    }
++    mainClock.advanceTimeByFrame()
++
++    assertThat(committedSpeeds.size).isEqualTo(1)
++    assertThat(currentSpeed).isNotEqualTo(1.0f)
++    assertThat(currentSpeed.snapToSpeedStep()).isEqualTo(currentSpeed)
++  }
++}
 diff --git a/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerSideSheetRenderTest.kt b/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerSideSheetRenderTest.kt
 index 8d7550c0..fe61778d 100644
 --- a/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerSideSheetRenderTest.kt
@@ -17557,7 +18093,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..106de0cf 100644
+index f41126a7..1fae5ba9 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -17565,13 +18101,13 @@ index f41126a7..106de0cf 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.48
++campfire.version=1.2.49-rc1
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1024899
++campfire.versionCode=1024901
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
