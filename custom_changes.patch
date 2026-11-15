@@ -11,7 +11,7 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..40d8c8cb 100644
+index c0278c85..f202de75 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
 @@ -17,7 +17,509 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
@@ -19,7 +19,7 @@ index c0278c85..40d8c8cb 100644
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.49-rc1] - 2026-11-15
++## [1.2.49] - 2026-11-15
 +
 +### Changed
 +
@@ -527,7 +527,7 @@ index c0278c85..40d8c8cb 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..bba7e8a8
+index 00000000..0e6044c9
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -0,0 +1,2650 @@
@@ -624,7 +624,7 @@ index 00000000..bba7e8a8
 +84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 +85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 +86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
-+87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249-rc1)
++87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 +
 +---
 +
@@ -3152,7 +3152,7 @@ index 00000000..bba7e8a8
 +
 +---
 +
-+## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)
++## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)
 +
 +### Problem
 +In the in-player playback speed bottom sheet (`PlaybackSpeedBottomSheet`), the `WavySlider` was placed horizontally inline next to the speed badge, leaving a narrow drag track (`0.5x..3.0x`) that sent continuous un-snapped float updates on every drag pixel (`onValueChange`) directly to the audio engine. Even tiny finger movements caused the speed to jump rapidly across multiple `0.1x` increments while fighting the listener's ears in real time.
@@ -18093,7 +18093,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..1fae5ba9 100644
+index f41126a7..5300e79a 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -18101,13 +18101,13 @@ index f41126a7..1fae5ba9 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.49-rc1
++campfire.version=1.2.49
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1024901
++campfire.versionCode=1024999
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

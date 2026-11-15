@@ -91,7 +91,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 84. [Active Book In-Progress Suppression & Multi-Source Parity for Continue Series (v1.2.46)](#84-active-book-in-progress-suppression--multi-source-parity-for-continue-series-v1246)
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
-87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249-rc1)
+87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 
 ---
 
@@ -2619,7 +2619,7 @@ etworkCachePolicy(CachePolicy.DISABLED).
 
 ---
 
-## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49-rc1)
+## 87. Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)
 
 ### Problem
 In the in-player playback speed bottom sheet (`PlaybackSpeedBottomSheet`), the `WavySlider` was placed horizontally inline next to the speed badge, leaving a narrow drag track (`0.5x..3.0x`) that sent continuous un-snapped float updates on every drag pixel (`onValueChange`) directly to the audio engine. Even tiny finger movements caused the speed to jump rapidly across multiple `0.1x` increments while fighting the listener's ears in real time.
