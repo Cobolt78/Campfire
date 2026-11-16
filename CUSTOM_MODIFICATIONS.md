@@ -92,6 +92,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 85. [Synchronous Bluetooth Headset Playback Resumption & In-App Battery Optimization Setting (v1.2.47)](#85-synchronous-bluetooth-headset-playback-resumption--in-app-battery-optimization-setting-v1247)
 86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
+88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
 
 ---
 
@@ -2645,6 +2646,33 @@ In the in-player playback speed bottom sheet (`PlaybackSpeedBottomSheet`), the `
 * features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 * features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
 * features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
+* gradle.properties
+* CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 88. Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)
+
+### Problem
+On Android 16/17 (Samsung One UI 8, `targetSdk 37`), starting or resuming audiobook playback via Bluetooth headphones (e.g., OpenRun Pro 2 by Shokz) while Campfire was in the background (`procState = 10`, `PROCESS_STATE_SERVICE`) caused playback to stop/mute after ~10–11 seconds repeatedly until the phone was unlocked and `MainActivity` was opened:
+1. When Media3's `MediaNotificationManager` internal `MediaController` disconnected while paused in the background (`MediaControllerListener.onDisconnected`), Media3 called `mediaSessionService.removeSession(session)`, removing the session from `MediaSessionService.sessions` (`isSessionAdded(session) == false`) and detaching its notification listener while leaving the underlying platform `MediaSession` token (`androidx.media3.session.id./38`) active in Android's `MediaSessionStack`.
+2. Furthermore, `AudioPlayerService.onCreate()` did not call `addSession(mediaSession)` upfront, relying instead on an external `MediaController` binding via `ComponentName` (`MediaSessionServiceStub.connect()`) to register the session.
+3. When Bluetooth AVRCP commands (`KEYCODE_MEDIA_PLAY` = `126`) were dispatched directly to the active platform `MediaSession` token, ExoPlayer started playing while `isSessionAdded(session)` remained `false`, so `MediaNotificationManager` never posted notification `100` or called `startForegroundService(AudioPlayerService)`.
+4. After the ~10.2-second `MediaSessionService` `[WIU] [FGS]` temporary allowlist expired (`Changes in 10500 10 to 10, 128 to 0`), Android's `AS.AudioService` (`AudioHardening` / `OP_CONTROL_AUDIO`) force-muted Campfire's audio track (`mutedState: opControlAudio`) because the process was still in `procState = 10` rather than `procState = 4` (`FOREGROUND_SERVICE`).
+
+### Solution & Implementation
+1. **Immediate Session Registration & Self-Healing (`AudioPlayerService.kt`)**:
+   - Called `addSession(mediaSession)` directly in `AudioPlayerService.onCreate()` right after configuring `DefaultMediaNotificationProvider`.
+   - Added `ensureSessionAndForeground()` and a `Player.Listener` on `player.sessionPlayer` (listening to `EVENT_PLAY_WHEN_READY_CHANGED`, `EVENT_PLAYBACK_STATE_CHANGED`, `EVENT_IS_PLAYING_CHANGED`, and `EVENT_TIMELINE_CHANGED`) that automatically re-adds `session` via `addSession(currentSession)` if `!isSessionAdded(currentSession)` and calls `triggerNotificationUpdate()` when playback is active.
+2. **Synchronous `KEYCODE_MEDIA_PLAY` & Media Button Promotion (`MediaSessionCallback.kt`)**:
+   - Wired `onEnsureSessionActive = ::ensureSessionAndForeground` into `MediaSessionCallback` and invoked it synchronously on `KeyEvent.ACTION_DOWN` in `onMediaButtonEvent`, inside `handleHeadsetPlayPause()`, and in `onPlaybackResumptionInternal()` while the `[WIU] [FGS]` exemption is active.
+   - Added handling for `KeyEvent.KEYCODE_MEDIA_PLAY` (`126`) when `!isAuto && !player.isPlaying` so Bluetooth headsets that emit dedicated AVRCP Play commands (rather than `KEYCODE_MEDIA_PLAY_PAUSE`) immediately execute `handleHeadsetPlayPause()` and promote the service without altering any single/double/triple/quadruple press, skip forward/backward, chapter skip, or bookmark actions.
+
+### Modified Files:
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt
+* infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

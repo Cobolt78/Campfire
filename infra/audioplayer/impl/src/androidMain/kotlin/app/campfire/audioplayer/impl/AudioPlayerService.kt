@@ -102,6 +102,7 @@ class AudioPlayerService : MediaLibraryService() {
       player = player,
       component = component,
       userComponent = userComponent,
+      onEnsureSessionActive = ::ensureSessionAndForeground,
     )
     val mediaSession = MediaLibrarySession.Builder(
       this,
@@ -145,7 +146,44 @@ class AudioPlayerService : MediaLibraryService() {
       }
     setMediaNotificationProvider(mediaNotificationProvider)
 
+    // Register the session immediately with MediaSessionService so MediaNotificationManager
+    // always tracks playback state even when started from background Bluetooth / media buttons,
+    // and self-heal if MediaNotificationManager ever removes the session on controller disconnect.
+    addSession(mediaSession)
+    player.sessionPlayer.addListener(
+      object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+          if (
+            events.containsAny(
+              Player.EVENT_PLAY_WHEN_READY_CHANGED,
+              Player.EVENT_PLAYBACK_STATE_CHANGED,
+              Player.EVENT_IS_PLAYING_CHANGED,
+              Player.EVENT_TIMELINE_CHANGED,
+            )
+          ) {
+            ensureSessionAndForeground()
+          }
+        }
+      },
+    )
+
     observeBrowseTreeInvalidation()
+  }
+
+  internal fun ensureSessionAndForeground() {
+    val currentSession = session ?: return
+    if (!isSessionAdded(currentSession)) {
+      bark(LogPriority.INFO) { "AudioPlayerService: Re-adding session to MediaSessionService for foreground notification" }
+      addSession(currentSession)
+    }
+    val sessionPlayer = currentSession.player
+    if (
+      sessionPlayer.playWhenReady &&
+      sessionPlayer.playbackState != Player.STATE_IDLE &&
+      sessionPlayer.playbackState != Player.STATE_ENDED
+    ) {
+      triggerNotificationUpdate()
+    }
   }
 
   /**

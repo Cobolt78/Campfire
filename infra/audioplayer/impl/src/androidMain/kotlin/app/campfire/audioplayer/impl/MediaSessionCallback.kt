@@ -51,6 +51,7 @@ internal class MediaSessionCallback(
   private val player: ExoPlayerAudioPlayer,
   private val component: AudioPlayerComponent,
   private val userComponent: AudioPlayerUserComponent,
+  private val onEnsureSessionActive: () -> Unit = {},
 ) : SuspendingMediaLibrarySessionCallback(serviceScope) {
 
   private val cycleSpeedCommand = SessionCommand(WidgetSessionCommand.CYCLE_SPEED, Bundle.EMPTY)
@@ -195,12 +196,18 @@ internal class MediaSessionCallback(
     // an exception escaping here would leave the freshly started foreground service without a
     // notification and Android would kill the process.
     try {
+      withContext(Dispatchers.Main) {
+        onEnsureSessionActive()
+      }
       userComponent.sessionsRepository.getCurrentSession()?.let { session ->
         userComponent.playbackSessionManager.startSession(
           libraryItemId = session.libraryItem.id,
           playImmediately = isForPlayback,
           episodeId = session.episodeId,
         )
+      }
+      withContext(Dispatchers.Main) {
+        onEnsureSessionActive()
       }
     } catch (e: CancellationException) {
       throw e
@@ -225,6 +232,7 @@ internal class MediaSessionCallback(
     }
 
     if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
+      onEnsureSessionActive()
       AudioPlayerDebugHooks.Holder.hooks.onMediaButtonEvent(controllerInfo.packageName, keyEvent.keyCode)
     }
 
@@ -261,6 +269,16 @@ internal class MediaSessionCallback(
             player.seekBackward()
           }
           return true
+        }
+        KeyEvent.KEYCODE_MEDIA_PLAY -> {
+          if (!isAuto && !player.isPlaying) {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
+              headsetHookClickCount = 0
+              headsetHookJob?.cancel()
+              handleHeadsetPlayPause()
+            }
+            return true
+          }
         }
         KeyEvent.KEYCODE_HEADSETHOOK,
         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
@@ -382,8 +400,10 @@ internal class MediaSessionCallback(
 
   private fun handleHeadsetPlayPause() {
     bark(LogPriority.INFO) { "MediaSessionCallback.handleHeadsetPlayPause: preparedSession=${player.preparedSession != null}" }
+    onEnsureSessionActive()
     if (player.preparedSession != null) {
       player.playPause()
+      onEnsureSessionActive()
     } else {
       serviceScope.launch {
         try {
@@ -393,6 +413,9 @@ internal class MediaSessionCallback(
               playImmediately = true,
               episodeId = session.episodeId,
             )
+            withContext(Dispatchers.Main) {
+              onEnsureSessionActive()
+            }
           }
         } catch (e: Exception) {
           bark(LogPriority.ERROR, throwable = e) { "Failed to resume playback on headset click" }

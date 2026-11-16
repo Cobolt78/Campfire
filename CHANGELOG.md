@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.50] - 2026-11-16
+
+### Fixed
+
+- **Background Bluetooth Playback Self-Healing & Foreground Service Promotion (`AudioHardening` / `OP_CONTROL_AUDIO` Fix)**:
+  - Fixed an issue on Android 16/17 (One UI 8) where starting or resuming playback via Bluetooth headphones while Campfire was in the background (`procState = 10`) caused audio to be muted/stopped after ~10 seconds (`mutedState: opControlAudio`) until the app UI was opened.
+  - Registered the `MediaLibrarySession` immediately in `AudioPlayerService.onCreate()` (`addSession`) and added automatic session/foreground self-healing (`ensureSessionAndForeground()`) across player state transitions and media button events so `MediaNotificationManager` always promotes `AudioPlayerService` to an active Foreground Service (`procState = 4`) within the Bluetooth media button allowlist window.
+  - Added synchronous handling for dedicated Bluetooth `KEYCODE_MEDIA_PLAY` (`126`) events when paused so headsets that emit separate Play/Pause AVRCP commands (such as Shokz OpenRun Pro 2) resume and promote the service immediately without altering any multi-press, skip, chapter, or bookmark controls.
+
 ## [1.2.49] - 2026-11-15
 
 ### Changed
