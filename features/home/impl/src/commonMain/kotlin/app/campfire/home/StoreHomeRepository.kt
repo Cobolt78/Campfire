@@ -10,6 +10,8 @@ import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.ShelfEntity
 import app.campfire.core.model.ShelfType
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.data.mapping.store.debugLogging
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
@@ -19,15 +21,19 @@ import app.campfire.home.progress.MediaProgressDataSource
 import app.campfire.home.store.home.HomeStore
 import app.campfire.home.store.shelf.ShelfStore
 import app.campfire.user.api.UserRepository
+import co.touchlab.stately.collections.ConcurrentMutableMap
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.time.Duration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.mobilenativefoundation.store.store5.StoreReadRequest
 import org.mobilenativefoundation.store.store5.StoreReadResponse
 import org.mobilenativefoundation.store.store5.StoreReadResponseOrigin
@@ -41,9 +47,17 @@ class StoreHomeRepository(
   private val mediaProgressDataSource: MediaProgressDataSource,
   private val homeStoreFactory: HomeStore.Factory,
   private val shelfStoreFactory: ShelfStore.Factory,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : HomeRepository {
 
-  private val homeStore by lazy { homeStoreFactory.create() }
+  private val lastFetchedAtMillis = ConcurrentMutableMap<HomeStore.Key, Long>()
+  private val refreshMutex = Mutex()
+
+  private val homeStore by lazy {
+    homeStoreFactory.create { key ->
+      lastFetchedAtMillis[key] = fatherTime.nowInEpochMillis()
+    }
+  }
   private val shelfStore by lazy { shelfStoreFactory.create() }
 
   @Suppress("UNCHECKED_CAST")
@@ -82,13 +96,35 @@ class StoreHomeRepository(
       }
   }
 
-  @OptIn(org.mobilenativefoundation.store.store5.ExperimentalStoreApi::class)
   override suspend fun refreshHomeFeed() {
-    val user = userRepository.getCurrentUser()
+    refreshMutex.withLock {
+      val user = userRepository.getCurrentUser()
+      refreshHomeFeedLocked(HomeStore.Key(user.id, user.selectedLibraryId))
+    }
+  }
+
+  override suspend fun refreshHomeFeedIfStale(maxAge: Duration) {
+    refreshMutex.withLock {
+      val user = userRepository.getCurrentUser()
+      val key = HomeStore.Key(user.id, user.selectedLibraryId)
+      val lastFetch = lastFetchedAtMillis[key]
+      val elapsed = if (lastFetch != null) {
+        fatherTime.nowInEpochMillis() - lastFetch
+      } else {
+        Long.MAX_VALUE
+      }
+      if (lastFetch == null || elapsed >= maxAge.inWholeMilliseconds) {
+        refreshHomeFeedLocked(key)
+      }
+    }
+  }
+
+  @OptIn(org.mobilenativefoundation.store.store5.ExperimentalStoreApi::class)
+  private suspend fun refreshHomeFeedLocked(key: HomeStore.Key) {
     try {
       homeStore.clear()
       shelfStore.clear()
-      homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
+      homeStore.fresh(key)
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {

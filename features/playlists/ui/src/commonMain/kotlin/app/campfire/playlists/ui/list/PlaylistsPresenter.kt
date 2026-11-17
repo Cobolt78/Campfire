@@ -14,9 +14,14 @@ import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.Playlist
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.playlists.api.PlaylistsRepository
 import app.campfire.playlists.api.screen.PlaylistDetailScreen
 import app.campfire.playlists.api.screen.PlaylistsScreen
@@ -36,12 +41,22 @@ class PlaylistsPresenter(
   private val playlistsRepository: PlaylistsRepository,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<PlaylistsUiState> {
 
   @Composable
   override fun present(): PlaylistsUiState {
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      isExternalRefreshInProgress = isRefreshing,
+    ) {
+      playlistsRepository.refreshPlaylists()
+    }
 
     val playlistContentState by remember {
       playlistsRepository.observeAllPlaylists()

@@ -21,6 +21,7 @@ import app.campfire.audioplayer.battery.NoOpBatteryOptimization
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.bookinfo.api.BookInfoRegistry
 import app.campfire.bookinfo.api.UpcomingRelease
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.screens.AuthorDetailScreen
 import app.campfire.common.screens.AuthorsScreen
 import app.campfire.common.screens.ContinueSeriesScreen
@@ -32,6 +33,8 @@ import app.campfire.common.screens.UrlScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.filter.ContentFilter
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.Author
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.Series
@@ -39,6 +42,8 @@ import app.campfire.core.model.ShelfEntity
 import app.campfire.core.model.ShelfType
 import app.campfire.core.settings.ContentSortMode
 import app.campfire.core.settings.SortDirection
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.discover.api.screen.UpcomingScreen
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
@@ -54,6 +59,7 @@ import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
+import kotlin.time.Duration
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
@@ -85,6 +91,8 @@ class HomePresenter(
   private val analytics: Analytics,
   private val appUpdateSource: AppUpdateSource,
   private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<HomeUiState> {
 
   @Suppress("UNCHECKED_CAST")
@@ -95,6 +103,16 @@ class HomePresenter(
     var isRefreshing by remember { mutableStateOf(false) }
     var isRefreshingDiscoveries by remember { mutableStateOf(false) }
     var isBatteryWarningDismissed by remember { mutableStateOf(false) }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      // Staleness is tracked per (user, library) in HomeRepository so socket refreshes
+      // and manual refreshes share the same 5-minute SWR window.
+      staleOutDuration = Duration.ZERO,
+    ) {
+      homeRepository.refreshHomeFeedIfStale()
+    }
 
     val showBatteryWarning = if (batteryOptimization.isSupported && !isBatteryWarningDismissed) {
       val isIgnoring by remember(batteryOptimization) {

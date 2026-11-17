@@ -11,8 +11,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.User
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.podcasts.api.PodcastsRepository
 import app.campfire.podcasts.api.RemoteEpisodeDownload
@@ -33,6 +38,8 @@ class PodcastDownloadQueuePresenter(
   private val userRepository: UserRepository,
   private val podcastsRepository: PodcastsRepository,
   private val tracker: RemoteEpisodeDownloadTracker,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<PodcastDownloadQueueUiState> {
 
   @Composable
@@ -47,6 +54,15 @@ class PodcastDownloadQueuePresenter(
       isRefreshing = true
       podcastsRepository.fetchEpisodeDownloads(currentUser.selectedLibraryId)
       isRefreshing = false
+    }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      currentUser.selectedLibraryId,
+      isExternalRefreshInProgress = isRefreshing,
+    ) {
+      podcastsRepository.fetchEpisodeDownloads(currentUser.selectedLibraryId)
     }
 
     val groups = remember(downloads) {

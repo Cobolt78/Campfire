@@ -536,10 +536,10 @@ index c0278c85..910b045e 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..9b6a7a3a
+index 00000000..a5703d7e
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2678 @@
+@@ -0,0 +1,2731 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -635,6 +635,7 @@ index 00000000..9b6a7a3a
 +86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 +87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 +88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
++89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh)
 +
 +---
 +
@@ -3218,6 +3219,58 @@ index 00000000..9b6a7a3a
 +* gradle.properties
 +* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
++
++
++---
++
++## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh
++
++### Problem
++When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
++1. Returning to the foreground never re-triggered `observeHomeFeed()`'s `refresh = true` stream or Paging 3 `RemoteMediator.initialize()` (`LAUNCH_INITIAL_REFRESH`), leaving shelves such as **Recently Added** stale until manually pulled down.
++2. `DefaultSocketManager` intentionally closes the WebSocket while backgrounded (`AppLifecycleState.Background`), so library updates made on the Audiobookshelf server while listening in the background were missed.
++3. Even when the WebSocket was open in the foreground, `features/home` did not subscribe to `SocketEventListener` events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`), unlike `features/libraries`.
++
++### Solution & Implementation
++1. **Home 5-Minute Stale-While-Revalidate (`HomeRepository.kt`, `StoreHomeRepository.kt`, `HomeFetcherFactory.kt`, `HomeStore.kt`)**:
++   - Recorded per-`(userId, libraryId)` successful fetch timestamps inside `HomeFetcherFactory` / `StoreHomeRepository`.
++   - Added `HomeRepository.refreshHomeFeedIfStale(maxAge = 5.minutes)` guarded by a `Mutex` so concurrent resume/socket calls coalesce and only hit the server if `>= 5 minutes` have elapsed since the last successful fetch (or if the previous attempt failed), leaving cached shelves rendered seamlessly in the meantime.
++2. **Debounced Home Socket Hook (`HomeCacheInvalidationListener.kt`, `features/home/impl/build.gradle.kts`)**:
++   - Contributed `HomeCacheInvalidationListener` (`SocketEventListener` in `UserScope`) for `ItemAdded`, `ItemsAdded`, and `ItemRemoved` matching the active user's `selectedLibraryId`.
++   - Debounces bursts of server scan events by `1500ms` on the `UserScope` coroutine scope before invoking `homeRepository.refreshHomeFeed()`.
++3. **Process-Wide Foreground Resume & Active Menu Stale-Out Refresh (`ForegroundResumeTracker.kt`, `DefaultForegroundResumeTracker.kt`, `RefreshOnForegroundStaleOut.kt`)**:
++   - Added `ForegroundResumeTracker` / `DefaultForegroundResumeTracker` (`AppScope` singleton + `AppInitializer`) incrementing `resumeEpoch` on every `Background -> Foreground` transition.
++   - Added shared `RefreshOnForegroundStaleOut` composable in `:common:compose` using `rememberRetained` so active menus — and menus returned to from child detail screens — silently refresh once `>= 5 minutes` stale without wasting mobile data or battery on quick app switches or background-only audio launches.
++   - Wired active menus: `HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `LatestEpisodesPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, `ContinueSeriesPresenter`, `PodcastDownloadQueuePresenter`, `StatsPresenter`, and `UpcomingPresenter`.
++
++### Modified Files:
++* core/src/commonMain/kotlin/app/campfire/core/lifecycle/ForegroundResumeTracker.kt
++* app/common/src/commonMain/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTracker.kt
++* app/common/src/commonTest/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTrackerTest.kt
++* common/compose/src/commonMain/kotlin/app/campfire/common/compose/lifecycle/RefreshOnForegroundStaleOut.kt
++* features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt
++* features/home/impl/build.gradle.kts
++* features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
++* features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt
++* features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt
++* features/home/impl/src/commonMain/kotlin/app/campfire/home/socket/HomeCacheInvalidationListener.kt
++* features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt
++* features/home/impl/src/commonTest/kotlin/app/campfire/home/socket/HomeCacheInvalidationListenerTest.kt
++* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
++* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt
++* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
++* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt
++* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
++* features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt
++* features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt
++* features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt
++* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt
++* features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt
++* features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
++* features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
++* features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
++* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -4095,6 +4148,72 @@ index ba73d732..fcfa0fb0 100644
    }
  
    internal companion object {
+diff --git a/app/common/src/commonMain/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTracker.kt b/app/common/src/commonMain/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTracker.kt
+new file mode 100644
+index 00000000..d28dc505
+--- /dev/null
++++ b/app/common/src/commonMain/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTracker.kt
+@@ -0,0 +1,60 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.lifecycle
++
++import app.campfire.core.app.AppInitializer
++import app.campfire.core.di.AppScope
++import app.campfire.core.di.qualifier.ForScope
++import app.campfire.core.lifecycle.AppLifecycleObserver
++import app.campfire.core.lifecycle.AppLifecycleState
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import dev.zacsweers.metro.ContributesBinding
++import dev.zacsweers.metro.ContributesIntoSet
++import dev.zacsweers.metro.Inject
++import dev.zacsweers.metro.SingleIn
++import kotlin.concurrent.Volatile
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.launch
++
++@SingleIn(AppScope::class)
++@ContributesBinding(AppScope::class)
++@Inject
++class DefaultForegroundResumeTracker(
++  private val appLifecycleObserver: AppLifecycleObserver,
++  @ForScope(AppScope::class) private val scope: CoroutineScope,
++) : ForegroundResumeTracker {
++
++  private val _resumeEpoch = MutableStateFlow(0L)
++  override val resumeEpoch: StateFlow<Long> = _resumeEpoch.asStateFlow()
++
++  @Volatile
++  private var started = false
++
++  fun start() {
++    if (started) return
++    started = true
++    scope.launch {
++      var previousState = appLifecycleObserver.state.value
++      appLifecycleObserver.state.collect { currentState ->
++        if (previousState == AppLifecycleState.Background && currentState == AppLifecycleState.Foreground) {
++          _resumeEpoch.value++
++        }
++        previousState = currentState
++      }
++    }
++  }
++
++  @ContributesIntoSet(AppScope::class)
++  @Inject
++  class Initializer(
++    private val tracker: DefaultForegroundResumeTracker,
++  ) : AppInitializer {
++    override suspend fun onInitialize() {
++      tracker.start()
++    }
++  }
++}
 diff --git a/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt b/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt
 index 7b8dac4a..ecc96c47 100644
 --- a/app/common/src/commonMain/kotlin/app/campfire/common/root/automation/AutomationDeepLinks.kt
@@ -4209,6 +4328,79 @@ index 2becf9ee..bc8277d9 100644
      }
    }
  
+diff --git a/app/common/src/commonTest/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTrackerTest.kt b/app/common/src/commonTest/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTrackerTest.kt
+new file mode 100644
+index 00000000..d5622ffe
+--- /dev/null
++++ b/app/common/src/commonTest/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTrackerTest.kt
+@@ -0,0 +1,67 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.lifecycle
++
++import app.campfire.core.lifecycle.AppLifecycleObserver
++import app.campfire.core.lifecycle.AppLifecycleState
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import kotlin.test.Test
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.test.UnconfinedTestDispatcher
++import kotlinx.coroutines.test.runTest
++
++@OptIn(ExperimentalCoroutinesApi::class)
++class DefaultForegroundResumeTrackerTest {
++
++  private class FakeAppLifecycleObserver(
++    initial: AppLifecycleState,
++  ) : AppLifecycleObserver {
++    val flow = MutableStateFlow(initial)
++    override val state: StateFlow<AppLifecycleState> = flow
++  }
++
++  @Test
++  fun `increments resumeEpoch only on Background to Foreground transitions`() = runTest(UnconfinedTestDispatcher()) {
++    val lifecycleObserver = FakeAppLifecycleObserver(AppLifecycleState.Foreground)
++    val tracker = DefaultForegroundResumeTracker(
++      appLifecycleObserver = lifecycleObserver,
++      scope = backgroundScope,
++    )
++    tracker.start()
++
++    assertThat(tracker.resumeEpoch.value).isEqualTo(0L)
++
++    // Transition to Background should not increment
++    lifecycleObserver.flow.value = AppLifecycleState.Background
++    assertThat(tracker.resumeEpoch.value).isEqualTo(0L)
++
++    // Returning to Foreground increments
++    lifecycleObserver.flow.value = AppLifecycleState.Foreground
++    assertThat(tracker.resumeEpoch.value).isEqualTo(1L)
++
++    // Another Background -> Foreground cycle increments again
++    lifecycleObserver.flow.value = AppLifecycleState.Background
++    lifecycleObserver.flow.value = AppLifecycleState.Foreground
++    assertThat(tracker.resumeEpoch.value).isEqualTo(2L)
++  }
++
++  @Test
++  fun `start is idempotent and handles initial Background state`() = runTest(UnconfinedTestDispatcher()) {
++    val lifecycleObserver = FakeAppLifecycleObserver(AppLifecycleState.Background)
++    val tracker = DefaultForegroundResumeTracker(
++      appLifecycleObserver = lifecycleObserver,
++      scope = backgroundScope,
++    )
++    tracker.start()
++    tracker.start()
++
++    assertThat(tracker.resumeEpoch.value).isEqualTo(0L)
++
++    lifecycleObserver.flow.value = AppLifecycleState.Foreground
++    assertThat(tracker.resumeEpoch.value).isEqualTo(1L)
++  }
++}
 diff --git a/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt b/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt
 index 71757dbb..548cfbe4 100644
 --- a/app/desktop/src/main/kotlin/app/campfire/config/FileSystemPreferences.kt
@@ -4666,6 +4858,78 @@ index 00000000..ce3a2960
 +      close()
 +    }
 +  }.build()
++}
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/lifecycle/RefreshOnForegroundStaleOut.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/lifecycle/RefreshOnForegroundStaleOut.kt
+new file mode 100644
+index 00000000..dfd41235
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/lifecycle/RefreshOnForegroundStaleOut.kt
+@@ -0,0 +1,66 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.lifecycle
++
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.collectAsState
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableLongStateOf
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import com.slack.circuit.retained.rememberRetained
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.minutes
++
++val DefaultForegroundStaleOutDuration: Duration = 5.minutes
++
++/**
++ * Triggers [onRefresh] when the app returns to the foreground (or when this retained screen returns
++ * to the top of the back stack after a foreground resume) and at least [staleOutDuration] has
++ * elapsed since the last refresh/load for [keys].
++ *
++ * Callers with an explicit refresh indicator or paging refresh state can pass
++ * [isExternalRefreshInProgress] so completing a manual refresh resets the staleness clock.
++ */
++@Composable
++fun RefreshOnForegroundStaleOut(
++  foregroundResumeTracker: ForegroundResumeTracker,
++  fatherTime: FatherTime,
++  vararg keys: Any?,
++  staleOutDuration: Duration = DefaultForegroundStaleOutDuration,
++  isExternalRefreshInProgress: Boolean = false,
++  onRefresh: suspend () -> Unit,
++) {
++  val resumeEpoch by foregroundResumeTracker.resumeEpoch.collectAsState()
++
++  var handledResumeEpoch by rememberRetained(*keys) {
++    mutableLongStateOf(resumeEpoch)
++  }
++  var lastRefreshedAtMillis by rememberRetained(*keys) {
++    mutableLongStateOf(fatherTime.nowInEpochMillis())
++  }
++  var wasRefreshing by remember { mutableStateOf(false) }
++
++  LaunchedEffect(isExternalRefreshInProgress) {
++    if (wasRefreshing && !isExternalRefreshInProgress) {
++      lastRefreshedAtMillis = fatherTime.nowInEpochMillis()
++    }
++    wasRefreshing = isExternalRefreshInProgress
++  }
++
++  LaunchedEffect(resumeEpoch, *keys) {
++    if (resumeEpoch > handledResumeEpoch) {
++      handledResumeEpoch = resumeEpoch
++      val now = fatherTime.nowInEpochMillis()
++      if (now - lastRefreshedAtMillis >= staleOutDuration.inWholeMilliseconds) {
++        lastRefreshedAtMillis = now
++        onRefresh()
++      }
++    }
++  }
 +}
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
 new file mode 100644
@@ -5299,6 +5563,32 @@ index d133560f..3f19448e 100644
 +    return "$cleanedBase${separator}raw=1$fragment"
 +  }
  }
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/lifecycle/ForegroundResumeTracker.kt b/core/src/commonMain/kotlin/app/campfire/core/lifecycle/ForegroundResumeTracker.kt
+new file mode 100644
+index 00000000..e99b5b3f
+--- /dev/null
++++ b/core/src/commonMain/kotlin/app/campfire/core/lifecycle/ForegroundResumeTracker.kt
+@@ -0,0 +1,20 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.core.lifecycle
++
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++
++/**
++ * Tracks transitions back into [AppLifecycleState.Foreground] across the app process so
++ * retained UI presenters can detect when the app resumed while they were active or while
++ * sitting in a back stack behind a detail screen.
++ */
++interface ForegroundResumeTracker {
++  val resumeEpoch: StateFlow<Long>
++}
++
++object NoOpForegroundResumeTracker : ForegroundResumeTracker {
++  override val resumeEpoch: StateFlow<Long> = MutableStateFlow(0L)
++}
 diff --git a/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt b/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt
 index e883ca00..6ed5f95d 100644
 --- a/core/src/commonMain/kotlin/app/campfire/core/model/MediaProgress.kt
@@ -7430,6 +7720,181 @@ index 890fc746..47e37726 100644
    }
  
    override suspend fun load(
+diff --git a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt
+index ce284063..f7bdd953 100644
+--- a/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt
++++ b/features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt
+@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.remember
++import androidx.paging.LoadState
+ import androidx.paging.cachedIn
+ import androidx.paging.compose.collectAsLazyPagingItems
+ import app.campfire.analytics.Analytics
+@@ -14,10 +15,15 @@ import app.campfire.analytics.events.ActionEvent
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
+ import app.campfire.author.api.AuthorRepository
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.compose.util.rememberRetainedCoroutineScope
+ import app.campfire.common.screens.AuthorDetailScreen
+ import app.campfire.common.screens.AuthorsScreen
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.settings.api.LibraryViewSettings
+ import app.campfire.user.api.UserRepository
+ import com.slack.circuit.codegen.annotations.CircuitInject
+@@ -38,6 +44,8 @@ class AuthorsPresenter(
+   private val authorRepository: AuthorRepository,
+   private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<AuthorsUiState> {
+ 
+   @OptIn(ExperimentalCoroutinesApi::class)
+@@ -71,6 +79,18 @@ class AuthorsPresenter(
+       ).flow.cachedIn(scope)
+     }.collectAsLazyPagingItems()
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      currentUser.id,
++      currentUser.selectedLibraryId,
++      sortMode,
++      sortDirection,
++      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
++    ) {
++      lazyPagingItems.refresh()
++    }
++
+     val authorCount by remember(sortMode, sortDirection) {
+       authorRepository.observeFilteredAuthorsCount(
+         sortMode = sortMode,
+diff --git a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt
+index 5ea27ce1..41308eaa 100644
+--- a/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt
++++ b/features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt
+@@ -15,11 +15,16 @@ import app.campfire.analytics.events.ActionEvent
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
+ import app.campfire.collections.api.CollectionsRepository
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.screens.CollectionDetailScreen
+ import app.campfire.common.screens.CollectionsScreen
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.Collection
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.settings.api.LibraryViewSettings
+ import com.slack.circuit.codegen.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+@@ -36,6 +41,8 @@ class CollectionsPresenter(
+   private val repository: CollectionsRepository,
+   private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<CollectionsUiState> {
+ 
+   @Suppress("UNCHECKED_CAST")
+@@ -44,6 +51,14 @@ class CollectionsPresenter(
+     val scope = rememberCoroutineScope()
+     var isRefreshing by remember { mutableStateOf(false) }
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      isExternalRefreshInProgress = isRefreshing,
++    ) {
++      repository.refreshCollections()
++    }
++
+     val collectionContentState by remember {
+       repository.observeAllCollections()
+         .map { LoadState.Loaded(it) as LoadState<List<Collection>> }
+diff --git a/features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt b/features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt
+index e8536af3..5925b07e 100644
+--- a/features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt
++++ b/features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt
+@@ -5,6 +5,9 @@ package app.campfire.collections.ui.list
+ 
+ import app.campfire.analytics.test.FakeAnalytics
+ import app.campfire.common.screens.CollectionsScreen
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.settings.test.TestLibraryViewSettings
+ import assertk.assertThat
+ import assertk.assertions.isEqualTo
+@@ -13,7 +16,10 @@ import assertk.assertions.isTrue
+ import com.slack.circuit.test.FakeNavigator
+ import com.slack.circuit.test.test
+ import kotlin.test.Test
++import kotlin.time.Duration.Companion.minutes
+ import kotlinx.coroutines.CompletableDeferred
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.coroutines.test.runTest
+ 
+ class CollectionsPresenterTest {
+@@ -45,4 +51,48 @@ class CollectionsPresenterTest {
+       assertThat(repository.refreshCount).isEqualTo(1)
+     }
+   }
++
++  @Test
++  fun foregroundResume_refreshesOnlyAfterStaleOutWindow() = runTest {
++    val repository = FakeCollectionsRepository()
++    val resumeEpochFlow = MutableStateFlow(0L)
++    val resumeTracker = object : ForegroundResumeTracker {
++      override val resumeEpoch: StateFlow<Long> = resumeEpochFlow
++    }
++    var nowMillis = 1_000_000L
++    val fakeTime = object : FatherTime {
++      override fun now() = GrandFatherTime.now()
++      override fun today() = GrandFatherTime.today()
++      override fun nowInEpochMillis(): Long = nowMillis
++    }
++
++    val presenter = CollectionsPresenter(
++      navigator = FakeNavigator(CollectionsScreen),
++      repository = repository,
++      libraryViewSettings = TestLibraryViewSettings(),
++      analytics = FakeAnalytics(),
++      foregroundResumeTracker = resumeTracker,
++      fatherTime = fakeTime,
++    )
++
++    presenter.test {
++      val initial = awaitItem()
++      assertThat(initial.isRefreshing).isFalse()
++      assertThat(repository.refreshCount).isEqualTo(0)
++
++      // Resuming after 4 minutes skips refresh
++      nowMillis += 4.minutes.inWholeMilliseconds
++      resumeEpochFlow.value = 1L
++      testScheduler.advanceUntilIdle()
++      assertThat(repository.refreshCount).isEqualTo(0)
++
++      // Resuming after >= 5 minutes triggers silent SWR refresh
++      nowMillis += 1.minutes.inWholeMilliseconds
++      resumeEpochFlow.value = 2L
++      testScheduler.advanceUntilIdle()
++      assertThat(repository.refreshCount).isEqualTo(1)
++
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
+ }
 diff --git a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt b/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
 index 385366ff..fade3c78 100644
 --- a/features/discover/api/src/commonMain/kotlin/app/campfire/discover/api/DiscoverScanTracker.kt
@@ -7929,6 +8394,56 @@ index 90ca4ff3..a55ae462 100644
 +  <string name="discover_scan_server_synced">Synced from server</string>
 +  <string name="discover_scan_device_local">Scanned on device</string>
  </resources>
+diff --git a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt b/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
+index 366a0fa1..f8815942 100644
+--- a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
++++ b/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
+@@ -9,14 +9,20 @@ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.remember
+ import app.campfire.bookinfo.api.BookInfoRegistry
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.screens.UrlScreen
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.discover.api.DiscoverScanTracker
+ import app.campfire.discover.api.screen.UpcomingScreen
+ import com.slack.circuit.codegen.annotations.CircuitInject
+ import com.slack.circuit.foundation.NonPausablePresenter
+ import com.slack.circuit.runtime.Navigator
+ import dev.zacsweers.metro.Inject
++import kotlin.time.Duration
+ import kotlinx.collections.immutable.persistentListOf
+ import kotlinx.collections.immutable.toImmutableList
+ import kotlinx.coroutines.flow.map
+@@ -27,6 +33,8 @@ class UpcomingPresenter(
+   private val navigator: Navigator,
+   private val tracker: DiscoverScanTracker,
+   private val bookInfoRegistry: BookInfoRegistry,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<UpcomingUiState> {
+ 
+   @Composable
+@@ -47,6 +55,15 @@ class UpcomingPresenter(
+       tracker.startScanIfStale()
+     }
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      // DiscoverScanTracker manages its own freshness policy cleanly.
++      staleOutDuration = Duration.ZERO,
++    ) {
++      tracker.startScanIfStale()
++    }
++
+     return UpcomingUiState(
+       scanState = scanState,
+       upcoming = upcoming,
 diff --git a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt b/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt
 index 06d72e19..3d624d3f 100644
 --- a/features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingUi.kt
@@ -8164,33 +8679,230 @@ index b77e5e64..09b88322 100644
 +    ContentSortMode.MissingBooks -> stringResource(Res.string.sort_mode_missing_books)
 +    ContentSortMode.UpcomingDate -> stringResource(Res.string.sort_mode_upcoming_date)
    }
+diff --git a/features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt b/features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt
+index 288d171a..512e3bda 100644
+--- a/features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt
++++ b/features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt
+@@ -9,6 +9,8 @@ import app.campfire.core.model.ShelfEntity
+ import app.campfire.core.model.ShelfType
+ import app.campfire.home.api.model.Shelf
+ import app.campfire.home.api.model.ShelfId
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.minutes
+ import kotlinx.coroutines.flow.Flow
+ 
+ interface HomeRepository {
+@@ -24,6 +26,12 @@ interface HomeRepository {
+    */
+   suspend fun refreshHomeFeed()
+ 
++  /**
++   * Re-fetch the current user's home feed from the server only if at least [maxAge] has elapsed
++   * since the last successful fetch (or if no successful fetch has been recorded yet).
++   */
++  suspend fun refreshHomeFeedIfStale(maxAge: Duration = DefaultStaleOutDuration)
++
+   /**
+    * Observe the [MediaProgress] for each libraryItemId passed to the function
+    */
+@@ -33,4 +41,8 @@ interface HomeRepository {
+    * Observe the contents of a single [Shelf] by its id.
+    */
+   fun observeShelf(shelfId: ShelfId, shelfType: ShelfType): Flow<List<ShelfEntity>>
++
++  companion object {
++    val DefaultStaleOutDuration: Duration = 5.minutes
++  }
+ }
+diff --git a/features/home/impl/build.gradle.kts b/features/home/impl/build.gradle.kts
+index 05c060ca..ef75d61d 100644
+--- a/features/home/impl/build.gradle.kts
++++ b/features/home/impl/build.gradle.kts
+@@ -19,6 +19,7 @@ kotlin {
+         implementation(projects.data.network.api)
+         implementation(projects.data.account.api)
+         implementation(projects.features.user.api)
++        implementation(projects.infra.socket.api)
+ 
+         implementation(libs.store)
+ 
 diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
-index 9360b9c6..e2a38515 100644
+index 9360b9c6..c246f865 100644
 --- a/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
 +++ b/features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
-@@ -82,9 +82,12 @@ class StoreHomeRepository(
-       }
+@@ -10,6 +10,8 @@ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.MediaProgress
+ import app.campfire.core.model.ShelfEntity
+ import app.campfire.core.model.ShelfType
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.data.mapping.store.debugLogging
+ import app.campfire.home.api.FeedResponse
+ import app.campfire.home.api.HomeRepository
+@@ -19,15 +21,19 @@ import app.campfire.home.progress.MediaProgressDataSource
+ import app.campfire.home.store.home.HomeStore
+ import app.campfire.home.store.shelf.ShelfStore
+ import app.campfire.user.api.UserRepository
++import co.touchlab.stately.collections.ConcurrentMutableMap
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+ import dev.zacsweers.metro.SingleIn
++import kotlin.time.Duration
+ import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.flow.Flow
+ import kotlinx.coroutines.flow.filterNot
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.mapNotNull
++import kotlinx.coroutines.sync.Mutex
++import kotlinx.coroutines.sync.withLock
+ import org.mobilenativefoundation.store.store5.StoreReadRequest
+ import org.mobilenativefoundation.store.store5.StoreReadResponse
+ import org.mobilenativefoundation.store.store5.StoreReadResponseOrigin
+@@ -41,9 +47,17 @@ class StoreHomeRepository(
+   private val mediaProgressDataSource: MediaProgressDataSource,
+   private val homeStoreFactory: HomeStore.Factory,
+   private val shelfStoreFactory: ShelfStore.Factory,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : HomeRepository {
+ 
+-  private val homeStore by lazy { homeStoreFactory.create() }
++  private val lastFetchedAtMillis = ConcurrentMutableMap<HomeStore.Key, Long>()
++  private val refreshMutex = Mutex()
++
++  private val homeStore by lazy {
++    homeStoreFactory.create { key ->
++      lastFetchedAtMillis[key] = fatherTime.nowInEpochMillis()
++    }
++  }
+   private val shelfStore by lazy { shelfStoreFactory.create() }
+ 
+   @Suppress("UNCHECKED_CAST")
+@@ -83,9 +97,34 @@ class StoreHomeRepository(
    }
  
-+  @OptIn(org.mobilenativefoundation.store.store5.ExperimentalStoreApi::class)
    override suspend fun refreshHomeFeed() {
-     val user = userRepository.getCurrentUser()
+-    val user = userRepository.getCurrentUser()
++    refreshMutex.withLock {
++      val user = userRepository.getCurrentUser()
++      refreshHomeFeedLocked(HomeStore.Key(user.id, user.selectedLibraryId))
++    }
++  }
++
++  override suspend fun refreshHomeFeedIfStale(maxAge: Duration) {
++    refreshMutex.withLock {
++      val user = userRepository.getCurrentUser()
++      val key = HomeStore.Key(user.id, user.selectedLibraryId)
++      val lastFetch = lastFetchedAtMillis[key]
++      val elapsed = if (lastFetch != null) {
++        fatherTime.nowInEpochMillis() - lastFetch
++      } else {
++        Long.MAX_VALUE
++      }
++      if (lastFetch == null || elapsed >= maxAge.inWholeMilliseconds) {
++        refreshHomeFeedLocked(key)
++      }
++    }
++  }
++
++  @OptIn(org.mobilenativefoundation.store.store5.ExperimentalStoreApi::class)
++  private suspend fun refreshHomeFeedLocked(key: HomeStore.Key) {
      try {
+-      homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
 +      homeStore.clear()
 +      shelfStore.clear()
-       homeStore.fresh(HomeStore.Key(user.id, user.selectedLibraryId))
++      homeStore.fresh(key)
      } catch (e: CancellationException) {
        throw e
+     } catch (e: Exception) {
+diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/socket/HomeCacheInvalidationListener.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/socket/HomeCacheInvalidationListener.kt
+new file mode 100644
+index 00000000..ef07858d
+--- /dev/null
++++ b/features/home/impl/src/commonMain/kotlin/app/campfire/home/socket/HomeCacheInvalidationListener.kt
+@@ -0,0 +1,65 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.home.socket
++
++import app.campfire.core.coroutines.CoroutineScopeHolder
++import app.campfire.core.di.UserScope
++import app.campfire.core.di.qualifier.ForScope
++import app.campfire.home.api.HomeRepository
++import app.campfire.socket.events.ItemAdded
++import app.campfire.socket.events.ItemRemoved
++import app.campfire.socket.events.ItemsAdded
++import app.campfire.socket.events.SocketEvent
++import app.campfire.socket.events.SocketEventListener
++import app.campfire.user.api.UserRepository
++import dev.zacsweers.metro.ContributesIntoSet
++import dev.zacsweers.metro.Inject
++import dev.zacsweers.metro.binding
++import kotlin.concurrent.Volatile
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.milliseconds
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.launch
++
++/**
++ * Listens for library-item addition/removal socket events and schedules a debounced refresh of the
++ * home feed so shelves like "Recently Added" update live while avoiding request storms during bulk
++ * server library scans.
++ */
++@ContributesIntoSet(UserScope::class, binding = binding<SocketEventListener>())
++@Inject
++class HomeCacheInvalidationListener(
++  private val homeRepository: HomeRepository,
++  private val userRepository: UserRepository,
++  @ForScope(UserScope::class) private val coroutineScopeHolder: CoroutineScopeHolder,
++) : SocketEventListener {
++
++  internal var debounceDuration: Duration = DEFAULT_DEBOUNCE_DURATION
++
++  @Volatile
++  private var pendingRefreshJob: Job? = null
++
++  override suspend fun handle(event: SocketEvent) {
++    val selectedLibraryId = runCatching { userRepository.getCurrentUser().selectedLibraryId }.getOrNull()
++    val shouldRefresh = when (event) {
++      is ItemAdded -> selectedLibraryId == null || event.item.libraryId == selectedLibraryId
++      is ItemsAdded -> event.items.isNotEmpty() &&
++        (selectedLibraryId == null || event.items.any { it.libraryId == selectedLibraryId })
++      is ItemRemoved -> selectedLibraryId == null || event.payload.libraryId == selectedLibraryId
++      else -> false
++    }
++    if (!shouldRefresh) return
++
++    pendingRefreshJob?.cancel()
++    pendingRefreshJob = coroutineScopeHolder.get().launch {
++      delay(debounceDuration)
++      homeRepository.refreshHomeFeed()
++    }
++  }
++
++  companion object {
++    val DEFAULT_DEBOUNCE_DURATION: Duration = 1500.milliseconds
++  }
++}
 diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt
-index c381c853..8e30923e 100644
+index c381c853..dcda04aa 100644
 --- a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt
 +++ b/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt
-@@ -14,7 +14,7 @@ class HomeFetcherFactory(
+@@ -10,11 +10,14 @@ import org.mobilenativefoundation.store.store5.Fetcher
+ 
+ class HomeFetcherFactory(
+   private val api: AudioBookShelfApi,
++  private val onFetchSuccess: (HomeStore.Key) -> Unit = {},
+ ) {
  
    fun create(): Fetcher<HomeStore.Key, List<Shelf>> {
      return Fetcher.ofResult { key ->
 -      api.getPersonalizedHome(key.libraryId).asFetcherResult()
-+      api.getPersonalizedHome(key.libraryId, bustCache = true).asFetcherResult()
++      api.getPersonalizedHome(key.libraryId, bustCache = true)
++        .onSuccess { onFetchSuccess(key) }
++        .asFetcherResult()
      }
    }
  }
@@ -8258,6 +8970,41 @@ index 7df24c13..76d6db78 100644
      }
    }
  
+diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt
+index f1c54a1d..cbd4d11e 100644
+--- a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt
++++ b/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt
+@@ -23,20 +23,21 @@ object HomeStore : Cork {
+ 
+   @Inject
+   class Factory(
+-    api: AudioBookShelfApi,
++    private val api: AudioBookShelfApi,
+     private val db: CampfireDatabase,
+     private val imageHydrator: UrlHydrator,
+     private val dispatcherProvider: DispatcherProvider,
+   ) {
+ 
+-    private val fetcherFactory = HomeFetcherFactory(api)
+-    private val sourceOfTruthFactory = HomeSourceOfTruthFactory(
+-      db = db,
+-      imageHydrator = imageHydrator,
+-      dispatcherProvider = dispatcherProvider,
+-    )
+-
+-    fun create(): Store<Key, List<Shelf>> {
++    fun create(
++      onFetchSuccess: (Key) -> Unit = {},
++    ): Store<Key, List<Shelf>> {
++      val fetcherFactory = HomeFetcherFactory(api, onFetchSuccess)
++      val sourceOfTruthFactory = HomeSourceOfTruthFactory(
++        db = db,
++        imageHydrator = imageHydrator,
++        dispatcherProvider = dispatcherProvider,
++      )
+       return StoreBuilder
+         .from(
+           fetcher = fetcherFactory.create(),
 diff --git a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/shelf/ShelfStore.kt b/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/shelf/ShelfStore.kt
 index dccb2613..34459746 100644
 --- a/features/home/impl/src/commonMain/kotlin/app/campfire/home/store/shelf/ShelfStore.kt
@@ -8285,6 +9032,246 @@ index dccb2613..34459746 100644
          .build()
      }
    }
+diff --git a/features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt b/features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt
+index ce235eb6..67351fd3 100644
+--- a/features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt
++++ b/features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt
+@@ -9,6 +9,8 @@ import app.campfire.common.test.coroutines.asTestDispatcherProvider
+ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.MediaProgress
+ import app.campfire.core.session.UserSession
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.data.mapping.dao.SqlDelightLibraryItemDao
+ import app.campfire.db.DatabaseFactory
+ import app.campfire.db.test.createDriver
+@@ -26,7 +28,9 @@ import app.cash.turbine.ReceiveTurbine
+ import app.cash.turbine.test
+ import assertk.assertThat
+ import assertk.assertions.containsExactly
++import assertk.assertions.isEqualTo
+ import kotlin.test.Test
++import kotlin.time.Duration.Companion.minutes
+ import kotlinx.coroutines.flow.Flow
+ import kotlinx.coroutines.flow.emptyFlow
+ import kotlinx.coroutines.test.TestScope
+@@ -85,7 +89,57 @@ class StoreHomeRepositoryTest {
+     assertThat(db.shelfLabels()).containsExactly("Newest Authors")
+   }
+ 
+-  private fun TestScope.repository(db: CampfireDatabase): StoreHomeRepository {
++  @Test
++  fun `refreshHomeFeedIfStale skips fresh feed within window and refreshes after stale-out`() = homeTest { db ->
++    var nowMillis = 1_000_000L
++    val fakeTime = object : FatherTime {
++      override fun now() = GrandFatherTime.now()
++      override fun today() = GrandFatherTime.today()
++      override fun nowInEpochMillis(): Long = nowMillis
++    }
++    val repository = repository(db, fakeTime)
++    api.personalizedHomeResult = { Result.success(listOf(shelf("authors", "Newest Authors"))) }
++
++    // Initial check with no prior fetch triggers network
++    repository.refreshHomeFeedIfStale(5.minutes)
++    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
++
++    // 4 minutes later: still fresh, skips network
++    nowMillis += 4.minutes.inWholeMilliseconds
++    repository.refreshHomeFeedIfStale(5.minutes)
++    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
++
++    // 5 minutes total elapsed: stale, refreshes
++    nowMillis += 1.minutes.inWholeMilliseconds
++    repository.refreshHomeFeedIfStale(5.minutes)
++    assertThat(api.personalizedHomeRequests.size).isEqualTo(2)
++  }
++
++  @Test
++  fun `refreshHomeFeedIfStale retries immediately after failed fetch`() = homeTest { db ->
++    var nowMillis = 1_000_000L
++    val fakeTime = object : FatherTime {
++      override fun now() = GrandFatherTime.now()
++      override fun today() = GrandFatherTime.today()
++      override fun nowInEpochMillis(): Long = nowMillis
++    }
++    val repository = repository(db, fakeTime)
++    api.personalizedHomeResult = { Result.failure(IllegalStateException("Offline")) }
++    repository.refreshHomeFeedIfStale(5.minutes)
++    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
++
++    // Only 30s later, network returns: retries because previous attempt failed
++    nowMillis += 30_000L
++    api.personalizedHomeResult = { Result.success(listOf(shelf("recent", "Recently Added"))) }
++    repository.refreshHomeFeedIfStale(5.minutes)
++    assertThat(api.personalizedHomeRequests.size).isEqualTo(2)
++    assertThat(db.shelfLabels()).containsExactly("Recently Added")
++  }
++
++  private fun TestScope.repository(
++    db: CampfireDatabase,
++    fatherTime: FatherTime = GrandFatherTime,
++  ): StoreHomeRepository {
+     val dispatcherProvider = asTestDispatcherProvider()
+     val urlHydrator = FakeUrlHydrator()
+     val userSession = UserSession.LoggedIn(testUser)
+@@ -100,6 +154,7 @@ class StoreHomeRepositoryTest {
+         dispatcherProvider = dispatcherProvider,
+         userSession = userSession,
+       ),
++      fatherTime = fatherTime,
+     )
+   }
+ 
+diff --git a/features/home/impl/src/commonTest/kotlin/app/campfire/home/socket/HomeCacheInvalidationListenerTest.kt b/features/home/impl/src/commonTest/kotlin/app/campfire/home/socket/HomeCacheInvalidationListenerTest.kt
+new file mode 100644
+index 00000000..c67b1032
+--- /dev/null
++++ b/features/home/impl/src/commonTest/kotlin/app/campfire/home/socket/HomeCacheInvalidationListenerTest.kt
+@@ -0,0 +1,144 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.home.socket
++
++import app.campfire.core.coroutines.CoroutineScopeHolder
++import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
++import app.campfire.core.model.ShelfEntity
++import app.campfire.core.model.ShelfType
++import app.campfire.home.api.FeedResponse
++import app.campfire.home.api.HomeRepository
++import app.campfire.home.api.model.Shelf
++import app.campfire.home.api.model.ShelfId
++import app.campfire.network.models.ExpandedBookMetadata
++import app.campfire.network.models.LibraryItemExpanded
++import app.campfire.network.models.MediaExpanded
++import app.campfire.network.models.MediaType
++import app.campfire.socket.events.ItemAdded
++import app.campfire.socket.events.ItemRemoved
++import app.campfire.socket.events.ItemsAdded
++import app.campfire.socket.events.UserSessionClosed
++import app.campfire.socket.payloads.ItemRemovedPayload
++import app.campfire.user.test.FakeUserRepository
++import app.campfire.user.test.fixtures.user
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import kotlin.test.Test
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.milliseconds
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.emptyFlow
++import kotlinx.coroutines.test.TestScope
++import kotlinx.coroutines.test.advanceTimeBy
++import kotlinx.coroutines.test.runCurrent
++import kotlinx.coroutines.test.runTest
++
++@OptIn(ExperimentalCoroutinesApi::class)
++class HomeCacheInvalidationListenerTest {
++
++  private class RecordingHomeRepository : HomeRepository {
++    var refreshCount = 0
++    override fun observeHomeFeed(): Flow<FeedResponse<List<Shelf>>> = emptyFlow()
++    override suspend fun refreshHomeFeed() {
++      refreshCount++
++    }
++    override suspend fun refreshHomeFeedIfStale(maxAge: Duration) = Unit
++    override fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>> = emptyFlow()
++    override fun observeShelf(shelfId: ShelfId, shelfType: ShelfType): Flow<List<ShelfEntity>> = emptyFlow()
++  }
++
++  private fun TestScope.createListener(
++    homeRepository: RecordingHomeRepository,
++    selectedLibraryId: String = "lib-1",
++  ): HomeCacheInvalidationListener {
++    val userRepository = FakeUserRepository().apply {
++      currentUser = user(id = "user-1").copy(selectedLibraryId = selectedLibraryId)
++    }
++    return HomeCacheInvalidationListener(
++      homeRepository = homeRepository,
++      userRepository = userRepository,
++      coroutineScopeHolder = CoroutineScopeHolder { backgroundScope },
++    ).apply {
++      debounceDuration = 1500.milliseconds
++    }
++  }
++
++  @Test
++  fun `debounces burst of ItemAdded and ItemsAdded into single refresh`() = runTest {
++    val homeRepository = RecordingHomeRepository()
++    val listener = createListener(homeRepository)
++
++    listener.handle(ItemAdded(sampleBook(id = "book-1", libraryId = "lib-1")))
++    advanceTimeBy(700)
++    runCurrent()
++    assertThat(homeRepository.refreshCount).isEqualTo(0)
++
++    listener.handle(ItemAdded(sampleBook(id = "book-2", libraryId = "lib-1")))
++    advanceTimeBy(700)
++    runCurrent()
++    assertThat(homeRepository.refreshCount).isEqualTo(0)
++
++    listener.handle(ItemsAdded(listOf(sampleBook(id = "book-3", libraryId = "lib-1"))))
++    advanceTimeBy(1499)
++    runCurrent()
++    assertThat(homeRepository.refreshCount).isEqualTo(0)
++
++    advanceTimeBy(1)
++    runCurrent()
++    assertThat(homeRepository.refreshCount).isEqualTo(1)
++  }
++
++  @Test
++  fun `item removed for selected library refreshes home feed`() = runTest {
++    val homeRepository = RecordingHomeRepository()
++    val listener = createListener(homeRepository)
++
++    listener.handle(ItemRemoved(ItemRemovedPayload(id = "book-1", libraryId = "lib-1")))
++    advanceTimeBy(1500)
++    runCurrent()
++
++    assertThat(homeRepository.refreshCount).isEqualTo(1)
++  }
++
++  @Test
++  fun `ignores events for other libraries and unrelated events`() = runTest {
++    val homeRepository = RecordingHomeRepository()
++    val listener = createListener(homeRepository, selectedLibraryId = "lib-1")
++
++    listener.handle(ItemAdded(sampleBook(id = "book-1", libraryId = "lib-2")))
++    listener.handle(ItemsAdded(listOf(sampleBook(id = "book-2", libraryId = "lib-2"))))
++    listener.handle(ItemsAdded(emptyList()))
++    listener.handle(ItemRemoved(ItemRemovedPayload(id = "book-3", libraryId = "lib-2")))
++    listener.handle(UserSessionClosed(sessionId = "session-1"))
++    advanceTimeBy(2000)
++    runCurrent()
++
++    assertThat(homeRepository.refreshCount).isEqualTo(0)
++  }
++
++  private fun sampleBook(id: String, libraryId: String) = LibraryItemExpanded.Book(
++    id = id,
++    ino = "ino-$id",
++    libraryId = libraryId,
++    folderId = "folder-1",
++    path = "/books/$id",
++    relPath = "$id",
++    isFile = false,
++    mtimeMs = 0L,
++    ctimeMs = 0L,
++    birthtimeMs = 0L,
++    addedAt = 0L,
++    updatedAt = 0L,
++    isMissing = false,
++    isInvalid = false,
++    mediaType = MediaType.Book,
++    media = MediaExpanded(
++      id = "media-$id",
++      coverPath = null,
++      metadata = ExpandedBookMetadata(title = "Book $id"),
++    ),
++  )
++}
 diff --git a/features/home/ui/build.gradle.kts b/features/home/ui/build.gradle.kts
 index 36ee77e8..db2aa7c7 100644
 --- a/features/home/ui/build.gradle.kts
@@ -8318,10 +9305,10 @@ index d004f020..700fcfd3 100644
 +  <string name="discover_refresh_cd">Refresh discoveries</string>
  </resources>
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index 84b0ef8a..b9c73eb9 100644
+index 84b0ef8a..fe91595a 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-@@ -5,51 +5,73 @@ package app.campfire.home.ui
+@@ -5,51 +5,79 @@ package app.campfire.home.ui
  
  import androidx.compose.runtime.Composable
  import androidx.compose.runtime.collectAsState
@@ -8342,6 +9329,7 @@ index 84b0ef8a..b9c73eb9 100644
  import app.campfire.audioplayer.offline.OfflineDownloadManager
  import app.campfire.bookinfo.api.BookInfoRegistry
  import app.campfire.bookinfo.api.UpcomingRelease
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
  import app.campfire.common.screens.AuthorDetailScreen
 +import app.campfire.common.screens.AuthorsScreen
 +import app.campfire.common.screens.ContinueSeriesScreen
@@ -8353,6 +9341,8 @@ index 84b0ef8a..b9c73eb9 100644
  import app.campfire.core.coroutines.LoadState
  import app.campfire.core.di.UserScope
 +import app.campfire.core.filter.ContentFilter
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 +import app.campfire.core.model.Author
  import app.campfire.core.model.LibraryItem
 +import app.campfire.core.model.Series
@@ -8360,6 +9350,8 @@ index 84b0ef8a..b9c73eb9 100644
 +import app.campfire.core.model.ShelfType
 +import app.campfire.core.settings.ContentSortMode
 +import app.campfire.core.settings.SortDirection
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
  import app.campfire.discover.api.screen.UpcomingScreen
  import app.campfire.home.api.FeedResponse
  import app.campfire.home.api.HomeRepository
@@ -8375,6 +9367,7 @@ index 84b0ef8a..b9c73eb9 100644
  import com.slack.circuit.foundation.NonPausablePresenter
  import com.slack.circuit.runtime.Navigator
  import dev.zacsweers.metro.Inject
++import kotlin.time.Duration
 +import kotlinx.collections.immutable.persistentListOf
  import kotlinx.collections.immutable.persistentMapOf
  import kotlinx.collections.immutable.toPersistentList
@@ -8396,7 +9389,7 @@ index 84b0ef8a..b9c73eb9 100644
  
  @CircuitInject(HomeScreen::class, UserScope::class)
  @Inject
-@@ -58,16 +80,30 @@ class HomePresenter(
+@@ -58,16 +86,42 @@ class HomePresenter(
    private val homeRepository: HomeRepository,
    private val mediaProgressRepository: MediaProgressRepository,
    private val offlineDownloadManager: OfflineDownloadManager,
@@ -8405,6 +9398,8 @@ index 84b0ef8a..b9c73eb9 100644
    private val analytics: Analytics,
 +  private val appUpdateSource: AppUpdateSource,
 +  private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
  ) : NonPausablePresenter<HomeUiState> {
  
    @Suppress("UNCHECKED_CAST")
@@ -8417,6 +9412,16 @@ index 84b0ef8a..b9c73eb9 100644
 +    var isRefreshingDiscoveries by remember { mutableStateOf(false) }
 +    var isBatteryWarningDismissed by remember { mutableStateOf(false) }
 +
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      // Staleness is tracked per (user, library) in HomeRepository so socket refreshes
++      // and manual refreshes share the same 5-minute SWR window.
++      staleOutDuration = Duration.ZERO,
++    ) {
++      homeRepository.refreshHomeFeedIfStale()
++    }
++
 +    val showBatteryWarning = if (batteryOptimization.isSupported && !isBatteryWarningDismissed) {
 +      val isIgnoring by remember(batteryOptimization) {
 +        batteryOptimization.observeIgnoringBatteryOptimizations()
@@ -8428,7 +9433,7 @@ index 84b0ef8a..b9c73eb9 100644
  
      // Observe just the shelf information. We will use this to compose the remaining elements
      val domainFeed by remember {
-@@ -104,22 +140,24 @@ class HomePresenter(
+@@ -104,22 +158,24 @@ class HomePresenter(
        bookInfoRegistry.observeCachedUpcoming()
      }.collectAsState(emptyList())
  
@@ -8467,7 +9472,7 @@ index 84b0ef8a..b9c73eb9 100644
  
      val userMediaProgress by remember {
        mediaProgressRepository.observeAllProgress()
-@@ -130,18 +168,69 @@ class HomePresenter(
+@@ -130,18 +186,69 @@ class HomePresenter(
          }
      }.collectAsState(persistentMapOf())
  
@@ -8548,7 +9553,7 @@ index 84b0ef8a..b9c73eb9 100644
      }.collectAsState(persistentMapOf())
  
      return HomeUiState(
-@@ -149,36 +238,120 @@ class HomePresenter(
+@@ -149,36 +256,120 @@ class HomePresenter(
        offlineStates = offlineDownloads,
        progressStates = userMediaProgress,
        isRefreshing = isRefreshing,
@@ -8632,9 +9637,9 @@ index 84b0ef8a..b9c73eb9 100644
 +            event.shelfId.startsWith(ShelfIds.NewestAuthors) -> {
 +              analytics.send(ActionEvent("shelf_header", "clicked", ShelfIds.NewestAuthors))
 +              navigator.goTo(AuthorsScreen)
-             }
-           }
-         }
++            }
++          }
++        }
 +
 +        HomeUiEvent.Refresh -> {
 +          if (!isRefreshing) {
@@ -8648,9 +9653,9 @@ index 84b0ef8a..b9c73eb9 100644
 +            }
 +            coroutineScope.launch {
 +              appUpdateSource.checkForUpdates(force = false)
-+            }
-+          }
-+        }
+             }
+           }
+         }
 +
 +        HomeUiEvent.RefreshDiscoveries -> {
 +          if (!isRefreshingDiscoveries) {
@@ -8676,7 +9681,7 @@ index 84b0ef8a..b9c73eb9 100644
        }
      }
    }
-@@ -226,3 +399,207 @@ private fun insertUpcomingShelf(
+@@ -226,3 +417,207 @@ private fun insertUpcomingShelf(
      shelves + upcomingShelf
    }
  }
@@ -9342,8 +10347,48 @@ index c6c916b9..4d05326e 100644
      )
    }
  }
+diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt
+index 72319142..9425d9b2 100644
+--- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt
++++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt
+@@ -11,6 +11,7 @@ import app.campfire.home.api.FeedResponse
+ import app.campfire.home.api.HomeRepository
+ import app.campfire.home.api.model.Shelf
+ import app.campfire.home.api.model.ShelfId
++import kotlin.time.Duration
+ import kotlinx.coroutines.flow.Flow
+ 
+ class FakeHomeRepository(
+@@ -18,11 +19,15 @@ class FakeHomeRepository(
+   private val mediaProgressFlowFactory: (Set<LibraryItemId>) -> Flow<Map<LibraryItemId, MediaProgress>>,
+   private val shelfEntityFlowFactory: (ShelfId, ShelfType) -> Flow<List<ShelfEntity>>,
+   private val onRefreshHomeFeed: suspend () -> Unit = {},
++  private val onRefreshHomeFeedIfStale: suspend (Duration) -> Unit = { onRefreshHomeFeed() },
+ ) : HomeRepository {
+ 
+   var refreshCount = 0
+     private set
+ 
++  var refreshIfStaleCount = 0
++    private set
++
+   override fun observeHomeFeed(): Flow<FeedResponse<List<Shelf>>> {
+     return homeFeedFlowFactory()
+   }
+@@ -32,6 +37,11 @@ class FakeHomeRepository(
+     onRefreshHomeFeed()
+   }
+ 
++  override suspend fun refreshHomeFeedIfStale(maxAge: Duration) {
++    refreshIfStaleCount++
++    onRefreshHomeFeedIfStale(maxAge)
++  }
++
+   override fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>> {
+     return mediaProgressFlowFactory(libraryItemIds)
+   }
 diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
-index 5e6478ef..254b19c0 100644
+index 5e6478ef..a5559bb6 100644
 --- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 +++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 @@ -5,6 +5,8 @@ package app.campfire.home.ui
@@ -9355,7 +10400,16 @@ index 5e6478ef..254b19c0 100644
  import app.campfire.audioplayer.offline.OfflineDownload
  import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
  import app.campfire.bookinfo.api.ProviderId
-@@ -26,6 +28,10 @@ import app.campfire.home.api.model.ShelfIds
+@@ -16,6 +18,8 @@ import app.campfire.common.screens.HomeScreen
+ import app.campfire.common.screens.SeriesDetailScreen
+ import app.campfire.common.test.mediaProgress
+ import app.campfire.core.coroutines.LoadState
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.MediaProgress
+ import app.campfire.core.model.ShelfEntity
+@@ -26,6 +30,10 @@ import app.campfire.home.api.model.ShelfIds
  import app.campfire.libraries.api.screen.LibraryItemScreen
  import app.campfire.user.api.MediaProgressKey
  import app.campfire.user.test.FakeMediaProgressRepository
@@ -9366,7 +10420,7 @@ index 5e6478ef..254b19c0 100644
  import assertk.Assert
  import assertk.all
  import assertk.assertThat
-@@ -40,6 +46,9 @@ import assertk.assertions.isNotNull
+@@ -40,12 +48,17 @@ import assertk.assertions.isNotNull
  import assertk.assertions.isTrue
  import assertk.assertions.key
  import assertk.assertions.prop
@@ -9376,7 +10430,15 @@ index 5e6478ef..254b19c0 100644
  import com.slack.circuit.test.FakeNavigator
  import com.slack.circuit.test.test
  import kotlin.test.Test
-@@ -56,22 +65,81 @@ class HomePresenterTest {
+ import kotlinx.collections.immutable.ImmutableMap
+ import kotlinx.collections.immutable.PersistentList
+ import kotlinx.coroutines.CompletableDeferred
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.coroutines.flow.emptyFlow
+ import kotlinx.coroutines.flow.flowOf
+ import kotlinx.coroutines.test.runTest
+@@ -56,22 +69,83 @@ class HomePresenterTest {
    val analytics = FakeAnalytics()
    val offlineDownloadManager = FakeOfflineDownloadManager()
    val mediaProgressRepository = FakeMediaProgressRepository()
@@ -9395,6 +10457,7 @@ index 5e6478ef..254b19c0 100644
 +    registry: BookInfoRegistry = FakeBookInfoRegistry(),
 +    updateSource: AppUpdateSource = fakeAppUpdateSource,
 +    batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
++    foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
 +  ): HomePresenter {
 +    return HomePresenter(
 +      navigator = navigator,
@@ -9406,6 +10469,7 @@ index 5e6478ef..254b19c0 100644
 +      analytics = analytics,
 +      appUpdateSource = updateSource,
 +      batteryOptimization = batteryOptimization,
++      foregroundResumeTracker = foregroundResumeTracker,
 +    )
 +  }
  
@@ -9444,7 +10508,7 @@ index 5e6478ef..254b19c0 100644
 +      homeFeedFlowFactory = { emptyFlow() },
 +      mediaProgressFlowFactory = { emptyFlow() },
 +      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
-+    )
+     )
 +    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = true)
 +    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
 +
@@ -9461,12 +10525,12 @@ index 5e6478ef..254b19c0 100644
 +      homeFeedFlowFactory = { emptyFlow() },
 +      mediaProgressFlowFactory = { emptyFlow() },
 +      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
-     )
++    )
 +    val presenter = createPresenter(repository)
  
      presenter.test {
        val state = awaitItem()
-@@ -94,14 +162,7 @@ class HomePresenterTest {
+@@ -94,14 +168,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9482,7 +10546,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        // First item is always loading state
-@@ -137,7 +198,7 @@ class HomePresenterTest {
+@@ -137,7 +204,7 @@ class HomePresenterTest {
    fun present_CachedUpcoming_InsertsShelfAfterDiscover() = runTest {
      val shelves = listOf(
        shelf(ShelfIds.Discover, "Discover", 2),
@@ -9491,7 +10555,7 @@ index 5e6478ef..254b19c0 100644
      )
      val repository = FakeHomeRepository(
        homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
-@@ -160,14 +221,7 @@ class HomePresenterTest {
+@@ -160,14 +227,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -9507,7 +10571,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -193,8 +247,9 @@ class HomePresenterTest {
+@@ -193,8 +253,9 @@ class HomePresenterTest {
                )
            },
          )
@@ -9518,7 +10582,7 @@ index 5e6478ef..254b19c0 100644
      }
    }
  
-@@ -222,14 +277,7 @@ class HomePresenterTest {
+@@ -222,14 +283,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -9534,7 +10598,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -261,14 +309,7 @@ class HomePresenterTest {
+@@ -261,14 +315,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9550,7 +10614,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        // First item is always loading state
-@@ -309,6 +350,7 @@ class HomePresenterTest {
+@@ -309,6 +356,7 @@ class HomePresenterTest {
              )
            }
        }
@@ -9558,7 +10622,7 @@ index 5e6478ef..254b19c0 100644
      }
    }
  
-@@ -335,14 +377,7 @@ class HomePresenterTest {
+@@ -335,14 +383,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9574,7 +10638,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        // Pull Loading State
-@@ -357,6 +392,7 @@ class HomePresenterTest {
+@@ -357,6 +398,7 @@ class HomePresenterTest {
            key(MediaProgressKey("two_2")).isNotNull()
          }
        }
@@ -9582,7 +10646,7 @@ index 5e6478ef..254b19c0 100644
      }
    }
  
-@@ -383,14 +419,7 @@ class HomePresenterTest {
+@@ -383,14 +425,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -9598,7 +10662,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        // Pull Loading State
-@@ -405,6 +434,7 @@ class HomePresenterTest {
+@@ -405,6 +440,7 @@ class HomePresenterTest {
            key("two_2").isNotNull()
          }
        }
@@ -9606,7 +10670,7 @@ index 5e6478ef..254b19c0 100644
      }
    }
  
-@@ -415,14 +445,7 @@ class HomePresenterTest {
+@@ -415,14 +451,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9622,7 +10686,7 @@ index 5e6478ef..254b19c0 100644
      val libraryItemId = "test_library_item"
      val sharedTransitionKey = "shared_key"
      val libraryItem = libraryItem(libraryItemId)
-@@ -444,14 +467,7 @@ class HomePresenterTest {
+@@ -444,14 +473,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9638,7 +10702,7 @@ index 5e6478ef..254b19c0 100644
      val authorId = "test_authorId"
      val authorName = "test_author_name"
      val author = author(authorId, authorName)
-@@ -473,14 +489,7 @@ class HomePresenterTest {
+@@ -473,14 +495,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -9654,7 +10718,7 @@ index 5e6478ef..254b19c0 100644
      val seriesId = "test_seriesId"
      val seriesName = "test_series_name"
      val series = series(seriesId, seriesName)
-@@ -504,14 +513,7 @@ class HomePresenterTest {
+@@ -504,14 +519,7 @@ class HomePresenterTest {
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
        onRefreshHomeFeed = { refreshGate.await() },
      )
@@ -9670,7 +10734,7 @@ index 5e6478ef..254b19c0 100644
  
      presenter.test {
        val idle = awaitItem()
-@@ -529,6 +531,34 @@ class HomePresenterTest {
+@@ -529,6 +537,64 @@ class HomePresenterTest {
        assertThat(repository.refreshCount).isEqualTo(1)
      }
    }
@@ -9700,6 +10764,36 @@ index 5e6478ef..254b19c0 100644
 +
 +      assertThat(awaitItem().isRefreshingDiscoveries).isFalse()
 +      assertThat(repository.refreshCount).isEqualTo(1)
++    }
++  }
++
++  @Test
++  fun present_foregroundResume_triggersStaleWhileRevalidateCheckSilently() = runTest {
++    val resumeEpochFlow = MutableStateFlow(0L)
++    val resumeTracker = object : ForegroundResumeTracker {
++      override val resumeEpoch: StateFlow<Long> = resumeEpochFlow
++    }
++    val repository = FakeHomeRepository(
++      homeFeedFlowFactory = { emptyFlow() },
++      mediaProgressFlowFactory = { emptyFlow() },
++      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
++    )
++    val presenter = createPresenter(repository, foregroundResumeTracker = resumeTracker)
++
++    presenter.test {
++      val initial = awaitItem()
++      assertThat(initial.isRefreshing).isFalse()
++      assertThat(repository.refreshIfStaleCount).isEqualTo(0)
++
++      resumeEpochFlow.value = 1L
++      testScheduler.advanceUntilIdle()
++      assertThat(repository.refreshIfStaleCount).isEqualTo(1)
++
++      resumeEpochFlow.value = 2L
++      testScheduler.advanceUntilIdle()
++      assertThat(repository.refreshIfStaleCount).isEqualTo(2)
++
++      cancelAndIgnoreRemainingEvents()
 +    }
 +  }
  }
@@ -11050,10 +12144,44 @@ index 00000000..4f9cf05e
 +  data object ToggleSortDirection : DownloadsUiEvent
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
-index 75eae713..f246c8c1 100644
+index 75eae713..300bd7a7 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
-@@ -64,18 +64,29 @@ class LibraryPresenter(
+@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
++import androidx.paging.LoadState
+ import androidx.paging.cachedIn
+ import androidx.paging.compose.collectAsLazyPagingItems
+ import app.campfire.analytics.Analytics
+@@ -18,11 +19,16 @@ import app.campfire.analytics.events.Click
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
+ import app.campfire.audioplayer.offline.OfflineDownloadManager
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.compose.util.rememberRetainedCoroutineScope
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.MediaType
+ import app.campfire.core.model.User
+ import app.campfire.core.settings.ItemDisplayState
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.libraries.api.LibraryRepository
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.libraries.api.screen.LibraryScreen
+@@ -51,6 +57,8 @@ class LibraryPresenter(
+   private val offlineDownloadManager: OfflineDownloadManager,
+   private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<LibraryUiState> {
+ 
+   @Composable
+@@ -64,18 +72,29 @@ class LibraryPresenter(
        repository.observeCurrentLibrary()
      }.collectAsState(null)
  
@@ -11086,7 +12214,27 @@ index 75eae713..f246c8c1 100644
      val currentUser by userRepository.userFlow.collectAsState()
  
      val lazyPagingItems = rememberRetained(
-@@ -144,10 +155,17 @@ class LibraryPresenter(
+@@ -93,6 +112,19 @@ class LibraryPresenter(
+       ).flow.cachedIn(scope)
+     }.collectAsLazyPagingItems()
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      currentUser.id,
++      currentUser.selectedLibraryId,
++      sortMode,
++      sortDirection,
++      itemFilter,
++      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
++    ) {
++      lazyPagingItems.refresh()
++    }
++
+     val totalItemCount by rememberRetained(sortMode, sortDirection, itemFilter) {
+       repository.observeFilteredLibraryCount(
+         filter = itemFilter,
+@@ -144,10 +176,17 @@ class LibraryPresenter(
  
          is LibraryUiEvent.SortModeSelected -> {
            analytics.send(ActionEvent("sort_mode", "selected", event.mode.storageKey))
@@ -12059,6 +13207,49 @@ index 00000000..4c159bb9
 +    },
 +  )
 +}
+diff --git a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt
+index d1be333e..d23344c9 100644
+--- a/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt
++++ b/features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt
+@@ -14,9 +14,14 @@ import app.campfire.analytics.Analytics
+ import app.campfire.analytics.events.ActionEvent
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.Playlist
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.playlists.api.PlaylistsRepository
+ import app.campfire.playlists.api.screen.PlaylistDetailScreen
+ import app.campfire.playlists.api.screen.PlaylistsScreen
+@@ -36,6 +41,8 @@ class PlaylistsPresenter(
+   private val playlistsRepository: PlaylistsRepository,
+   private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<PlaylistsUiState> {
+ 
+   @Composable
+@@ -43,6 +50,14 @@ class PlaylistsPresenter(
+     val scope = rememberCoroutineScope()
+     var isRefreshing by remember { mutableStateOf(false) }
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      isExternalRefreshInProgress = isRefreshing,
++    ) {
++      playlistsRepository.refreshPlaylists()
++    }
++
+     val playlistContentState by remember {
+       playlistsRepository.observeAllPlaylists()
+         .map { LoadState.Loaded(it) }
 diff --git a/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt b/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
 index 9177a149..55aa3614 100644
 --- a/features/playlists/ui/src/commonTest/kotlin/app/campfire/playlists/ui/detail/PlaylistDetailPresenterTest.kt
@@ -12296,6 +13487,98 @@ index 00000000..910f0bc5
 +    explicit = false,
 +  )
 +}
+diff --git a/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt b/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
+index 55919477..c26a3ab9 100644
+--- a/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
++++ b/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
+@@ -11,8 +11,13 @@ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.User
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.podcasts.api.PodcastsRepository
+ import app.campfire.podcasts.api.RemoteEpisodeDownload
+@@ -33,6 +38,8 @@ class PodcastDownloadQueuePresenter(
+   private val userRepository: UserRepository,
+   private val podcastsRepository: PodcastsRepository,
+   private val tracker: RemoteEpisodeDownloadTracker,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<PodcastDownloadQueueUiState> {
+ 
+   @Composable
+@@ -49,6 +56,15 @@ class PodcastDownloadQueuePresenter(
+       isRefreshing = false
+     }
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      currentUser.selectedLibraryId,
++      isExternalRefreshInProgress = isRefreshing,
++    ) {
++      podcastsRepository.fetchEpisodeDownloads(currentUser.selectedLibraryId)
++    }
++
+     val groups = remember(downloads) {
+       downloads
+         .map { (libraryItemId, items) ->
+diff --git a/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt b/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt
+index 278c8cde..560f5b06 100644
+--- a/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt
++++ b/features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt
+@@ -7,12 +7,18 @@ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.remember
++import androidx.paging.LoadState
+ import androidx.paging.cachedIn
+ import androidx.paging.compose.collectAsLazyPagingItems
+ import app.campfire.audioplayer.PlaybackController
+ import app.campfire.audioplayer.history.PlaybackHistoryRepository
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.compose.util.rememberRetainedCoroutineScope
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.libraries.api.screen.LibraryItemScreen
+ import app.campfire.playlists.api.dialog.AddToPlaylistDialog
+ import app.campfire.podcasts.api.PodcastsRepository
+@@ -42,6 +48,8 @@ class LatestEpisodesPresenter(
+   private val playbackHistoryRepository: PlaybackHistoryRepository,
+   private val playbackController: PlaybackController,
+   private val addToPlaylistDialog: AddToPlaylistDialog,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<LatestEpisodesUiState> {
+ 
+   @Composable
+@@ -62,6 +70,16 @@ class LatestEpisodesPresenter(
+         .flow.cachedIn(scope)
+     }.collectAsLazyPagingItems()
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      currentUser.id,
++      currentUser.selectedLibraryId,
++      isExternalRefreshInProgress = pagingItems.loadState.refresh is LoadState.Loading,
++    ) {
++      pagingItems.refresh()
++    }
++
+     val mediaProgress by remember {
+       mediaProgressRepository.observeAllProgress()
+         .map {
 diff --git a/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt b/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt
 index e61b281e..edb20179 100644
 --- a/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt
@@ -12797,10 +14080,10 @@ index bab90470..67c5391d 100644
  </resources>
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 new file mode 100644
-index 00000000..7e777d96
+index 00000000..b53dd0e3
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,232 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -12820,9 +14103,14 @@ index 00000000..7e777d96
 +import app.campfire.analytics.events.ContentSelected
 +import app.campfire.analytics.events.ContentType
 +import app.campfire.audioplayer.offline.OfflineDownloadManager
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 +import app.campfire.common.screens.ContinueSeriesScreen
 +import app.campfire.common.screens.SeriesDetailScreen
 +import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
 +import app.campfire.libraries.api.screen.LibraryItemScreen
 +import app.campfire.series.api.SeriesRepository
 +import app.campfire.settings.api.LibraryViewSettings
@@ -12852,6 +14140,8 @@ index 00000000..7e777d96
 +  private val offlineDownloadManager: OfflineDownloadManager,
 +  private val libraryViewSettings: LibraryViewSettings,
 +  private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
 +) : NonPausablePresenter<ContinueSeriesUiState> {
 +
 +  @OptIn(ExperimentalCoroutinesApi::class)
@@ -12886,6 +14176,14 @@ index 00000000..7e777d96
 +
 +    LaunchedEffect(Unit) {
 +      refresh()
++    }
++
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      isExternalRefreshInProgress = isRefreshing,
++    ) {
++      seriesRepository.refreshContinueSeries()
 +    }
 +
 +    LaunchedEffect(sortMode, sortAscending) {
@@ -14064,10 +15362,35 @@ index de787f8e..3106b180 100644
          DropdownMenuItem(
            text = { Text(stringResource(Res.string.menu_item_mark_series_finished)) },
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt
-index 3b486b20..85b9e12c 100644
+index 3b486b20..93124912 100644
 --- a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt
-@@ -38,6 +38,7 @@ internal const val INVALID_SERIES_COUNT = -1
+@@ -9,18 +9,24 @@ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
++import androidx.paging.LoadState
+ import androidx.paging.cachedIn
+ import androidx.paging.compose.collectAsLazyPagingItems
+ import app.campfire.analytics.Analytics
+ import app.campfire.analytics.events.ActionEvent
+ import app.campfire.analytics.events.ContentSelected
+ import app.campfire.analytics.events.ContentType
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.compose.util.rememberRetainedCoroutineScope
+ import app.campfire.common.screens.SeriesDetailScreen
+ import app.campfire.common.screens.SeriesScreen
+ import app.campfire.core.coroutines.map
+ import app.campfire.core.di.UserScope
+ import app.campfire.core.filter.ContentFilter
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.series.api.SeriesRepository
+ import app.campfire.settings.api.LibraryViewSettings
+ import app.campfire.user.api.UserRepository
+@@ -38,11 +44,14 @@ internal const val INVALID_SERIES_COUNT = -1
  @CircuitInject(SeriesScreen::class, UserScope::class)
  @Inject
  class SeriesPresenter(
@@ -14075,7 +15398,14 @@ index 3b486b20..85b9e12c 100644
    private val navigator: Navigator,
    private val userRepository: UserRepository,
    private val seriesRepository: SeriesRepository,
-@@ -57,14 +58,25 @@ class SeriesPresenter(
+   private val libraryViewSettings: LibraryViewSettings,
+   private val analytics: Analytics,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : NonPausablePresenter<SeriesUiState> {
+ 
+   @OptIn(ExperimentalCoroutinesApi::class)
+@@ -57,14 +66,25 @@ class SeriesPresenter(
        mutableStateOf<ContentFilter?>(null)
      }
  
@@ -14103,7 +15433,27 @@ index 3b486b20..85b9e12c 100644
      val displayState by remember {
        libraryViewSettings.observeSeriesDisplayState()
      }.collectAsState()
-@@ -115,10 +127,17 @@ class SeriesPresenter(
+@@ -86,6 +106,19 @@ class SeriesPresenter(
+       ).flow.cachedIn(scope)
+     }.collectAsLazyPagingItems()
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      currentUser.id,
++      currentUser.selectedLibraryId,
++      filter,
++      sortMode,
++      sortDirection,
++      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
++    ) {
++      lazyPagingItems.refresh()
++    }
++
+     val totalSeriesCount by remember {
+       seriesRepository.observeFilteredSeriesCount(
+         filter = filter,
+@@ -115,10 +148,17 @@ class SeriesPresenter(
  
          is SeriesUiEvent.SortModeChanged -> {
            analytics.send(ActionEvent("series_sort_mode", "selected", event.mode.storageKey))
@@ -17745,6 +19095,48 @@ index 16dfd2f2..5ac06410 100644
        // Shake to Reset
        SwitchSetting(
          value = state.sleepSettings.shakeToReset,
+diff --git a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
+index ef0c2135..ab583afe 100644
+--- a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
++++ b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
+@@ -10,11 +10,14 @@ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
++import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
+ import app.campfire.common.screens.AuthorDetailScreen
+ import app.campfire.common.screens.StatisticsScreen
+ import app.campfire.core.coroutines.DispatcherProvider
+ import app.campfire.core.coroutines.LoadState
+ import app.campfire.core.di.UserScope
++import app.campfire.core.lifecycle.ForegroundResumeTracker
++import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+ import app.campfire.core.model.LibraryStats
+ import app.campfire.core.model.ListeningStats
+ import app.campfire.core.model.MediaProgress
+@@ -55,6 +58,7 @@ class StatsPresenter(
+   private val fatherTime: FatherTime,
+   private val dispatcherProvider: DispatcherProvider,
+   private val navigator: Navigator,
++  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+ ) : Presenter<StatsUiState> {
+ 
+   @Composable
+@@ -80,6 +84,14 @@ class StatsPresenter(
+     val scope = rememberCoroutineScope()
+     var isRefreshing by remember { mutableStateOf(false) }
+ 
++    RefreshOnForegroundStaleOut(
++      foregroundResumeTracker = foregroundResumeTracker,
++      fatherTime = fatherTime,
++      isExternalRefreshInProgress = isRefreshing,
++    ) {
++      statsRepository.refresh()
++    }
++
+     return StatsUiState(
+       libraryStats = libraryStats,
+       listeningStats = listeningStats,
 diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt
 index 953d9434..8d3087c0 100644
 --- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt

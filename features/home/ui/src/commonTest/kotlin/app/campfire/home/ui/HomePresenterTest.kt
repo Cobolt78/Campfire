@@ -18,6 +18,8 @@ import app.campfire.common.screens.HomeScreen
 import app.campfire.common.screens.SeriesDetailScreen
 import app.campfire.common.test.mediaProgress
 import app.campfire.core.coroutines.LoadState
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.model.ShelfEntity
@@ -55,6 +57,8 @@ import kotlin.test.Test
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -80,6 +84,7 @@ class HomePresenterTest {
     registry: BookInfoRegistry = FakeBookInfoRegistry(),
     updateSource: AppUpdateSource = fakeAppUpdateSource,
     batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
+    foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
   ): HomePresenter {
     return HomePresenter(
       navigator = navigator,
@@ -91,6 +96,7 @@ class HomePresenterTest {
       analytics = analytics,
       appUpdateSource = updateSource,
       batteryOptimization = batteryOptimization,
+      foregroundResumeTracker = foregroundResumeTracker,
     )
   }
 
@@ -557,6 +563,36 @@ class HomePresenterTest {
 
       assertThat(awaitItem().isRefreshingDiscoveries).isFalse()
       assertThat(repository.refreshCount).isEqualTo(1)
+    }
+  }
+
+  @Test
+  fun present_foregroundResume_triggersStaleWhileRevalidateCheckSilently() = runTest {
+    val resumeEpochFlow = MutableStateFlow(0L)
+    val resumeTracker = object : ForegroundResumeTracker {
+      override val resumeEpoch: StateFlow<Long> = resumeEpochFlow
+    }
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { emptyFlow() },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val presenter = createPresenter(repository, foregroundResumeTracker = resumeTracker)
+
+    presenter.test {
+      val initial = awaitItem()
+      assertThat(initial.isRefreshing).isFalse()
+      assertThat(repository.refreshIfStaleCount).isEqualTo(0)
+
+      resumeEpochFlow.value = 1L
+      testScheduler.advanceUntilIdle()
+      assertThat(repository.refreshIfStaleCount).isEqualTo(1)
+
+      resumeEpochFlow.value = 2L
+      testScheduler.advanceUntilIdle()
+      assertThat(repository.refreshIfStaleCount).isEqualTo(2)
+
+      cancelAndIgnoreRemainingEvents()
     }
   }
 }

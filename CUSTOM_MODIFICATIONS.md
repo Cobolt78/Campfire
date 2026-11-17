@@ -93,6 +93,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
+89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh)
 
 ---
 
@@ -2675,4 +2676,56 @@ On Android 16/17 (Samsung One UI 8, `targetSdk 37`), starting or resuming audiob
 * infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 * gradle.properties
 * CHANGELOG.md
+* CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh
+
+### Problem
+When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
+1. Returning to the foreground never re-triggered `observeHomeFeed()`'s `refresh = true` stream or Paging 3 `RemoteMediator.initialize()` (`LAUNCH_INITIAL_REFRESH`), leaving shelves such as **Recently Added** stale until manually pulled down.
+2. `DefaultSocketManager` intentionally closes the WebSocket while backgrounded (`AppLifecycleState.Background`), so library updates made on the Audiobookshelf server while listening in the background were missed.
+3. Even when the WebSocket was open in the foreground, `features/home` did not subscribe to `SocketEventListener` events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`), unlike `features/libraries`.
+
+### Solution & Implementation
+1. **Home 5-Minute Stale-While-Revalidate (`HomeRepository.kt`, `StoreHomeRepository.kt`, `HomeFetcherFactory.kt`, `HomeStore.kt`)**:
+   - Recorded per-`(userId, libraryId)` successful fetch timestamps inside `HomeFetcherFactory` / `StoreHomeRepository`.
+   - Added `HomeRepository.refreshHomeFeedIfStale(maxAge = 5.minutes)` guarded by a `Mutex` so concurrent resume/socket calls coalesce and only hit the server if `>= 5 minutes` have elapsed since the last successful fetch (or if the previous attempt failed), leaving cached shelves rendered seamlessly in the meantime.
+2. **Debounced Home Socket Hook (`HomeCacheInvalidationListener.kt`, `features/home/impl/build.gradle.kts`)**:
+   - Contributed `HomeCacheInvalidationListener` (`SocketEventListener` in `UserScope`) for `ItemAdded`, `ItemsAdded`, and `ItemRemoved` matching the active user's `selectedLibraryId`.
+   - Debounces bursts of server scan events by `1500ms` on the `UserScope` coroutine scope before invoking `homeRepository.refreshHomeFeed()`.
+3. **Process-Wide Foreground Resume & Active Menu Stale-Out Refresh (`ForegroundResumeTracker.kt`, `DefaultForegroundResumeTracker.kt`, `RefreshOnForegroundStaleOut.kt`)**:
+   - Added `ForegroundResumeTracker` / `DefaultForegroundResumeTracker` (`AppScope` singleton + `AppInitializer`) incrementing `resumeEpoch` on every `Background -> Foreground` transition.
+   - Added shared `RefreshOnForegroundStaleOut` composable in `:common:compose` using `rememberRetained` so active menus — and menus returned to from child detail screens — silently refresh once `>= 5 minutes` stale without wasting mobile data or battery on quick app switches or background-only audio launches.
+   - Wired active menus: `HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `LatestEpisodesPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, `ContinueSeriesPresenter`, `PodcastDownloadQueuePresenter`, `StatsPresenter`, and `UpcomingPresenter`.
+
+### Modified Files:
+* core/src/commonMain/kotlin/app/campfire/core/lifecycle/ForegroundResumeTracker.kt
+* app/common/src/commonMain/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTracker.kt
+* app/common/src/commonTest/kotlin/app/campfire/common/lifecycle/DefaultForegroundResumeTrackerTest.kt
+* common/compose/src/commonMain/kotlin/app/campfire/common/compose/lifecycle/RefreshOnForegroundStaleOut.kt
+* features/home/api/src/commonMain/kotlin/app/campfire/home/api/HomeRepository.kt
+* features/home/impl/build.gradle.kts
+* features/home/impl/src/commonMain/kotlin/app/campfire/home/StoreHomeRepository.kt
+* features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeFetcherFactory.kt
+* features/home/impl/src/commonMain/kotlin/app/campfire/home/store/home/HomeStore.kt
+* features/home/impl/src/commonMain/kotlin/app/campfire/home/socket/HomeCacheInvalidationListener.kt
+* features/home/impl/src/commonTest/kotlin/app/campfire/home/StoreHomeRepositoryTest.kt
+* features/home/impl/src/commonTest/kotlin/app/campfire/home/socket/HomeCacheInvalidationListenerTest.kt
+* features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
+* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/FakeHomeRepository.kt
+* features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
+* features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/list/SeriesPresenter.kt
+* features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
+* features/author/ui/src/commonMain/kotlin/app/campfire/author/ui/list/AuthorsPresenter.kt
+* features/collections/ui/src/commonMain/kotlin/app/campfire/collections/ui/list/CollectionsPresenter.kt
+* features/collections/ui/src/commonTest/kotlin/app/campfire/collections/ui/list/CollectionsPresenterTest.kt
+* features/playlists/ui/src/commonMain/kotlin/app/campfire/playlists/ui/list/PlaylistsPresenter.kt
+* features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/latest/LatestEpisodesPresenter.kt
+* features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
+* features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
+* features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
 * CUSTOM_MODIFICATIONS.md

@@ -10,11 +10,14 @@ import org.mobilenativefoundation.store.store5.Fetcher
 
 class HomeFetcherFactory(
   private val api: AudioBookShelfApi,
+  private val onFetchSuccess: (HomeStore.Key) -> Unit = {},
 ) {
 
   fun create(): Fetcher<HomeStore.Key, List<Shelf>> {
     return Fetcher.ofResult { key ->
-      api.getPersonalizedHome(key.libraryId, bustCache = true).asFetcherResult()
+      api.getPersonalizedHome(key.libraryId, bustCache = true)
+        .onSuccess { onFetchSuccess(key) }
+        .asFetcherResult()
     }
   }
 }

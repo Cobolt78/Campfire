@@ -10,11 +10,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.screens.AuthorDetailScreen
 import app.campfire.common.screens.StatisticsScreen
 import app.campfire.core.coroutines.DispatcherProvider
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.LibraryStats
 import app.campfire.core.model.ListeningStats
 import app.campfire.core.model.MediaProgress
@@ -55,6 +58,7 @@ class StatsPresenter(
   private val fatherTime: FatherTime,
   private val dispatcherProvider: DispatcherProvider,
   private val navigator: Navigator,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
 ) : Presenter<StatsUiState> {
 
   @Composable
@@ -79,6 +83,14 @@ class StatsPresenter(
 
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      isExternalRefreshInProgress = isRefreshing,
+    ) {
+      statsRepository.refresh()
+    }
 
     return StatsUiState(
       libraryStats = libraryStats,

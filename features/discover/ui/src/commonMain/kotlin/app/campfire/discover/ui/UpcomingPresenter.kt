@@ -9,14 +9,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.campfire.bookinfo.api.BookInfoRegistry
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.screens.UrlScreen
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.discover.api.DiscoverScanTracker
 import app.campfire.discover.api.screen.UpcomingScreen
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
 import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
+import kotlin.time.Duration
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.map
@@ -27,6 +33,8 @@ class UpcomingPresenter(
   private val navigator: Navigator,
   private val tracker: DiscoverScanTracker,
   private val bookInfoRegistry: BookInfoRegistry,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<UpcomingUiState> {
 
   @Composable
@@ -44,6 +52,15 @@ class UpcomingPresenter(
     // tracker holds a freshness window, so recent results render as-is and the
     // Scan action forces the rescan.
     LaunchedEffect(Unit) {
+      tracker.startScanIfStale()
+    }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      // DiscoverScanTracker manages its own freshness policy cleanly.
+      staleOutDuration = Duration.ZERO,
+    ) {
       tracker.startScanIfStale()
     }
 

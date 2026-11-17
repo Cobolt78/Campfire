@@ -7,12 +7,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.paging.LoadState
 import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.campfire.audioplayer.PlaybackController
 import app.campfire.audioplayer.history.PlaybackHistoryRepository
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.compose.util.rememberRetainedCoroutineScope
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.playlists.api.dialog.AddToPlaylistDialog
 import app.campfire.podcasts.api.PodcastsRepository
@@ -42,6 +48,8 @@ class LatestEpisodesPresenter(
   private val playbackHistoryRepository: PlaybackHistoryRepository,
   private val playbackController: PlaybackController,
   private val addToPlaylistDialog: AddToPlaylistDialog,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<LatestEpisodesUiState> {
 
   @Composable
@@ -61,6 +69,16 @@ class LatestEpisodesPresenter(
       podcastsRepository.createLatestEpisodesPager(currentUser)
         .flow.cachedIn(scope)
     }.collectAsLazyPagingItems()
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      currentUser.id,
+      currentUser.selectedLibraryId,
+      isExternalRefreshInProgress = pagingItems.loadState.refresh is LoadState.Loading,
+    ) {
+      pagingItems.refresh()
+    }
 
     val mediaProgress by remember {
       mediaProgressRepository.observeAllProgress()

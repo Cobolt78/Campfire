@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.paging.LoadState
 import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.campfire.analytics.Analytics
@@ -14,10 +15,15 @@ import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.author.api.AuthorRepository
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.compose.util.rememberRetainedCoroutineScope
 import app.campfire.common.screens.AuthorDetailScreen
 import app.campfire.common.screens.AuthorsScreen
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.user.api.UserRepository
 import com.slack.circuit.codegen.annotations.CircuitInject
@@ -38,6 +44,8 @@ class AuthorsPresenter(
   private val authorRepository: AuthorRepository,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<AuthorsUiState> {
 
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,6 +78,18 @@ class AuthorsPresenter(
         sortDirection = sortDirection,
       ).flow.cachedIn(scope)
     }.collectAsLazyPagingItems()
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      currentUser.id,
+      currentUser.selectedLibraryId,
+      sortMode,
+      sortDirection,
+      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
+    ) {
+      lazyPagingItems.refresh()
+    }
 
     val authorCount by remember(sortMode, sortDirection) {
       authorRepository.observeFilteredAuthorsCount(

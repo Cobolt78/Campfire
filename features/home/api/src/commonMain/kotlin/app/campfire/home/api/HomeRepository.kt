@@ -9,6 +9,8 @@ import app.campfire.core.model.ShelfEntity
 import app.campfire.core.model.ShelfType
 import app.campfire.home.api.model.Shelf
 import app.campfire.home.api.model.ShelfId
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.Flow
 
 interface HomeRepository {
@@ -25,6 +27,12 @@ interface HomeRepository {
   suspend fun refreshHomeFeed()
 
   /**
+   * Re-fetch the current user's home feed from the server only if at least [maxAge] has elapsed
+   * since the last successful fetch (or if no successful fetch has been recorded yet).
+   */
+  suspend fun refreshHomeFeedIfStale(maxAge: Duration = DefaultStaleOutDuration)
+
+  /**
    * Observe the [MediaProgress] for each libraryItemId passed to the function
    */
   fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>>
@@ -33,4 +41,8 @@ interface HomeRepository {
    * Observe the contents of a single [Shelf] by its id.
    */
   fun observeShelf(shelfId: ShelfId, shelfType: ShelfType): Flow<List<ShelfEntity>>
+
+  companion object {
+    val DefaultStaleOutDuration: Duration = 5.minutes
+  }
 }

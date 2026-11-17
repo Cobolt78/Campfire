@@ -19,6 +19,7 @@ kotlin {
         implementation(projects.data.network.api)
         implementation(projects.data.account.api)
         implementation(projects.features.user.api)
+        implementation(projects.infra.socket.api)
 
         implementation(libs.store)
 

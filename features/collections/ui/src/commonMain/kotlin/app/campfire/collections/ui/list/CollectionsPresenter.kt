@@ -15,11 +15,16 @@ import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.collections.api.CollectionsRepository
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.screens.CollectionDetailScreen
 import app.campfire.common.screens.CollectionsScreen
 import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.Collection
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.settings.api.LibraryViewSettings
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
@@ -36,6 +41,8 @@ class CollectionsPresenter(
   private val repository: CollectionsRepository,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<CollectionsUiState> {
 
   @Suppress("UNCHECKED_CAST")
@@ -43,6 +50,14 @@ class CollectionsPresenter(
   override fun present(): CollectionsUiState {
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      isExternalRefreshInProgress = isRefreshing,
+    ) {
+      repository.refreshCollections()
+    }
 
     val collectionContentState by remember {
       repository.observeAllCollections()

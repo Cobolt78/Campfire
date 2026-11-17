@@ -23,20 +23,21 @@ object HomeStore : Cork {
 
   @Inject
   class Factory(
-    api: AudioBookShelfApi,
+    private val api: AudioBookShelfApi,
     private val db: CampfireDatabase,
     private val imageHydrator: UrlHydrator,
     private val dispatcherProvider: DispatcherProvider,
   ) {
 
-    private val fetcherFactory = HomeFetcherFactory(api)
-    private val sourceOfTruthFactory = HomeSourceOfTruthFactory(
-      db = db,
-      imageHydrator = imageHydrator,
-      dispatcherProvider = dispatcherProvider,
-    )
-
-    fun create(): Store<Key, List<Shelf>> {
+    fun create(
+      onFetchSuccess: (Key) -> Unit = {},
+    ): Store<Key, List<Shelf>> {
+      val fetcherFactory = HomeFetcherFactory(api, onFetchSuccess)
+      val sourceOfTruthFactory = HomeSourceOfTruthFactory(
+        db = db,
+        imageHydrator = imageHydrator,
+        dispatcherProvider = dispatcherProvider,
+      )
       return StoreBuilder
         .from(
           fetcher = fetcherFactory.create(),

@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.paging.LoadState
 import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.campfire.analytics.Analytics
@@ -18,11 +19,16 @@ import app.campfire.analytics.events.Click
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.compose.util.rememberRetainedCoroutineScope
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
 import app.campfire.core.model.MediaType
 import app.campfire.core.model.User
 import app.campfire.core.settings.ItemDisplayState
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.libraries.api.LibraryRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.libraries.api.screen.LibraryScreen
@@ -51,6 +57,8 @@ class LibraryPresenter(
   private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<LibraryUiState> {
 
   @Composable
@@ -103,6 +111,19 @@ class LibraryPresenter(
         sortDirection = sortDirection,
       ).flow.cachedIn(scope)
     }.collectAsLazyPagingItems()
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      currentUser.id,
+      currentUser.selectedLibraryId,
+      sortMode,
+      sortDirection,
+      itemFilter,
+      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
+    ) {
+      lazyPagingItems.refresh()
+    }
 
     val totalItemCount by rememberRetained(sortMode, sortDirection, itemFilter) {
       repository.observeFilteredLibraryCount(

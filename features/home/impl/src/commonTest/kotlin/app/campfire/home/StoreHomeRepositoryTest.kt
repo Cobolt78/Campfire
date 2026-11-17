@@ -9,6 +9,8 @@ import app.campfire.common.test.coroutines.asTestDispatcherProvider
 import app.campfire.core.model.LibraryItemId
 import app.campfire.core.model.MediaProgress
 import app.campfire.core.session.UserSession
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.data.mapping.dao.SqlDelightLibraryItemDao
 import app.campfire.db.DatabaseFactory
 import app.campfire.db.test.createDriver
@@ -26,7 +28,9 @@ import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import assertk.assertions.isEqualTo
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
@@ -85,7 +89,57 @@ class StoreHomeRepositoryTest {
     assertThat(db.shelfLabels()).containsExactly("Newest Authors")
   }
 
-  private fun TestScope.repository(db: CampfireDatabase): StoreHomeRepository {
+  @Test
+  fun `refreshHomeFeedIfStale skips fresh feed within window and refreshes after stale-out`() = homeTest { db ->
+    var nowMillis = 1_000_000L
+    val fakeTime = object : FatherTime {
+      override fun now() = GrandFatherTime.now()
+      override fun today() = GrandFatherTime.today()
+      override fun nowInEpochMillis(): Long = nowMillis
+    }
+    val repository = repository(db, fakeTime)
+    api.personalizedHomeResult = { Result.success(listOf(shelf("authors", "Newest Authors"))) }
+
+    // Initial check with no prior fetch triggers network
+    repository.refreshHomeFeedIfStale(5.minutes)
+    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
+
+    // 4 minutes later: still fresh, skips network
+    nowMillis += 4.minutes.inWholeMilliseconds
+    repository.refreshHomeFeedIfStale(5.minutes)
+    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
+
+    // 5 minutes total elapsed: stale, refreshes
+    nowMillis += 1.minutes.inWholeMilliseconds
+    repository.refreshHomeFeedIfStale(5.minutes)
+    assertThat(api.personalizedHomeRequests.size).isEqualTo(2)
+  }
+
+  @Test
+  fun `refreshHomeFeedIfStale retries immediately after failed fetch`() = homeTest { db ->
+    var nowMillis = 1_000_000L
+    val fakeTime = object : FatherTime {
+      override fun now() = GrandFatherTime.now()
+      override fun today() = GrandFatherTime.today()
+      override fun nowInEpochMillis(): Long = nowMillis
+    }
+    val repository = repository(db, fakeTime)
+    api.personalizedHomeResult = { Result.failure(IllegalStateException("Offline")) }
+    repository.refreshHomeFeedIfStale(5.minutes)
+    assertThat(api.personalizedHomeRequests.size).isEqualTo(1)
+
+    // Only 30s later, network returns: retries because previous attempt failed
+    nowMillis += 30_000L
+    api.personalizedHomeResult = { Result.success(listOf(shelf("recent", "Recently Added"))) }
+    repository.refreshHomeFeedIfStale(5.minutes)
+    assertThat(api.personalizedHomeRequests.size).isEqualTo(2)
+    assertThat(db.shelfLabels()).containsExactly("Recently Added")
+  }
+
+  private fun TestScope.repository(
+    db: CampfireDatabase,
+    fatherTime: FatherTime = GrandFatherTime,
+  ): StoreHomeRepository {
     val dispatcherProvider = asTestDispatcherProvider()
     val urlHydrator = FakeUrlHydrator()
     val userSession = UserSession.LoggedIn(testUser)
@@ -100,6 +154,7 @@ class StoreHomeRepositoryTest {
         dispatcherProvider = dispatcherProvider,
         userSession = userSession,
       ),
+      fatherTime = fatherTime,
     )
   }
 

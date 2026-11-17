@@ -11,6 +11,7 @@ import app.campfire.home.api.FeedResponse
 import app.campfire.home.api.HomeRepository
 import app.campfire.home.api.model.Shelf
 import app.campfire.home.api.model.ShelfId
+import kotlin.time.Duration
 import kotlinx.coroutines.flow.Flow
 
 class FakeHomeRepository(
@@ -18,9 +19,13 @@ class FakeHomeRepository(
   private val mediaProgressFlowFactory: (Set<LibraryItemId>) -> Flow<Map<LibraryItemId, MediaProgress>>,
   private val shelfEntityFlowFactory: (ShelfId, ShelfType) -> Flow<List<ShelfEntity>>,
   private val onRefreshHomeFeed: suspend () -> Unit = {},
+  private val onRefreshHomeFeedIfStale: suspend (Duration) -> Unit = { onRefreshHomeFeed() },
 ) : HomeRepository {
 
   var refreshCount = 0
+    private set
+
+  var refreshIfStaleCount = 0
     private set
 
   override fun observeHomeFeed(): Flow<FeedResponse<List<Shelf>>> {
@@ -30,6 +35,11 @@ class FakeHomeRepository(
   override suspend fun refreshHomeFeed() {
     refreshCount++
     onRefreshHomeFeed()
+  }
+
+  override suspend fun refreshHomeFeedIfStale(maxAge: Duration) {
+    refreshIfStaleCount++
+    onRefreshHomeFeedIfStale(maxAge)
   }
 
   override fun observeMediaProgress(libraryItemIds: Set<LibraryItemId>): Flow<Map<LibraryItemId, MediaProgress>> {

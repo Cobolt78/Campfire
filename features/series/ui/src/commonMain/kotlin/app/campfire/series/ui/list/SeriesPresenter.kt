@@ -9,18 +9,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.paging.LoadState
 import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.compose.util.rememberRetainedCoroutineScope
 import app.campfire.common.screens.SeriesDetailScreen
 import app.campfire.common.screens.SeriesScreen
 import app.campfire.core.coroutines.map
 import app.campfire.core.di.UserScope
 import app.campfire.core.filter.ContentFilter
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.series.api.SeriesRepository
 import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.user.api.UserRepository
@@ -44,6 +50,8 @@ class SeriesPresenter(
   private val seriesRepository: SeriesRepository,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<SeriesUiState> {
 
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -97,6 +105,19 @@ class SeriesPresenter(
         sortDirection = sortDirection,
       ).flow.cachedIn(scope)
     }.collectAsLazyPagingItems()
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      currentUser.id,
+      currentUser.selectedLibraryId,
+      filter,
+      sortMode,
+      sortDirection,
+      isExternalRefreshInProgress = lazyPagingItems.loadState.refresh is LoadState.Loading,
+    ) {
+      lazyPagingItems.refresh()
+    }
 
     val totalSeriesCount by remember {
       seriesRepository.observeFilteredSeriesCount(

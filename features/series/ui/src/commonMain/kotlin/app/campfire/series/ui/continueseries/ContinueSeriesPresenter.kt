@@ -17,9 +17,14 @@ import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
 import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
+import app.campfire.common.compose.lifecycle.RefreshOnForegroundStaleOut
 import app.campfire.common.screens.ContinueSeriesScreen
 import app.campfire.common.screens.SeriesDetailScreen
 import app.campfire.core.di.UserScope
+import app.campfire.core.lifecycle.ForegroundResumeTracker
+import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.series.api.SeriesRepository
 import app.campfire.settings.api.LibraryViewSettings
@@ -49,6 +54,8 @@ class ContinueSeriesPresenter(
   private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
+  private val foregroundResumeTracker: ForegroundResumeTracker = NoOpForegroundResumeTracker,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : NonPausablePresenter<ContinueSeriesUiState> {
 
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -83,6 +90,14 @@ class ContinueSeriesPresenter(
 
     LaunchedEffect(Unit) {
       refresh()
+    }
+
+    RefreshOnForegroundStaleOut(
+      foregroundResumeTracker = foregroundResumeTracker,
+      fatherTime = fatherTime,
+      isExternalRefreshInProgress = isRefreshing,
+    ) {
+      seriesRepository.refreshContinueSeries()
     }
 
     LaunchedEffect(sortMode, sortAscending) {
