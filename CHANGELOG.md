@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.51-rc1] - 2026-11-17
+
+### Added
+
+- **Smart Background Refresh & Live Home Feed Updates**:
+  - Added 5-minute Stale-While-Revalidate (SWR) background resume refreshing for the Home feed (`Recently Added`, `Continue Listening`, `Continue Series`, etc.) so returning after background audio playback silently catches new server additions without jarring reloads or wasted mobile data on quick app switches.
+  - Hooked the Home feed into real-time Audiobookshelf WebSocket events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`) with a 1.5-second debounce so newly scanned books appear automatically while Campfire is open without hammering the server during batch scans.
+  - Added process-wide foreground resume tracking across all active menus (`Home`, `Library`, `Series`, `Authors`, `Collections`, `Playlists`, `Latest Episodes`, `Continue Series`, `Podcast Downloads`, `Statistics`, and `Upcoming`) so whichever menu is active automatically refreshes after returning from a 5+ minute background stale-out (including when popping back from a detail screen).
+
 ## [1.2.50] - 2026-11-16
 
 ### Fixed

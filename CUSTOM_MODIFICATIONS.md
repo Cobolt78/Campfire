@@ -93,7 +93,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
-89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh)
+89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh-v1251-rc1)
 
 ---
 
@@ -2681,7 +2681,7 @@ On Android 16/17 (Samsung One UI 8, `targetSdk 37`), starting or resuming audiob
 
 ---
 
-## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh
+## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)
 
 ### Problem
 When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
@@ -2728,4 +2728,6 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 * features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
 * features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
 * features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
+* gradle.properties
+* CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md

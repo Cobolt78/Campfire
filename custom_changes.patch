@@ -11,14 +11,23 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..910b045e 100644
+index c0278c85..8040093e 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,518 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,527 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.51-rc1] - 2026-11-17
++
++### Added
++
++- **Smart Background Refresh & Live Home Feed Updates**:
++  - Added 5-minute Stale-While-Revalidate (SWR) background resume refreshing for the Home feed (`Recently Added`, `Continue Listening`, `Continue Series`, etc.) so returning after background audio playback silently catches new server additions without jarring reloads or wasted mobile data on quick app switches.
++  - Hooked the Home feed into real-time Audiobookshelf WebSocket events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`) with a 1.5-second debounce so newly scanned books appear automatically while Campfire is open without hammering the server during batch scans.
++  - Added process-wide foreground resume tracking across all active menus (`Home`, `Library`, `Series`, `Authors`, `Collections`, `Playlists`, `Latest Episodes`, `Continue Series`, `Podcast Downloads`, `Statistics`, and `Upcoming`) so whichever menu is active automatically refreshes after returning from a 5+ minute background stale-out (including when popping back from a detail screen).
++
 +## [1.2.50] - 2026-11-16
 +
 +### Fixed
@@ -536,10 +545,10 @@ index c0278c85..910b045e 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..a5703d7e
+index 00000000..b2bfb350
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2731 @@
+@@ -0,0 +1,2733 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -635,7 +644,7 @@ index 00000000..a5703d7e
 +86. [1-Tap Battery System Prompt, Proactive Home Warning Banner, Manual Guidance & Real-Time Status Reactivity (v1.2.48)](#86-1-tap-battery-system-prompt-proactive-home-warning-banner-manual-guidance--real-time-status-reactivity-v1248)
 +87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 +88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
-+89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh)
++89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh-v1251-rc1)
 +
 +---
 +
@@ -3223,7 +3232,7 @@ index 00000000..a5703d7e
 +
 +---
 +
-+## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh
++## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)
 +
 +### Problem
 +When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
@@ -3270,6 +3279,8 @@ index 00000000..a5703d7e
 +* features/podcasts/ui/src/commonMain/kotlin/app/campfire/podcasts/ui/downloads/PodcastDownloadQueuePresenter.kt
 +* features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
 +* features/discover/ui/src/commonMain/kotlin/app/campfire/discover/ui/UpcomingPresenter.kt
++* gradle.properties
++* CHANGELOG.md
 +* CUSTOM_MODIFICATIONS.md
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
@@ -19522,7 +19533,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..6453b446 100644
+index f41126a7..9ee36979 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -19530,13 +19541,13 @@ index f41126a7..6453b446 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.50
++campfire.version=1.2.51-rc1
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025099
++campfire.versionCode=1025101
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
