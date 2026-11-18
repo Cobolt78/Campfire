@@ -3,35 +3,49 @@
 
 package app.campfire.shake
 
+import kotlin.math.abs
+import kotlin.math.sqrt
+
 /**
- * Detects phone shaking. If more than 75% of the samples taken in the past 0.5s are
- * accelerating, the device is a) shaking, or b) free falling 1.84m (h =
- * 1/2*g*t^2*3/4).
- *
- * @author Bob Lee (bob@squareup.com)
- * @author Eric Burke (eric@squareup.com)
+ * Detects phone movement/shaking across [ShakeSensitivity] levels by measuring linear
+ * acceleration relative to [gravityBaseline] (`|magnitude - gravityBaseline|`) over a sliding
+ * time window and scaling both the magnitude threshold and sustained sample requirement per tier.
  */
 class SamplingShakeDetector(
+  private val gravityBaseline: Double = ShakeSensitivityMagnitudes.gravity,
   private val onShake: () -> Unit,
 ) {
   /**
-   * When the magnitude of total acceleration exceeds this
-   * value, the phone is accelerating.
+   * Controls both the linear acceleration delta threshold and the sustained-motion requirement.
    */
   var sensitivity: ShakeSensitivity = ShakeSensitivity.Default
+    set(value) {
+      if (field != value) {
+        field = value
+        queue.clear()
+      }
+    }
 
   private val queue = SampleQueue()
+  private var lastTriggerTimestampNs: Long = Long.MIN_VALUE
 
   /**
-   * Add an accelerometer event to this detectors queue to sample and
-   * reasonably detect shaking events
+   * Add an accelerometer event to this detector's queue to sample and
+   * detect movement/shaking events.
    */
   fun addAccelerometerEvent(event: AccelerometerEvent) {
-    val accelerating = isAccelerating(event)
     val timestamp = event.timestamp
+    if (lastTriggerTimestampNs != Long.MIN_VALUE &&
+      timestamp >= lastTriggerTimestampNs &&
+      timestamp - lastTriggerTimestampNs < COOLDOWN_NS
+    ) {
+      return
+    }
+    val accelerating = isAccelerating(event)
     queue.add(timestamp, accelerating)
-    if (queue.isShaking) {
+    if (queue.isShaking(sensitivity)) {
       queue.clear()
+      lastTriggerTimestampNs = timestamp
       onShake()
     }
   }
@@ -40,15 +54,11 @@ class SamplingShakeDetector(
     queue.clear()
   }
 
-  /** Returns true if the device is currently accelerating.  */
+  /** Returns true if the device's linear acceleration delta from gravity exceeds [ShakeSensitivity.value]. */
   private fun isAccelerating(event: AccelerometerEvent): Boolean {
     val (ax, ay, az) = event
-
-    // Instead of comparing magnitude to ACCELERATION_THRESHOLD,
-    // compare their squares. This is equivalent and doesn't need the
-    // actual magnitude, which would be computed using (expensive) Math.sqrt().
-    val magnitudeSquared = (ax * ax + ay * ay + az * az).toDouble()
-    return magnitudeSquared > sensitivity.valueSquared
+    val magnitude = sqrt(ax * ax + ay * ay + az * az)
+    return abs(magnitude - gravityBaseline) > sensitivity.value
   }
 
   /** Queue of samples. Keeps a running average.  */
@@ -67,8 +77,11 @@ class SamplingShakeDetector(
      * @param accelerating true if > [.accelerationThreshold].
      */
     fun add(timestamp: Long, accelerating: Boolean) {
-      // Purge samples that proceed window.
-      purge(timestamp - MAX_WINDOW_SIZE)
+      if (newest != null && timestamp < newest!!.timestamp) {
+        clear()
+      }
+      // Purge samples that precede the active sliding window (and always expire stale samples > 1s old).
+      purge(timestamp - MAX_WINDOW_SIZE, maxAgeCutoff = timestamp - MAX_SAMPLE_AGE_NS)
 
       // Add the sample to the queue.
       val added = pool.acquire()
@@ -103,8 +116,8 @@ class SamplingShakeDetector(
     }
 
     /** Purges samples with timestamps older than cutoff.  */
-    fun purge(cutoff: Long) {
-      while (sampleCount >= MIN_QUEUE_SIZE && oldest != null && cutoff - oldest!!.timestamp > 0) {
+    fun purge(cutoff: Long, maxAgeCutoff: Long = cutoff) {
+      while (oldest != null && (oldest!!.timestamp < maxAgeCutoff || (sampleCount >= MIN_QUEUE_SIZE && cutoff - oldest!!.timestamp > 0))) {
         // Remove sample.
         val removed: Sample = oldest!!
         if (removed.accelerating) {
@@ -131,27 +144,29 @@ class SamplingShakeDetector(
       return list
     }
 
-    val isShaking: Boolean
-      /**
-       * Returns true if we have enough samples and more than 3/4 of those samples
-       * are accelerating.
-       */
-      get() = newest != null && oldest != null &&
-        newest!!.timestamp - oldest!!.timestamp >= MIN_WINDOW_SIZE &&
-        acceleratingCount >= (sampleCount shr 1) + (sampleCount shr 2)
+    fun isShaking(sensitivity: ShakeSensitivity): Boolean {
+      val newestSample = newest ?: return false
+      val oldestSample = oldest ?: return false
+      if (newestSample.timestamp - oldestSample.timestamp < sensitivity.minWindowNs) return false
+      if (acceleratingCount < sensitivity.minAcceleratingSamples) return false
+      if (sampleCount == 0) return false
+      return acceleratingCount.toDouble() / sampleCount.toDouble() >= sensitivity.minAcceleratingFraction
+    }
 
     companion object {
-      /** Window size in ns. Used to compute the average.  */
-      private const val MAX_WINDOW_SIZE: Long = 500000000 // 0.5s
-      private const val MIN_WINDOW_SIZE = MAX_WINDOW_SIZE shr 1 // 0.25s
+      /** Window size in ns. Used to compute the running movement ratio. */
+      private const val MAX_WINDOW_SIZE: Long = 500_000_000L // 0.5s
+      private const val MAX_SAMPLE_AGE_NS: Long = 1_000_000_000L // 1.0s
 
       /**
-       * Ensure the queue size never falls below this size, even if the device
-       * fails to deliver this many events during the time window. The LG Ally
-       * is one such device.
+       * Ensure the queue size never falls below this size during short windows.
        */
       private const val MIN_QUEUE_SIZE = 4
     }
+  }
+
+  companion object {
+    private const val COOLDOWN_NS: Long = 500_000_000L // 0.5s
   }
 
   /** An accelerometer sample.  */

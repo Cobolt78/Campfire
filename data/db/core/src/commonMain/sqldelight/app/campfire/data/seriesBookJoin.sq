@@ -27,6 +27,8 @@ INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
 SELECT media.metadata_series_id, shelfJoin.entityId
 FROM shelfJoin
 JOIN media ON media.libraryItemId = shelfJoin.entityId
+INNER JOIN series ON series.id = media.metadata_series_id
+INNER JOIN libraryItem ON libraryItem.id = shelfJoin.entityId
 WHERE shelfJoin.shelfId LIKE 'continue-series_%'
   AND media.metadata_series_id IS NOT NULL;
 
@@ -34,4 +36,6 @@ insertMissingMediaSeriesJoins:
 INSERT OR IGNORE INTO seriesBookJoin (seriesId, libraryItemId)
 SELECT media.metadata_series_id, media.libraryItemId
 FROM media
+INNER JOIN series ON series.id = media.metadata_series_id
+INNER JOIN libraryItem ON libraryItem.id = media.libraryItemId
 WHERE media.metadata_series_id IS NOT NULL;

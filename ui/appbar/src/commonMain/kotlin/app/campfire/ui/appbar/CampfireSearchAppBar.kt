@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,6 +104,7 @@ private fun CampfireSearchAppBar(
   scrollBehavior: SearchBarScrollBehavior? = null,
 ) {
   val scope = rememberCoroutineScope()
+  val keyboardController = LocalSoftwareKeyboardController.current
   val textFieldState = rememberTextFieldState()
   val searchBarState = rememberSearchBarState()
   val inputField =
@@ -111,7 +113,9 @@ private fun CampfireSearchAppBar(
         modifier = Modifier.fillMaxWidth(),
         searchBarState = searchBarState,
         textFieldState = textFieldState,
-        onSearch = { scope.launch { searchBarState.animateToCollapsed() } },
+        // Live search already runs as the user types, so pressing Enter on the soft keyboard
+        // should just dismiss the keyboard to reveal results instead of collapsing search.
+        onSearch = { keyboardController?.hide() },
         placeholder = {
           Text(
             modifier = Modifier.clearAndSetSemantics {},

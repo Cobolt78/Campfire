@@ -146,6 +146,7 @@ SELECT
 FROM shelfJoin
 JOIN media ON media.libraryItemId = shelfJoin.entityId
 JOIN libraryItem ON libraryItem.id = shelfJoin.entityId
+JOIN user ON user.id = :userId
 WHERE shelfJoin.shelfId LIKE 'continue-series_%'
   AND media.metadata_series_id IS NOT NULL;
 

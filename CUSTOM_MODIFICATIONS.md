@@ -2731,3 +2731,45 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 * gradle.properties
 * CHANGELOG.md
 * CUSTOM_MODIFICATIONS.md
+
+
+---
+
+## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes
+
+### Problem
+1. **Search Bar Keyboard Enter Collapsed Search**: Tapping Enter/Search on the soft keyboard in `CampfireSearchAppBar` called `searchBarState.animateToCollapsed()`, closing the expanded search results view instead of dismissing the keyboard while keeping search results visible.
+2. **Continue Series Endless Spinner**: `SqlDelightDatabasePlatformComponent` enables SQLite foreign key constraints (`setForeignKeyConstraintsEnabled(true)`), and in SQLite `INSERT OR IGNORE` does not suppress `FOREIGN KEY` violations. When `media` held a book whose `metadata_series_id` had no corresponding row in `series` (or `shelfJoin` referenced missing items/series), `insertMissingMediaSeriesJoins` / `insertMissingShelfJoins` / `insertMissingShelfSeries` threw `FOREIGN KEY constraint failed`, killing `continueSeriesFlow` silently inside `shareIn(repositoryScope)` and leaving the Continue Series spinner stuck indefinitely.
+3. **Shake Sensitivity Non-Responsive & Ignored Live Settings**:
+   - `SamplingShakeDetector` compared raw total acceleration magnitude squared against gravity-biased thresholds (`~11..15 m/s²` including `9.80665` gravity) using a fixed 75%-of-250ms window, requiring vigorous shaking even on `VeryHigh`, ignoring downward/negative gravity phases, and double-firing within milliseconds.
+   - `CoroutineSleepTimerManager` only read `sleepSettings.shakeSensitivity` once when starting the shake detector and did not observe live changes to `observeShakeToResetEnabled()` or `observeShakeSensitivity()` while a sleep timer was active.
+
+### Solution & Implementation
+1. **Keep Search Expanded on Keyboard Submit (`CampfireSearchAppBar.kt`)**:
+   - Changed `SearchBarDefaults.InputField.onSearch` to call `keyboardController?.hide()` (`LocalSoftwareKeyboardController.current`) instead of collapsing `searchBarState`, dismissing the soft keyboard while keeping live debounced search results open.
+2. **Foreign-Key-Safe Continue Series Backfill (`seriesBookJoin.sq`, `series.sq`, `StoreSeriesRepository.kt`)**:
+   - Constrained `insertMissingShelfJoins` and `insertMissingMediaSeriesJoins` with `INNER JOIN series ON series.id = media.metadata_series_id` and `INNER JOIN libraryItem ON libraryItem.id = ...`, and constrained `insertMissingShelfSeries` with `JOIN user ON user.id = :userId`.
+   - Wrapped the DB backfill step in `StoreSeriesRepository.continueSeriesFlow` (`flatMapLatest`) in `runCatching` with warning logging so a backfill error never terminates the shared `Flow`.
+   - Added unit tests in `StoreSeriesRepositoryContinueSeriesTest.kt` running with `PRAGMA foreign_keys = ON` against orphaned `media.metadata_series_id` and `shelfJoin` rows.
+3. **Calibrated Linear-Delta Shake Detection & Live Observation (`infra/shake/*`, `CoroutineSleepTimerManager.kt`)**:
+   - Updated `ShakeSensitivityMagnitudes` (`androidMain`, `iosMain`, `jvmMain`) to declare `gravity` (`9.80665` / `1.0`) and calibrated linear acceleration deltas (`VeryLow`..`VeryHigh`: `10.0 / 7.0 / 4.5 / 2.5 / 1.0` m/s²).
+   - Added per-tier `minAcceleratingSamples`, `minWindowNs`, and `minAcceleratingFraction` to `ShakeSensitivity` (`VeryLow`: 12 / 300ms / 0.75 down to `VeryHigh`: 3 / 0ms / 0.0).
+   - Updated `SamplingShakeDetector` to measure `abs(sqrt(ax² + ay² + az²) - gravityBaseline) > sensitivity.value` across both positive and negative gravity phases, enforce a `500ms` post-trigger cooldown, purge stale samples cleanly, and reset its queue when sensitivity changes.
+   - Added `SamplingShakeDetectorTest.kt` (`infra/shake` `commonTest`) covering `VeryHigh` gentle pick-up sensitivity, negative-gravity phase detection, `VeryLow` sustained-shake filtering, `500ms` cooldown, and sensitivity-change queue reset.
+   - Updated `CoroutineSleepTimerManager` to observe `combine(sleepSettings.observeShakeToResetEnabled(), sleepSettings.observeShakeSensitivity()).distinctUntilChanged().drop(1)` in `init` so changing shake settings takes effect immediately even during an active sleep timer.
+
+### Modified Files:
+* `data/db/core/src/commonMain/sqldelight/app/campfire/data/series.sq`
+* `data/db/core/src/commonMain/sqldelight/app/campfire/data/seriesBookJoin.sq`
+* `features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt`
+* `features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+* `infra/shake/build.gradle.kts`
+* `infra/shake/src/androidMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.android.kt`
+* `infra/shake/src/commonMain/kotlin/app/campfire/shake/SamplingShakeDetector.kt`
+* `infra/shake/src/commonMain/kotlin/app/campfire/shake/ShakeSensitivity.kt`
+* `infra/shake/src/commonTest/kotlin/app/campfire/shake/SamplingShakeDetectorTest.kt`
+* `infra/shake/src/iosMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.ios.kt`
+* `infra/shake/src/jvmMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.jvm.kt`
+* `ui/appbar/src/commonMain/kotlin/app/campfire/ui/appbar/CampfireSearchAppBar.kt`
+* `CUSTOM_MODIFICATIONS.md`

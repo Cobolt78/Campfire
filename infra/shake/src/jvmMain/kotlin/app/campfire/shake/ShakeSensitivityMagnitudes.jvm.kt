@@ -4,9 +4,10 @@
 package app.campfire.shake
 
 actual object ShakeSensitivityMagnitudes {
-  actual val veryLow: Double = 0.0
-  actual val low: Double = 0.0
-  actual val medium: Double = 0.0
-  actual val high: Double = 0.0
-  actual val veryHigh: Double = 0.0
+  actual val gravity: Double = 9.80665
+  actual val veryLow: Double = 10.0
+  actual val low: Double = 7.0
+  actual val medium: Double = 4.5
+  actual val high: Double = 2.5
+  actual val veryHigh: Double = 1.0
 }

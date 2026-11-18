@@ -15,5 +15,12 @@ kotlin {
         implementation(libs.compose.foundation)
       }
     }
+
+    commonTest {
+      dependencies {
+        implementation(libs.kotlin.test)
+        implementation(libs.assertk)
+      }
+    }
   }
 }

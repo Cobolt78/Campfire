@@ -24,6 +24,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalTime
@@ -72,6 +75,31 @@ class CoroutineSleepTimerManager(
 
   init {
     restorePersistedTimer()
+    observeShakeSettings()
+  }
+
+  private fun observeShakeSettings() {
+    applicationScope.launch(dispatcherProvider.main) {
+      combine(
+        sleepSettings.observeShakeToResetEnabled(),
+        sleepSettings.observeShakeSensitivity(),
+      ) { enabled, sensitivity ->
+        enabled to sensitivity
+      }
+        .distinctUntilChanged()
+        .drop(1)
+        .collect { (enabled, sensitivity) ->
+          if (!enabled) {
+            if (shakeDetector.isRunning) {
+              dbark { "Shake to reset disabled, stopping ShakeDetector" }
+              shakeDetector.stop()
+            }
+          } else if (playbackTimer != null || lastPlaybackTimer != null) {
+            ibark { "Applying updated shake sensitivity: $sensitivity" }
+            startShakeDetector(sensitivity.asShakeSensitivity())
+          }
+        }
+    }
   }
 
   private fun restorePersistedTimer() {
@@ -172,19 +200,23 @@ class CoroutineSleepTimerManager(
   private fun startShakeDetectorIfNeeded() {
     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
       ibark { "Shake to reset enabled, starting shake detector" }
-      shakeDetector.start(
-        sensitivity = sleepSettings.shakeSensitivity.asShakeSensitivity(),
-        listener = {
-          dbark { "<~> Shake Detected!" }
-          resetTimer()
-        },
-      )
+      startShakeDetector(sleepSettings.shakeSensitivity.asShakeSensitivity())
     } else if (sleepSettings.shakeToResetEnabled && shakeDetector.isRunning) {
       dbark { "Shake detector already running, skipping" }
     } else if (!sleepSettings.shakeToResetEnabled && shakeDetector.isRunning) {
       dbark { "Shake detector running, and not enabled. Stopping" }
       stopShakeDetector()
     }
+  }
+
+  private fun startShakeDetector(sensitivity: ShakeSensitivity) {
+    shakeDetector.start(
+      sensitivity = sensitivity,
+      listener = {
+        dbark { "<~> Shake Detected!" }
+        resetTimer()
+      },
+    )
   }
 
   private fun resetTimer() {

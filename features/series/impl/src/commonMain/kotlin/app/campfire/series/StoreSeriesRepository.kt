@@ -329,12 +329,16 @@ class StoreSeriesRepository(
   private val continueSeriesFlow: Flow<List<Series>> by lazy {
     userRepository.observeCurrentUser()
       .flatMapLatest { user ->
-        withContext(dispatcherProvider.databaseWrite) {
-          db.transaction {
-            db.seriesQueries.insertMissingShelfSeries(user.id)
-            db.seriesBookJoinQueries.insertMissingShelfJoins()
-            db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
+        runCatching {
+          withContext(dispatcherProvider.databaseWrite) {
+            db.transaction {
+              db.seriesQueries.insertMissingShelfSeries(user.id)
+              db.seriesBookJoinQueries.insertMissingShelfJoins()
+              db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
+            }
           }
+        }.onFailure {
+          bark(LogPriority.WARN, throwable = it) { "Failed to backfill continue series joins" }
         }
         db.seriesQueries
           .selectContinueSeries(
