@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.51-rc2] - 2026-11-19
+
+### Fixed
+
+- **Search Keyboard Enter Behavior**:
+  - Fixed tapping Enter/Search on the soft keyboard inside the search bar closing the search overlay instead of hiding the keyboard and leaving search results open.
+- **Continue Series Screen Endless Loading**:
+  - Fixed a SQLite foreign key constraint failure during `Continue Series` join/series backfill queries when orphaned book series metadata existed locally, which silently killed the reactive flow and left the Continue Series spinner spinning indefinitely.
+- **Shake-to-Reset Sensitivity & Live Settings**:
+  - Re-calibrated Shake-to-Reset using gravity-subtracted linear acceleration deltas across both positive and negative gravity phases (`VeryHigh` now responds cleanly to slight movements, while `VeryLow` requires sustained firm shaking), added a 500ms cooldown to prevent double-fires, and observed sleep shake settings live so sensitivity changes apply immediately even while a timer is already running.
+
 ## [1.2.51-rc1] - 2026-11-17
 
 ### Added

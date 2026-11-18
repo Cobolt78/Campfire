@@ -2735,7 +2735,7 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 
 ---
 
-## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes
+## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51-rc2)
 
 ### Problem
 1. **Search Bar Keyboard Enter Collapsed Search**: Tapping Enter/Search on the soft keyboard in `CampfireSearchAppBar` called `searchBarState.animateToCollapsed()`, closing the expanded search results view instead of dismissing the keyboard while keeping search results visible.
@@ -2772,4 +2772,6 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 * `infra/shake/src/iosMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.ios.kt`
 * `infra/shake/src/jvmMain/kotlin/app/campfire/shake/ShakeSensitivityMagnitudes.jvm.kt`
 * `ui/appbar/src/commonMain/kotlin/app/campfire/ui/appbar/CampfireSearchAppBar.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
