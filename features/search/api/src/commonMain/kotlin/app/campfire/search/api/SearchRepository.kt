@@ -8,4 +8,6 @@ import kotlinx.coroutines.flow.Flow
 interface SearchRepository {
 
   fun searchCurrentLibrary(query: String): Flow<SearchResult>
+
+  fun getCachedResult(query: String): SearchResult.Success? = null
 }

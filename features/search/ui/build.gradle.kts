@@ -18,5 +18,14 @@ kotlin {
         implementation(libs.circuitx.overlays)
       }
     }
+
+    commonTest {
+      dependencies {
+        implementation(projects.common.test)
+        implementation(projects.data.analytics.test)
+        implementation(projects.infra.audioplayer.test)
+        implementation(libs.molecule)
+      }
+    }
   }
 }

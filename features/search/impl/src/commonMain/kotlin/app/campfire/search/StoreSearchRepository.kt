@@ -4,6 +4,8 @@
 package app.campfire.search
 
 import app.campfire.core.di.UserScope
+import app.campfire.core.time.FatherTime
+import app.campfire.core.time.GrandFatherTime
 import app.campfire.search.api.SearchRepository
 import app.campfire.search.api.SearchResult
 import app.campfire.search.store.SearchStore
@@ -11,11 +13,13 @@ import app.campfire.user.api.UserRepository
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onEach
 import org.mobilenativefoundation.store.store5.StoreReadRequest
 import org.mobilenativefoundation.store.store5.StoreReadResponse
 
@@ -25,9 +29,33 @@ import org.mobilenativefoundation.store.store5.StoreReadResponse
 class StoreSearchRepository(
   private val userRepository: UserRepository,
   private val searchStoreFactory: SearchStore.Factory,
+  private val fatherTime: FatherTime = GrandFatherTime,
 ) : SearchRepository {
 
   private val store by lazy { searchStoreFactory.create() }
+
+  @kotlin.concurrent.Volatile
+  private var recentCache: Map<String, CachedSearchEntry> = emptyMap()
+
+  private data class CachedSearchEntry(
+    val result: SearchResult.Success,
+    val cachedAtMillis: Long,
+  )
+
+  private fun cacheKey(userId: String, libraryId: String, query: String): String {
+    return "$userId::$libraryId::${query.trim()}"
+  }
+
+  override fun getCachedResult(query: String): SearchResult.Success? {
+    if (query.isBlank()) return null
+    val user = userRepository.userFlow.value
+    val key = cacheKey(user.id, user.selectedLibraryId, query)
+    val entry = recentCache[key] ?: return null
+    if (fatherTime.nowInEpochMillis() - entry.cachedAtMillis > CacheTtlMillis) {
+      return null
+    }
+    return entry.result
+  }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   override fun searchCurrentLibrary(query: String): Flow<SearchResult> {
@@ -38,7 +66,7 @@ class StoreSearchRepository(
           libraryId = user.selectedLibraryId,
           text = query,
         )
-        val request = StoreReadRequest.freshWithFallBackToSourceOfTruth(key)
+        val request = StoreReadRequest.cached(key, refresh = false)
         store.stream(request)
           .filterNot { it is StoreReadResponse.NoNewData }
           .mapLatest { response ->
@@ -49,6 +77,25 @@ class StoreSearchRepository(
               else -> SearchResult.Error
             }
           }
+          .onEach { mapped ->
+            if (mapped is SearchResult.Success) {
+              val entryKey = cacheKey(user.id, user.selectedLibraryId, query)
+              val updated = LinkedHashMap(recentCache).apply {
+                remove(entryKey)
+                put(entryKey, CachedSearchEntry(mapped, fatherTime.nowInEpochMillis()))
+                while (size > MaxRecentEntries) {
+                  val oldestKey = keys.firstOrNull() ?: break
+                  remove(oldestKey)
+                }
+              }
+              recentCache = updated
+            }
+          }
       }
+  }
+
+  private companion object {
+    const val MaxRecentEntries = 10
+    val CacheTtlMillis = 10.minutes.inWholeMilliseconds
   }
 }

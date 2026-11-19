@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..7693efa4
+index 00000000..922896ef
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2870 @@
+@@ -0,0 +1,2895 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3427,6 +3427,31 @@ index 00000000..7693efa4
 +* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
 +* `features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt`
++* `CUSTOM_MODIFICATIONS.md`
++
++
++---
++
++## 94. Search Cache Restoration on Back Navigation
++
++### Problem
++When a user searched for a title, tapped a result (e.g., a book or series), and swiped back, `SearchPresenter` unconditionally emitted `SearchResult.Loading`, waited 400ms, and `StoreSearchRepository` forced a fresh network fetch (`StoreReadRequest.freshWithFallBackToSourceOfTruth`) instead of serving the cached search results.
++
++### Solution & Implementation
++1. **Repository In-Memory & Store5 Cache Reuse (`SearchRepository.kt`, `StoreSearchRepository.kt`)**:
++   - Added `getCachedResult(query: String): SearchResult.Success?` to `SearchRepository`.
++   - Switched `StoreSearchRepository.searchCurrentLibrary()` to `StoreReadRequest.cached(key, refresh = false)` so `SearchStore`'s 10-minute `MemoryPolicy` and SQLite `SourceOfTruth` are honored without bypassing cache.
++   - Added a bounded 10-entry, 10-minute in-memory lookup keyed by `userId::libraryId::query` (`recentCache`) updated whenever `StoreReadResponse.Data` produces `SearchResult.Success`.
++2. **Instant First-Frame Restore (`SearchPresenter.kt`, `SearchPresenterTest.kt`)**:
++   - Initialized `collectAsState` with `searchRepository.getCachedResult(textFieldState.text.toString()) ?: SearchResult.Empty` and short-circuited `flatMapLatest` when `getCachedResult` hits, skipping both the 400ms debounce delay and redundant server calls on back navigation.
++   - Added `SearchPresenterTest` verifying immediate cached restoration without re-querying `searchCurrentLibrary` and uncached fetch behavior.
++
++### Modified Files:
++* `features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt`
++* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
++* `features/search/ui/build.gradle.kts`
++* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt`
++* `features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
@@ -13792,6 +13817,282 @@ index 278c8cde..560f5b06 100644
      val mediaProgress by remember {
        mediaProgressRepository.observeAllProgress()
          .map {
+diff --git a/features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt b/features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt
+index 612faa98..2f73e5d8 100644
+--- a/features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt
++++ b/features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt
+@@ -8,4 +8,6 @@ import kotlinx.coroutines.flow.Flow
+ interface SearchRepository {
+ 
+   fun searchCurrentLibrary(query: String): Flow<SearchResult>
++
++  fun getCachedResult(query: String): SearchResult.Success? = null
+ }
+diff --git a/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt b/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
+index b39c1c60..034468ce 100644
+--- a/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
++++ b/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
+@@ -4,6 +4,8 @@
+ package app.campfire.search
+ 
+ import app.campfire.core.di.UserScope
++import app.campfire.core.time.FatherTime
++import app.campfire.core.time.GrandFatherTime
+ import app.campfire.search.api.SearchRepository
+ import app.campfire.search.api.SearchResult
+ import app.campfire.search.store.SearchStore
+@@ -11,11 +13,13 @@ import app.campfire.user.api.UserRepository
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+ import dev.zacsweers.metro.SingleIn
++import kotlin.time.Duration.Companion.minutes
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.flow.Flow
+ import kotlinx.coroutines.flow.filterNot
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.mapLatest
++import kotlinx.coroutines.flow.onEach
+ import org.mobilenativefoundation.store.store5.StoreReadRequest
+ import org.mobilenativefoundation.store.store5.StoreReadResponse
+ 
+@@ -25,10 +29,34 @@ import org.mobilenativefoundation.store.store5.StoreReadResponse
+ class StoreSearchRepository(
+   private val userRepository: UserRepository,
+   private val searchStoreFactory: SearchStore.Factory,
++  private val fatherTime: FatherTime = GrandFatherTime,
+ ) : SearchRepository {
+ 
+   private val store by lazy { searchStoreFactory.create() }
+ 
++  @kotlin.concurrent.Volatile
++  private var recentCache: Map<String, CachedSearchEntry> = emptyMap()
++
++  private data class CachedSearchEntry(
++    val result: SearchResult.Success,
++    val cachedAtMillis: Long,
++  )
++
++  private fun cacheKey(userId: String, libraryId: String, query: String): String {
++    return "$userId::$libraryId::${query.trim()}"
++  }
++
++  override fun getCachedResult(query: String): SearchResult.Success? {
++    if (query.isBlank()) return null
++    val user = userRepository.userFlow.value
++    val key = cacheKey(user.id, user.selectedLibraryId, query)
++    val entry = recentCache[key] ?: return null
++    if (fatherTime.nowInEpochMillis() - entry.cachedAtMillis > CacheTtlMillis) {
++      return null
++    }
++    return entry.result
++  }
++
+   @OptIn(ExperimentalCoroutinesApi::class)
+   override fun searchCurrentLibrary(query: String): Flow<SearchResult> {
+     return userRepository.observeCurrentUser()
+@@ -38,7 +66,7 @@ class StoreSearchRepository(
+           libraryId = user.selectedLibraryId,
+           text = query,
+         )
+-        val request = StoreReadRequest.freshWithFallBackToSourceOfTruth(key)
++        val request = StoreReadRequest.cached(key, refresh = false)
+         store.stream(request)
+           .filterNot { it is StoreReadResponse.NoNewData }
+           .mapLatest { response ->
+@@ -49,6 +77,25 @@ class StoreSearchRepository(
+               else -> SearchResult.Error
+             }
+           }
++          .onEach { mapped ->
++            if (mapped is SearchResult.Success) {
++              val entryKey = cacheKey(user.id, user.selectedLibraryId, query)
++              val updated = LinkedHashMap(recentCache).apply {
++                remove(entryKey)
++                put(entryKey, CachedSearchEntry(mapped, fatherTime.nowInEpochMillis()))
++                while (size > MaxRecentEntries) {
++                  val oldestKey = keys.firstOrNull() ?: break
++                  remove(oldestKey)
++                }
++              }
++              recentCache = updated
++            }
++          }
+       }
+   }
++
++  private companion object {
++    const val MaxRecentEntries = 10
++    val CacheTtlMillis = 10.minutes.inWholeMilliseconds
++  }
+ }
+diff --git a/features/search/ui/build.gradle.kts b/features/search/ui/build.gradle.kts
+index 80523f81..fb6b0bda 100644
+--- a/features/search/ui/build.gradle.kts
++++ b/features/search/ui/build.gradle.kts
+@@ -18,5 +18,14 @@ kotlin {
+         implementation(libs.circuitx.overlays)
+       }
+     }
++
++    commonTest {
++      dependencies {
++        implementation(projects.common.test)
++        implementation(projects.data.analytics.test)
++        implementation(projects.infra.audioplayer.test)
++        implementation(libs.molecule)
++      }
++    }
+   }
+ }
+diff --git a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
+index 43b58959..89267262 100644
+--- a/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
++++ b/features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt
+@@ -58,19 +58,27 @@ class SearchPresenter(
+     val searchResult by remember {
+       snapshotFlow { textFieldState.text }
+         .flatMapLatest { query ->
+-          if (query.isBlank()) {
++          val queryStr = query.toString()
++          if (queryStr.isBlank()) {
+             flowOf(SearchResult.Empty)
+           } else {
+-            searchRepository.searchCurrentLibrary(query.toString())
+-              // Give the user time to type
+-              .onStart {
+-                emit(SearchResult.Loading)
+-                delay(400.milliseconds)
+-                analytics.send(SearchEvent())
+-              }
++            val cached = searchRepository.getCachedResult(queryStr)
++            if (cached != null) {
++              flowOf(cached)
++            } else {
++              searchRepository.searchCurrentLibrary(queryStr)
++                // Give the user time to type
++                .onStart {
++                  emit(SearchResult.Loading)
++                  delay(400.milliseconds)
++                  analytics.send(SearchEvent())
++                }
++            }
+           }
+         }
+-    }.collectAsState(SearchResult.Empty)
++    }.collectAsState(
++      initial = searchRepository.getCachedResult(textFieldState.text.toString()) ?: SearchResult.Empty,
++    )
+ 
+     val offlineDownloads by remember {
+       snapshotFlow { (searchResult as? SearchResult.Success)?.books }
+diff --git a/features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt b/features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt
+new file mode 100644
+index 00000000..66096dc4
+--- /dev/null
++++ b/features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt
+@@ -0,0 +1,102 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.search.ui
++
++import androidx.compose.foundation.text.input.TextFieldState
++import app.campfire.analytics.test.FakeAnalytics
++import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
++import app.campfire.home.ui.libraryItem
++import app.campfire.home.ui.media
++import app.campfire.home.ui.mediaMetadata
++import app.campfire.search.api.SearchRepository
++import app.campfire.search.api.SearchResult
++import assertk.assertThat
++import assertk.assertions.isEmpty
++import assertk.assertions.isEqualTo
++import assertk.assertions.isInstanceOf
++import com.slack.circuit.test.test
++import kotlin.test.Test
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.flowOf
++import kotlinx.coroutines.test.runTest
++
++class SearchPresenterTest {
++
++  private class FakeSearchRepository : SearchRepository {
++    val searchCalls = mutableListOf<String>()
++    val cached = mutableMapOf<String, SearchResult.Success>()
++
++    override fun getCachedResult(query: String): SearchResult.Success? {
++      return cached[query.trim()]
++    }
++
++    override fun searchCurrentLibrary(query: String): Flow<SearchResult> {
++      searchCalls += query
++      val result = cached[query.trim()] ?: SearchResult.Empty
++      return flowOf(result)
++    }
++  }
++
++  private val searchRepository = FakeSearchRepository()
++  private val offlineDownloadManager = FakeOfflineDownloadManager()
++  private val analytics = FakeAnalytics()
++
++  private fun createPresenter(textFieldState: TextFieldState) = SearchPresenter(
++    searchRepository = searchRepository,
++    textFieldState = textFieldState,
++    onSearchEvent = {},
++    offlineDownloadManager = offlineDownloadManager,
++    analytics = analytics,
++  )
++
++  @Test
++  fun cachedQueryEmitsSuccessImmediatelyWithoutLoadingOrRefetch() = runTest {
++    val book = libraryItem(id = "book-1", media = media(metadata = mediaMetadata(title = "Dune")))
++    val expected = SearchResult.Empty.copy(books = listOf(book))
++    searchRepository.cached["dune"] = expected
++
++    val presenter = createPresenter(TextFieldState(initialText = "dune"))
++    presenter.test {
++      val initial = awaitItem()
++      assertThat(initial.searchResult).isInstanceOf<SearchResult.Success>()
++      assertThat((initial.searchResult as SearchResult.Success).books.map { it.id })
++        .isEqualTo(listOf("book-1"))
++      assertThat(searchRepository.searchCalls).isEmpty()
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun uncachedQueryFetchesViaRepository() = runTest {
++    val book = libraryItem(id = "book-2", media = media(metadata = mediaMetadata(title = "Foundation")))
++    val expected = SearchResult.Empty.copy(books = listOf(book))
++
++    val repo = object : SearchRepository {
++      val calls = mutableListOf<String>()
++      override fun searchCurrentLibrary(query: String): Flow<SearchResult> {
++        calls += query
++        return flowOf(expected)
++      }
++    }
++
++    val presenter = SearchPresenter(
++      searchRepository = repo,
++      textFieldState = TextFieldState(initialText = "foundation"),
++      onSearchEvent = {},
++      offlineDownloadManager = offlineDownloadManager,
++      analytics = analytics,
++    )
++
++    presenter.test {
++      var state = awaitItem()
++      while (state.searchResult.let { it !is SearchResult.Success || it.books.isEmpty() }) {
++        state = awaitItem()
++      }
++      assertThat((state.searchResult as SearchResult.Success).books.map { it.id })
++        .isEqualTo(listOf("book-2"))
++      assertThat(repo.calls).isEqualTo(listOf("foundation"))
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++}
 diff --git a/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt b/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt
 index e61b281e..edb20179 100644
 --- a/features/series/api/src/commonMain/kotlin/app/campfire/series/api/SeriesRepository.kt

@@ -2868,3 +2868,28 @@ Added live `-5m`, `-1m`, `+1m`, and `+5m` adjustment buttons to the active count
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
 * `features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+
+---
+
+## 94. Search Cache Restoration on Back Navigation
+
+### Problem
+When a user searched for a title, tapped a result (e.g., a book or series), and swiped back, `SearchPresenter` unconditionally emitted `SearchResult.Loading`, waited 400ms, and `StoreSearchRepository` forced a fresh network fetch (`StoreReadRequest.freshWithFallBackToSourceOfTruth`) instead of serving the cached search results.
+
+### Solution & Implementation
+1. **Repository In-Memory & Store5 Cache Reuse (`SearchRepository.kt`, `StoreSearchRepository.kt`)**:
+   - Added `getCachedResult(query: String): SearchResult.Success?` to `SearchRepository`.
+   - Switched `StoreSearchRepository.searchCurrentLibrary()` to `StoreReadRequest.cached(key, refresh = false)` so `SearchStore`'s 10-minute `MemoryPolicy` and SQLite `SourceOfTruth` are honored without bypassing cache.
+   - Added a bounded 10-entry, 10-minute in-memory lookup keyed by `userId::libraryId::query` (`recentCache`) updated whenever `StoreReadResponse.Data` produces `SearchResult.Success`.
+2. **Instant First-Frame Restore (`SearchPresenter.kt`, `SearchPresenterTest.kt`)**:
+   - Initialized `collectAsState` with `searchRepository.getCachedResult(textFieldState.text.toString()) ?: SearchResult.Empty` and short-circuited `flatMapLatest` when `getCachedResult` hits, skipping both the 400ms debounce delay and redundant server calls on back navigation.
+   - Added `SearchPresenterTest` verifying immediate cached restoration without re-querying `searchCurrentLibrary` and uncached fetch behavior.
+
+### Modified Files:
+* `features/search/api/src/commonMain/kotlin/app/campfire/search/api/SearchRepository.kt`
+* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
+* `features/search/ui/build.gradle.kts`
+* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt`
+* `features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt`
+* `CUSTOM_MODIFICATIONS.md`

@@ -58,19 +58,27 @@ class SearchPresenter(
     val searchResult by remember {
       snapshotFlow { textFieldState.text }
         .flatMapLatest { query ->
-          if (query.isBlank()) {
+          val queryStr = query.toString()
+          if (queryStr.isBlank()) {
             flowOf(SearchResult.Empty)
           } else {
-            searchRepository.searchCurrentLibrary(query.toString())
-              // Give the user time to type
-              .onStart {
-                emit(SearchResult.Loading)
-                delay(400.milliseconds)
-                analytics.send(SearchEvent())
-              }
+            val cached = searchRepository.getCachedResult(queryStr)
+            if (cached != null) {
+              flowOf(cached)
+            } else {
+              searchRepository.searchCurrentLibrary(queryStr)
+                // Give the user time to type
+                .onStart {
+                  emit(SearchResult.Loading)
+                  delay(400.milliseconds)
+                  analytics.send(SearchEvent())
+                }
+            }
           }
         }
-    }.collectAsState(SearchResult.Empty)
+    }.collectAsState(
+      initial = searchRepository.getCachedResult(textFieldState.text.toString()) ?: SearchResult.Empty,
+    )
 
     val offlineDownloads by remember {
       snapshotFlow { (searchResult as? SearchResult.Success)?.books }
