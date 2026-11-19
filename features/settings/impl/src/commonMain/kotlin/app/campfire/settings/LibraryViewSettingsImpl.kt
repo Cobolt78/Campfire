@@ -7,6 +7,7 @@ import app.campfire.core.coroutines.CoroutineScopeHolder
 import app.campfire.core.di.UserScope
 import app.campfire.core.di.qualifier.ForScope
 import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.DownloadsSort
 import app.campfire.core.settings.GroupDisplayState
 import app.campfire.core.settings.ItemDisplayState
 import app.campfire.core.settings.SortDirection
@@ -97,7 +98,26 @@ class LibraryViewSettingsImpl(
   private val continueSeriesAlternateViewProperty = booleanSetting(KEY_CONTINUE_SERIES_ALTERNATE_VIEW, false)
   override var continueSeriesAlternateView: Boolean by continueSeriesAlternateViewProperty
   override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> = continueSeriesAlternateViewProperty.observe()
+
+  private val downloadsSortModeProperty = stringSetting(KEY_DOWNLOADS_SORT_MODE, DownloadsSort.RecentlyPlayed.storageKey)
+  override var downloadsSortMode: String by downloadsSortModeProperty
+  override fun observeDownloadsSortMode(): StateFlow<String> = downloadsSortModeProperty.observe()
+
+  private val downloadsSortAscendingProperty = booleanSetting(KEY_DOWNLOADS_SORT_ASCENDING, false)
+  override var downloadsSortAscending: Boolean by downloadsSortAscendingProperty
+  override fun observeDownloadsSortAscending(): StateFlow<Boolean> = downloadsSortAscendingProperty.observe()
+
+  private val downloadsCustomOrderProperty = customSetting(
+    key = KEY_DOWNLOADS_CUSTOM_ORDER,
+    defaultValue = emptyList(),
+    getter = { raw -> raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList() },
+    setter = { list -> list.joinToString(ORDER_DELIMITER) },
+  )
+  override var downloadsCustomOrder: List<String> by downloadsCustomOrderProperty
+  override fun observeDownloadsCustomOrder(): StateFlow<List<String>> = downloadsCustomOrderProperty.observe()
 }
+
+private const val ORDER_DELIMITER = "\u001F"
 
 internal const val KEY_LIBRARY_ITEM_DISPLAY_STATE = "pref_library_item_display_state"
 internal const val KEY_LIBRARY_ITEM_MARQUEE = "pref_library_item_marquee"
@@ -115,6 +135,9 @@ internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
 internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
 internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
 internal const val KEY_CONTINUE_SERIES_ALTERNATE_VIEW = "pref_continue_series_alternate_view"
+internal const val KEY_DOWNLOADS_SORT_MODE = "pref_downloads_sort_mode"
+internal const val KEY_DOWNLOADS_SORT_ASCENDING = "pref_downloads_sort_ascending"
+internal const val KEY_DOWNLOADS_CUSTOM_ORDER = "pref_downloads_custom_order"
 
 /** The library view settings stored as strings, for copying into a new account's settings. */
 internal val LibraryViewStringKeys = listOf(
@@ -128,6 +151,8 @@ internal val LibraryViewStringKeys = listOf(
   KEY_SERIES_DISPLAY_STATE,
   KEY_COLLECTIONS_DISPLAY_STATE,
   KEY_PLAYLISTS_DISPLAY_STATE,
+  KEY_DOWNLOADS_SORT_MODE,
+  KEY_DOWNLOADS_CUSTOM_ORDER,
 )
 
 /** The library view settings stored as booleans. */
@@ -138,4 +163,5 @@ internal val LibraryViewBooleanKeys = listOf(
   KEY_CONFIRM_ACTIONS,
   KEY_WARN_ON_CELLULAR_DOWNLOAD,
   KEY_CONTINUE_SERIES_ALTERNATE_VIEW,
+  KEY_DOWNLOADS_SORT_ASCENDING,
 )

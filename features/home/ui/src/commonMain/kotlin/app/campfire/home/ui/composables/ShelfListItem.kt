@@ -45,6 +45,7 @@ fun ShelfListItem(
   val listState = rememberLazyListState()
 
   val shouldResetOnUpdate = isDiscover ||
+    shelf.id == "downloads" ||
     shelf.id.startsWith(ShelfIds.RecentlyAdded) ||
     shelf.id.startsWith(ShelfIds.RecentSeries) ||
     shelf.id.startsWith(ShelfIds.ContinueListening) ||

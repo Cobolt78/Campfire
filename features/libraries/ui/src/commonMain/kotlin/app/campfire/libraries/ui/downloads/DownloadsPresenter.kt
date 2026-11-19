@@ -6,9 +6,7 @@ package app.campfire.libraries.ui.downloads
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
@@ -16,13 +14,14 @@ import app.campfire.analytics.events.ContentType
 import app.campfire.audioplayer.offline.OfflineDownloadManager
 import app.campfire.common.screens.DownloadsScreen
 import app.campfire.core.di.UserScope
+import app.campfire.core.settings.DownloadsSort
+import app.campfire.core.settings.sortDownloadedItems
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.user.api.MediaProgressRepository
 import com.slack.circuit.codegen.annotations.CircuitInject
 import com.slack.circuit.foundation.NonPausablePresenter
-import com.slack.circuit.retained.rememberRetainedSaveable
 import com.slack.circuit.runtime.Navigator
 import dev.zacsweers.metro.Inject
 import kotlinx.coroutines.CancellationException
@@ -46,13 +45,18 @@ class DownloadsPresenter(
 
   @Composable
   override fun present(): DownloadsUiState {
-    var sortMode by rememberRetainedSaveable {
-      mutableStateOf(DownloadsSort.RecentlyPlayed)
-    }
+    val sortModeRaw by remember {
+      libraryViewSettings.observeDownloadsSortMode()
+    }.collectAsState()
+    val sortMode = DownloadsSort.fromStorageKey(sortModeRaw)
 
-    var sortAscending by rememberRetainedSaveable {
-      mutableStateOf(false)
-    }
+    val sortAscending by remember {
+      libraryViewSettings.observeDownloadsSortAscending()
+    }.collectAsState()
+
+    val customOrder by remember {
+      libraryViewSettings.observeDownloadsCustomOrder()
+    }.collectAsState()
 
     val completedDownloads by remember {
       offlineDownloadManager.observeAll()
@@ -89,7 +93,7 @@ class DownloadsPresenter(
 
     val isLoading = completedDownloads == null || userMediaProgress == null
 
-    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending) {
+    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending, customOrder) {
       val dlList = completedDownloads ?: return@remember emptyList()
       val progressMap = userMediaProgress ?: emptyMap()
 
@@ -101,33 +105,16 @@ class DownloadsPresenter(
         )
       }
 
-      val comparator = when (sortMode) {
-        DownloadsSort.RecentlyPlayed -> compareBy<DownloadedBookItem> { it.progress?.lastUpdate ?: 0L }
-        DownloadsSort.DateAdded -> compareBy<DownloadedBookItem> {
-          if (it.download.updateTimeMs > 0) it.download.updateTimeMs else it.libraryItem.addedAtMillis
-        }
-        DownloadsSort.Title -> compareBy(String.CASE_INSENSITIVE_ORDER) {
-          it.libraryItem.media.metadata.title ?: ""
-        }
-        DownloadsSort.Author -> compareBy(String.CASE_INSENSITIVE_ORDER) {
-          it.libraryItem.media.metadata.authorName ?: ""
-        }
-        DownloadsSort.Duration -> compareBy<DownloadedBookItem> {
-          it.libraryItem.media.durationInMillis
-        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
-        DownloadsSort.PublishYear -> compareBy<DownloadedBookItem> {
-          it.libraryItem.media.metadata.publishedYear?.toIntOrNull() ?: 0
-        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
-        DownloadsSort.Size -> compareBy<DownloadedBookItem> {
-          it.download.contentLength.coerceAtLeast(0L)
-        }
-      }
-
-      if (sortAscending) {
-        rawItems.sortedWith(comparator)
-      } else {
-        rawItems.sortedWith(comparator.reversed())
-      }
+      sortDownloadedItems(
+        items = rawItems,
+        sortMode = sortMode,
+        sortAscending = sortAscending,
+        customOrder = customOrder,
+        libraryItem = { it.libraryItem },
+        progress = { it.progress },
+        downloadUpdateTimeMs = { it.download.updateTimeMs },
+        downloadContentLength = { it.download.contentLength },
+      )
     }
 
     val totalBytes = remember(items) {
@@ -152,19 +139,35 @@ class DownloadsPresenter(
 
         is DownloadsUiEvent.SelectSort -> {
           if (sortMode == event.sort) {
-            sortAscending = !sortAscending
+            libraryViewSettings.downloadsSortAscending = !sortAscending
           } else {
-            sortMode = event.sort
-            sortAscending = when (event.sort) {
-              DownloadsSort.Title, DownloadsSort.Author -> true
-              else -> false
+            if (event.sort == DownloadsSort.Custom && customOrder.isEmpty() && items.isNotEmpty()) {
+              libraryViewSettings.downloadsCustomOrder = items.map { it.libraryItem.id }
             }
+            libraryViewSettings.downloadsSortMode = event.sort.storageKey
+            libraryViewSettings.downloadsSortAscending = event.sort.defaultAscending
           }
           analytics.send(ActionEvent("downloads_sort", "selected", event.sort.name))
         }
 
         DownloadsUiEvent.ToggleSortDirection -> {
-          sortAscending = !sortAscending
+          libraryViewSettings.downloadsSortAscending = !sortAscending
+        }
+
+        is DownloadsUiEvent.MoveItem -> {
+          val currentIds = items.map { it.libraryItem.id }.toMutableList()
+          val index = currentIds.indexOf(event.itemId)
+          if (index != -1) {
+            val targetIndex = (index + event.delta).coerceIn(0, currentIds.lastIndex)
+            if (targetIndex != index) {
+              val moved = currentIds.removeAt(index)
+              currentIds.add(targetIndex, moved)
+              libraryViewSettings.downloadsCustomOrder = currentIds
+              if (!sortAscending) {
+                libraryViewSettings.downloadsSortAscending = true
+              }
+            }
+          }
         }
       }
     }

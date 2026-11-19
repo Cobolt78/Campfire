@@ -41,7 +41,9 @@ import app.campfire.core.model.Series
 import app.campfire.core.model.ShelfEntity
 import app.campfire.core.model.ShelfType
 import app.campfire.core.settings.ContentSortMode
+import app.campfire.core.settings.DownloadsSort
 import app.campfire.core.settings.SortDirection
+import app.campfire.core.settings.sortDownloadedItems
 import app.campfire.core.time.FatherTime
 import app.campfire.core.time.GrandFatherTime
 import app.campfire.discover.api.screen.UpcomingScreen
@@ -52,6 +54,7 @@ import app.campfire.home.api.model.ShelfIds
 import app.campfire.libraries.api.LibraryItemRepository
 import app.campfire.libraries.api.screen.LibraryItemScreen
 import app.campfire.libraries.api.screen.LibraryScreen
+import app.campfire.settings.api.LibraryViewSettings
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.user.api.MediaProgressRepository
 import app.campfire.updates.source.AppUpdateSource
@@ -88,6 +91,7 @@ class HomePresenter(
   private val offlineDownloadManager: OfflineDownloadManager,
   private val libraryItemRepository: LibraryItemRepository,
   private val bookInfoRegistry: BookInfoRegistry,
+  private val libraryViewSettings: LibraryViewSettings,
   private val analytics: Analytics,
   private val appUpdateSource: AppUpdateSource,
   private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
@@ -158,16 +162,17 @@ class HomePresenter(
       bookInfoRegistry.observeCachedUpcoming()
     }.collectAsState(emptyList())
 
-    val completedDownloads by remember {
+    val completedDownloadEntries by remember {
       offlineDownloadManager.observeAll()
         .map { downloads ->
-          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
+          downloads.filter { it.isCompleted }
         }
         .distinctUntilChanged()
-        .mapLatest { downloadIds ->
-          downloadIds.mapNotNull { id ->
+        .mapLatest { downloads ->
+          downloads.mapNotNull { dl ->
             try {
-              libraryItemRepository.getLibraryItem(id)
+              val item = libraryItemRepository.getLibraryItem(dl.libraryItemId)
+              dl to item
             } catch (e: CancellationException) {
               throw e
             } catch (e: Exception) {
@@ -176,6 +181,20 @@ class HomePresenter(
           }
         }
     }.collectAsState(emptyList())
+
+    val completedDownloads = remember(completedDownloadEntries) {
+      completedDownloadEntries.map { it.second }
+    }
+
+    val downloadsSortModeRaw by remember {
+      libraryViewSettings.observeDownloadsSortMode()
+    }.collectAsState()
+    val downloadsSortAscending by remember {
+      libraryViewSettings.observeDownloadsSortAscending()
+    }.collectAsState()
+    val downloadsCustomOrder by remember {
+      libraryViewSettings.observeDownloadsCustomOrder()
+    }.collectAsState()
 
     val userMediaProgress by remember {
       mediaProgressRepository.observeAllProgress()
@@ -188,7 +207,14 @@ class HomePresenter(
 
     val feed by produceState(
       initialValue = domainFeed.map { persistentListOf() },
-      domainFeed, shelfEntities, completedDownloads, userMediaProgress, upcomingReleases,
+      domainFeed,
+      shelfEntities,
+      completedDownloadEntries,
+      userMediaProgress,
+      upcomingReleases,
+      downloadsSortModeRaw,
+      downloadsSortAscending,
+      downloadsCustomOrder,
     ) {
       withContext(Dispatchers.Default) {
         value = domainFeed.map { shelves ->
@@ -206,13 +232,25 @@ class HomePresenter(
           val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, completedDownloads, userMediaProgress)
           val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, upcomingReleases).toMutableList()
 
-          if (completedDownloads.isNotEmpty()) {
+          if (completedDownloadEntries.isNotEmpty()) {
+            val sortMode = DownloadsSort.fromStorageKey(downloadsSortModeRaw)
+            val sortedDownloads = sortDownloadedItems(
+              items = completedDownloadEntries,
+              sortMode = sortMode,
+              sortAscending = downloadsSortAscending,
+              customOrder = downloadsCustomOrder,
+              libraryItem = { (_, item) -> item },
+              progress = { (_, item) -> findUserMediaProgress(item, userMediaProgress) },
+              downloadUpdateTimeMs = { (dl, _) -> dl.updateTimeMs },
+              downloadContentLength = { (dl, _) -> dl.contentLength },
+            ).map { (_, item) -> item }
+
             withUpcoming.add(
               UiShelf(
                 id = "downloads",
                 label = "Downloads",
-                total = completedDownloads.size,
-                entities = LoadState.Loaded(completedDownloads),
+                total = sortedDownloads.size,
+                entities = LoadState.Loaded(sortedDownloads),
               ),
             )
           }

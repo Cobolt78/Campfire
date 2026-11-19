@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -100,4 +101,36 @@ class TestLibraryViewSettings(
   override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> =
     observeBoolean(::continueSeriesAlternateView)
       .stateIn(testScope, SharingStarted.Lazily, continueSeriesAlternateView)
+
+  override var downloadsSortMode: String by string()
+  override fun observeDownloadsSortMode(): StateFlow<String> =
+    observeString(::downloadsSortMode)
+      .stateIn(testScope, SharingStarted.Lazily, downloadsSortMode)
+
+  override var downloadsSortAscending: Boolean by boolean()
+  override fun observeDownloadsSortAscending(): StateFlow<Boolean> =
+    observeBoolean(::downloadsSortAscending)
+      .stateIn(testScope, SharingStarted.Lazily, downloadsSortAscending)
+
+  override var downloadsCustomOrder: List<String> by property(
+    getter = { key ->
+      getStringOrNull(key)
+        ?.takeIf { it.isNotEmpty() }
+        ?.split(ORDER_DELIMITER)
+        ?: emptyList()
+    },
+    setter = { key, value ->
+      putString(key, value.joinToString(ORDER_DELIMITER))
+    },
+  )
+  override fun observeDownloadsCustomOrder(): StateFlow<List<String>> =
+    observeString(::downloadsCustomOrder)
+      .map { raw ->
+        raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList()
+      }
+      .stateIn(testScope, SharingStarted.Lazily, downloadsCustomOrder)
+
+  companion object {
+    private const val ORDER_DELIMITER = "\u001F"
+  }
 }

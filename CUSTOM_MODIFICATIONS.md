@@ -2918,3 +2918,38 @@ Creating a bookmark required manually typing a non-blank title (blocking 1-tap b
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 * `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 96. Expanded Downloads Sort Options & Home Screen Downloads Shelf Sync
+
+### Problem
+The Downloads screen only offered a limited set of ephemeral sorts (`RecentlyPlayed`, `DateAdded`, `Title`, `Author`, `Duration`, `PublishYear`, `Size`) that reset when navigating away and were not shared with the `Downloads` shelf on the Home screen.
+
+### Solution & Implementation
+1. **Shared `DownloadsSort` & Sorting Logic (`DownloadsSort.kt`, `DownloadsSortTest.kt`)**:
+   - Added `DownloadsSort` in `core/settings` with 5 new modes (`Custom`, `CurrentlyListening`, `Progress`, `RemainingTime`, `Series`) alongside the existing 7 modes and a shared `sortDownloadedItems` helper.
+   - `CurrentlyListening` groups in-progress items first (ordered by `lastUpdate` descending), followed by unstarted items and finished items.
+   - `RemainingTime` sorts by remaining duration `(durationInMillis * (1f - actualProgress))`; `Series` sorts by series name and numeric sequence; `Custom` honors user-arranged IDs and appends newly downloaded items at the end.
+2. **Persisted Settings (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
+   - Added `downloadsSortMode`, `downloadsSortAscending`, and `downloadsCustomOrder` (plus observers and account-seed keys `KEY_DOWNLOADS_SORT_MODE`, `KEY_DOWNLOADS_SORT_ASCENDING`, `KEY_DOWNLOADS_CUSTOM_ORDER`).
+3. **Custom Reordering & Sync (`DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
+   - Wired `DownloadsPresenter` to persist sort settings and handle `DownloadsUiEvent.MoveItem(itemId, delta)`.
+   - Added `CustomReorderButtons` (`ArrowDropUp` / `ArrowDropDown`) to both list items (`LibraryItemListItem.trailingContent`) and grid cards (`DownloadedBookGridCard`) in `DownloadsUi.kt` when `Custom` sort is active, with `animateItem()`.
+   - Injected `LibraryViewSettings` into `HomePresenter`, sorted `completedDownloadEntries` using the exact same `sortDownloadedItems` helper, and added `shelf.id == "downloads"` to `ShelfListItem.shouldResetOnUpdate` so the Home Downloads shelf resets scroll to index 0 when reordered.
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/settings/DownloadsSort.kt`
+* `core/src/commonTest/kotlin/app/campfire/core/settings/DownloadsSortTest.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`
+* `features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt`
+* `features/home/ui/build.gradle.kts`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
+* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+* `CUSTOM_MODIFICATIONS.md`

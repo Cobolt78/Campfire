@@ -61,4 +61,13 @@ interface LibraryViewSettings {
 
   var continueSeriesAlternateView: Boolean
   fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
+
+  var downloadsSortMode: String
+  fun observeDownloadsSortMode(): StateFlow<String>
+
+  var downloadsSortAscending: Boolean
+  fun observeDownloadsSortAscending(): StateFlow<Boolean>
+
+  var downloadsCustomOrder: List<String>
+  fun observeDownloadsCustomOrder(): StateFlow<List<String>>
 }

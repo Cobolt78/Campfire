@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..55b8ec0d
+index 00000000..928026c9
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2920 @@
+@@ -0,0 +1,2955 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3478,6 +3478,41 @@ index 00000000..55b8ec0d
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 +* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 96. Expanded Downloads Sort Options & Home Screen Downloads Shelf Sync
++
++### Problem
++The Downloads screen only offered a limited set of ephemeral sorts (`RecentlyPlayed`, `DateAdded`, `Title`, `Author`, `Duration`, `PublishYear`, `Size`) that reset when navigating away and were not shared with the `Downloads` shelf on the Home screen.
++
++### Solution & Implementation
++1. **Shared `DownloadsSort` & Sorting Logic (`DownloadsSort.kt`, `DownloadsSortTest.kt`)**:
++   - Added `DownloadsSort` in `core/settings` with 5 new modes (`Custom`, `CurrentlyListening`, `Progress`, `RemainingTime`, `Series`) alongside the existing 7 modes and a shared `sortDownloadedItems` helper.
++   - `CurrentlyListening` groups in-progress items first (ordered by `lastUpdate` descending), followed by unstarted items and finished items.
++   - `RemainingTime` sorts by remaining duration `(durationInMillis * (1f - actualProgress))`; `Series` sorts by series name and numeric sequence; `Custom` honors user-arranged IDs and appends newly downloaded items at the end.
++2. **Persisted Settings (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
++   - Added `downloadsSortMode`, `downloadsSortAscending`, and `downloadsCustomOrder` (plus observers and account-seed keys `KEY_DOWNLOADS_SORT_MODE`, `KEY_DOWNLOADS_SORT_ASCENDING`, `KEY_DOWNLOADS_CUSTOM_ORDER`).
++3. **Custom Reordering & Sync (`DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
++   - Wired `DownloadsPresenter` to persist sort settings and handle `DownloadsUiEvent.MoveItem(itemId, delta)`.
++   - Added `CustomReorderButtons` (`ArrowDropUp` / `ArrowDropDown`) to both list items (`LibraryItemListItem.trailingContent`) and grid cards (`DownloadedBookGridCard`) in `DownloadsUi.kt` when `Custom` sort is active, with `animateItem()`.
++   - Injected `LibraryViewSettings` into `HomePresenter`, sorted `completedDownloadEntries` using the exact same `sortDownloadedItems` helper, and added `shelf.id == "downloads"` to `ShelfListItem.shouldResetOnUpdate` so the Home Downloads shelf resets scroll to index 0 when reordered.
++
++### Modified Files:
++* `core/src/commonMain/kotlin/app/campfire/core/settings/DownloadsSort.kt`
++* `core/src/commonTest/kotlin/app/campfire/core/settings/DownloadsSortTest.kt`
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`
++* `features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt`
++* `features/home/ui/build.gradle.kts`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
++* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
++* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -5977,6 +6012,151 @@ index 39bcc1ef..8d59015f 100644
      ContentSortMode.AddedAt,
      ContentSortMode.LastBookAdded,
      ContentSortMode.LastBookUpdated,
+diff --git a/core/src/commonMain/kotlin/app/campfire/core/settings/DownloadsSort.kt b/core/src/commonMain/kotlin/app/campfire/core/settings/DownloadsSort.kt
+new file mode 100644
+index 00000000..2da46e13
+--- /dev/null
++++ b/core/src/commonMain/kotlin/app/campfire/core/settings/DownloadsSort.kt
+@@ -0,0 +1,139 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.core.settings
++
++import app.campfire.core.model.LibraryItem
++import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.MediaProgress
++
++enum class DownloadsSort(
++  val storageKey: String,
++  val label: String,
++  val defaultAscending: Boolean,
++) {
++  Custom("Custom", "Custom Order", defaultAscending = true),
++  CurrentlyListening("CurrentlyListening", "Currently Listening", defaultAscending = true),
++  RecentlyPlayed("RecentlyPlayed", "Recently Played", defaultAscending = false),
++  Progress("Progress", "Progress", defaultAscending = false),
++  RemainingTime("RemainingTime", "Time Remaining", defaultAscending = true),
++  Series("Series", "Series", defaultAscending = true),
++  DateAdded("DateAdded", "Date Added", defaultAscending = false),
++  Title("Title", "Title A–Z", defaultAscending = true),
++  Author("Author", "Author A–Z", defaultAscending = true),
++  Duration("Duration", "Length", defaultAscending = false),
++  PublishYear("PublishYear", "Date Published", defaultAscending = false),
++  Size("Size", "File Size", defaultAscending = false),
++  ;
++
++  companion object {
++    fun fromStorageKey(key: String?): DownloadsSort {
++      return entries.find { it.storageKey == key } ?: RecentlyPlayed
++    }
++  }
++}
++
++/**
++ * Sorts downloaded library items identically for both the Downloads screen and the Home screen Downloads shelf.
++ */
++fun <T> sortDownloadedItems(
++  items: List<T>,
++  sortMode: DownloadsSort,
++  sortAscending: Boolean,
++  customOrder: List<LibraryItemId>,
++  libraryItem: (T) -> LibraryItem,
++  progress: (T) -> MediaProgress?,
++  downloadUpdateTimeMs: (T) -> Long,
++  downloadContentLength: (T) -> Long,
++): List<T> {
++  if (items.size <= 1) return items
++
++  fun titleOf(entry: T): String = libraryItem(entry).media.metadata.title ?: ""
++
++  val comparator: Comparator<T> = when (sortMode) {
++    DownloadsSort.Custom -> {
++      val orderMap = customOrder.withIndex().associate { (index, id) -> id to index }
++      compareBy<T> { orderMap[libraryItem(it).id] ?: Int.MAX_VALUE }
++        .thenByDescending { progress(it)?.lastUpdate ?: 0L }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.CurrentlyListening -> {
++      compareBy<T> { entry ->
++        val prog = progress(entry)
++        when {
++          prog != null && (prog.isFinished || prog.isCompleted) -> 2
++          prog != null && (prog.progress > 0f || prog.currentTime > 0f) -> 0
++          else -> 1
++        }
++      }.thenByDescending { progress(it)?.lastUpdate ?: 0L }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.RecentlyPlayed -> {
++      compareBy<T> { progress(it)?.lastUpdate ?: 0L }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Progress -> {
++      compareBy<T> { progress(it)?.actualProgress ?: 0f }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.RemainingTime -> {
++      compareBy<T> { entry ->
++        val item = libraryItem(entry)
++        val prog = progress(entry)
++        val ratio = (prog?.actualProgress ?: 0f).coerceIn(0f, 1f)
++        val durationMs = item.media.durationInMillis.coerceAtLeast(0L)
++        (durationMs * (1f - ratio)).toLong()
++      }.thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Series -> {
++      compareBy<T, String>(String.CASE_INSENSITIVE_ORDER) {
++        libraryItem(it).media.metadata.seriesSequence?.name ?: "\uFFFF"
++      }.thenBy {
++        libraryItem(it).media.metadata.seriesSequence?.sequence ?: Double.MAX_VALUE
++      }.thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.DateAdded -> {
++      compareBy<T> { entry ->
++        val updateMs = downloadUpdateTimeMs(entry)
++        if (updateMs > 0L) updateMs else libraryItem(entry).addedAtMillis
++      }.thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Title -> {
++      compareBy<T, String>(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Author -> {
++      compareBy<T, String>(String.CASE_INSENSITIVE_ORDER) {
++        libraryItem(it).media.metadata.authorName ?: ""
++      }.thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Duration -> {
++      compareBy<T> { libraryItem(it).media.durationInMillis }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.PublishYear -> {
++      compareBy<T> { libraryItem(it).media.metadata.publishedYear?.toIntOrNull() ?: 0 }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++
++    DownloadsSort.Size -> {
++      compareBy<T> { downloadContentLength(it).coerceAtLeast(0L) }
++        .thenBy(String.CASE_INSENSITIVE_ORDER, ::titleOf)
++    }
++  }
++
++  return if (sortAscending) {
++    items.sortedWith(comparator)
++  } else {
++    items.sortedWith(comparator.reversed())
++  }
++}
 diff --git a/core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt b/core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt
 index 2f1dc3ee..6baa23b7 100644
 --- a/core/src/commonTest/kotlin/app/campfire/core/image/CoverUrlsTest.kt
@@ -5996,6 +6176,147 @@ index 2f1dc3ee..6baa23b7 100644
 +    assertThat(CoverUrls.raw(external)).isEqualTo(external)
 +  }
  }
+diff --git a/core/src/commonTest/kotlin/app/campfire/core/settings/DownloadsSortTest.kt b/core/src/commonTest/kotlin/app/campfire/core/settings/DownloadsSortTest.kt
+new file mode 100644
+index 00000000..e8f25cbc
+--- /dev/null
++++ b/core/src/commonTest/kotlin/app/campfire/core/settings/DownloadsSortTest.kt
+@@ -0,0 +1,135 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.core.settings
++
++import app.campfire.core.model.LibraryItem
++import app.campfire.core.model.Media
++import app.campfire.core.model.MediaProgress
++import app.campfire.core.model.SeriesSequence
++import app.campfire.core.model.preview.libraryItem
++import app.campfire.core.model.preview.mediaProgress
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.time.Duration.Companion.minutes
++
++class DownloadsSortTest {
++
++  private data class Entry(
++    val item: LibraryItem,
++    val prog: MediaProgress? = null,
++    val updateMs: Long = 0L,
++    val sizeBytes: Long = 0L,
++  )
++
++  private fun titledBook(
++    id: String,
++    title: String,
++    durationMinutes: Int = 60,
++    series: SeriesSequence? = null,
++  ): LibraryItem {
++    val base = libraryItem(
++      id = id,
++      duration = durationMinutes.minutes,
++      seriesSequence = series,
++    )
++    val book = base.media as Media.Book
++    return base.copy(
++      media = book.copy(
++        metadata = book.metadata.copy(title = title),
++      ),
++    )
++  }
++
++  private fun sort(
++    entries: List<Entry>,
++    mode: DownloadsSort,
++    ascending: Boolean = mode.defaultAscending,
++    customOrder: List<String> = emptyList(),
++  ): List<String> {
++    return sortDownloadedItems(
++      items = entries,
++      sortMode = mode,
++      sortAscending = ascending,
++      customOrder = customOrder,
++      libraryItem = { it.item },
++      progress = { it.prog },
++      downloadUpdateTimeMs = { it.updateMs },
++      downloadContentLength = { it.sizeBytes },
++    ).map { it.item.id }
++  }
++
++  @Test
++  fun fromStorageKeyFallsBackToRecentlyPlayed() {
++    assertEquals(DownloadsSort.RecentlyPlayed, DownloadsSort.fromStorageKey(null))
++    assertEquals(DownloadsSort.RecentlyPlayed, DownloadsSort.fromStorageKey(""))
++    assertEquals(DownloadsSort.RecentlyPlayed, DownloadsSort.fromStorageKey("UnknownMode"))
++    assertEquals(DownloadsSort.CurrentlyListening, DownloadsSort.fromStorageKey("CurrentlyListening"))
++  }
++
++  @Test
++  fun currentlyListeningOrdersInProgressThenUnstartedThenFinished() {
++    val finished = Entry(
++      titledBook("fin", "Finished"),
++      prog = mediaProgress(progress = 1f, isFinished = true).copy(lastUpdate = 5000L),
++    )
++    val unstarted = Entry(
++      titledBook("new", "Unstarted"),
++      prog = null,
++    )
++    val activeOld = Entry(
++      titledBook("act_old", "Active Older"),
++      prog = mediaProgress(progress = 0.25f).copy(lastUpdate = 1000L),
++    )
++    val activeNew = Entry(
++      titledBook("act_new", "Active Newer"),
++      prog = mediaProgress(progress = 0.50f).copy(lastUpdate = 3000L),
++    )
++
++    val sorted = sort(listOf(unstarted, finished, activeOld, activeNew), DownloadsSort.CurrentlyListening)
++    assertEquals(listOf("act_new", "act_old", "new", "fin"), sorted)
++  }
++
++  @Test
++  fun progressSortsHighestProgressFirstByDefault() {
++    val low = Entry(titledBook("low", "Low"), prog = mediaProgress(progress = 0.10f))
++    val high = Entry(titledBook("high", "High"), prog = mediaProgress(progress = 0.85f))
++    val done = Entry(titledBook("done", "Done"), prog = mediaProgress(progress = 1.0f, isFinished = true))
++
++    assertEquals(listOf("done", "high", "low"), sort(listOf(low, high, done), DownloadsSort.Progress))
++  }
++
++  @Test
++  fun remainingTimeSortsShortestRemainingFirstByDefault() {
++    val longLeft = Entry(titledBook("long", "Long", durationMinutes = 100), prog = mediaProgress(progress = 0.2f, duration = 100.minutes)) // 80m left
++    val shortLeft = Entry(titledBook("short", "Short", durationMinutes = 100), prog = mediaProgress(progress = 0.9f, duration = 100.minutes)) // 10m left
++    val midLeft = Entry(titledBook("mid", "Mid", durationMinutes = 100), prog = mediaProgress(progress = 0.5f, duration = 100.minutes)) // 50m left
++
++    assertEquals(listOf("short", "mid", "long"), sort(listOf(longLeft, midLeft, shortLeft), DownloadsSort.RemainingTime))
++  }
++
++  @Test
++  fun seriesSortsBySeriesNameThenSequenceWithStandaloneLast() {
++    val standAlone = Entry(titledBook("solo", "A Standalone", series = null))
++    val s2b2 = Entry(titledBook("b2", "Book 2", series = SeriesSequence("s1", "Alpha Series", 2.0)))
++    val s2b1_5 = Entry(titledBook("b1_5", "Book 1.5", series = SeriesSequence("s1", "Alpha Series", 1.5)))
++    val s1b1 = Entry(titledBook("z1", "Book 1", series = SeriesSequence("s2", "Beta Series", 1.0)))
++
++    assertEquals(listOf("b1_5", "b2", "z1", "solo"), sort(listOf(standAlone, s1b1, s2b2, s2b1_5), DownloadsSort.Series))
++  }
++
++  @Test
++  fun customOrderPlacesKnownIdsFirstAndAppendsNewItems() {
++    val a = Entry(titledBook("a", "Alpha"), prog = mediaProgress(progress = 0.1f).copy(lastUpdate = 100L))
++    val b = Entry(titledBook("b", "Beta"))
++    val c = Entry(titledBook("c", "Gamma"), prog = mediaProgress(progress = 0.2f).copy(lastUpdate = 500L))
++    val d = Entry(titledBook("d", "Delta"), prog = mediaProgress(progress = 0.3f).copy(lastUpdate = 200L))
++
++    val sorted = sort(
++      entries = listOf(a, b, c, d),
++      mode = DownloadsSort.Custom,
++      customOrder = listOf("b", "a"),
++    )
++    assertEquals(listOf("b", "a", "c", "d"), sorted)
++  }
++}
 diff --git a/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt b/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
 index 7fc80239..28a6f777 100644
 --- a/data/account/api/src/commonMain/kotlin/app/campfire/account/api/AccountManager.kt
@@ -9536,7 +9857,7 @@ index 00000000..c67b1032
 +  )
 +}
 diff --git a/features/home/ui/build.gradle.kts b/features/home/ui/build.gradle.kts
-index 36ee77e8..db2aa7c7 100644
+index 36ee77e8..ff7579a7 100644
 --- a/features/home/ui/build.gradle.kts
 +++ b/features/home/ui/build.gradle.kts
 @@ -18,6 +18,8 @@ kotlin {
@@ -9548,12 +9869,13 @@ index 36ee77e8..db2aa7c7 100644
  
          implementation(libs.compose.components.resources)
          implementation(libs.kotlinx.datetime)
-@@ -29,6 +31,8 @@ kotlin {
+@@ -29,6 +31,9 @@ kotlin {
          implementation(projects.common.test)
          implementation(projects.data.analytics.test)
          implementation(projects.data.bookinfo.test)
 +        implementation(projects.features.libraries.test)
 +        implementation(projects.features.series.test)
++        implementation(projects.features.settings.test)
          implementation(projects.features.user.test)
          implementation(projects.infra.audioplayer.test)
          implementation(libs.bundles.test.common)
@@ -9568,10 +9890,10 @@ index d004f020..700fcfd3 100644
 +  <string name="discover_refresh_cd">Refresh discoveries</string>
  </resources>
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index 84b0ef8a..fe91595a 100644
+index 84b0ef8a..f63038cb 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-@@ -5,51 +5,79 @@ package app.campfire.home.ui
+@@ -5,51 +5,82 @@ package app.campfire.home.ui
  
  import androidx.compose.runtime.Composable
  import androidx.compose.runtime.collectAsState
@@ -9612,7 +9934,9 @@ index 84b0ef8a..fe91595a 100644
  import app.campfire.core.model.ShelfEntity
 +import app.campfire.core.model.ShelfType
 +import app.campfire.core.settings.ContentSortMode
++import app.campfire.core.settings.DownloadsSort
 +import app.campfire.core.settings.SortDirection
++import app.campfire.core.settings.sortDownloadedItems
 +import app.campfire.core.time.FatherTime
 +import app.campfire.core.time.GrandFatherTime
  import app.campfire.discover.api.screen.UpcomingScreen
@@ -9623,6 +9947,7 @@ index 84b0ef8a..fe91595a 100644
 +import app.campfire.libraries.api.LibraryItemRepository
  import app.campfire.libraries.api.screen.LibraryItemScreen
 +import app.campfire.libraries.api.screen.LibraryScreen
++import app.campfire.settings.api.LibraryViewSettings
  import app.campfire.user.api.MediaProgressKey
  import app.campfire.user.api.MediaProgressRepository
 +import app.campfire.updates.source.AppUpdateSource
@@ -9652,12 +9977,13 @@ index 84b0ef8a..fe91595a 100644
  
  @CircuitInject(HomeScreen::class, UserScope::class)
  @Inject
-@@ -58,16 +86,42 @@ class HomePresenter(
+@@ -58,16 +89,43 @@ class HomePresenter(
    private val homeRepository: HomeRepository,
    private val mediaProgressRepository: MediaProgressRepository,
    private val offlineDownloadManager: OfflineDownloadManager,
 +  private val libraryItemRepository: LibraryItemRepository,
    private val bookInfoRegistry: BookInfoRegistry,
++  private val libraryViewSettings: LibraryViewSettings,
    private val analytics: Analytics,
 +  private val appUpdateSource: AppUpdateSource,
 +  private val batteryOptimization: BatteryOptimization = NoOpBatteryOptimization(),
@@ -9696,7 +10022,7 @@ index 84b0ef8a..fe91595a 100644
  
      // Observe just the shelf information. We will use this to compose the remaining elements
      val domainFeed by remember {
-@@ -104,22 +158,24 @@ class HomePresenter(
+@@ -104,23 +162,40 @@ class HomePresenter(
        bookInfoRegistry.observeCachedUpcoming()
      }.collectAsState(emptyList())
  
@@ -9711,16 +10037,17 @@ index 84b0ef8a..fe91595a 100644
 -              shelfEntities[shelf.id]
 -                ?: LoadState.Loading as LoadState<List<ShelfEntity>>,
 -            )
-+    val completedDownloads by remember {
++    val completedDownloadEntries by remember {
 +      offlineDownloadManager.observeAll()
 +        .map { downloads ->
-+          downloads.filter { it.isCompleted }.map { it.libraryItemId }.toSet()
++          downloads.filter { it.isCompleted }
 +        }
 +        .distinctUntilChanged()
-+        .mapLatest { downloadIds ->
-+          downloadIds.mapNotNull { id ->
++        .mapLatest { downloads ->
++          downloads.mapNotNull { dl ->
 +            try {
-+              libraryItemRepository.getLibraryItem(id)
++              val item = libraryItemRepository.getLibraryItem(dl.libraryItemId)
++              dl to item
 +            } catch (e: CancellationException) {
 +              throw e
 +            } catch (e: Exception) {
@@ -9730,12 +10057,26 @@ index 84b0ef8a..fe91595a 100644
 -          insertUpcomingShelf(uiShelves, upcomingReleases).toPersistentList()
          }
 -      }
--    }
 +    }.collectAsState(emptyList())
++
++    val completedDownloads = remember(completedDownloadEntries) {
++      completedDownloadEntries.map { it.second }
+     }
  
++    val downloadsSortModeRaw by remember {
++      libraryViewSettings.observeDownloadsSortMode()
++    }.collectAsState()
++    val downloadsSortAscending by remember {
++      libraryViewSettings.observeDownloadsSortAscending()
++    }.collectAsState()
++    val downloadsCustomOrder by remember {
++      libraryViewSettings.observeDownloadsCustomOrder()
++    }.collectAsState()
++
      val userMediaProgress by remember {
        mediaProgressRepository.observeAllProgress()
-@@ -130,18 +186,69 @@ class HomePresenter(
+         .map { allProgress ->
+@@ -130,18 +205,88 @@ class HomePresenter(
          }
      }.collectAsState(persistentMapOf())
  
@@ -9752,7 +10093,14 @@ index 84b0ef8a..fe91595a 100644
 -            .map { it.toPersistentMap() }
 +    val feed by produceState(
 +      initialValue = domainFeed.map { persistentListOf() },
-+      domainFeed, shelfEntities, completedDownloads, userMediaProgress, upcomingReleases,
++      domainFeed,
++      shelfEntities,
++      completedDownloadEntries,
++      userMediaProgress,
++      upcomingReleases,
++      downloadsSortModeRaw,
++      downloadsSortAscending,
++      downloadsCustomOrder,
 +    ) {
 +      withContext(Dispatchers.Default) {
 +        value = domainFeed.map { shelves ->
@@ -9770,13 +10118,25 @@ index 84b0ef8a..fe91595a 100644
 +          val withEnhancedListenAgain = enhanceListenAgainShelf(withEnhancedContinue, completedDownloads, userMediaProgress)
 +          val withUpcoming = insertUpcomingShelf(withEnhancedListenAgain, upcomingReleases).toMutableList()
 +
-+          if (completedDownloads.isNotEmpty()) {
++          if (completedDownloadEntries.isNotEmpty()) {
++            val sortMode = DownloadsSort.fromStorageKey(downloadsSortModeRaw)
++            val sortedDownloads = sortDownloadedItems(
++              items = completedDownloadEntries,
++              sortMode = sortMode,
++              sortAscending = downloadsSortAscending,
++              customOrder = downloadsCustomOrder,
++              libraryItem = { (_, item) -> item },
++              progress = { (_, item) -> findUserMediaProgress(item, userMediaProgress) },
++              downloadUpdateTimeMs = { (dl, _) -> dl.updateTimeMs },
++              downloadContentLength = { (dl, _) -> dl.contentLength },
++            ).map { (_, item) -> item }
++
 +            withUpcoming.add(
 +              UiShelf(
 +                id = "downloads",
 +                label = "Downloads",
-+                total = completedDownloads.size,
-+                entities = LoadState.Loaded(completedDownloads),
++                total = sortedDownloads.size,
++                entities = LoadState.Loaded(sortedDownloads),
 +              ),
 +            )
 +          }
@@ -9816,7 +10176,7 @@ index 84b0ef8a..fe91595a 100644
      }.collectAsState(persistentMapOf())
  
      return HomeUiState(
-@@ -149,36 +256,120 @@ class HomePresenter(
+@@ -149,36 +294,120 @@ class HomePresenter(
        offlineStates = offlineDownloads,
        progressStates = userMediaProgress,
        isRefreshing = isRefreshing,
@@ -9916,9 +10276,9 @@ index 84b0ef8a..fe91595a 100644
 +            }
 +            coroutineScope.launch {
 +              appUpdateSource.checkForUpdates(force = false)
-             }
-           }
-         }
++            }
++          }
++        }
 +
 +        HomeUiEvent.RefreshDiscoveries -> {
 +          if (!isRefreshingDiscoveries) {
@@ -9930,9 +10290,9 @@ index 84b0ef8a..fe91595a 100644
 +              } finally {
 +                isRefreshingDiscoveries = false
 +              }
-+            }
-+          }
-+        }
+             }
+           }
+         }
 +
 +        HomeUiEvent.RequestIgnoreBatteryOptimizations -> {
 +          batteryOptimization.requestIgnoreBatteryOptimizations()
@@ -9944,7 +10304,7 @@ index 84b0ef8a..fe91595a 100644
        }
      }
    }
-@@ -226,3 +417,207 @@ private fun insertUpcomingShelf(
+@@ -226,3 +455,207 @@ private fun insertUpcomingShelf(
      shelves + upcomingShelf
    }
  }
@@ -10521,7 +10881,7 @@ index 585f6e98..183c951a 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
-index c6c916b9..4d05326e 100644
+index c6c916b9..59ec24c1 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 @@ -4,13 +4,17 @@
@@ -10542,7 +10902,7 @@ index c6c916b9..4d05326e 100644
  import app.campfire.home.ui.UiShelf
  
  @Composable
-@@ -20,18 +24,66 @@ fun ShelfListItem(
+@@ -20,18 +24,67 @@ fun ShelfListItem(
    progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
    onItemClick: (Any) -> Unit,
    onViewAllUpcomingClick: () -> Unit,
@@ -10567,6 +10927,7 @@ index c6c916b9..4d05326e 100644
 +  val listState = rememberLazyListState()
 +
 +  val shouldResetOnUpdate = isDiscover ||
++    shelf.id == "downloads" ||
 +    shelf.id.startsWith(ShelfIds.RecentlyAdded) ||
 +    shelf.id.startsWith(ShelfIds.RecentSeries) ||
 +    shelf.id.startsWith(ShelfIds.ContinueListening) ||
@@ -10651,7 +11012,7 @@ index 72319142..9425d9b2 100644
      return mediaProgressFlowFactory(libraryItemIds)
    }
 diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
-index 5e6478ef..a5559bb6 100644
+index 5e6478ef..84da4d08 100644
 --- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 +++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 @@ -5,6 +5,8 @@ package app.campfire.home.ui
@@ -10683,13 +11044,14 @@ index 5e6478ef..a5559bb6 100644
  import assertk.Assert
  import assertk.all
  import assertk.assertThat
-@@ -40,12 +48,17 @@ import assertk.assertions.isNotNull
+@@ -40,12 +48,18 @@ import assertk.assertions.isNotNull
  import assertk.assertions.isTrue
  import assertk.assertions.key
  import assertk.assertions.prop
 +import app.campfire.bookinfo.api.BookInfoRegistry
 +import app.campfire.home.api.HomeRepository
 +import app.campfire.libraries.test.FakeLibraryItemRepository
++import app.campfire.settings.test.TestLibraryViewSettings
  import com.slack.circuit.test.FakeNavigator
  import com.slack.circuit.test.test
  import kotlin.test.Test
@@ -10701,11 +11063,12 @@ index 5e6478ef..a5559bb6 100644
  import kotlinx.coroutines.flow.emptyFlow
  import kotlinx.coroutines.flow.flowOf
  import kotlinx.coroutines.test.runTest
-@@ -56,22 +69,83 @@ class HomePresenterTest {
+@@ -56,22 +70,85 @@ class HomePresenterTest {
    val analytics = FakeAnalytics()
    val offlineDownloadManager = FakeOfflineDownloadManager()
    val mediaProgressRepository = FakeMediaProgressRepository()
 +  val libraryItemRepository = FakeLibraryItemRepository()
++  val libraryViewSettings = TestLibraryViewSettings()
 +  val fakeAppUpdateSource = object : AppUpdateSource {
 +    override val isSupported: Boolean = true
 +    override fun isSignedIn(): Boolean = true
@@ -10729,6 +11092,7 @@ index 5e6478ef..a5559bb6 100644
 +      offlineDownloadManager = offlineDownloadManager,
 +      libraryItemRepository = libraryItemRepository,
 +      bookInfoRegistry = registry,
++      libraryViewSettings = libraryViewSettings,
 +      analytics = analytics,
 +      appUpdateSource = updateSource,
 +      batteryOptimization = batteryOptimization,
@@ -10771,7 +11135,7 @@ index 5e6478ef..a5559bb6 100644
 +      homeFeedFlowFactory = { emptyFlow() },
 +      mediaProgressFlowFactory = { emptyFlow() },
 +      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
-     )
++    )
 +    val batteryOpt = NoOpBatteryOptimization(isSupported = true, isIgnoring = true)
 +    val presenter = createPresenter(repository, batteryOptimization = batteryOpt)
 +
@@ -10788,12 +11152,12 @@ index 5e6478ef..a5559bb6 100644
 +      homeFeedFlowFactory = { emptyFlow() },
 +      mediaProgressFlowFactory = { emptyFlow() },
 +      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
-+    )
+     )
 +    val presenter = createPresenter(repository)
  
      presenter.test {
        val state = awaitItem()
-@@ -94,14 +168,7 @@ class HomePresenterTest {
+@@ -94,14 +171,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -10809,7 +11173,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        // First item is always loading state
-@@ -137,7 +204,7 @@ class HomePresenterTest {
+@@ -137,7 +207,7 @@ class HomePresenterTest {
    fun present_CachedUpcoming_InsertsShelfAfterDiscover() = runTest {
      val shelves = listOf(
        shelf(ShelfIds.Discover, "Discover", 2),
@@ -10818,7 +11182,7 @@ index 5e6478ef..a5559bb6 100644
      )
      val repository = FakeHomeRepository(
        homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
-@@ -160,14 +227,7 @@ class HomePresenterTest {
+@@ -160,14 +230,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -10834,7 +11198,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -193,8 +253,9 @@ class HomePresenterTest {
+@@ -193,8 +256,9 @@ class HomePresenterTest {
                )
            },
          )
@@ -10845,7 +11209,7 @@ index 5e6478ef..a5559bb6 100644
      }
    }
  
-@@ -222,14 +283,7 @@ class HomePresenterTest {
+@@ -222,14 +286,7 @@ class HomePresenterTest {
          providerId = ProviderId.Audible,
        ),
      )
@@ -10861,7 +11225,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        awaitItem() // loading
-@@ -261,14 +315,7 @@ class HomePresenterTest {
+@@ -261,14 +318,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -10877,7 +11241,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        // First item is always loading state
-@@ -309,6 +356,7 @@ class HomePresenterTest {
+@@ -309,6 +359,7 @@ class HomePresenterTest {
              )
            }
        }
@@ -10885,7 +11249,7 @@ index 5e6478ef..a5559bb6 100644
      }
    }
  
-@@ -335,14 +383,7 @@ class HomePresenterTest {
+@@ -335,14 +386,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -10901,7 +11265,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        // Pull Loading State
-@@ -357,6 +398,7 @@ class HomePresenterTest {
+@@ -357,6 +401,7 @@ class HomePresenterTest {
            key(MediaProgressKey("two_2")).isNotNull()
          }
        }
@@ -10909,7 +11273,7 @@ index 5e6478ef..a5559bb6 100644
      }
    }
  
-@@ -383,14 +425,7 @@ class HomePresenterTest {
+@@ -383,14 +428,7 @@ class HomePresenterTest {
          }
        },
      )
@@ -10925,7 +11289,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        // Pull Loading State
-@@ -405,6 +440,7 @@ class HomePresenterTest {
+@@ -405,6 +443,7 @@ class HomePresenterTest {
            key("two_2").isNotNull()
          }
        }
@@ -10933,7 +11297,7 @@ index 5e6478ef..a5559bb6 100644
      }
    }
  
-@@ -415,14 +451,7 @@ class HomePresenterTest {
+@@ -415,14 +454,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -10949,7 +11313,7 @@ index 5e6478ef..a5559bb6 100644
      val libraryItemId = "test_library_item"
      val sharedTransitionKey = "shared_key"
      val libraryItem = libraryItem(libraryItemId)
-@@ -444,14 +473,7 @@ class HomePresenterTest {
+@@ -444,14 +476,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -10965,7 +11329,7 @@ index 5e6478ef..a5559bb6 100644
      val authorId = "test_authorId"
      val authorName = "test_author_name"
      val author = author(authorId, authorName)
-@@ -473,14 +495,7 @@ class HomePresenterTest {
+@@ -473,14 +498,7 @@ class HomePresenterTest {
        mediaProgressFlowFactory = { emptyFlow() },
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
      )
@@ -10981,7 +11345,7 @@ index 5e6478ef..a5559bb6 100644
      val seriesId = "test_seriesId"
      val seriesName = "test_series_name"
      val series = series(seriesId, seriesName)
-@@ -504,14 +519,7 @@ class HomePresenterTest {
+@@ -504,14 +522,7 @@ class HomePresenterTest {
        shelfEntityFlowFactory = { _, _ -> emptyFlow() },
        onRefreshHomeFeed = { refreshGate.await() },
      )
@@ -10997,7 +11361,7 @@ index 5e6478ef..a5559bb6 100644
  
      presenter.test {
        val idle = awaitItem()
-@@ -529,6 +537,64 @@ class HomePresenterTest {
+@@ -529,6 +540,149 @@ class HomePresenterTest {
        assertThat(repository.refreshCount).isEqualTo(1)
      }
    }
@@ -11055,6 +11419,91 @@ index 5e6478ef..a5559bb6 100644
 +      resumeEpochFlow.value = 2L
 +      testScheduler.advanceUntilIdle()
 +      assertThat(repository.refreshIfStaleCount).isEqualTo(2)
++
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun present_downloadsShelf_respectsSortModeAndCustomOrder() = runTest {
++    fun titledItem(id: String, title: String): app.campfire.core.model.LibraryItem {
++      val base = app.campfire.core.model.preview.libraryItem(id = id)
++      val book = base.media as app.campfire.core.model.Media.Book
++      return base.copy(
++        media = book.copy(
++          metadata = book.metadata.copy(title = title),
++        ),
++      )
++    }
++
++    val itemA = titledItem(id = "item_a", title = "Alpha")
++    val itemB = titledItem(id = "item_b", title = "Beta")
++    val itemC = titledItem(id = "item_c", title = "Gamma")
++    val itemsById = mapOf(itemA.id to itemA, itemB.id to itemB, itemC.id to itemC)
++
++    val multiItemRepo = object : app.campfire.libraries.api.LibraryItemRepository {
++      override fun observeLibraryItem(itemId: LibraryItemId) = emptyFlow<app.campfire.core.model.LibraryItem>()
++      override suspend fun getLibraryItem(itemId: LibraryItemId) = itemsById.getValue(itemId)
++      override suspend fun deleteLibraryItem(itemId: LibraryItemId, hardDelete: Boolean) = Result.success(Unit)
++    }
++
++    offlineDownloadManager.observeAllFlow.emit(
++      listOf(
++        OfflineDownload(libraryItemId = itemC.id, state = OfflineDownload.State.Completed),
++        OfflineDownload(libraryItemId = itemA.id, state = OfflineDownload.State.Completed),
++        OfflineDownload(libraryItemId = itemB.id, state = OfflineDownload.State.Completed),
++      ),
++    )
++
++    libraryViewSettings.downloadsSortMode = app.campfire.core.settings.DownloadsSort.Title.storageKey
++    libraryViewSettings.downloadsSortAscending = true
++
++    val repository = FakeHomeRepository(
++      homeFeedFlowFactory = { flowOf(FeedResponse.Success(listOf(shelf("one", "Shelf 1", 1)))) },
++      mediaProgressFlowFactory = { emptyFlow() },
++      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
++    )
++    val presenter = HomePresenter(
++      navigator = navigator,
++      homeRepository = repository,
++      mediaProgressRepository = mediaProgressRepository,
++      offlineDownloadManager = offlineDownloadManager,
++      libraryItemRepository = multiItemRepo,
++      bookInfoRegistry = FakeBookInfoRegistry(),
++      libraryViewSettings = libraryViewSettings,
++      analytics = analytics,
++      appUpdateSource = fakeAppUpdateSource,
++    )
++
++    presenter.test {
++      var state = awaitItem()
++      while (state.homeFeed !is FeedResponse.Success) {
++        state = awaitItem()
++      }
++      var downloadsShelf = (state.homeFeed as FeedResponse.Success).data.first { it.id == "downloads" }
++      assertThat(downloadsShelf.entities.dataOrNull?.map { (it as app.campfire.core.model.LibraryItem).id })
++        .isEqualTo(listOf("item_a", "item_b", "item_c"))
++
++      libraryViewSettings.downloadsSortMode = app.campfire.core.settings.DownloadsSort.Custom.storageKey
++      libraryViewSettings.downloadsCustomOrder = listOf("item_c", "item_a", "item_b")
++
++      var updated = awaitItem()
++      var updatedIds = (updated.homeFeed as? FeedResponse.Success)
++        ?.data
++        ?.firstOrNull { it.id == "downloads" }
++        ?.entities
++        ?.dataOrNull
++        ?.map { (it as app.campfire.core.model.LibraryItem).id }
++      while (updatedIds != listOf("item_c", "item_a", "item_b")) {
++        updated = awaitItem()
++        updatedIds = (updated.homeFeed as? FeedResponse.Success)
++          ?.data
++          ?.firstOrNull { it.id == "downloads" }
++          ?.entities
++          ?.dataOrNull
++          ?.map { (it as app.campfire.core.model.LibraryItem).id }
++      }
++      assertThat(updatedIds).isEqualTo(listOf("item_c", "item_a", "item_b"))
 +
 +      cancelAndIgnoreRemainingEvents()
 +    }
@@ -11846,10 +12295,10 @@ index cd54b662..3935d0a0 100644
  ) : CircuitUiState
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
 new file mode 100644
-index 00000000..6377faf2
+index 00000000..23def546
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,175 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -11858,9 +12307,7 @@ index 00000000..6377faf2
 +import androidx.compose.runtime.Composable
 +import androidx.compose.runtime.collectAsState
 +import androidx.compose.runtime.getValue
-+import androidx.compose.runtime.mutableStateOf
 +import androidx.compose.runtime.remember
-+import androidx.compose.runtime.setValue
 +import app.campfire.analytics.Analytics
 +import app.campfire.analytics.events.ActionEvent
 +import app.campfire.analytics.events.ContentSelected
@@ -11868,13 +12315,14 @@ index 00000000..6377faf2
 +import app.campfire.audioplayer.offline.OfflineDownloadManager
 +import app.campfire.common.screens.DownloadsScreen
 +import app.campfire.core.di.UserScope
++import app.campfire.core.settings.DownloadsSort
++import app.campfire.core.settings.sortDownloadedItems
 +import app.campfire.libraries.api.LibraryItemRepository
 +import app.campfire.libraries.api.screen.LibraryItemScreen
 +import app.campfire.settings.api.LibraryViewSettings
 +import app.campfire.user.api.MediaProgressRepository
 +import com.slack.circuit.codegen.annotations.CircuitInject
 +import com.slack.circuit.foundation.NonPausablePresenter
-+import com.slack.circuit.retained.rememberRetainedSaveable
 +import com.slack.circuit.runtime.Navigator
 +import dev.zacsweers.metro.Inject
 +import kotlinx.coroutines.CancellationException
@@ -11898,13 +12346,18 @@ index 00000000..6377faf2
 +
 +  @Composable
 +  override fun present(): DownloadsUiState {
-+    var sortMode by rememberRetainedSaveable {
-+      mutableStateOf(DownloadsSort.RecentlyPlayed)
-+    }
++    val sortModeRaw by remember {
++      libraryViewSettings.observeDownloadsSortMode()
++    }.collectAsState()
++    val sortMode = DownloadsSort.fromStorageKey(sortModeRaw)
 +
-+    var sortAscending by rememberRetainedSaveable {
-+      mutableStateOf(false)
-+    }
++    val sortAscending by remember {
++      libraryViewSettings.observeDownloadsSortAscending()
++    }.collectAsState()
++
++    val customOrder by remember {
++      libraryViewSettings.observeDownloadsCustomOrder()
++    }.collectAsState()
 +
 +    val completedDownloads by remember {
 +      offlineDownloadManager.observeAll()
@@ -11941,7 +12394,7 @@ index 00000000..6377faf2
 +
 +    val isLoading = completedDownloads == null || userMediaProgress == null
 +
-+    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending) {
++    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending, customOrder) {
 +      val dlList = completedDownloads ?: return@remember emptyList()
 +      val progressMap = userMediaProgress ?: emptyMap()
 +
@@ -11953,33 +12406,16 @@ index 00000000..6377faf2
 +        )
 +      }
 +
-+      val comparator = when (sortMode) {
-+        DownloadsSort.RecentlyPlayed -> compareBy<DownloadedBookItem> { it.progress?.lastUpdate ?: 0L }
-+        DownloadsSort.DateAdded -> compareBy<DownloadedBookItem> {
-+          if (it.download.updateTimeMs > 0) it.download.updateTimeMs else it.libraryItem.addedAtMillis
-+        }
-+        DownloadsSort.Title -> compareBy(String.CASE_INSENSITIVE_ORDER) {
-+          it.libraryItem.media.metadata.title ?: ""
-+        }
-+        DownloadsSort.Author -> compareBy(String.CASE_INSENSITIVE_ORDER) {
-+          it.libraryItem.media.metadata.authorName ?: ""
-+        }
-+        DownloadsSort.Duration -> compareBy<DownloadedBookItem> {
-+          it.libraryItem.media.durationInMillis
-+        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
-+        DownloadsSort.PublishYear -> compareBy<DownloadedBookItem> {
-+          it.libraryItem.media.metadata.publishedYear?.toIntOrNull() ?: 0
-+        }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.libraryItem.media.metadata.title ?: "" }
-+        DownloadsSort.Size -> compareBy<DownloadedBookItem> {
-+          it.download.contentLength.coerceAtLeast(0L)
-+        }
-+      }
-+
-+      if (sortAscending) {
-+        rawItems.sortedWith(comparator)
-+      } else {
-+        rawItems.sortedWith(comparator.reversed())
-+      }
++      sortDownloadedItems(
++        items = rawItems,
++        sortMode = sortMode,
++        sortAscending = sortAscending,
++        customOrder = customOrder,
++        libraryItem = { it.libraryItem },
++        progress = { it.progress },
++        downloadUpdateTimeMs = { it.download.updateTimeMs },
++        downloadContentLength = { it.download.contentLength },
++      )
 +    }
 +
 +    val totalBytes = remember(items) {
@@ -12004,19 +12440,35 @@ index 00000000..6377faf2
 +
 +        is DownloadsUiEvent.SelectSort -> {
 +          if (sortMode == event.sort) {
-+            sortAscending = !sortAscending
++            libraryViewSettings.downloadsSortAscending = !sortAscending
 +          } else {
-+            sortMode = event.sort
-+            sortAscending = when (event.sort) {
-+              DownloadsSort.Title, DownloadsSort.Author -> true
-+              else -> false
++            if (event.sort == DownloadsSort.Custom && customOrder.isEmpty() && items.isNotEmpty()) {
++              libraryViewSettings.downloadsCustomOrder = items.map { it.libraryItem.id }
 +            }
++            libraryViewSettings.downloadsSortMode = event.sort.storageKey
++            libraryViewSettings.downloadsSortAscending = event.sort.defaultAscending
 +          }
 +          analytics.send(ActionEvent("downloads_sort", "selected", event.sort.name))
 +        }
 +
 +        DownloadsUiEvent.ToggleSortDirection -> {
-+          sortAscending = !sortAscending
++          libraryViewSettings.downloadsSortAscending = !sortAscending
++        }
++
++        is DownloadsUiEvent.MoveItem -> {
++          val currentIds = items.map { it.libraryItem.id }.toMutableList()
++          val index = currentIds.indexOf(event.itemId)
++          if (index != -1) {
++            val targetIndex = (index + event.delta).coerceIn(0, currentIds.lastIndex)
++            if (targetIndex != index) {
++              val moved = currentIds.removeAt(index)
++              currentIds.add(targetIndex, moved)
++              libraryViewSettings.downloadsCustomOrder = currentIds
++              if (!sortAscending) {
++                libraryViewSettings.downloadsSortAscending = true
++              }
++            }
++          }
 +        }
 +      }
 +    }
@@ -12024,10 +12476,10 @@ index 00000000..6377faf2
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 new file mode 100644
-index 00000000..9e964575
+index 00000000..ebe48e61
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,396 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -12047,7 +12499,7 @@ index 00000000..9e964575
 +import androidx.compose.foundation.layout.size
 +import androidx.compose.foundation.layout.width
 +import androidx.compose.foundation.lazy.LazyColumn
-+import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.itemsIndexed
 +import androidx.compose.material3.CircularProgressIndicator
 +import androidx.compose.material3.DropdownMenu
 +import androidx.compose.material3.DropdownMenuItem
@@ -12071,6 +12523,8 @@ index 00000000..9e964575
 +import app.campfire.common.compose.CampfireWindowInsets
 +import app.campfire.common.compose.OverlappedNavigationBarInsets
 +import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.ArrowDropDown
++import app.campfire.common.compose.icons.rounded.ArrowDropUp
 +import app.campfire.common.compose.icons.rounded.SortAsc
 +import app.campfire.common.compose.icons.rounded.SortDesc
 +import app.campfire.common.compose.widgets.CampfireTopAppBar
@@ -12080,7 +12534,7 @@ index 00000000..9e964575
 +import androidx.compose.foundation.layout.height
 +import androidx.compose.foundation.lazy.grid.GridCells
 +import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-+import androidx.compose.foundation.lazy.grid.items
++import androidx.compose.foundation.lazy.grid.itemsIndexed
 +import androidx.compose.ui.layout.ContentScale
 +import app.campfire.common.compose.widgets.ElevatedContentCard
 +import app.campfire.common.compose.widgets.ItemImage
@@ -12091,8 +12545,9 @@ index 00000000..9e964575
 +import app.campfire.common.compose.widgets.NavigationBackButton
 +import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 +import app.campfire.common.screens.DownloadsScreen
-+import app.campfire.core.model.LibraryItem
 +import app.campfire.core.di.UserScope
++import app.campfire.core.model.LibraryItem
++import app.campfire.core.settings.DownloadsSort
 +import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 +import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 +import com.slack.circuit.codegen.annotations.CircuitInject
@@ -12215,13 +12670,19 @@ index 00000000..9e964575
 +            horizontalArrangement = Arrangement.spacedBy(12.dp),
 +            verticalArrangement = Arrangement.spacedBy(12.dp),
 +          ) {
-+            items(
++            itemsIndexed(
 +              items = state.items,
-+              key = { it.libraryItem.id },
-+            ) { item ->
++              key = { _, item -> item.libraryItem.id },
++            ) { index, item ->
 +              DownloadedBookGridCard(
 +                item = item,
++                isCustomSort = state.sortMode == DownloadsSort.Custom,
++                canMoveUp = index > 0,
++                canMoveDown = index < state.items.lastIndex,
++                onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
++                onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
 +                onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
++                modifier = Modifier.animateItem(),
 +              )
 +            }
 +          }
@@ -12236,10 +12697,10 @@ index 00000000..9e964575
 +            ),
 +            verticalArrangement = Arrangement.spacedBy(8.dp),
 +          ) {
-+            items(
++            itemsIndexed(
 +              items = state.items,
-+              key = { it.libraryItem.id },
-+            ) { item ->
++              key = { _, item -> item.libraryItem.id },
++            ) { index, item ->
 +              val subtitle = buildString {
 +                item.libraryItem.media.metadata.authorName?.let { append(it) }
 +                if (item.download.contentLength > 0) {
@@ -12254,6 +12715,17 @@ index 00000000..9e964575
 +                mediaProgress = item.progress,
 +                offlineStatus = item.download.asWidgetStatus(),
 +                subtitleOverride = subtitle.ifEmpty { null },
++                trailingContent = {
++                  if (state.sortMode == DownloadsSort.Custom) {
++                    CustomReorderButtons(
++                      canMoveUp = index > 0,
++                      canMoveDown = index < state.items.lastIndex,
++                      onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
++                      onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
++                    )
++                  }
++                },
++                modifier = Modifier.animateItem(),
 +              )
 +            }
 +          }
@@ -12277,8 +12749,48 @@ index 00000000..9e964575
 +}
 +
 +@Composable
++private fun CustomReorderButtons(
++  canMoveUp: Boolean,
++  canMoveDown: Boolean,
++  onMoveUp: () -> Unit,
++  onMoveDown: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Row(
++    modifier = modifier,
++    verticalAlignment = Alignment.CenterVertically,
++  ) {
++    IconButton(
++      onClick = onMoveUp,
++      enabled = canMoveUp,
++      modifier = Modifier.size(36.dp),
++    ) {
++      Icon(
++        imageVector = CampfireIcons.Rounded.ArrowDropUp,
++        contentDescription = "Move up",
++      )
++    }
++    IconButton(
++      onClick = onMoveDown,
++      enabled = canMoveDown,
++      modifier = Modifier.size(36.dp),
++    ) {
++      Icon(
++        imageVector = CampfireIcons.Rounded.ArrowDropDown,
++        contentDescription = "Move down",
++      )
++    }
++  }
++}
++
++@Composable
 +private fun DownloadedBookGridCard(
 +  item: DownloadedBookItem,
++  isCustomSort: Boolean,
++  canMoveUp: Boolean,
++  canMoveDown: Boolean,
++  onMoveUp: () -> Unit,
++  onMoveDown: () -> Unit,
 +  onBookClick: (LibraryItem) -> Unit,
 +  modifier: Modifier = Modifier,
 +) {
@@ -12350,16 +12862,26 @@ index 00000000..9e964575
 +            color = MaterialTheme.colorScheme.onSurfaceVariant,
 +          )
 +        }
++
++        if (isCustomSort) {
++          CustomReorderButtons(
++            canMoveUp = canMoveUp,
++            canMoveDown = canMoveDown,
++            onMoveUp = onMoveUp,
++            onMoveDown = onMoveDown,
++            modifier = Modifier.align(Alignment.End),
++          )
++        }
 +      }
 +    }
 +  }
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
 new file mode 100644
-index 00000000..4f9cf05e
+index 00000000..7fe3a90f
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,38 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -12369,6 +12891,7 @@ index 00000000..4f9cf05e
 +import app.campfire.audioplayer.offline.OfflineDownload
 +import app.campfire.core.model.LibraryItem
 +import app.campfire.core.model.MediaProgress
++import app.campfire.core.settings.DownloadsSort
 +import com.slack.circuit.runtime.CircuitUiEvent
 +import com.slack.circuit.runtime.CircuitUiState
 +
@@ -12378,16 +12901,6 @@ index 00000000..4f9cf05e
 +  val download: OfflineDownload,
 +  val progress: MediaProgress?,
 +)
-+
-+enum class DownloadsSort(val label: String) {
-+  RecentlyPlayed("Recently Played"),
-+  DateAdded("Date Added"),
-+  Title("Title A–Z"),
-+  Author("Author A–Z"),
-+  Duration("Length"),
-+  PublishYear("Date Published"),
-+  Size("File Size"),
-+}
 +
 +@Immutable
 +data class DownloadsUiState(
@@ -12405,6 +12918,7 @@ index 00000000..4f9cf05e
 +  data class ItemClick(val item: LibraryItem) : DownloadsUiEvent
 +  data class SelectSort(val sort: DownloadsSort) : DownloadsUiEvent
 +  data object ToggleSortDirection : DownloadsUiEvent
++  data class MoveItem(val itemId: String, val delta: Int) : DownloadsUiEvent
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
 index 75eae713..300bd7a7 100644
@@ -12547,10 +13061,10 @@ index 48031e7a..6fa0df7d 100644
      }
 diff --git a/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
 new file mode 100644
-index 00000000..80fe7819
+index 00000000..28912286
 --- /dev/null
 +++ b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,134 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -12560,7 +13074,12 @@ index 00000000..80fe7819
 +import app.campfire.audioplayer.offline.OfflineDownload
 +import app.campfire.audioplayer.test.offline.FakeOfflineDownloadManager
 +import app.campfire.common.screens.DownloadsScreen
++import app.campfire.core.model.LibraryItem
++import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.Media
 +import app.campfire.core.model.preview.libraryItem
++import app.campfire.core.settings.DownloadsSort
++import app.campfire.libraries.api.LibraryItemRepository
 +import app.campfire.libraries.test.FakeLibraryItemRepository
 +import app.campfire.settings.test.TestLibraryViewSettings
 +import app.campfire.user.test.FakeMediaProgressRepository
@@ -12571,6 +13090,7 @@ index 00000000..80fe7819
 +import com.slack.circuit.test.FakeNavigator
 +import com.slack.circuit.test.test
 +import kotlin.test.Test
++import kotlinx.coroutines.flow.emptyFlow
 +import kotlinx.coroutines.test.runTest
 +
 +class DownloadsPresenterTest {
@@ -12582,10 +13102,12 @@ index 00000000..80fe7819
 +  private val libraryViewSettings = TestLibraryViewSettings()
 +  private val analytics = FakeAnalytics()
 +
-+  private fun presenter() = DownloadsPresenter(
++  private fun presenter(
++    itemRepo: LibraryItemRepository = libraryItemRepository,
++  ) = DownloadsPresenter(
 +    navigator = navigator,
 +    offlineDownloadManager = offlineDownloadManager,
-+    libraryItemRepository = libraryItemRepository,
++    libraryItemRepository = itemRepo,
 +    mediaProgressRepository = mediaProgressRepository,
 +    libraryViewSettings = libraryViewSettings,
 +    analytics = analytics,
@@ -12629,6 +13151,51 @@ index 00000000..80fe7819
 +      val titleSort = awaitItem()
 +      assertThat(titleSort.sortMode).isEqualTo(DownloadsSort.Title)
 +      assertThat(titleSort.sortAscending).isTrue()
++    }
++  }
++
++  @Test
++  fun custom_order_moves_items_and_persists_in_settings() = runTest {
++    val itemA = libraryItem(id = "item_a").let { base ->
++      val book = base.media as Media.Book
++      base.copy(media = book.copy(metadata = book.metadata.copy(title = "Alpha")))
++    }
++    val itemB = libraryItem(id = "item_b").let { base ->
++      val book = base.media as Media.Book
++      base.copy(media = book.copy(metadata = book.metadata.copy(title = "Beta")))
++    }
++    val itemsById = mapOf(itemA.id to itemA, itemB.id to itemB)
++    val multiRepo = object : LibraryItemRepository {
++      override fun observeLibraryItem(itemId: LibraryItemId) = emptyFlow<LibraryItem>()
++      override suspend fun getLibraryItem(itemId: LibraryItemId) = itemsById.getValue(itemId)
++      override suspend fun deleteLibraryItem(itemId: LibraryItemId, hardDelete: Boolean) = Result.success(Unit)
++    }
++
++    offlineDownloadManager.observeAllFlow.emit(
++      listOf(
++        OfflineDownload(libraryItemId = itemA.id, state = OfflineDownload.State.Completed),
++        OfflineDownload(libraryItemId = itemB.id, state = OfflineDownload.State.Completed),
++      ),
++    )
++    mediaProgressRepository.allProgressFlow.emit(emptyList())
++    libraryViewSettings.downloadsSortMode = DownloadsSort.Custom.storageKey
++    libraryViewSettings.downloadsSortAscending = true
++    libraryViewSettings.downloadsCustomOrder = listOf("item_a", "item_b")
++
++    presenter(itemRepo = multiRepo).test {
++      var loaded = awaitItem()
++      while (loaded.isLoading) {
++        loaded = awaitItem()
++      }
++      assertThat(loaded.items.map { it.libraryItem.id }).isEqualTo(listOf("item_a", "item_b"))
++
++      loaded.eventSink(DownloadsUiEvent.MoveItem("item_b", -1))
++      var reordered = awaitItem()
++      while (reordered.items.map { it.libraryItem.id } != listOf("item_b", "item_a")) {
++        reordered = awaitItem()
++      }
++      assertThat(libraryViewSettings.downloadsCustomOrder).isEqualTo(listOf("item_b", "item_a"))
++      cancelAndIgnoreRemainingEvents()
 +    }
 +  }
 +}
@@ -19110,10 +19677,10 @@ index fc43e3f8..0581c6c9 100644
 +  fun observeCachedUpdateReleaseNotes(): StateFlow<String?>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
-index 7b142288..f3c18b43 100644
+index 7b142288..694b2063 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
 +++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
-@@ -52,4 +52,13 @@ interface LibraryViewSettings {
+@@ -52,4 +52,22 @@ interface LibraryViewSettings {
  
    var showTimeInBook: Boolean
    fun observeShowTimeInBook(): StateFlow<Boolean>
@@ -19126,6 +19693,15 @@ index 7b142288..f3c18b43 100644
 +
 +  var continueSeriesAlternateView: Boolean
 +  fun observeContinueSeriesAlternateView(): StateFlow<Boolean>
++
++  var downloadsSortMode: String
++  fun observeDownloadsSortMode(): StateFlow<String>
++
++  var downloadsSortAscending: Boolean
++  fun observeDownloadsSortAscending(): StateFlow<Boolean>
++
++  var downloadsCustomOrder: List<String>
++  fun observeDownloadsCustomOrder(): StateFlow<List<String>>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
 index e2314f46..65b8dc3a 100644
@@ -19299,10 +19875,18 @@ index b28b07e0..640e8662 100644
    }
  
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
-index 9644f55e..2f839968 100644
+index 9644f55e..292598a3 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
 +++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
-@@ -85,6 +85,18 @@ class LibraryViewSettingsImpl(
+@@ -7,6 +7,7 @@ import app.campfire.core.coroutines.CoroutineScopeHolder
+ import app.campfire.core.di.UserScope
+ import app.campfire.core.di.qualifier.ForScope
+ import app.campfire.core.settings.ContentSortMode
++import app.campfire.core.settings.DownloadsSort
+ import app.campfire.core.settings.GroupDisplayState
+ import app.campfire.core.settings.ItemDisplayState
+ import app.campfire.core.settings.SortDirection
+@@ -85,8 +86,39 @@ class LibraryViewSettingsImpl(
    private val showTimeInBookProperty = booleanSetting(KEY_SHOW_TIME_IN_BOOK, true)
    override var showTimeInBook: Boolean by showTimeInBookProperty
    override fun observeShowTimeInBook(): StateFlow<Boolean> = showTimeInBookProperty.observe()
@@ -19318,26 +19902,60 @@ index 9644f55e..2f839968 100644
 +  private val continueSeriesAlternateViewProperty = booleanSetting(KEY_CONTINUE_SERIES_ALTERNATE_VIEW, false)
 +  override var continueSeriesAlternateView: Boolean by continueSeriesAlternateViewProperty
 +  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> = continueSeriesAlternateViewProperty.observe()
++
++  private val downloadsSortModeProperty = stringSetting(KEY_DOWNLOADS_SORT_MODE, DownloadsSort.RecentlyPlayed.storageKey)
++  override var downloadsSortMode: String by downloadsSortModeProperty
++  override fun observeDownloadsSortMode(): StateFlow<String> = downloadsSortModeProperty.observe()
++
++  private val downloadsSortAscendingProperty = booleanSetting(KEY_DOWNLOADS_SORT_ASCENDING, false)
++  override var downloadsSortAscending: Boolean by downloadsSortAscendingProperty
++  override fun observeDownloadsSortAscending(): StateFlow<Boolean> = downloadsSortAscendingProperty.observe()
++
++  private val downloadsCustomOrderProperty = customSetting(
++    key = KEY_DOWNLOADS_CUSTOM_ORDER,
++    defaultValue = emptyList(),
++    getter = { raw -> raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList() },
++    setter = { list -> list.joinToString(ORDER_DELIMITER) },
++  )
++  override var downloadsCustomOrder: List<String> by downloadsCustomOrderProperty
++  override fun observeDownloadsCustomOrder(): StateFlow<List<String>> = downloadsCustomOrderProperty.observe()
  }
  
++private const val ORDER_DELIMITER = "\u001F"
++
  internal const val KEY_LIBRARY_ITEM_DISPLAY_STATE = "pref_library_item_display_state"
-@@ -100,6 +112,9 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
+ internal const val KEY_LIBRARY_ITEM_MARQUEE = "pref_library_item_marquee"
+ internal const val KEY_SORT_MODE = "pref_sort_mode"
+@@ -100,6 +132,12 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
  internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
  internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
  internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
 +internal const val KEY_CONFIRM_ACTIONS = "pref_confirm_actions"
 +internal const val KEY_WARN_ON_CELLULAR_DOWNLOAD = "pref_warn_on_cellular_download"
 +internal const val KEY_CONTINUE_SERIES_ALTERNATE_VIEW = "pref_continue_series_alternate_view"
++internal const val KEY_DOWNLOADS_SORT_MODE = "pref_downloads_sort_mode"
++internal const val KEY_DOWNLOADS_SORT_ASCENDING = "pref_downloads_sort_ascending"
++internal const val KEY_DOWNLOADS_CUSTOM_ORDER = "pref_downloads_custom_order"
  
  /** The library view settings stored as strings, for copying into a new account's settings. */
  internal val LibraryViewStringKeys = listOf(
-@@ -120,4 +135,7 @@ internal val LibraryViewBooleanKeys = listOf(
+@@ -113,6 +151,8 @@ internal val LibraryViewStringKeys = listOf(
+   KEY_SERIES_DISPLAY_STATE,
+   KEY_COLLECTIONS_DISPLAY_STATE,
+   KEY_PLAYLISTS_DISPLAY_STATE,
++  KEY_DOWNLOADS_SORT_MODE,
++  KEY_DOWNLOADS_CUSTOM_ORDER,
+ )
+ 
+ /** The library view settings stored as booleans. */
+@@ -120,4 +160,8 @@ internal val LibraryViewBooleanKeys = listOf(
    KEY_LIBRARY_ITEM_MARQUEE,
    KEY_SHOW_CONFIRM_DOWNLOAD,
    KEY_SHOW_TIME_IN_BOOK,
 +  KEY_CONFIRM_ACTIONS,
 +  KEY_WARN_ON_CELLULAR_DOWNLOAD,
 +  KEY_CONTINUE_SERIES_ALTERNATE_VIEW,
++  KEY_DOWNLOADS_SORT_ASCENDING,
  )
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
 index 5a8d65ae..95980168 100644
@@ -19676,10 +20294,18 @@ index a8518d13..033a7fab 100644
 +      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateReleaseNotes)
  }
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
-index 012f349d..b2827c99 100644
+index 012f349d..889bd8d2 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
 +++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
-@@ -85,4 +85,19 @@ class TestLibraryViewSettings(
+@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.flow.SharingStarted
+ import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.test.TestScope
+ import kotlinx.coroutines.test.UnconfinedTestDispatcher
+@@ -85,4 +86,51 @@ class TestLibraryViewSettings(
    override fun observeShowTimeInBook(): StateFlow<Boolean> =
      observeBoolean(::showTimeInBook)
        .stateIn(testScope, SharingStarted.Lazily, showTimeInBook)
@@ -19698,6 +20324,38 @@ index 012f349d..b2827c99 100644
 +  override fun observeContinueSeriesAlternateView(): StateFlow<Boolean> =
 +    observeBoolean(::continueSeriesAlternateView)
 +      .stateIn(testScope, SharingStarted.Lazily, continueSeriesAlternateView)
++
++  override var downloadsSortMode: String by string()
++  override fun observeDownloadsSortMode(): StateFlow<String> =
++    observeString(::downloadsSortMode)
++      .stateIn(testScope, SharingStarted.Lazily, downloadsSortMode)
++
++  override var downloadsSortAscending: Boolean by boolean()
++  override fun observeDownloadsSortAscending(): StateFlow<Boolean> =
++    observeBoolean(::downloadsSortAscending)
++      .stateIn(testScope, SharingStarted.Lazily, downloadsSortAscending)
++
++  override var downloadsCustomOrder: List<String> by property(
++    getter = { key ->
++      getStringOrNull(key)
++        ?.takeIf { it.isNotEmpty() }
++        ?.split(ORDER_DELIMITER)
++        ?: emptyList()
++    },
++    setter = { key, value ->
++      putString(key, value.joinToString(ORDER_DELIMITER))
++    },
++  )
++  override fun observeDownloadsCustomOrder(): StateFlow<List<String>> =
++    observeString(::downloadsCustomOrder)
++      .map { raw ->
++        raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList()
++      }
++      .stateIn(testScope, SharingStarted.Lazily, downloadsCustomOrder)
++
++  companion object {
++    private const val ORDER_DELIMITER = "\u001F"
++  }
  }
 diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 index 6eba5bd2..c6588e28 100644

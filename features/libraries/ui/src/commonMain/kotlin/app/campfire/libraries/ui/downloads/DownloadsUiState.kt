@@ -7,6 +7,7 @@ import androidx.compose.runtime.Immutable
 import app.campfire.audioplayer.offline.OfflineDownload
 import app.campfire.core.model.LibraryItem
 import app.campfire.core.model.MediaProgress
+import app.campfire.core.settings.DownloadsSort
 import com.slack.circuit.runtime.CircuitUiEvent
 import com.slack.circuit.runtime.CircuitUiState
 
@@ -16,16 +17,6 @@ data class DownloadedBookItem(
   val download: OfflineDownload,
   val progress: MediaProgress?,
 )
-
-enum class DownloadsSort(val label: String) {
-  RecentlyPlayed("Recently Played"),
-  DateAdded("Date Added"),
-  Title("Title A–Z"),
-  Author("Author A–Z"),
-  Duration("Length"),
-  PublishYear("Date Published"),
-  Size("File Size"),
-}
 
 @Immutable
 data class DownloadsUiState(
@@ -43,4 +34,5 @@ sealed interface DownloadsUiEvent : CircuitUiEvent {
   data class ItemClick(val item: LibraryItem) : DownloadsUiEvent
   data class SelectSort(val sort: DownloadsSort) : DownloadsUiEvent
   data object ToggleSortDirection : DownloadsUiEvent
+  data class MoveItem(val itemId: String, val delta: Int) : DownloadsUiEvent
 }

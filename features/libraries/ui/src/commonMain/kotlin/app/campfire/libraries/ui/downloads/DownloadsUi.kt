@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +41,8 @@ import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.OverlappedNavigationBarInsets
 import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.ArrowDropDown
+import app.campfire.common.compose.icons.rounded.ArrowDropUp
 import app.campfire.common.compose.icons.rounded.SortAsc
 import app.campfire.common.compose.icons.rounded.SortDesc
 import app.campfire.common.compose.widgets.CampfireTopAppBar
@@ -50,7 +52,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.ui.layout.ContentScale
 import app.campfire.common.compose.widgets.ElevatedContentCard
 import app.campfire.common.compose.widgets.ItemImage
@@ -61,8 +63,9 @@ import app.campfire.common.compose.widgets.OfflineStatusIndicator
 import app.campfire.common.compose.widgets.NavigationBackButton
 import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 import app.campfire.common.screens.DownloadsScreen
-import app.campfire.core.model.LibraryItem
 import app.campfire.core.di.UserScope
+import app.campfire.core.model.LibraryItem
+import app.campfire.core.settings.DownloadsSort
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 import com.slack.circuit.codegen.annotations.CircuitInject
@@ -185,13 +188,19 @@ fun Downloads(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
           ) {
-            items(
+            itemsIndexed(
               items = state.items,
-              key = { it.libraryItem.id },
-            ) { item ->
+              key = { _, item -> item.libraryItem.id },
+            ) { index, item ->
               DownloadedBookGridCard(
                 item = item,
+                isCustomSort = state.sortMode == DownloadsSort.Custom,
+                canMoveUp = index > 0,
+                canMoveDown = index < state.items.lastIndex,
+                onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
+                onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
                 onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
+                modifier = Modifier.animateItem(),
               )
             }
           }
@@ -206,10 +215,10 @@ fun Downloads(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
           ) {
-            items(
+            itemsIndexed(
               items = state.items,
-              key = { it.libraryItem.id },
-            ) { item ->
+              key = { _, item -> item.libraryItem.id },
+            ) { index, item ->
               val subtitle = buildString {
                 item.libraryItem.media.metadata.authorName?.let { append(it) }
                 if (item.download.contentLength > 0) {
@@ -224,6 +233,17 @@ fun Downloads(
                 mediaProgress = item.progress,
                 offlineStatus = item.download.asWidgetStatus(),
                 subtitleOverride = subtitle.ifEmpty { null },
+                trailingContent = {
+                  if (state.sortMode == DownloadsSort.Custom) {
+                    CustomReorderButtons(
+                      canMoveUp = index > 0,
+                      canMoveDown = index < state.items.lastIndex,
+                      onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
+                      onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
+                    )
+                  }
+                },
+                modifier = Modifier.animateItem(),
               )
             }
           }
@@ -247,8 +267,48 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 @Composable
+private fun CustomReorderButtons(
+  canMoveUp: Boolean,
+  canMoveDown: Boolean,
+  onMoveUp: () -> Unit,
+  onMoveDown: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier = modifier,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    IconButton(
+      onClick = onMoveUp,
+      enabled = canMoveUp,
+      modifier = Modifier.size(36.dp),
+    ) {
+      Icon(
+        imageVector = CampfireIcons.Rounded.ArrowDropUp,
+        contentDescription = "Move up",
+      )
+    }
+    IconButton(
+      onClick = onMoveDown,
+      enabled = canMoveDown,
+      modifier = Modifier.size(36.dp),
+    ) {
+      Icon(
+        imageVector = CampfireIcons.Rounded.ArrowDropDown,
+        contentDescription = "Move down",
+      )
+    }
+  }
+}
+
+@Composable
 private fun DownloadedBookGridCard(
   item: DownloadedBookItem,
+  isCustomSort: Boolean,
+  canMoveUp: Boolean,
+  canMoveDown: Boolean,
+  onMoveUp: () -> Unit,
+  onMoveDown: () -> Unit,
   onBookClick: (LibraryItem) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -318,6 +378,16 @@ private fun DownloadedBookGridCard(
             maxLines = 1,
             modifier = Modifier.basicMarquee(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+
+        if (isCustomSort) {
+          CustomReorderButtons(
+            canMoveUp = canMoveUp,
+            canMoveDown = canMoveDown,
+            onMoveUp = onMoveUp,
+            onMoveDown = onMoveDown,
+            modifier = Modifier.align(Alignment.End),
           )
         }
       }

@@ -51,6 +51,7 @@ import assertk.assertions.prop
 import app.campfire.bookinfo.api.BookInfoRegistry
 import app.campfire.home.api.HomeRepository
 import app.campfire.libraries.test.FakeLibraryItemRepository
+import app.campfire.settings.test.TestLibraryViewSettings
 import com.slack.circuit.test.FakeNavigator
 import com.slack.circuit.test.test
 import kotlin.test.Test
@@ -70,6 +71,7 @@ class HomePresenterTest {
   val offlineDownloadManager = FakeOfflineDownloadManager()
   val mediaProgressRepository = FakeMediaProgressRepository()
   val libraryItemRepository = FakeLibraryItemRepository()
+  val libraryViewSettings = TestLibraryViewSettings()
   val fakeAppUpdateSource = object : AppUpdateSource {
     override val isSupported: Boolean = true
     override fun isSignedIn(): Boolean = true
@@ -93,6 +95,7 @@ class HomePresenterTest {
       offlineDownloadManager = offlineDownloadManager,
       libraryItemRepository = libraryItemRepository,
       bookInfoRegistry = registry,
+      libraryViewSettings = libraryViewSettings,
       analytics = analytics,
       appUpdateSource = updateSource,
       batteryOptimization = batteryOptimization,
@@ -591,6 +594,91 @@ class HomePresenterTest {
       resumeEpochFlow.value = 2L
       testScheduler.advanceUntilIdle()
       assertThat(repository.refreshIfStaleCount).isEqualTo(2)
+
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun present_downloadsShelf_respectsSortModeAndCustomOrder() = runTest {
+    fun titledItem(id: String, title: String): app.campfire.core.model.LibraryItem {
+      val base = app.campfire.core.model.preview.libraryItem(id = id)
+      val book = base.media as app.campfire.core.model.Media.Book
+      return base.copy(
+        media = book.copy(
+          metadata = book.metadata.copy(title = title),
+        ),
+      )
+    }
+
+    val itemA = titledItem(id = "item_a", title = "Alpha")
+    val itemB = titledItem(id = "item_b", title = "Beta")
+    val itemC = titledItem(id = "item_c", title = "Gamma")
+    val itemsById = mapOf(itemA.id to itemA, itemB.id to itemB, itemC.id to itemC)
+
+    val multiItemRepo = object : app.campfire.libraries.api.LibraryItemRepository {
+      override fun observeLibraryItem(itemId: LibraryItemId) = emptyFlow<app.campfire.core.model.LibraryItem>()
+      override suspend fun getLibraryItem(itemId: LibraryItemId) = itemsById.getValue(itemId)
+      override suspend fun deleteLibraryItem(itemId: LibraryItemId, hardDelete: Boolean) = Result.success(Unit)
+    }
+
+    offlineDownloadManager.observeAllFlow.emit(
+      listOf(
+        OfflineDownload(libraryItemId = itemC.id, state = OfflineDownload.State.Completed),
+        OfflineDownload(libraryItemId = itemA.id, state = OfflineDownload.State.Completed),
+        OfflineDownload(libraryItemId = itemB.id, state = OfflineDownload.State.Completed),
+      ),
+    )
+
+    libraryViewSettings.downloadsSortMode = app.campfire.core.settings.DownloadsSort.Title.storageKey
+    libraryViewSettings.downloadsSortAscending = true
+
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { flowOf(FeedResponse.Success(listOf(shelf("one", "Shelf 1", 1)))) },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val presenter = HomePresenter(
+      navigator = navigator,
+      homeRepository = repository,
+      mediaProgressRepository = mediaProgressRepository,
+      offlineDownloadManager = offlineDownloadManager,
+      libraryItemRepository = multiItemRepo,
+      bookInfoRegistry = FakeBookInfoRegistry(),
+      libraryViewSettings = libraryViewSettings,
+      analytics = analytics,
+      appUpdateSource = fakeAppUpdateSource,
+    )
+
+    presenter.test {
+      var state = awaitItem()
+      while (state.homeFeed !is FeedResponse.Success) {
+        state = awaitItem()
+      }
+      var downloadsShelf = (state.homeFeed as FeedResponse.Success).data.first { it.id == "downloads" }
+      assertThat(downloadsShelf.entities.dataOrNull?.map { (it as app.campfire.core.model.LibraryItem).id })
+        .isEqualTo(listOf("item_a", "item_b", "item_c"))
+
+      libraryViewSettings.downloadsSortMode = app.campfire.core.settings.DownloadsSort.Custom.storageKey
+      libraryViewSettings.downloadsCustomOrder = listOf("item_c", "item_a", "item_b")
+
+      var updated = awaitItem()
+      var updatedIds = (updated.homeFeed as? FeedResponse.Success)
+        ?.data
+        ?.firstOrNull { it.id == "downloads" }
+        ?.entities
+        ?.dataOrNull
+        ?.map { (it as app.campfire.core.model.LibraryItem).id }
+      while (updatedIds != listOf("item_c", "item_a", "item_b")) {
+        updated = awaitItem()
+        updatedIds = (updated.homeFeed as? FeedResponse.Success)
+          ?.data
+          ?.firstOrNull { it.id == "downloads" }
+          ?.entities
+          ?.dataOrNull
+          ?.map { (it as app.campfire.core.model.LibraryItem).id }
+      }
+      assertThat(updatedIds).isEqualTo(listOf("item_c", "item_a", "item_b"))
 
       cancelAndIgnoreRemainingEvents()
     }
