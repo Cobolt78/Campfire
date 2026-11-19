@@ -2953,3 +2953,34 @@ The Downloads screen only offered a limited set of ephemeral sorts (`RecentlyPla
 * `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 * `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 97. Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode)
+
+### Problem
+Users had no way to customize the vertical order of headings/shelves on the Home screen (for example, bringing `Downloads` or `Continue Listening` to the top).
+
+### Solution & Implementation
+1. **Persisted Canonical Shelf Order (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
+   - Added `homeShelfOrder: List<String>` and `observeHomeShelfOrder(): StateFlow<List<String>>` backed by `KEY_HOME_SHELF_ORDER` (`\u001F`-delimited and included in `LibraryViewStringKeys` for new-account seeding).
+   - Normalized shelf IDs with `canonicalShelfKey(shelfId)` (`shelfId.substringBefore('_')`) so server-prefixed shelf IDs (e.g., `continue-listening_userId_libraryId`) and local/synthesized IDs (`continue-listening`, `downloads`, `upcoming-releases`) map to one stable key.
+2. **Presenter Sorting & Events (`HomeUiState.kt`, `HomePresenter.kt`, `HomePresenterTest.kt`)**:
+   - Added `isReorderingShelves` to `HomeUiState` and `ToggleReorderShelves`, `MoveShelf`, `ResetShelfOrder` events to `HomeUiEvent`.
+   - Sorted `cappedShelves` stably inside `HomePresenter` according to `homeShelfOrder` (leaving newly introduced server shelves in their original relative order afterward).
+3. **Long-Press Heading & Compact Reorder UI (`ShelfHeader.kt`, `ShelfListItem.kt`, `HomeUi.kt`, `home_ui_strings.xml`)**:
+   - Added `onHeaderLongClick` with `combinedClickable` to `ShelfHeader` (wired through `ShelfListItem`) so long-pressing any shelf heading opens Reorder Mode.
+   - Extracted `shelfDisplayTitle(shelf)` and rendered a top `ReorderShelvesBanner` (with **Reset** and **Done** buttons) plus compact `ReorderShelfRow` cards (`DragIndicator` + title + Up/Down `IconButton`s with `animateItem()`) in `HomeUi.kt`.
+
+### Modified Files:
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
+* `features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt`
+* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
+* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
+* `CUSTOM_MODIFICATIONS.md`

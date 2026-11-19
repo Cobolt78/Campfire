@@ -29,6 +29,7 @@ data class HomeUiState(
   val isRefreshing: Boolean = false,
   val isRefreshingDiscoveries: Boolean = false,
   val showBatteryWarning: Boolean = false,
+  val isReorderingShelves: Boolean = false,
   val eventSink: (HomeUiEvent) -> Unit,
 ) : CircuitUiState
 
@@ -69,4 +70,7 @@ sealed interface HomeUiEvent : CircuitUiEvent {
   data object RefreshDiscoveries : HomeUiEvent
   data object RequestIgnoreBatteryOptimizations : HomeUiEvent
   data object DismissBatteryWarning : HomeUiEvent
+  data object ToggleReorderShelves : HomeUiEvent
+  data class MoveShelf(val shelfId: String, val delta: Int) : HomeUiEvent
+  data object ResetShelfOrder : HomeUiEvent
 }

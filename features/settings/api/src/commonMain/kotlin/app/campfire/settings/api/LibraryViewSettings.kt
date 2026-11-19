@@ -70,4 +70,7 @@ interface LibraryViewSettings {
 
   var downloadsCustomOrder: List<String>
   fun observeDownloadsCustomOrder(): StateFlow<List<String>>
+
+  var homeShelfOrder: List<String>
+  fun observeHomeShelfOrder(): StateFlow<List<String>>
 }

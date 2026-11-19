@@ -115,6 +115,15 @@ class LibraryViewSettingsImpl(
   )
   override var downloadsCustomOrder: List<String> by downloadsCustomOrderProperty
   override fun observeDownloadsCustomOrder(): StateFlow<List<String>> = downloadsCustomOrderProperty.observe()
+
+  private val homeShelfOrderProperty = customSetting(
+    key = KEY_HOME_SHELF_ORDER,
+    defaultValue = emptyList(),
+    getter = { raw -> raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList() },
+    setter = { list -> list.joinToString(ORDER_DELIMITER) },
+  )
+  override var homeShelfOrder: List<String> by homeShelfOrderProperty
+  override fun observeHomeShelfOrder(): StateFlow<List<String>> = homeShelfOrderProperty.observe()
 }
 
 private const val ORDER_DELIMITER = "\u001F"
@@ -138,6 +147,7 @@ internal const val KEY_CONTINUE_SERIES_ALTERNATE_VIEW = "pref_continue_series_al
 internal const val KEY_DOWNLOADS_SORT_MODE = "pref_downloads_sort_mode"
 internal const val KEY_DOWNLOADS_SORT_ASCENDING = "pref_downloads_sort_ascending"
 internal const val KEY_DOWNLOADS_CUSTOM_ORDER = "pref_downloads_custom_order"
+internal const val KEY_HOME_SHELF_ORDER = "pref_home_shelf_order"
 
 /** The library view settings stored as strings, for copying into a new account's settings. */
 internal val LibraryViewStringKeys = listOf(
@@ -153,6 +163,7 @@ internal val LibraryViewStringKeys = listOf(
   KEY_PLAYLISTS_DISPLAY_STATE,
   KEY_DOWNLOADS_SORT_MODE,
   KEY_DOWNLOADS_CUSTOM_ORDER,
+  KEY_HOME_SHELF_ORDER,
 )
 
 /** The library view settings stored as booleans. */

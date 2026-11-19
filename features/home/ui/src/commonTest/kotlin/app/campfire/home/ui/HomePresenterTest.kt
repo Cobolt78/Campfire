@@ -683,6 +683,59 @@ class HomePresenterTest {
       cancelAndIgnoreRemainingEvents()
     }
   }
+
+  @Test
+  fun present_shelfReorder_movesShelvesAndResetsOrder() = runTest {
+    val shelves = listOf(
+      shelf("continue-listening_u1_l1", "Continue Listening", 2),
+      shelf("recently-added_u1_l1", "Recently Added", 2),
+      shelf("recent-series_u1_l1", "Recent Series", 2),
+    )
+    val repository = FakeHomeRepository(
+      homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
+      mediaProgressFlowFactory = { emptyFlow() },
+      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
+    )
+    val presenter = createPresenter(repository)
+
+    presenter.test {
+      var loaded = awaitItem()
+      while (loaded.homeFeed !is FeedResponse.Success) {
+        loaded = awaitItem()
+      }
+      assertThat(loaded.isReorderingShelves).isFalse()
+
+      loaded.eventSink(HomeUiEvent.ToggleReorderShelves)
+      val reordering = awaitItem()
+      assertThat(reordering.isReorderingShelves).isTrue()
+
+      // Move "recent-series_u1_l1" up from index 2 to 1, then to 0
+      reordering.eventSink(HomeUiEvent.MoveShelf("recent-series_u1_l1", -1))
+      var movedOnce = awaitItem()
+      while ((movedOnce.homeFeed as? FeedResponse.Success)?.data?.firstOrNull()?.id == "continue-listening_u1_l1" &&
+        (movedOnce.homeFeed as FeedResponse.Success).data[1].id != "recent-series_u1_l1"
+      ) {
+        movedOnce = awaitItem()
+      }
+      assertThat((movedOnce.homeFeed as FeedResponse.Success).data.map { it.id })
+        .isEqualTo(listOf("continue-listening_u1_l1", "recent-series_u1_l1", "recently-added_u1_l1"))
+      assertThat(libraryViewSettings.homeShelfOrder)
+        .isEqualTo(listOf("continue-listening", "recent-series", "recently-added"))
+
+      // Reset order
+      movedOnce.eventSink(HomeUiEvent.ResetShelfOrder)
+      var reset = awaitItem()
+      while ((reset.homeFeed as? FeedResponse.Success)?.data?.map { it.id } != shelves.map { it.id }) {
+        reset = awaitItem()
+      }
+      assertThat(libraryViewSettings.homeShelfOrder).isEmpty()
+
+      reset.eventSink(HomeUiEvent.ToggleReorderShelves)
+      val done = awaitItem()
+      assertThat(done.isReorderingShelves).isFalse()
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
 }
 
 private fun shelf(

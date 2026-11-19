@@ -9,9 +9,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,18 +42,24 @@ import campfire.features.home.ui.generated.resources.upcoming_shelf_title
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun ShelfHeader(
-  shelf: UiShelf<*>,
-  modifier: Modifier = Modifier,
-  onHeaderClick: (() -> Unit)? = null,
-  onRefreshClick: (() -> Unit)? = null,
-  isRefreshing: Boolean = false,
-) {
-  val title = when (shelf.id) {
+internal fun shelfDisplayTitle(shelf: UiShelf<*>): String {
+  return when (shelf.id) {
     ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
     "downloads" -> "Downloads"
     else -> shelf.label
   }
+}
+
+@Composable
+fun ShelfHeader(
+  shelf: UiShelf<*>,
+  modifier: Modifier = Modifier,
+  onHeaderClick: (() -> Unit)? = null,
+  onHeaderLongClick: (() -> Unit)? = null,
+  onRefreshClick: (() -> Unit)? = null,
+  isRefreshing: Boolean = false,
+) {
+  val title = shelfDisplayTitle(shelf)
 
   Row(
     modifier = modifier
@@ -64,21 +69,24 @@ fun ShelfHeader(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    if (onHeaderClick != null) {
-      Row(
-        modifier = Modifier
-          .clip(RoundedCornerShape(8.dp))
-          .clickable(
-            role = Role.Button,
-            onClick = onHeaderClick,
-          )
-          .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(
-          text = title,
-          style = MaterialTheme.typography.labelLarge,
+    val isInteractive = onHeaderClick != null || onHeaderLongClick != null
+    Row(
+      modifier = Modifier
+        .clip(RoundedCornerShape(8.dp))
+        .combinedClickable(
+          enabled = isInteractive,
+          role = if (onHeaderClick != null) Role.Button else null,
+          onClick = { onHeaderClick?.invoke() },
+          onLongClick = onHeaderLongClick,
         )
+        .padding(horizontal = 8.dp, vertical = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+      )
+      if (onHeaderClick != null) {
         Spacer(modifier = Modifier.width(4.dp))
         Icon(
           imageVector = CampfireIcons.Rounded.ChevronRight,
@@ -87,12 +95,6 @@ fun ShelfHeader(
           tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
-    } else {
-      Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.padding(horizontal = 8.dp),
-      )
     }
 
     if (onRefreshClick != null) {

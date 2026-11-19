@@ -25,6 +25,7 @@ fun ShelfListItem(
   onItemClick: (Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
   onHeaderClick: ((String) -> Unit)? = null,
+  onHeaderLongClick: (() -> Unit)? = null,
   onRefreshDiscoveriesClick: (() -> Unit)? = null,
   isRefreshingDiscoveries: Boolean = false,
   modifier: Modifier = Modifier,
@@ -75,6 +76,7 @@ fun ShelfListItem(
       } else {
         null
       },
+      onHeaderLongClick = onHeaderLongClick,
       onRefreshClick = if (isDiscover && onRefreshDiscoveriesClick != null) onRefreshDiscoveriesClick else null,
       isRefreshing = isDiscover && isRefreshingDiscoveries,
     )

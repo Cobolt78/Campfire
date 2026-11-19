@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..928026c9
+index 00000000..c38828a4
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2955 @@
+@@ -0,0 +1,2986 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3510,6 +3510,37 @@ index 00000000..928026c9
 +* `features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt`
 +* `features/home/ui/build.gradle.kts`
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
++* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 97. Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode)
++
++### Problem
++Users had no way to customize the vertical order of headings/shelves on the Home screen (for example, bringing `Downloads` or `Continue Listening` to the top).
++
++### Solution & Implementation
++1. **Persisted Canonical Shelf Order (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
++   - Added `homeShelfOrder: List<String>` and `observeHomeShelfOrder(): StateFlow<List<String>>` backed by `KEY_HOME_SHELF_ORDER` (`\u001F`-delimited and included in `LibraryViewStringKeys` for new-account seeding).
++   - Normalized shelf IDs with `canonicalShelfKey(shelfId)` (`shelfId.substringBefore('_')`) so server-prefixed shelf IDs (e.g., `continue-listening_userId_libraryId`) and local/synthesized IDs (`continue-listening`, `downloads`, `upcoming-releases`) map to one stable key.
++2. **Presenter Sorting & Events (`HomeUiState.kt`, `HomePresenter.kt`, `HomePresenterTest.kt`)**:
++   - Added `isReorderingShelves` to `HomeUiState` and `ToggleReorderShelves`, `MoveShelf`, `ResetShelfOrder` events to `HomeUiEvent`.
++   - Sorted `cappedShelves` stably inside `HomePresenter` according to `homeShelfOrder` (leaving newly introduced server shelves in their original relative order afterward).
++3. **Long-Press Heading & Compact Reorder UI (`ShelfHeader.kt`, `ShelfListItem.kt`, `HomeUi.kt`, `home_ui_strings.xml`)**:
++   - Added `onHeaderLongClick` with `combinedClickable` to `ShelfHeader` (wired through `ShelfListItem`) so long-pressing any shelf heading opens Reorder Mode.
++   - Extracted `shelfDisplayTitle(shelf)` and rendered a top `ReorderShelvesBanner` (with **Reset** and **Done** buttons) plus compact `ReorderShelfRow` cards (`DragIndicator` + title + Up/Down `IconButton`s with `animateItem()`) in `HomeUi.kt`.
++
++### Modified Files:
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
++* `features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt`
++* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt`
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 +* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
@@ -9880,17 +9911,23 @@ index 36ee77e8..ff7579a7 100644
          implementation(projects.infra.audioplayer.test)
          implementation(libs.bundles.test.common)
 diff --git a/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml b/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
-index d004f020..700fcfd3 100644
+index d004f020..3bd495ee 100644
 --- a/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
 +++ b/features/home/ui/src/commonMain/composeResources/values/home_ui_strings.xml
-@@ -7,4 +7,5 @@
+@@ -7,4 +7,11 @@
    <string name="upcoming_view_all">View all</string>
    <string name="upcoming_view_all_count">%1$d upcoming</string>
    <string name="cd_book_cover">%1$s cover</string>
 +  <string name="discover_refresh_cd">Refresh discoveries</string>
++  <string name="home_reorder_shelves_title">Reorder home shelves</string>
++  <string name="home_reorder_shelves_subtitle">Move sections up or down, then tap Done.</string>
++  <string name="home_reorder_shelves_reset">Reset</string>
++  <string name="home_reorder_shelves_done">Done</string>
++  <string name="home_reorder_shelf_move_up">Move %1$s up</string>
++  <string name="home_reorder_shelf_move_down">Move %1$s down</string>
  </resources>
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
-index 84b0ef8a..f63038cb 100644
+index 84b0ef8a..ccd9f3ff 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomePresenter.kt
 @@ -5,51 +5,82 @@ package app.campfire.home.ui
@@ -9977,7 +10014,7 @@ index 84b0ef8a..f63038cb 100644
  
  @CircuitInject(HomeScreen::class, UserScope::class)
  @Inject
-@@ -58,16 +89,43 @@ class HomePresenter(
+@@ -58,16 +89,44 @@ class HomePresenter(
    private val homeRepository: HomeRepository,
    private val mediaProgressRepository: MediaProgressRepository,
    private val offlineDownloadManager: OfflineDownloadManager,
@@ -10000,6 +10037,7 @@ index 84b0ef8a..f63038cb 100644
      var isRefreshing by remember { mutableStateOf(false) }
 +    var isRefreshingDiscoveries by remember { mutableStateOf(false) }
 +    var isBatteryWarningDismissed by remember { mutableStateOf(false) }
++    var isReorderingShelves by remember { mutableStateOf(false) }
 +
 +    RefreshOnForegroundStaleOut(
 +      foregroundResumeTracker = foregroundResumeTracker,
@@ -10022,7 +10060,7 @@ index 84b0ef8a..f63038cb 100644
  
      // Observe just the shelf information. We will use this to compose the remaining elements
      val domainFeed by remember {
-@@ -104,23 +162,40 @@ class HomePresenter(
+@@ -104,23 +163,43 @@ class HomePresenter(
        bookInfoRegistry.observeCachedUpcoming()
      }.collectAsState(emptyList())
  
@@ -10072,11 +10110,14 @@ index 84b0ef8a..f63038cb 100644
 +    val downloadsCustomOrder by remember {
 +      libraryViewSettings.observeDownloadsCustomOrder()
 +    }.collectAsState()
++    val homeShelfOrder by remember {
++      libraryViewSettings.observeHomeShelfOrder()
++    }.collectAsState()
 +
      val userMediaProgress by remember {
        mediaProgressRepository.observeAllProgress()
          .map { allProgress ->
-@@ -130,18 +205,88 @@ class HomePresenter(
+@@ -130,18 +209,98 @@ class HomePresenter(
          }
      }.collectAsState(persistentMapOf())
  
@@ -10101,6 +10142,7 @@ index 84b0ef8a..f63038cb 100644
 +      downloadsSortModeRaw,
 +      downloadsSortAscending,
 +      downloadsCustomOrder,
++      homeShelfOrder,
 +    ) {
 +      withContext(Dispatchers.Default) {
 +        value = domainFeed.map { shelves ->
@@ -10151,7 +10193,16 @@ index 84b0ef8a..f63038cb 100644
 +            }
 +          }
 +
-+          cappedShelves.toPersistentList()
++          val orderedShelves = if (homeShelfOrder.isEmpty()) {
++            cappedShelves
++          } else {
++            val orderMap = homeShelfOrder.withIndex().associate { (index, key) -> key to index }
++            cappedShelves.sortedWith(
++              compareBy { shelf -> orderMap[canonicalShelfKey(shelf.id)] ?: Int.MAX_VALUE },
++            )
++          }
++
++          orderedShelves.toPersistentList()
          }
 +      }
 +    }
@@ -10176,12 +10227,13 @@ index 84b0ef8a..f63038cb 100644
      }.collectAsState(persistentMapOf())
  
      return HomeUiState(
-@@ -149,36 +294,120 @@ class HomePresenter(
+@@ -149,41 +308,151 @@ class HomePresenter(
        offlineStates = offlineDownloads,
        progressStates = userMediaProgress,
        isRefreshing = isRefreshing,
 +      isRefreshingDiscoveries = isRefreshingDiscoveries,
 +      showBatteryWarning = showBatteryWarning,
++      isReorderingShelves = isReorderingShelves,
      ) { event ->
        when (event) {
          is HomeUiEvent.OpenLibraryItem -> {
@@ -10290,9 +10342,9 @@ index 84b0ef8a..f63038cb 100644
 +              } finally {
 +                isRefreshingDiscoveries = false
 +              }
-             }
-           }
-         }
++            }
++          }
++        }
 +
 +        HomeUiEvent.RequestIgnoreBatteryOptimizations -> {
 +          batteryOptimization.requestIgnoreBatteryOptimizations()
@@ -10301,10 +10353,40 @@ index 84b0ef8a..f63038cb 100644
 +        HomeUiEvent.DismissBatteryWarning -> {
 +          isBatteryWarningDismissed = true
 +        }
++
++        HomeUiEvent.ToggleReorderShelves -> {
++          isReorderingShelves = !isReorderingShelves
++        }
++
++        is HomeUiEvent.MoveShelf -> {
++          val currentShelves = feed.dataOrNull ?: return@HomeUiState
++          val keys = currentShelves.map { canonicalShelfKey(it.id) }.toMutableList()
++          val targetKey = canonicalShelfKey(event.shelfId)
++          val index = keys.indexOf(targetKey)
++          if (index != -1) {
++            val newIndex = (index + event.delta).coerceIn(0, keys.lastIndex)
++            if (newIndex != index) {
++              val moved = keys.removeAt(index)
++              keys.add(newIndex, moved)
++              libraryViewSettings.homeShelfOrder = keys
+             }
+           }
+         }
++
++        HomeUiEvent.ResetShelfOrder -> {
++          libraryViewSettings.homeShelfOrder = emptyList()
++        }
        }
      }
    }
-@@ -226,3 +455,207 @@ private fun insertUpcomingShelf(
+ }
+ 
++internal fun canonicalShelfKey(shelfId: String): String = shelfId.substringBefore('_')
++
+ /**
+  * Weaves the cached upcoming shelf into the server's feed — after the
+  * server's Discover shelf when present, at the end otherwise. Only dated
+@@ -226,3 +495,207 @@ private fun insertUpcomingShelf(
      shelves + upcomingShelf
    }
  }
@@ -10513,10 +10595,10 @@ index 84b0ef8a..f63038cb 100644
 +  return shelves
 +}
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
-index 24b2d42a..77e181be 100644
+index 24b2d42a..a803c05a 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUi.kt
-@@ -4,25 +4,44 @@
+@@ -4,25 +4,50 @@
  package app.campfire.home.ui
  
  import androidx.compose.foundation.layout.Arrangement
@@ -10532,12 +10614,14 @@ index 24b2d42a..77e181be 100644
  import androidx.compose.foundation.lazy.LazyColumn
  import androidx.compose.foundation.lazy.LazyListState
  import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.itemsIndexed
  import androidx.compose.foundation.lazy.rememberLazyListState
 +import androidx.compose.material3.Button
 +import androidx.compose.material3.ButtonDefaults
 +import androidx.compose.material3.CardDefaults
 +import androidx.compose.material3.ElevatedCard
  import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.FilledTonalButton
 +import androidx.compose.material3.Icon
 +import androidx.compose.material3.IconButton
 +import androidx.compose.material3.MaterialTheme
@@ -10552,24 +10636,40 @@ index 24b2d42a..77e181be 100644
  import androidx.compose.ui.Modifier
  import androidx.compose.ui.input.nestedscroll.nestedScroll
 +import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextOverflow
  import androidx.compose.ui.unit.dp
  import app.campfire.audioplayer.offline.asWidgetStatus
  import app.campfire.common.compose.CampfireWindowInsets
 +import app.campfire.common.compose.icons.CampfireIcons
++import app.campfire.common.compose.icons.rounded.ArrowDropDown
++import app.campfire.common.compose.icons.rounded.ArrowDropUp
 +import app.campfire.common.compose.icons.rounded.Close
++import app.campfire.common.compose.icons.rounded.DragIndicator
 +import app.campfire.common.compose.icons.rounded.Warning
  import app.campfire.common.compose.tracing.TraceEffect
  import app.campfire.common.compose.widgets.CampfireLoadingIndicator
  import app.campfire.common.compose.widgets.EmptyState
-@@ -44,6 +63,7 @@ import app.campfire.home.ui.composables.ShelfListItem
+@@ -41,11 +66,19 @@ import app.campfire.core.model.ShelfEntity
+ import app.campfire.core.offline.OfflineStatus
+ import app.campfire.home.api.FeedResponse
+ import app.campfire.home.ui.composables.ShelfListItem
++import app.campfire.home.ui.composables.shelfDisplayTitle
  import app.campfire.ui.appbar.CampfireAppBar
  import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
  import app.campfire.user.api.MediaProgressKey
 +import app.campfire.updates.AppUpdateWidget
  import campfire.features.home.ui.generated.resources.Res
  import campfire.features.home.ui.generated.resources.home_feed_load_error
++import campfire.features.home.ui.generated.resources.home_reorder_shelf_move_down
++import campfire.features.home.ui.generated.resources.home_reorder_shelf_move_up
++import campfire.features.home.ui.generated.resources.home_reorder_shelves_done
++import campfire.features.home.ui.generated.resources.home_reorder_shelves_reset
++import campfire.features.home.ui.generated.resources.home_reorder_shelves_subtitle
++import campfire.features.home.ui.generated.resources.home_reorder_shelves_title
  import com.slack.circuit.codegen.annotations.CircuitInject
-@@ -55,6 +75,10 @@ import org.jetbrains.compose.resources.stringResource
+ import org.jetbrains.compose.resources.stringResource
+ 
+@@ -55,6 +88,10 @@ import org.jetbrains.compose.resources.stringResource
  fun HomeScreen(
    state: HomeUiState,
    campfireAppbar: CampfireAppBar,
@@ -10580,33 +10680,39 @@ index 24b2d42a..77e181be 100644
    modifier: Modifier = Modifier,
  ) {
    val appBarBehavior = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
-@@ -112,6 +136,10 @@ fun HomeScreen(
+@@ -112,6 +149,11 @@ fun HomeScreen(
          } else {
            LoadedState(
              shelves = state.homeFeed.data,
 +            appUpdateWidget = appUpdateWidget,
 +            showBatteryWarning = state.showBatteryWarning,
++            isReorderingShelves = state.isReorderingShelves,
 +            onFixBatteryClick = { state.eventSink(HomeUiEvent.RequestIgnoreBatteryOptimizations) },
 +            onDismissBatteryClick = { state.eventSink(HomeUiEvent.DismissBatteryWarning) },
              offlineStatus = { libraryItemId ->
                state.offlineStates[libraryItemId].asWidgetStatus()
              },
-@@ -121,6 +149,9 @@ fun HomeScreen(
+@@ -121,6 +163,13 @@ fun HomeScreen(
              contentPadding = paddingValues,
              modifier = Modifier.fillMaxSize(),
              onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
 +            onHeaderClick = { shelfId -> state.eventSink(HomeUiEvent.OpenShelf(shelfId)) },
++            onHeaderLongClick = { state.eventSink(HomeUiEvent.ToggleReorderShelves) },
++            onMoveShelf = { shelfId, delta -> state.eventSink(HomeUiEvent.MoveShelf(shelfId, delta)) },
++            onResetShelfOrder = { state.eventSink(HomeUiEvent.ResetShelfOrder) },
++            onDoneReorderingShelves = { state.eventSink(HomeUiEvent.ToggleReorderShelves) },
 +            onRefreshDiscoveriesClick = { state.eventSink(HomeUiEvent.RefreshDiscoveries) },
 +            isRefreshingDiscoveries = state.isRefreshingDiscoveries,
              onItemClick = { shelf, item ->
                when (item) {
                  is LibraryItem -> state.eventSink(
-@@ -154,10 +185,17 @@ fun HomeScreen(
+@@ -154,10 +203,22 @@ fun HomeScreen(
  @Composable
  private fun LoadedState(
    shelves: List<UiShelf<ShelfEntity>>,
 +  appUpdateWidget: AppUpdateWidget,
 +  showBatteryWarning: Boolean,
++  isReorderingShelves: Boolean,
 +  onFixBatteryClick: () -> Unit,
 +  onDismissBatteryClick: () -> Unit,
    offlineStatus: (LibraryItemId) -> OfflineStatus,
@@ -10614,110 +10720,252 @@ index 24b2d42a..77e181be 100644
    onItemClick: (UiShelf<*>, Any) -> Unit,
    onViewAllUpcomingClick: () -> Unit,
 +  onHeaderClick: (String) -> Unit,
++  onHeaderLongClick: () -> Unit,
++  onMoveShelf: (String, Int) -> Unit,
++  onResetShelfOrder: () -> Unit,
++  onDoneReorderingShelves: () -> Unit,
 +  onRefreshDiscoveriesClick: () -> Unit,
 +  isRefreshingDiscoveries: Boolean,
    modifier: Modifier = Modifier,
    contentPadding: PaddingValues = PaddingValues(),
    state: LazyListState = rememberLazyListState(),
-@@ -168,11 +206,92 @@ private fun LoadedState(
+@@ -168,14 +229,224 @@ private fun LoadedState(
      contentPadding = contentPadding,
      verticalArrangement = Arrangement.spacedBy(8.dp),
    ) {
 -    items(shelves) { shelf ->
-+    if (showBatteryWarning) {
-+      item(key = "battery_optimization_warning") {
-+        ElevatedCard(
+-      ShelfListItem(
+-        shelf = shelf,
+-        onItemClick = { onItemClick(shelf, it) },
+-        onViewAllUpcomingClick = onViewAllUpcomingClick,
+-        offlineStatus = offlineStatus,
+-        progressStatus = progressStatus,
++    if (isReorderingShelves) {
++      item(key = "reorder_shelves_banner") {
++        ReorderShelvesBanner(
++          onReset = onResetShelfOrder,
++          onDone = onDoneReorderingShelves,
 +          modifier = Modifier
 +            .fillMaxWidth()
 +            .padding(horizontal = 16.dp, vertical = 4.dp),
-+          colors = CardDefaults.elevatedCardColors(
-+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-+          ),
-+        ) {
-+          Column(
-+            modifier = Modifier.padding(16.dp),
-+            verticalArrangement = Arrangement.spacedBy(8.dp),
++        )
++      }
++
++      itemsIndexed(
++        items = shelves,
++        key = { _, shelf -> "reorder_${shelf.id}" },
++      ) { index, shelf ->
++        ReorderShelfRow(
++          shelf = shelf,
++          canMoveUp = index > 0,
++          canMoveDown = index < shelves.lastIndex,
++          onMoveUp = { onMoveShelf(shelf.id, -1) },
++          onMoveDown = { onMoveShelf(shelf.id, 1) },
++          modifier = Modifier
++            .animateItem()
++            .fillMaxWidth()
++            .padding(horizontal = 16.dp),
++        )
++      }
++    } else {
++      if (showBatteryWarning) {
++        item(key = "battery_optimization_warning") {
++          ElevatedCard(
++            modifier = Modifier
++              .fillMaxWidth()
++              .padding(horizontal = 16.dp, vertical = 4.dp),
++            colors = CardDefaults.elevatedCardColors(
++              containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
++              contentColor = MaterialTheme.colorScheme.onErrorContainer,
++            ),
 +          ) {
-+            Row(
-+              verticalAlignment = Alignment.CenterVertically,
-+              horizontalArrangement = Arrangement.spacedBy(8.dp),
++            Column(
++              modifier = Modifier.padding(16.dp),
++              verticalArrangement = Arrangement.spacedBy(8.dp),
 +            ) {
-+              Icon(
-+                imageVector = CampfireIcons.Rounded.Warning,
-+                contentDescription = null,
-+                tint = MaterialTheme.colorScheme.error,
-+              )
-+              Text(
-+                text = "Background Playback Limited",
-+                style = MaterialTheme.typography.titleMedium,
-+                fontWeight = FontWeight.Bold,
-+                modifier = Modifier.weight(1f),
-+              )
-+              IconButton(
-+                onClick = onDismissBatteryClick,
-+                modifier = Modifier.size(24.dp),
++              Row(
++                verticalAlignment = Alignment.CenterVertically,
++                horizontalArrangement = Arrangement.spacedBy(8.dp),
 +              ) {
 +                Icon(
-+                  imageVector = CampfireIcons.Rounded.Close,
-+                  contentDescription = "Dismiss",
-+                  modifier = Modifier.size(16.dp),
++                  imageVector = CampfireIcons.Rounded.Warning,
++                  contentDescription = null,
++                  tint = MaterialTheme.colorScheme.error,
 +                )
++                Text(
++                  text = "Background Playback Limited",
++                  style = MaterialTheme.typography.titleMedium,
++                  fontWeight = FontWeight.Bold,
++                  modifier = Modifier.weight(1f),
++                )
++                IconButton(
++                  onClick = onDismissBatteryClick,
++                  modifier = Modifier.size(24.dp),
++                ) {
++                  Icon(
++                    imageVector = CampfireIcons.Rounded.Close,
++                    contentDescription = "Dismiss",
++                    modifier = Modifier.size(16.dp),
++                  )
++                }
 +              }
-+            }
-+            Text(
-+              text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
-+              style = MaterialTheme.typography.bodyMedium,
-+            )
-+            Row(
-+              modifier = Modifier.fillMaxWidth(),
-+              horizontalArrangement = Arrangement.End,
-+              verticalAlignment = Alignment.CenterVertically,
-+            ) {
-+              TextButton(onClick = onDismissBatteryClick) {
-+                Text("Dismiss")
-+              }
-+              Spacer(modifier = Modifier.width(8.dp))
-+              Button(
-+                onClick = onFixBatteryClick,
-+                colors = ButtonDefaults.buttonColors(
-+                  containerColor = MaterialTheme.colorScheme.error,
-+                  contentColor = MaterialTheme.colorScheme.onError,
-+                ),
++              Text(
++                text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
++                style = MaterialTheme.typography.bodyMedium,
++              )
++              Row(
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.End,
++                verticalAlignment = Alignment.CenterVertically,
 +              ) {
-+                Text("Fix Now (1-Tap)")
++                TextButton(onClick = onDismissBatteryClick) {
++                  Text("Dismiss")
++                }
++                Spacer(modifier = Modifier.width(8.dp))
++                Button(
++                  onClick = onFixBatteryClick,
++                  colors = ButtonDefaults.buttonColors(
++                    containerColor = MaterialTheme.colorScheme.error,
++                    contentColor = MaterialTheme.colorScheme.onError,
++                  ),
++                ) {
++                  Text("Fix Now (1-Tap)")
++                }
 +              }
 +            }
 +          }
 +        }
 +      }
-+    }
 +
-+    item(key = "app_update_banner") {
-+      appUpdateWidget.Content(
-+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
++      item(key = "app_update_banner") {
++        appUpdateWidget.Content(
++          modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
++        )
++      }
++
++      items(
++        items = shelves,
++        key = { it.id },
++      ) { shelf ->
++        ShelfListItem(
++          shelf = shelf,
++          onItemClick = { onItemClick(shelf, it) },
++          onViewAllUpcomingClick = onViewAllUpcomingClick,
++          onHeaderClick = onHeaderClick,
++          onHeaderLongClick = onHeaderLongClick,
++          onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
++          isRefreshingDiscoveries = isRefreshingDiscoveries,
++          offlineStatus = offlineStatus,
++          progressStatus = progressStatus,
++          modifier = Modifier.animateItem(),
++        )
++      }
++    }
++  }
++}
++
++@Composable
++private fun ReorderShelvesBanner(
++  onReset: () -> Unit,
++  onDone: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  ElevatedCard(
++    modifier = modifier,
++    colors = CardDefaults.elevatedCardColors(
++      containerColor = MaterialTheme.colorScheme.primaryContainer,
++      contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
++    ),
++  ) {
++    Row(
++      modifier = Modifier
++        .fillMaxWidth()
++        .padding(horizontal = 16.dp, vertical = 12.dp),
++      verticalAlignment = Alignment.CenterVertically,
++      horizontalArrangement = Arrangement.spacedBy(8.dp),
++    ) {
++      Column(modifier = Modifier.weight(1f)) {
++        Text(
++          text = stringResource(Res.string.home_reorder_shelves_title),
++          style = MaterialTheme.typography.titleSmall,
++          fontWeight = FontWeight.SemiBold,
++        )
++        Text(
++          text = stringResource(Res.string.home_reorder_shelves_subtitle),
++          style = MaterialTheme.typography.bodySmall,
++        )
++      }
++      TextButton(onClick = onReset) {
++        Text(stringResource(Res.string.home_reorder_shelves_reset))
++      }
++      FilledTonalButton(onClick = onDone) {
++        Text(stringResource(Res.string.home_reorder_shelves_done))
++      }
++    }
++  }
++}
++
++@Composable
++private fun ReorderShelfRow(
++  shelf: UiShelf<*>,
++  canMoveUp: Boolean,
++  canMoveDown: Boolean,
++  onMoveUp: () -> Unit,
++  onMoveDown: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  val title = shelfDisplayTitle(shelf)
++  ElevatedCard(
++    modifier = modifier,
++    colors = CardDefaults.elevatedCardColors(
++      containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
++    ),
++  ) {
++    Row(
++      modifier = Modifier
++        .fillMaxWidth()
++        .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
++      verticalAlignment = Alignment.CenterVertically,
++    ) {
++      Icon(
++        imageVector = CampfireIcons.Rounded.DragIndicator,
++        contentDescription = null,
++        tint = MaterialTheme.colorScheme.onSurfaceVariant,
 +      )
-+    }
-+
-+    items(
-+      items = shelves,
-+      key = { it.id },
-+    ) { shelf ->
-       ShelfListItem(
-         shelf = shelf,
-         onItemClick = { onItemClick(shelf, it) },
-         onViewAllUpcomingClick = onViewAllUpcomingClick,
-+        onHeaderClick = onHeaderClick,
-+        onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
-+        isRefreshingDiscoveries = isRefreshingDiscoveries,
-         offlineStatus = offlineStatus,
-         progressStatus = progressStatus,
++      Spacer(modifier = Modifier.width(12.dp))
++      Text(
++        text = title,
++        style = MaterialTheme.typography.titleSmall,
++        maxLines = 1,
++        overflow = TextOverflow.Ellipsis,
++        modifier = Modifier.weight(1f),
        )
++      IconButton(
++        onClick = onMoveUp,
++        enabled = canMoveUp,
++      ) {
++        Icon(
++          imageVector = CampfireIcons.Rounded.ArrowDropUp,
++          contentDescription = stringResource(Res.string.home_reorder_shelf_move_up, title),
++        )
++      }
++      IconButton(
++        onClick = onMoveDown,
++        enabled = canMoveDown,
++      ) {
++        Icon(
++          imageVector = CampfireIcons.Rounded.ArrowDropDown,
++          contentDescription = stringResource(Res.string.home_reorder_shelf_move_down, title),
++        )
++      }
+     }
+   }
+ }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
-index 49b4aa70..80b2fce4 100644
+index 49b4aa70..8ef358f3 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/HomeUiState.kt
-@@ -26,7 +26,9 @@ data class HomeUiState(
+@@ -26,7 +26,10 @@ data class HomeUiState(
    val homeFeed: FeedResponse<out PersistentList<UiShelf<ShelfEntity>>>,
    val offlineStates: ImmutableMap<LibraryItemId, OfflineDownload>,
    val progressStates: ImmutableMap<MediaProgressKey, MediaProgress>,
@@ -10725,10 +10973,11 @@ index 49b4aa70..80b2fce4 100644
 +  val isRefreshing: Boolean = false,
 +  val isRefreshingDiscoveries: Boolean = false,
 +  val showBatteryWarning: Boolean = false,
++  val isReorderingShelves: Boolean = false,
    val eventSink: (HomeUiEvent) -> Unit,
  ) : CircuitUiState
  
-@@ -62,5 +64,9 @@ sealed interface HomeUiEvent : CircuitUiEvent {
+@@ -62,5 +65,12 @@ sealed interface HomeUiEvent : CircuitUiEvent {
    data class OpenAuthor(val author: Author) : HomeUiEvent
    data class OpenUpcomingBook(val url: String) : HomeUiEvent
    data object OpenUpcomingScreen : HomeUiEvent
@@ -10737,24 +10986,27 @@ index 49b4aa70..80b2fce4 100644
 +  data object RefreshDiscoveries : HomeUiEvent
 +  data object RequestIgnoreBatteryOptimizations : HomeUiEvent
 +  data object DismissBatteryWarning : HomeUiEvent
++  data object ToggleReorderShelves : HomeUiEvent
++  data class MoveShelf(val shelfId: String, val delta: Int) : HomeUiEvent
++  data object ResetShelfOrder : HomeUiEvent
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
-index 585f6e98..183c951a 100644
+index 585f6e98..5f333aab 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt
-@@ -3,18 +3,42 @@
+@@ -3,41 +3,126 @@
  
  package app.campfire.home.ui.composables
  
+-import androidx.compose.foundation.layout.Box
 +import androidx.compose.animation.core.LinearEasing
 +import androidx.compose.animation.core.RepeatMode
 +import androidx.compose.animation.core.animateFloat
 +import androidx.compose.animation.core.infiniteRepeatable
 +import androidx.compose.animation.core.rememberInfiniteTransition
 +import androidx.compose.animation.core.tween
-+import androidx.compose.foundation.clickable
++import androidx.compose.foundation.combinedClickable
 +import androidx.compose.foundation.layout.Arrangement
- import androidx.compose.foundation.layout.Box
 +import androidx.compose.foundation.layout.Row
 +import androidx.compose.foundation.layout.Spacer
 +import androidx.compose.foundation.layout.fillMaxWidth
@@ -10785,20 +11037,26 @@ index 585f6e98..183c951a 100644
  import campfire.features.home.ui.generated.resources.upcoming_shelf_title
  import org.jetbrains.compose.resources.stringResource
  
-@@ -22,22 +46,81 @@ import org.jetbrains.compose.resources.stringResource
- fun ShelfHeader(
-   shelf: UiShelf<*>,
-   modifier: Modifier = Modifier,
-+  onHeaderClick: (() -> Unit)? = null,
-+  onRefreshClick: (() -> Unit)? = null,
-+  isRefreshing: Boolean = false,
- ) {
--  Box(
-+  val title = when (shelf.id) {
++@Composable
++internal fun shelfDisplayTitle(shelf: UiShelf<*>): String {
++  return when (shelf.id) {
 +    ShelfIds.UpcomingReleases -> stringResource(Res.string.upcoming_shelf_title)
 +    "downloads" -> "Downloads"
 +    else -> shelf.label
 +  }
++}
++
+ @Composable
+ fun ShelfHeader(
+   shelf: UiShelf<*>,
+   modifier: Modifier = Modifier,
++  onHeaderClick: (() -> Unit)? = null,
++  onHeaderLongClick: (() -> Unit)? = null,
++  onRefreshClick: (() -> Unit)? = null,
++  isRefreshing: Boolean = false,
+ ) {
+-  Box(
++  val title = shelfDisplayTitle(shelf)
 +
 +  Row(
      modifier = modifier
@@ -10820,21 +11078,24 @@ index 585f6e98..183c951a 100644
 -      },
 -      style = MaterialTheme.typography.labelLarge,
 -    )
-+    if (onHeaderClick != null) {
-+      Row(
-+        modifier = Modifier
-+          .clip(RoundedCornerShape(8.dp))
-+          .clickable(
-+            role = Role.Button,
-+            onClick = onHeaderClick,
-+          )
-+          .padding(horizontal = 8.dp, vertical = 6.dp),
-+        verticalAlignment = Alignment.CenterVertically,
-+      ) {
-+        Text(
-+          text = title,
-+          style = MaterialTheme.typography.labelLarge,
++    val isInteractive = onHeaderClick != null || onHeaderLongClick != null
++    Row(
++      modifier = Modifier
++        .clip(RoundedCornerShape(8.dp))
++        .combinedClickable(
++          enabled = isInteractive,
++          role = if (onHeaderClick != null) Role.Button else null,
++          onClick = { onHeaderClick?.invoke() },
++          onLongClick = onHeaderLongClick,
 +        )
++        .padding(horizontal = 8.dp, vertical = 6.dp),
++      verticalAlignment = Alignment.CenterVertically,
++    ) {
++      Text(
++        text = title,
++        style = MaterialTheme.typography.labelLarge,
++      )
++      if (onHeaderClick != null) {
 +        Spacer(modifier = Modifier.width(4.dp))
 +        Icon(
 +          imageVector = CampfireIcons.Rounded.ChevronRight,
@@ -10843,12 +11104,6 @@ index 585f6e98..183c951a 100644
 +          tint = MaterialTheme.colorScheme.onSurfaceVariant,
 +        )
 +      }
-+    } else {
-+      Text(
-+        text = title,
-+        style = MaterialTheme.typography.labelLarge,
-+        modifier = Modifier.padding(horizontal = 8.dp),
-+      )
 +    }
 +
 +    if (onRefreshClick != null) {
@@ -10881,7 +11136,7 @@ index 585f6e98..183c951a 100644
    }
  }
 diff --git a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
-index c6c916b9..59ec24c1 100644
+index c6c916b9..7decdb89 100644
 --- a/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 +++ b/features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt
 @@ -4,13 +4,17 @@
@@ -10902,11 +11157,12 @@ index c6c916b9..59ec24c1 100644
  import app.campfire.home.ui.UiShelf
  
  @Composable
-@@ -20,18 +24,67 @@ fun ShelfListItem(
+@@ -20,18 +24,69 @@ fun ShelfListItem(
    progressStatus: (LibraryItemId, PodcastEpisodeId?) -> MediaProgress?,
    onItemClick: (Any) -> Unit,
    onViewAllUpcomingClick: () -> Unit,
 +  onHeaderClick: ((String) -> Unit)? = null,
++  onHeaderLongClick: (() -> Unit)? = null,
 +  onRefreshDiscoveriesClick: (() -> Unit)? = null,
 +  isRefreshingDiscoveries: Boolean = false,
    modifier: Modifier = Modifier,
@@ -10958,6 +11214,7 @@ index c6c916b9..59ec24c1 100644
 +      } else {
 +        null
 +      },
++      onHeaderLongClick = onHeaderLongClick,
 +      onRefreshClick = if (isDiscover && onRefreshDiscoveriesClick != null) onRefreshDiscoveriesClick else null,
 +      isRefreshing = isDiscover && isRefreshingDiscoveries,
 +    )
@@ -11012,7 +11269,7 @@ index 72319142..9425d9b2 100644
      return mediaProgressFlowFactory(libraryItemIds)
    }
 diff --git a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
-index 5e6478ef..84da4d08 100644
+index 5e6478ef..ed83ada4 100644
 --- a/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 +++ b/features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt
 @@ -5,6 +5,8 @@ package app.campfire.home.ui
@@ -11361,7 +11618,7 @@ index 5e6478ef..84da4d08 100644
  
      presenter.test {
        val idle = awaitItem()
-@@ -529,6 +540,149 @@ class HomePresenterTest {
+@@ -529,6 +540,202 @@ class HomePresenterTest {
        assertThat(repository.refreshCount).isEqualTo(1)
      }
    }
@@ -11505,6 +11762,59 @@ index 5e6478ef..84da4d08 100644
 +      }
 +      assertThat(updatedIds).isEqualTo(listOf("item_c", "item_a", "item_b"))
 +
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun present_shelfReorder_movesShelvesAndResetsOrder() = runTest {
++    val shelves = listOf(
++      shelf("continue-listening_u1_l1", "Continue Listening", 2),
++      shelf("recently-added_u1_l1", "Recently Added", 2),
++      shelf("recent-series_u1_l1", "Recent Series", 2),
++    )
++    val repository = FakeHomeRepository(
++      homeFeedFlowFactory = { flowOf(FeedResponse.Success(shelves)) },
++      mediaProgressFlowFactory = { emptyFlow() },
++      shelfEntityFlowFactory = { _, _ -> emptyFlow() },
++    )
++    val presenter = createPresenter(repository)
++
++    presenter.test {
++      var loaded = awaitItem()
++      while (loaded.homeFeed !is FeedResponse.Success) {
++        loaded = awaitItem()
++      }
++      assertThat(loaded.isReorderingShelves).isFalse()
++
++      loaded.eventSink(HomeUiEvent.ToggleReorderShelves)
++      val reordering = awaitItem()
++      assertThat(reordering.isReorderingShelves).isTrue()
++
++      // Move "recent-series_u1_l1" up from index 2 to 1, then to 0
++      reordering.eventSink(HomeUiEvent.MoveShelf("recent-series_u1_l1", -1))
++      var movedOnce = awaitItem()
++      while ((movedOnce.homeFeed as? FeedResponse.Success)?.data?.firstOrNull()?.id == "continue-listening_u1_l1" &&
++        (movedOnce.homeFeed as FeedResponse.Success).data[1].id != "recent-series_u1_l1"
++      ) {
++        movedOnce = awaitItem()
++      }
++      assertThat((movedOnce.homeFeed as FeedResponse.Success).data.map { it.id })
++        .isEqualTo(listOf("continue-listening_u1_l1", "recent-series_u1_l1", "recently-added_u1_l1"))
++      assertThat(libraryViewSettings.homeShelfOrder)
++        .isEqualTo(listOf("continue-listening", "recent-series", "recently-added"))
++
++      // Reset order
++      movedOnce.eventSink(HomeUiEvent.ResetShelfOrder)
++      var reset = awaitItem()
++      while ((reset.homeFeed as? FeedResponse.Success)?.data?.map { it.id } != shelves.map { it.id }) {
++        reset = awaitItem()
++      }
++      assertThat(libraryViewSettings.homeShelfOrder).isEmpty()
++
++      reset.eventSink(HomeUiEvent.ToggleReorderShelves)
++      val done = awaitItem()
++      assertThat(done.isReorderingShelves).isFalse()
 +      cancelAndIgnoreRemainingEvents()
 +    }
 +  }
@@ -19677,10 +19987,10 @@ index fc43e3f8..0581c6c9 100644
 +  fun observeCachedUpdateReleaseNotes(): StateFlow<String?>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
-index 7b142288..694b2063 100644
+index 7b142288..ad68782c 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
 +++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt
-@@ -52,4 +52,22 @@ interface LibraryViewSettings {
+@@ -52,4 +52,25 @@ interface LibraryViewSettings {
  
    var showTimeInBook: Boolean
    fun observeShowTimeInBook(): StateFlow<Boolean>
@@ -19702,6 +20012,9 @@ index 7b142288..694b2063 100644
 +
 +  var downloadsCustomOrder: List<String>
 +  fun observeDownloadsCustomOrder(): StateFlow<List<String>>
++
++  var homeShelfOrder: List<String>
++  fun observeHomeShelfOrder(): StateFlow<List<String>>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
 index e2314f46..65b8dc3a 100644
@@ -19875,7 +20188,7 @@ index b28b07e0..640e8662 100644
    }
  
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
-index 9644f55e..292598a3 100644
+index 9644f55e..ad0c1b17 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
 +++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt
 @@ -7,6 +7,7 @@ import app.campfire.core.coroutines.CoroutineScopeHolder
@@ -19886,7 +20199,7 @@ index 9644f55e..292598a3 100644
  import app.campfire.core.settings.GroupDisplayState
  import app.campfire.core.settings.ItemDisplayState
  import app.campfire.core.settings.SortDirection
-@@ -85,8 +86,39 @@ class LibraryViewSettingsImpl(
+@@ -85,8 +86,48 @@ class LibraryViewSettingsImpl(
    private val showTimeInBookProperty = booleanSetting(KEY_SHOW_TIME_IN_BOOK, true)
    override var showTimeInBook: Boolean by showTimeInBookProperty
    override fun observeShowTimeInBook(): StateFlow<Boolean> = showTimeInBookProperty.observe()
@@ -19919,6 +20232,15 @@ index 9644f55e..292598a3 100644
 +  )
 +  override var downloadsCustomOrder: List<String> by downloadsCustomOrderProperty
 +  override fun observeDownloadsCustomOrder(): StateFlow<List<String>> = downloadsCustomOrderProperty.observe()
++
++  private val homeShelfOrderProperty = customSetting(
++    key = KEY_HOME_SHELF_ORDER,
++    defaultValue = emptyList(),
++    getter = { raw -> raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList() },
++    setter = { list -> list.joinToString(ORDER_DELIMITER) },
++  )
++  override var homeShelfOrder: List<String> by homeShelfOrderProperty
++  override fun observeHomeShelfOrder(): StateFlow<List<String>> = homeShelfOrderProperty.observe()
  }
  
 +private const val ORDER_DELIMITER = "\u001F"
@@ -19926,7 +20248,7 @@ index 9644f55e..292598a3 100644
  internal const val KEY_LIBRARY_ITEM_DISPLAY_STATE = "pref_library_item_display_state"
  internal const val KEY_LIBRARY_ITEM_MARQUEE = "pref_library_item_marquee"
  internal const val KEY_SORT_MODE = "pref_sort_mode"
-@@ -100,6 +132,12 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
+@@ -100,6 +141,13 @@ internal const val KEY_COLLECTIONS_DISPLAY_STATE = "pref_collections_display_sta
  internal const val KEY_PLAYLISTS_DISPLAY_STATE = "pref_playlists_display_state"
  internal const val KEY_SHOW_CONFIRM_DOWNLOAD = "pref_show_confirm_download"
  internal const val KEY_SHOW_TIME_IN_BOOK = "pref_show_time_in_book"
@@ -19936,19 +20258,21 @@ index 9644f55e..292598a3 100644
 +internal const val KEY_DOWNLOADS_SORT_MODE = "pref_downloads_sort_mode"
 +internal const val KEY_DOWNLOADS_SORT_ASCENDING = "pref_downloads_sort_ascending"
 +internal const val KEY_DOWNLOADS_CUSTOM_ORDER = "pref_downloads_custom_order"
++internal const val KEY_HOME_SHELF_ORDER = "pref_home_shelf_order"
  
  /** The library view settings stored as strings, for copying into a new account's settings. */
  internal val LibraryViewStringKeys = listOf(
-@@ -113,6 +151,8 @@ internal val LibraryViewStringKeys = listOf(
+@@ -113,6 +161,9 @@ internal val LibraryViewStringKeys = listOf(
    KEY_SERIES_DISPLAY_STATE,
    KEY_COLLECTIONS_DISPLAY_STATE,
    KEY_PLAYLISTS_DISPLAY_STATE,
 +  KEY_DOWNLOADS_SORT_MODE,
 +  KEY_DOWNLOADS_CUSTOM_ORDER,
++  KEY_HOME_SHELF_ORDER,
  )
  
  /** The library view settings stored as booleans. */
-@@ -120,4 +160,8 @@ internal val LibraryViewBooleanKeys = listOf(
+@@ -120,4 +171,8 @@ internal val LibraryViewBooleanKeys = listOf(
    KEY_LIBRARY_ITEM_MARQUEE,
    KEY_SHOW_CONFIRM_DOWNLOAD,
    KEY_SHOW_TIME_IN_BOOK,
@@ -20294,7 +20618,7 @@ index a8518d13..033a7fab 100644
 +      .stateIn(testScope, SharingStarted.Lazily, cachedUpdateReleaseNotes)
  }
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
-index 012f349d..889bd8d2 100644
+index 012f349d..f3f67e42 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
 +++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt
 @@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
@@ -20305,7 +20629,7 @@ index 012f349d..889bd8d2 100644
  import kotlinx.coroutines.flow.stateIn
  import kotlinx.coroutines.test.TestScope
  import kotlinx.coroutines.test.UnconfinedTestDispatcher
-@@ -85,4 +86,51 @@ class TestLibraryViewSettings(
+@@ -85,4 +86,69 @@ class TestLibraryViewSettings(
    override fun observeShowTimeInBook(): StateFlow<Boolean> =
      observeBoolean(::showTimeInBook)
        .stateIn(testScope, SharingStarted.Lazily, showTimeInBook)
@@ -20352,6 +20676,24 @@ index 012f349d..889bd8d2 100644
 +        raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList()
 +      }
 +      .stateIn(testScope, SharingStarted.Lazily, downloadsCustomOrder)
++
++  override var homeShelfOrder: List<String> by property(
++    getter = { key ->
++      getStringOrNull(key)
++        ?.takeIf { it.isNotEmpty() }
++        ?.split(ORDER_DELIMITER)
++        ?: emptyList()
++    },
++    setter = { key, value ->
++      putString(key, value.joinToString(ORDER_DELIMITER))
++    },
++  )
++  override fun observeHomeShelfOrder(): StateFlow<List<String>> =
++    observeString(::homeShelfOrder)
++      .map { raw ->
++        raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList()
++      }
++      .stateIn(testScope, SharingStarted.Lazily, homeShelfOrder)
 +
 +  companion object {
 +    private const val ORDER_DELIMITER = "\u001F"

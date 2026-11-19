@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,11 +38,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.campfire.audioplayer.offline.asWidgetStatus
 import app.campfire.common.compose.CampfireWindowInsets
 import app.campfire.common.compose.icons.CampfireIcons
+import app.campfire.common.compose.icons.rounded.ArrowDropDown
+import app.campfire.common.compose.icons.rounded.ArrowDropUp
 import app.campfire.common.compose.icons.rounded.Close
+import app.campfire.common.compose.icons.rounded.DragIndicator
 import app.campfire.common.compose.icons.rounded.Warning
 import app.campfire.common.compose.tracing.TraceEffect
 import app.campfire.common.compose.widgets.CampfireLoadingIndicator
@@ -60,12 +66,19 @@ import app.campfire.core.model.ShelfEntity
 import app.campfire.core.offline.OfflineStatus
 import app.campfire.home.api.FeedResponse
 import app.campfire.home.ui.composables.ShelfListItem
+import app.campfire.home.ui.composables.shelfDisplayTitle
 import app.campfire.ui.appbar.CampfireAppBar
 import app.campfire.ui.navigation.bar.AttachScrollBehaviorToLocalNavigationBar
 import app.campfire.user.api.MediaProgressKey
 import app.campfire.updates.AppUpdateWidget
 import campfire.features.home.ui.generated.resources.Res
 import campfire.features.home.ui.generated.resources.home_feed_load_error
+import campfire.features.home.ui.generated.resources.home_reorder_shelf_move_down
+import campfire.features.home.ui.generated.resources.home_reorder_shelf_move_up
+import campfire.features.home.ui.generated.resources.home_reorder_shelves_done
+import campfire.features.home.ui.generated.resources.home_reorder_shelves_reset
+import campfire.features.home.ui.generated.resources.home_reorder_shelves_subtitle
+import campfire.features.home.ui.generated.resources.home_reorder_shelves_title
 import com.slack.circuit.codegen.annotations.CircuitInject
 import org.jetbrains.compose.resources.stringResource
 
@@ -138,6 +151,7 @@ fun HomeScreen(
             shelves = state.homeFeed.data,
             appUpdateWidget = appUpdateWidget,
             showBatteryWarning = state.showBatteryWarning,
+            isReorderingShelves = state.isReorderingShelves,
             onFixBatteryClick = { state.eventSink(HomeUiEvent.RequestIgnoreBatteryOptimizations) },
             onDismissBatteryClick = { state.eventSink(HomeUiEvent.DismissBatteryWarning) },
             offlineStatus = { libraryItemId ->
@@ -150,6 +164,10 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             onViewAllUpcomingClick = { state.eventSink(HomeUiEvent.OpenUpcomingScreen) },
             onHeaderClick = { shelfId -> state.eventSink(HomeUiEvent.OpenShelf(shelfId)) },
+            onHeaderLongClick = { state.eventSink(HomeUiEvent.ToggleReorderShelves) },
+            onMoveShelf = { shelfId, delta -> state.eventSink(HomeUiEvent.MoveShelf(shelfId, delta)) },
+            onResetShelfOrder = { state.eventSink(HomeUiEvent.ResetShelfOrder) },
+            onDoneReorderingShelves = { state.eventSink(HomeUiEvent.ToggleReorderShelves) },
             onRefreshDiscoveriesClick = { state.eventSink(HomeUiEvent.RefreshDiscoveries) },
             isRefreshingDiscoveries = state.isRefreshingDiscoveries,
             onItemClick = { shelf, item ->
@@ -187,6 +205,7 @@ private fun LoadedState(
   shelves: List<UiShelf<ShelfEntity>>,
   appUpdateWidget: AppUpdateWidget,
   showBatteryWarning: Boolean,
+  isReorderingShelves: Boolean,
   onFixBatteryClick: () -> Unit,
   onDismissBatteryClick: () -> Unit,
   offlineStatus: (LibraryItemId) -> OfflineStatus,
@@ -194,6 +213,10 @@ private fun LoadedState(
   onItemClick: (UiShelf<*>, Any) -> Unit,
   onViewAllUpcomingClick: () -> Unit,
   onHeaderClick: (String) -> Unit,
+  onHeaderLongClick: () -> Unit,
+  onMoveShelf: (String, Int) -> Unit,
+  onResetShelfOrder: () -> Unit,
+  onDoneReorderingShelves: () -> Unit,
   onRefreshDiscoveriesClick: () -> Unit,
   isRefreshingDiscoveries: Boolean,
   modifier: Modifier = Modifier,
@@ -206,95 +229,224 @@ private fun LoadedState(
     contentPadding = contentPadding,
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    if (showBatteryWarning) {
-      item(key = "battery_optimization_warning") {
-        ElevatedCard(
+    if (isReorderingShelves) {
+      item(key = "reorder_shelves_banner") {
+        ReorderShelvesBanner(
+          onReset = onResetShelfOrder,
+          onDone = onDoneReorderingShelves,
           modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-          colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-          ),
-        ) {
-          Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        )
+      }
+
+      itemsIndexed(
+        items = shelves,
+        key = { _, shelf -> "reorder_${shelf.id}" },
+      ) { index, shelf ->
+        ReorderShelfRow(
+          shelf = shelf,
+          canMoveUp = index > 0,
+          canMoveDown = index < shelves.lastIndex,
+          onMoveUp = { onMoveShelf(shelf.id, -1) },
+          onMoveDown = { onMoveShelf(shelf.id, 1) },
+          modifier = Modifier
+            .animateItem()
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        )
+      }
+    } else {
+      if (showBatteryWarning) {
+        item(key = "battery_optimization_warning") {
+          ElevatedCard(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = CardDefaults.elevatedCardColors(
+              containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+              contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            ),
           ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-              Icon(
-                imageVector = CampfireIcons.Rounded.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-              )
-              Text(
-                text = "Background Playback Limited",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-              )
-              IconButton(
-                onClick = onDismissBatteryClick,
-                modifier = Modifier.size(24.dp),
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
               ) {
                 Icon(
-                  imageVector = CampfireIcons.Rounded.Close,
-                  contentDescription = "Dismiss",
-                  modifier = Modifier.size(16.dp),
+                  imageVector = CampfireIcons.Rounded.Warning,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.error,
                 )
+                Text(
+                  text = "Background Playback Limited",
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                  onClick = onDismissBatteryClick,
+                  modifier = Modifier.size(24.dp),
+                ) {
+                  Icon(
+                    imageVector = CampfireIcons.Rounded.Close,
+                    contentDescription = "Dismiss",
+                    modifier = Modifier.size(16.dp),
+                  )
+                }
               }
-            }
-            Text(
-              text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
-              style = MaterialTheme.typography.bodyMedium,
-            )
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.End,
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              TextButton(onClick = onDismissBatteryClick) {
-                Text("Dismiss")
-              }
-              Spacer(modifier = Modifier.width(8.dp))
-              Button(
-                onClick = onFixBatteryClick,
-                colors = ButtonDefaults.buttonColors(
-                  containerColor = MaterialTheme.colorScheme.error,
-                  contentColor = MaterialTheme.colorScheme.onError,
-                ),
+              Text(
+                text = "Battery usage is set to 'Optimized'. When your screen is locked, Samsung / Android power saving may pause playback after 10 seconds or freeze downloads.",
+                style = MaterialTheme.typography.bodyMedium,
+              )
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
               ) {
-                Text("Fix Now (1-Tap)")
+                TextButton(onClick = onDismissBatteryClick) {
+                  Text("Dismiss")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                  onClick = onFixBatteryClick,
+                  colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                  ),
+                ) {
+                  Text("Fix Now (1-Tap)")
+                }
               }
             }
           }
         }
       }
-    }
 
-    item(key = "app_update_banner") {
-      appUpdateWidget.Content(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-      )
-    }
+      item(key = "app_update_banner") {
+        appUpdateWidget.Content(
+          modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+      }
 
-    items(
-      items = shelves,
-      key = { it.id },
-    ) { shelf ->
-      ShelfListItem(
-        shelf = shelf,
-        onItemClick = { onItemClick(shelf, it) },
-        onViewAllUpcomingClick = onViewAllUpcomingClick,
-        onHeaderClick = onHeaderClick,
-        onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
-        isRefreshingDiscoveries = isRefreshingDiscoveries,
-        offlineStatus = offlineStatus,
-        progressStatus = progressStatus,
+      items(
+        items = shelves,
+        key = { it.id },
+      ) { shelf ->
+        ShelfListItem(
+          shelf = shelf,
+          onItemClick = { onItemClick(shelf, it) },
+          onViewAllUpcomingClick = onViewAllUpcomingClick,
+          onHeaderClick = onHeaderClick,
+          onHeaderLongClick = onHeaderLongClick,
+          onRefreshDiscoveriesClick = onRefreshDiscoveriesClick,
+          isRefreshingDiscoveries = isRefreshingDiscoveries,
+          offlineStatus = offlineStatus,
+          progressStatus = progressStatus,
+          modifier = Modifier.animateItem(),
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun ReorderShelvesBanner(
+  onReset: () -> Unit,
+  onDone: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  ElevatedCard(
+    modifier = modifier,
+    colors = CardDefaults.elevatedCardColors(
+      containerColor = MaterialTheme.colorScheme.primaryContainer,
+      contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ),
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = stringResource(Res.string.home_reorder_shelves_title),
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+          text = stringResource(Res.string.home_reorder_shelves_subtitle),
+          style = MaterialTheme.typography.bodySmall,
+        )
+      }
+      TextButton(onClick = onReset) {
+        Text(stringResource(Res.string.home_reorder_shelves_reset))
+      }
+      FilledTonalButton(onClick = onDone) {
+        Text(stringResource(Res.string.home_reorder_shelves_done))
+      }
+    }
+  }
+}
+
+@Composable
+private fun ReorderShelfRow(
+  shelf: UiShelf<*>,
+  canMoveUp: Boolean,
+  canMoveDown: Boolean,
+  onMoveUp: () -> Unit,
+  onMoveDown: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val title = shelfDisplayTitle(shelf)
+  ElevatedCard(
+    modifier = modifier,
+    colors = CardDefaults.elevatedCardColors(
+      containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ),
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Icon(
+        imageVector = CampfireIcons.Rounded.DragIndicator,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
       )
+      Spacer(modifier = Modifier.width(12.dp))
+      Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.weight(1f),
+      )
+      IconButton(
+        onClick = onMoveUp,
+        enabled = canMoveUp,
+      ) {
+        Icon(
+          imageVector = CampfireIcons.Rounded.ArrowDropUp,
+          contentDescription = stringResource(Res.string.home_reorder_shelf_move_up, title),
+        )
+      }
+      IconButton(
+        onClick = onMoveDown,
+        enabled = canMoveDown,
+      ) {
+        Icon(
+          imageVector = CampfireIcons.Rounded.ArrowDropDown,
+          contentDescription = stringResource(Res.string.home_reorder_shelf_move_down, title),
+        )
+      }
     }
   }
 }

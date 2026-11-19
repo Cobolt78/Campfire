@@ -130,6 +130,24 @@ class TestLibraryViewSettings(
       }
       .stateIn(testScope, SharingStarted.Lazily, downloadsCustomOrder)
 
+  override var homeShelfOrder: List<String> by property(
+    getter = { key ->
+      getStringOrNull(key)
+        ?.takeIf { it.isNotEmpty() }
+        ?.split(ORDER_DELIMITER)
+        ?: emptyList()
+    },
+    setter = { key, value ->
+      putString(key, value.joinToString(ORDER_DELIMITER))
+    },
+  )
+  override fun observeHomeShelfOrder(): StateFlow<List<String>> =
+    observeString(::homeShelfOrder)
+      .map { raw ->
+        raw.takeIf { it.isNotEmpty() }?.split(ORDER_DELIMITER) ?: emptyList()
+      }
+      .stateIn(testScope, SharingStarted.Lazily, homeShelfOrder)
+
   companion object {
     private const val ORDER_DELIMITER = "\u001F"
   }

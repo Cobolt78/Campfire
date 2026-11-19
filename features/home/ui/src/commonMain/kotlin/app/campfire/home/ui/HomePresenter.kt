@@ -107,6 +107,7 @@ class HomePresenter(
     var isRefreshing by remember { mutableStateOf(false) }
     var isRefreshingDiscoveries by remember { mutableStateOf(false) }
     var isBatteryWarningDismissed by remember { mutableStateOf(false) }
+    var isReorderingShelves by remember { mutableStateOf(false) }
 
     RefreshOnForegroundStaleOut(
       foregroundResumeTracker = foregroundResumeTracker,
@@ -195,6 +196,9 @@ class HomePresenter(
     val downloadsCustomOrder by remember {
       libraryViewSettings.observeDownloadsCustomOrder()
     }.collectAsState()
+    val homeShelfOrder by remember {
+      libraryViewSettings.observeHomeShelfOrder()
+    }.collectAsState()
 
     val userMediaProgress by remember {
       mediaProgressRepository.observeAllProgress()
@@ -215,6 +219,7 @@ class HomePresenter(
       downloadsSortModeRaw,
       downloadsSortAscending,
       downloadsCustomOrder,
+      homeShelfOrder,
     ) {
       withContext(Dispatchers.Default) {
         value = domainFeed.map { shelves ->
@@ -265,7 +270,16 @@ class HomePresenter(
             }
           }
 
-          cappedShelves.toPersistentList()
+          val orderedShelves = if (homeShelfOrder.isEmpty()) {
+            cappedShelves
+          } else {
+            val orderMap = homeShelfOrder.withIndex().associate { (index, key) -> key to index }
+            cappedShelves.sortedWith(
+              compareBy { shelf -> orderMap[canonicalShelfKey(shelf.id)] ?: Int.MAX_VALUE },
+            )
+          }
+
+          orderedShelves.toPersistentList()
         }
       }
     }
@@ -296,6 +310,7 @@ class HomePresenter(
       isRefreshing = isRefreshing,
       isRefreshingDiscoveries = isRefreshingDiscoveries,
       showBatteryWarning = showBatteryWarning,
+      isReorderingShelves = isReorderingShelves,
     ) { event ->
       when (event) {
         is HomeUiEvent.OpenLibraryItem -> {
@@ -408,10 +423,35 @@ class HomePresenter(
         HomeUiEvent.DismissBatteryWarning -> {
           isBatteryWarningDismissed = true
         }
+
+        HomeUiEvent.ToggleReorderShelves -> {
+          isReorderingShelves = !isReorderingShelves
+        }
+
+        is HomeUiEvent.MoveShelf -> {
+          val currentShelves = feed.dataOrNull ?: return@HomeUiState
+          val keys = currentShelves.map { canonicalShelfKey(it.id) }.toMutableList()
+          val targetKey = canonicalShelfKey(event.shelfId)
+          val index = keys.indexOf(targetKey)
+          if (index != -1) {
+            val newIndex = (index + event.delta).coerceIn(0, keys.lastIndex)
+            if (newIndex != index) {
+              val moved = keys.removeAt(index)
+              keys.add(newIndex, moved)
+              libraryViewSettings.homeShelfOrder = keys
+            }
+          }
+        }
+
+        HomeUiEvent.ResetShelfOrder -> {
+          libraryViewSettings.homeShelfOrder = emptyList()
+        }
       }
     }
   }
 }
+
+internal fun canonicalShelfKey(shelfId: String): String = shelfId.substringBefore('_')
 
 /**
  * Weaves the cached upcoming shelf into the server's feed — after the

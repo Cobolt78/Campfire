@@ -8,4 +8,10 @@
   <string name="upcoming_view_all_count">%1$d upcoming</string>
   <string name="cd_book_cover">%1$s cover</string>
   <string name="discover_refresh_cd">Refresh discoveries</string>
+  <string name="home_reorder_shelves_title">Reorder home shelves</string>
+  <string name="home_reorder_shelves_subtitle">Move sections up or down, then tap Done.</string>
+  <string name="home_reorder_shelves_reset">Reset</string>
+  <string name="home_reorder_shelves_done">Done</string>
+  <string name="home_reorder_shelf_move_up">Move %1$s up</string>
+  <string name="home_reorder_shelf_move_down">Move %1$s down</string>
 </resources>
