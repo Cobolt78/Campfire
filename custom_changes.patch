@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..922896ef
+index 00000000..55b8ec0d
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2895 @@
+@@ -0,0 +1,2920 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3452,6 +3452,31 @@ index 00000000..922896ef
 +* `features/search/ui/build.gradle.kts`
 +* `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt`
 +* `features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 95. Edit Bookmark Name, Default Bookmark Title & Server-Synced Notes
++
++### Problem
++Creating a bookmark required manually typing a non-blank title (blocking 1-tap bookmark creation), existing bookmarks could not be renamed or have their timestamp adjusted without deleting and recreating them manually, and users had no way to attach personal notes that sync across Audiobookshelf and other devices.
++
++### Solution & Implementation
++1. **Default Bookmark Title & 1-Tap Creation (`BookmarksBottomSheet.kt`, `sessions_ui_strings.xml`)**:
++   - Added `bookmark_default_title` (`"Bookmark @ %1$s"`) displayed as the Title field placeholder and automatically used whenever the Title field is left blank so tapping Create saves immediately in 1 tap.
++   - Clamped the `- 1s` timestamp rewind button with `.coerceAtLeast(Duration.ZERO)` to prevent negative bookmark timestamps.
++2. **Server-Synced Notes via Delimited `Bookmark.title` (`BookmarksBottomSheet.kt`, `BookmarksEncodingTest.kt`)**:
++   - Added `encodeBookmarkTitleAndNotes` and `decodeBookmarkTitleAndNotes` helpers separating title and optional notes with `\n` (`"Title\nNotes"`), preserving multi-line notes and normalizing CRLF line endings while storing everything cleanly inside Audiobookshelf's existing `bookmark.title` field.
++   - Rendered decoded notes in `BookmarkListItemContent` below the headline (`maxLines = 2`, `TextOverflow.Ellipsis`).
++   - Added unit tests in `BookmarksEncodingTest.kt` covering plain titles, blank-title default fallback, newline sanitization in titles, multi-line notes round-trip, and CRLF normalization.
++3. **Edit Icon & Long-Press Editing (`BookmarksBottomSheet.kt`)**:
++   - Upgraded `BookmarkListItemContent` to `combinedClickable(onClick, onLongClick = onEditClick)` and added a dedicated `CampfireIcons.Rounded.Edit` button beside Delete.
++   - Unified `CreateNewDialog` into `BookmarkEditorDialog` supporting both create and edit flows (Title, Notes, and timestamp adjustments). When editing an existing bookmark whose `inWholeSeconds` timestamp changed, deletes the old server entry (`removeBookmark`) before saving the updated entry (`createBookmark`).
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
++* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
@@ -16924,7 +16949,7 @@ index e852e895..46afc77a 100644
  
      val itemId = session.libraryItem.id
 diff --git a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-index 20f60c09..8c1027b2 100644
+index 20f60c09..1723605e 100644
 --- a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 +++ b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 @@ -15,7 +15,11 @@
@@ -16947,7 +16972,7 @@ index 20f60c09..8c1027b2 100644
    <string name="equalizer_unavailable_casting">The equalizer isn't available while casting</string>
    <string name="equalizer_band_gain_cd">%1$s equalizer band gain</string>
    <string name="timer_bottomsheet_title">Sleep Timer</string>
-@@ -48,6 +53,10 @@
+@@ -48,11 +53,20 @@
    <string name="bookmark_delete_title">Are you sure?</string>
    <string name="bookmark_delete_action_cancel">Cancel</string>
    <string name="bookmark_delete_action_delete">Delete</string>
@@ -16957,7 +16982,17 @@ index 20f60c09..8c1027b2 100644
 +  <string name="bookmark_delete_all_action_confirm">Delete all</string>
  
    <string name="bookmark_new_dialog_title">New bookmark</string>
++  <string name="bookmark_edit_dialog_title">Edit bookmark</string>
    <string name="bookmark_new_dialog_label_title">Title</string>
++  <string name="bookmark_dialog_label_notes">Notes (optional)</string>
+   <string name="bookmark_new_dialog_action_cancel">Cancel</string>
+   <string name="bookmark_new_dialog_action_create">Create</string>
++  <string name="bookmark_edit_dialog_action_save">Save</string>
++  <string name="action_edit_bookmark">Edit bookmark</string>
++  <string name="bookmark_default_title">Bookmark @ %1$s</string>
+ 
+   <string name="action_set_timer">Set timer</string>
+   <string name="action_clear_timer">Clear timer</string>
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
 index 820bbfd4..3dc1071b 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
@@ -17397,17 +17432,21 @@ index ea2a2a3e..de11276a 100644
        },
      )
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-index d22e71e4..48dd5eb3 100644
+index d22e71e4..a56c1415 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-@@ -3,6 +3,7 @@
+@@ -3,9 +3,10 @@
  
  package app.campfire.sessions.ui.sheets.bookmarks
  
 +import androidx.compose.animation.AnimatedVisibility
  import androidx.compose.foundation.background
  import androidx.compose.foundation.border
- import androidx.compose.foundation.clickable
+-import androidx.compose.foundation.clickable
++import androidx.compose.foundation.combinedClickable
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Box
+ import androidx.compose.foundation.layout.Column
 @@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
  import androidx.compose.foundation.lazy.LazyColumn
  import androidx.compose.foundation.lazy.items
@@ -17416,33 +17455,48 @@ index d22e71e4..48dd5eb3 100644
  import androidx.compose.material3.BasicAlertDialog
  import androidx.compose.material3.Button
  import androidx.compose.material3.ButtonDefaults
-@@ -70,6 +72,7 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
+@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.input.TextFieldValue
+ import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.zIndex
+ import app.campfire.analytics.Analytics
+@@ -70,6 +73,8 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
  import app.campfire.common.compose.icons.rounded.BookmarkStar
  import app.campfire.common.compose.icons.rounded.Delete
  import app.campfire.common.compose.icons.rounded.DeleteForever
 +import app.campfire.common.compose.icons.rounded.DeleteSweep
++import app.campfire.common.compose.icons.rounded.Edit
  import app.campfire.common.compose.icons.rounded.Forward5
  import app.campfire.common.compose.icons.rounded.Replay
  import app.campfire.common.compose.icons.rounded.Schedule
-@@ -88,6 +91,7 @@ import app.campfire.core.model.LibraryItemId
+@@ -88,14 +93,23 @@ import app.campfire.core.model.LibraryItemId
  import app.campfire.sessions.ui.sheets.SessionSheetLayout
  import app.campfire.user.api.BookmarkRepository
  import campfire.features.sessions.ui.generated.resources.Res
 +import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
  import campfire.features.sessions.ui.generated.resources.action_delete_bookmark
++import campfire.features.sessions.ui.generated.resources.action_edit_bookmark
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_action_create
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_empty_message
-@@ -95,6 +99,9 @@ import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_er
+ import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_error_message
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_title
++import campfire.features.sessions.ui.generated.resources.bookmark_default_title
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_cancel
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_delete
 +import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_action_confirm
 +import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_message
 +import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_title
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_title
++import campfire.features.sessions.ui.generated.resources.bookmark_dialog_label_notes
++import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
++import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
-@@ -136,19 +143,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
+ import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_label_title
+@@ -136,19 +150,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
          ScreenViewEvent("Bookmarks", ScreenType.Overlay)
        }
  
@@ -17469,13 +17523,14 @@ index d22e71e4..48dd5eb3 100644
      },
    )
  }
-@@ -173,86 +174,165 @@ private fun BookmarksBottomSheet(
+@@ -173,103 +181,205 @@ private fun BookmarksBottomSheet(
        .catch<LoadState<out List<Bookmark>>> { emit(LoadState.Error) }
    }.collectAsState(LoadState.Loading)
  
 +  val loadedBookmarks = (loadState as? LoadState.Loaded<List<Bookmark>>)?.data.orEmpty()
 +
    var showCreateDialog by remember { mutableStateOf<Duration?>(null) }
++  var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
 +  var showDeleteAllDialog by remember { mutableStateOf(false) }
  
 -  Box(
@@ -17532,6 +17587,9 @@ index d22e71e4..48dd5eb3 100644
 +                bookmark = bookmark,
 +                onClick = {
 +                  onBookmarkClick(bookmark)
++                },
++                onEditClick = {
++                  editingBookmark = bookmark
 +                },
 +                onDeleteClick = {
 +                  scope.launch {
@@ -17693,7 +17751,301 @@ index d22e71e4..48dd5eb3 100644
 +    )
    }
  
-   if (showCreateDialog != null) {
+-  if (showCreateDialog != null) {
+-    CreateNewDialog(
+-      currentTime = showCreateDialog!!,
+-      onDismiss = { showCreateDialog = null },
+-      onCreate = { title, timestamp ->
++  val editorTargetTime = showCreateDialog ?: editingBookmark?.time
++  if (editorTargetTime != null) {
++    val existing = editingBookmark
++    val (initialTitle, initialNotes) = remember(existing) {
++      if (existing != null) decodeBookmarkTitleAndNotes(existing.title) else "" to ""
++    }
++    BookmarkEditorDialog(
++      currentTime = editorTargetTime,
++      isEditing = existing != null,
++      initialTitle = initialTitle,
++      initialNotes = initialNotes,
++      onDismiss = {
++        showCreateDialog = null
++        editingBookmark = null
++      },
++      onSave = { encodedTitle, timestamp ->
+         scope.launch {
+-          Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
++          if (existing != null) {
++            if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
++              component.bookmarkRepository
++                .removeBookmark(libraryItemId, existing.time)
++            }
++          } else {
++            Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
++          }
+           component.bookmarkRepository
+             .createBookmark(
+               libraryItemId = libraryItemId,
+               timestamp = timestamp,
+-              title = title,
++              title = encodedTitle,
+             )
+         }
+         showCreateDialog = null
++        editingBookmark = null
+       },
+     )
+   }
+@@ -279,6 +389,7 @@ private fun BookmarksBottomSheet(
+ private fun BookmarkListItem(
+   bookmark: Bookmark,
+   onClick: () -> Unit,
++  onEditClick: () -> Unit,
+   onDeleteClick: () -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+@@ -289,6 +400,7 @@ private fun BookmarkListItem(
+     BookmarkListItemContent(
+       bookmark = bookmark,
+       onClick = onClick,
++      onEditClick = onEditClick,
+       onDeleteClick = {
+         isConfirmDeleteVisible = true
+       },
+@@ -340,11 +452,18 @@ private fun BookmarkListItem(
+ private fun BookmarkListItemContent(
+   bookmark: Bookmark,
+   onClick: () -> Unit,
++  onEditClick: () -> Unit,
+   onDeleteClick: () -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
++  val (displayTitle, displayNotes) = remember(bookmark.title) {
++    decodeBookmarkTitleAndNotes(bookmark.title)
++  }
+   ListItem(
+-    modifier = modifier.clickable(onClick = onClick),
++    modifier = modifier.combinedClickable(
++      onClick = onClick,
++      onLongClick = onEditClick,
++    ),
+     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+     leadingContent = {
+       Icon(
+@@ -352,31 +471,59 @@ private fun BookmarkListItemContent(
+         contentDescription = null,
+       )
+     },
+-    headlineContent = { Text(bookmark.title) },
++    headlineContent = { Text(displayTitle) },
+     supportingContent = {
+-      Row(
+-        verticalAlignment = Alignment.CenterVertically,
++      Column(
++        verticalArrangement = Arrangement.spacedBy(4.dp),
+       ) {
+-        Icon(
+-          CampfireIcons.Rounded.Schedule,
+-          contentDescription = null,
+-          modifier = Modifier.size(18.dp),
+-        )
+-        Spacer(Modifier.width(4.dp))
+-        Text(bookmark.time.readoutFormat())
+-      }
+-    },
+-    trailingContent = {
+-      val deleteLabel = stringResource(Res.string.action_delete_bookmark)
+-      IconButtonTooltip(text = deleteLabel) {
+-        IconButton(
+-          onClick = onDeleteClick,
++        if (displayNotes.isNotEmpty()) {
++          Text(
++            text = displayNotes,
++            style = MaterialTheme.typography.bodySmall,
++            color = MaterialTheme.colorScheme.onSurfaceVariant,
++            maxLines = 2,
++            overflow = TextOverflow.Ellipsis,
++          )
++        }
++        Row(
++          verticalAlignment = Alignment.CenterVertically,
+         ) {
+           Icon(
+-            CampfireIcons.Rounded.Delete,
+-            contentDescription = deleteLabel,
+-            tint = MaterialTheme.colorScheme.error,
++            CampfireIcons.Rounded.Schedule,
++            contentDescription = null,
++            modifier = Modifier.size(18.dp),
+           )
++          Spacer(Modifier.width(4.dp))
++          Text(bookmark.time.readoutFormat())
++        }
++      }
++    },
++    trailingContent = {
++      Row(
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        val editLabel = stringResource(Res.string.action_edit_bookmark)
++        IconButtonTooltip(text = editLabel) {
++          IconButton(
++            onClick = onEditClick,
++          ) {
++            Icon(
++              CampfireIcons.Rounded.Edit,
++              contentDescription = editLabel,
++            )
++          }
++        }
++        val deleteLabel = stringResource(Res.string.action_delete_bookmark)
++        IconButtonTooltip(text = deleteLabel) {
++          IconButton(
++            onClick = onDeleteClick,
++          ) {
++            Icon(
++              CampfireIcons.Rounded.Delete,
++              contentDescription = deleteLabel,
++              tint = MaterialTheme.colorScheme.error,
++            )
++          }
+         }
+       }
+     },
+@@ -405,13 +552,19 @@ private fun CreateNewListItem(
+ }
+ 
+ @Composable
+-private fun CreateNewDialog(
++private fun BookmarkEditorDialog(
+   currentTime: Duration,
++  isEditing: Boolean,
++  initialTitle: String,
++  initialNotes: String,
+   onDismiss: () -> Unit,
+-  onCreate: (title: String, timestamp: Duration) -> Unit,
++  onSave: (encodedTitle: String, timestamp: Duration) -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+-  var bookmarkTime by remember { mutableStateOf(currentTime) }
++  var bookmarkTime by remember(currentTime) { mutableStateOf(currentTime) }
++  val defaultTitle = stringResource(Res.string.bookmark_default_title, bookmarkTime.readoutFormat())
++  var titleValue by remember(initialTitle) { mutableStateOf(TextFieldValue(initialTitle)) }
++  var notesValue by remember(initialNotes) { mutableStateOf(TextFieldValue(initialNotes)) }
+ 
+   BasicAlertDialog(
+     modifier = modifier,
+@@ -436,7 +589,13 @@ private fun CreateNewDialog(
+           Spacer(Modifier.height(16.dp))
+ 
+           Text(
+-            text = stringResource(Res.string.bookmark_new_dialog_title),
++            text = stringResource(
++              if (isEditing) {
++                Res.string.bookmark_edit_dialog_title
++              } else {
++                Res.string.bookmark_new_dialog_title
++              },
++            ),
+             style = MaterialTheme.typography.headlineSmall,
+             color = MaterialTheme.colorScheme.onSurface,
+           )
+@@ -457,7 +616,7 @@ private fun CreateNewDialog(
+             IconButtonTooltip(text = rewindLabel) {
+               IconButton(
+                 onClick = {
+-                  bookmarkTime -= 1.seconds
++                  bookmarkTime = (bookmarkTime - 1.seconds).coerceAtLeast(Duration.ZERO)
+                 },
+                 colors = IconButtonDefaults.iconButtonColors(
+                   contentColor = MaterialTheme.colorScheme.primary,
+@@ -497,13 +656,27 @@ private fun CreateNewDialog(
+ 
+           Spacer(Modifier.height(16.dp))
+ 
+-          var titleValue by remember { mutableStateOf(TextFieldValue("")) }
+           OutlinedTextField(
+             value = titleValue,
+             onValueChange = { newValue ->
+               titleValue = newValue
+             },
+             label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
++            placeholder = { Text(defaultTitle) },
++            singleLine = true,
++            modifier = Modifier.fillMaxWidth(),
++          )
++
++          Spacer(Modifier.height(12.dp))
++
++          OutlinedTextField(
++            value = notesValue,
++            onValueChange = { newValue ->
++              notesValue = newValue
++            },
++            label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
++            minLines = 2,
++            maxLines = 4,
+             modifier = Modifier.fillMaxWidth(),
+           )
+ 
+@@ -519,12 +692,26 @@ private fun CreateNewDialog(
+               Text(stringResource(Res.string.bookmark_new_dialog_action_cancel))
+             }
+             TextButton(
+-              enabled = titleValue.text.isNotBlank(),
+               onClick = {
+-                onCreate(titleValue.text, bookmarkTime)
++                onSave(
++                  encodeBookmarkTitleAndNotes(
++                    titleInput = titleValue.text,
++                    notesInput = notesValue.text,
++                    defaultTitle = defaultTitle,
++                  ),
++                  bookmarkTime,
++                )
+               },
+             ) {
+-              Text(stringResource(Res.string.bookmark_new_dialog_action_create))
++              Text(
++                stringResource(
++                  if (isEditing) {
++                    Res.string.bookmark_edit_dialog_action_save
++                  } else {
++                    Res.string.bookmark_new_dialog_action_create
++                  },
++                ),
++              )
+             }
+           }
+         }
+@@ -532,3 +719,28 @@ private fun CreateNewDialog(
+     },
+   )
+ }
++
++internal fun decodeBookmarkTitleAndNotes(rawTitle: String): Pair<String, String> {
++  val normalized = rawTitle.replace("\r\n", "\n")
++  val newlineIndex = normalized.indexOf('\n')
++  return if (newlineIndex == -1) {
++    normalized to ""
++  } else {
++    normalized.substring(0, newlineIndex) to normalized.substring(newlineIndex + 1)
++  }
++}
++
++internal fun encodeBookmarkTitleAndNotes(
++  titleInput: String,
++  notesInput: String,
++  defaultTitle: String,
++): String {
++  val cleanTitle = titleInput.replace('\n', ' ').replace('\r', ' ').trim()
++    .ifBlank { defaultTitle }
++  val cleanNotes = notesInput.replace("\r\n", "\n").trim()
++  return if (cleanNotes.isEmpty()) {
++    cleanTitle
++  } else {
++    "$cleanTitle\n$cleanNotes"
++  }
++}
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
 index 4b7fc2d1..2de5ecc3 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/equalizer/EqualizerBottomSheet.kt
@@ -18492,6 +18844,57 @@ index 299f5180..71fb7375 100644
    private fun presenterWith(controller: FakeAudioOutputController) = PlaybackPresenter(
      sessionQueue = sessionQueue,
      sessionsRepository = sessionsRepository,
+diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt
+new file mode 100644
+index 00000000..3613ffcd
+--- /dev/null
++++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt
+@@ -0,0 +1,45 @@
++package app.campfire.sessions.ui.sheets.bookmarks
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++
++class BookmarksEncodingTest {
++
++  @Test
++  fun decodeReturnsPlainTitleAndEmptyNotesWhenNoNewlinePresent() {
++    val (title, notes) = decodeBookmarkTitleAndNotes("Chapter 3 key clue")
++    assertEquals("Chapter 3 key clue", title)
++    assertEquals("", notes)
++  }
++
++  @Test
++  fun encodeUsesDefaultTitleWhenTitleInputIsBlank() {
++    val encoded = encodeBookmarkTitleAndNotes(
++      titleInput = "   ",
++      notesInput = "",
++      defaultTitle = "Bookmark @ 12:34",
++    )
++    assertEquals("Bookmark @ 12:34", encoded)
++  }
++
++  @Test
++  fun encodeAndDecodePreserveMultilineNotes() {
++    val encoded = encodeBookmarkTitleAndNotes(
++      titleInput = "Important\nquote",
++      notesInput = "Line one\nLine two",
++      defaultTitle = "Bookmark @ 01:02",
++    )
++    assertEquals("Important quote\nLine one\nLine two", encoded)
++
++    val (decodedTitle, decodedNotes) = decodeBookmarkTitleAndNotes(encoded)
++    assertEquals("Important quote", decodedTitle)
++    assertEquals("Line one\nLine two", decodedNotes)
++  }
++
++  @Test
++  fun decodeNormalizesCrlfLineEndings() {
++    val (title, notes) = decodeBookmarkTitleAndNotes("My bookmark\r\nNote A\r\nNote B")
++    assertEquals("My bookmark", title)
++    assertEquals("Note A\nNote B", notes)
++  }
++}
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
 new file mode 100644
 index 00000000..d29c3128

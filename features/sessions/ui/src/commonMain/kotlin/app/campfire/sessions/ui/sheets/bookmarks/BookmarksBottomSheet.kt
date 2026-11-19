@@ -6,7 +6,7 @@ package app.campfire.sessions.ui.sheets.bookmarks
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import app.campfire.analytics.Analytics
@@ -73,6 +74,7 @@ import app.campfire.common.compose.icons.rounded.BookmarkStar
 import app.campfire.common.compose.icons.rounded.Delete
 import app.campfire.common.compose.icons.rounded.DeleteForever
 import app.campfire.common.compose.icons.rounded.DeleteSweep
+import app.campfire.common.compose.icons.rounded.Edit
 import app.campfire.common.compose.icons.rounded.Forward5
 import app.campfire.common.compose.icons.rounded.Replay
 import app.campfire.common.compose.icons.rounded.Schedule
@@ -93,16 +95,21 @@ import app.campfire.user.api.BookmarkRepository
 import campfire.features.sessions.ui.generated.resources.Res
 import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
 import campfire.features.sessions.ui.generated.resources.action_delete_bookmark
+import campfire.features.sessions.ui.generated.resources.action_edit_bookmark
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_action_create
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_empty_message
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_error_message
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_title
+import campfire.features.sessions.ui.generated.resources.bookmark_default_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_delete
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_action_confirm
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_message
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_title
+import campfire.features.sessions.ui.generated.resources.bookmark_dialog_label_notes
+import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
+import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_label_title
@@ -177,6 +184,7 @@ private fun BookmarksBottomSheet(
   val loadedBookmarks = (loadState as? LoadState.Loaded<List<Bookmark>>)?.data.orEmpty()
 
   var showCreateDialog by remember { mutableStateOf<Duration?>(null) }
+  var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
   var showDeleteAllDialog by remember { mutableStateOf(false) }
 
   SessionSheetLayout(
@@ -214,6 +222,9 @@ private fun BookmarksBottomSheet(
                 bookmark = bookmark,
                 onClick = {
                   onBookmarkClick(bookmark)
+                },
+                onEditClick = {
+                  editingBookmark = bookmark
                 },
                 onDeleteClick = {
                   scope.launch {
@@ -335,21 +346,40 @@ private fun BookmarksBottomSheet(
     )
   }
 
-  if (showCreateDialog != null) {
-    CreateNewDialog(
-      currentTime = showCreateDialog!!,
-      onDismiss = { showCreateDialog = null },
-      onCreate = { title, timestamp ->
+  val editorTargetTime = showCreateDialog ?: editingBookmark?.time
+  if (editorTargetTime != null) {
+    val existing = editingBookmark
+    val (initialTitle, initialNotes) = remember(existing) {
+      if (existing != null) decodeBookmarkTitleAndNotes(existing.title) else "" to ""
+    }
+    BookmarkEditorDialog(
+      currentTime = editorTargetTime,
+      isEditing = existing != null,
+      initialTitle = initialTitle,
+      initialNotes = initialNotes,
+      onDismiss = {
+        showCreateDialog = null
+        editingBookmark = null
+      },
+      onSave = { encodedTitle, timestamp ->
         scope.launch {
-          Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
+          if (existing != null) {
+            if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
+              component.bookmarkRepository
+                .removeBookmark(libraryItemId, existing.time)
+            }
+          } else {
+            Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
+          }
           component.bookmarkRepository
             .createBookmark(
               libraryItemId = libraryItemId,
               timestamp = timestamp,
-              title = title,
+              title = encodedTitle,
             )
         }
         showCreateDialog = null
+        editingBookmark = null
       },
     )
   }
@@ -359,6 +389,7 @@ private fun BookmarksBottomSheet(
 private fun BookmarkListItem(
   bookmark: Bookmark,
   onClick: () -> Unit,
+  onEditClick: () -> Unit,
   onDeleteClick: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -369,6 +400,7 @@ private fun BookmarkListItem(
     BookmarkListItemContent(
       bookmark = bookmark,
       onClick = onClick,
+      onEditClick = onEditClick,
       onDeleteClick = {
         isConfirmDeleteVisible = true
       },
@@ -420,11 +452,18 @@ private fun BookmarkListItem(
 private fun BookmarkListItemContent(
   bookmark: Bookmark,
   onClick: () -> Unit,
+  onEditClick: () -> Unit,
   onDeleteClick: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val (displayTitle, displayNotes) = remember(bookmark.title) {
+    decodeBookmarkTitleAndNotes(bookmark.title)
+  }
   ListItem(
-    modifier = modifier.clickable(onClick = onClick),
+    modifier = modifier.combinedClickable(
+      onClick = onClick,
+      onLongClick = onEditClick,
+    ),
     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     leadingContent = {
       Icon(
@@ -432,31 +471,59 @@ private fun BookmarkListItemContent(
         contentDescription = null,
       )
     },
-    headlineContent = { Text(bookmark.title) },
+    headlineContent = { Text(displayTitle) },
     supportingContent = {
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
+      Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
       ) {
-        Icon(
-          CampfireIcons.Rounded.Schedule,
-          contentDescription = null,
-          modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(bookmark.time.readoutFormat())
+        if (displayNotes.isNotEmpty()) {
+          Text(
+            text = displayNotes,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Icon(
+            CampfireIcons.Rounded.Schedule,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+          )
+          Spacer(Modifier.width(4.dp))
+          Text(bookmark.time.readoutFormat())
+        }
       }
     },
     trailingContent = {
-      val deleteLabel = stringResource(Res.string.action_delete_bookmark)
-      IconButtonTooltip(text = deleteLabel) {
-        IconButton(
-          onClick = onDeleteClick,
-        ) {
-          Icon(
-            CampfireIcons.Rounded.Delete,
-            contentDescription = deleteLabel,
-            tint = MaterialTheme.colorScheme.error,
-          )
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        val editLabel = stringResource(Res.string.action_edit_bookmark)
+        IconButtonTooltip(text = editLabel) {
+          IconButton(
+            onClick = onEditClick,
+          ) {
+            Icon(
+              CampfireIcons.Rounded.Edit,
+              contentDescription = editLabel,
+            )
+          }
+        }
+        val deleteLabel = stringResource(Res.string.action_delete_bookmark)
+        IconButtonTooltip(text = deleteLabel) {
+          IconButton(
+            onClick = onDeleteClick,
+          ) {
+            Icon(
+              CampfireIcons.Rounded.Delete,
+              contentDescription = deleteLabel,
+              tint = MaterialTheme.colorScheme.error,
+            )
+          }
         }
       }
     },
@@ -485,13 +552,19 @@ private fun CreateNewListItem(
 }
 
 @Composable
-private fun CreateNewDialog(
+private fun BookmarkEditorDialog(
   currentTime: Duration,
+  isEditing: Boolean,
+  initialTitle: String,
+  initialNotes: String,
   onDismiss: () -> Unit,
-  onCreate: (title: String, timestamp: Duration) -> Unit,
+  onSave: (encodedTitle: String, timestamp: Duration) -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  var bookmarkTime by remember { mutableStateOf(currentTime) }
+  var bookmarkTime by remember(currentTime) { mutableStateOf(currentTime) }
+  val defaultTitle = stringResource(Res.string.bookmark_default_title, bookmarkTime.readoutFormat())
+  var titleValue by remember(initialTitle) { mutableStateOf(TextFieldValue(initialTitle)) }
+  var notesValue by remember(initialNotes) { mutableStateOf(TextFieldValue(initialNotes)) }
 
   BasicAlertDialog(
     modifier = modifier,
@@ -516,7 +589,13 @@ private fun CreateNewDialog(
           Spacer(Modifier.height(16.dp))
 
           Text(
-            text = stringResource(Res.string.bookmark_new_dialog_title),
+            text = stringResource(
+              if (isEditing) {
+                Res.string.bookmark_edit_dialog_title
+              } else {
+                Res.string.bookmark_new_dialog_title
+              },
+            ),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
           )
@@ -537,7 +616,7 @@ private fun CreateNewDialog(
             IconButtonTooltip(text = rewindLabel) {
               IconButton(
                 onClick = {
-                  bookmarkTime -= 1.seconds
+                  bookmarkTime = (bookmarkTime - 1.seconds).coerceAtLeast(Duration.ZERO)
                 },
                 colors = IconButtonDefaults.iconButtonColors(
                   contentColor = MaterialTheme.colorScheme.primary,
@@ -577,13 +656,27 @@ private fun CreateNewDialog(
 
           Spacer(Modifier.height(16.dp))
 
-          var titleValue by remember { mutableStateOf(TextFieldValue("")) }
           OutlinedTextField(
             value = titleValue,
             onValueChange = { newValue ->
               titleValue = newValue
             },
             label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
+            placeholder = { Text(defaultTitle) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+          )
+
+          Spacer(Modifier.height(12.dp))
+
+          OutlinedTextField(
+            value = notesValue,
+            onValueChange = { newValue ->
+              notesValue = newValue
+            },
+            label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
+            minLines = 2,
+            maxLines = 4,
             modifier = Modifier.fillMaxWidth(),
           )
 
@@ -599,16 +692,55 @@ private fun CreateNewDialog(
               Text(stringResource(Res.string.bookmark_new_dialog_action_cancel))
             }
             TextButton(
-              enabled = titleValue.text.isNotBlank(),
               onClick = {
-                onCreate(titleValue.text, bookmarkTime)
+                onSave(
+                  encodeBookmarkTitleAndNotes(
+                    titleInput = titleValue.text,
+                    notesInput = notesValue.text,
+                    defaultTitle = defaultTitle,
+                  ),
+                  bookmarkTime,
+                )
               },
             ) {
-              Text(stringResource(Res.string.bookmark_new_dialog_action_create))
+              Text(
+                stringResource(
+                  if (isEditing) {
+                    Res.string.bookmark_edit_dialog_action_save
+                  } else {
+                    Res.string.bookmark_new_dialog_action_create
+                  },
+                ),
+              )
             }
           }
         }
       }
     },
   )
+}
+
+internal fun decodeBookmarkTitleAndNotes(rawTitle: String): Pair<String, String> {
+  val normalized = rawTitle.replace("\r\n", "\n")
+  val newlineIndex = normalized.indexOf('\n')
+  return if (newlineIndex == -1) {
+    normalized to ""
+  } else {
+    normalized.substring(0, newlineIndex) to normalized.substring(newlineIndex + 1)
+  }
+}
+
+internal fun encodeBookmarkTitleAndNotes(
+  titleInput: String,
+  notesInput: String,
+  defaultTitle: String,
+): String {
+  val cleanTitle = titleInput.replace('\n', ' ').replace('\r', ' ').trim()
+    .ifBlank { defaultTitle }
+  val cleanNotes = notesInput.replace("\r\n", "\n").trim()
+  return if (cleanNotes.isEmpty()) {
+    cleanTitle
+  } else {
+    "$cleanTitle\n$cleanNotes"
+  }
 }

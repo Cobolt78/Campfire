@@ -59,9 +59,14 @@
   <string name="bookmark_delete_all_action_confirm">Delete all</string>
 
   <string name="bookmark_new_dialog_title">New bookmark</string>
+  <string name="bookmark_edit_dialog_title">Edit bookmark</string>
   <string name="bookmark_new_dialog_label_title">Title</string>
+  <string name="bookmark_dialog_label_notes">Notes (optional)</string>
   <string name="bookmark_new_dialog_action_cancel">Cancel</string>
   <string name="bookmark_new_dialog_action_create">Create</string>
+  <string name="bookmark_edit_dialog_action_save">Save</string>
+  <string name="action_edit_bookmark">Edit bookmark</string>
+  <string name="bookmark_default_title">Bookmark @ %1$s</string>
 
   <string name="action_set_timer">Set timer</string>
   <string name="action_clear_timer">Clear timer</string>

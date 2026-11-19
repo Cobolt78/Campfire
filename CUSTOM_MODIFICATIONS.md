@@ -2893,3 +2893,28 @@ When a user searched for a title, tapped a result (e.g., a book or series), and 
 * `features/search/ui/src/commonMain/kotlin/app/campfire/search/ui/SearchPresenter.kt`
 * `features/search/ui/src/commonTest/kotlin/app/campfire/search/ui/SearchPresenterTest.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 95. Edit Bookmark Name, Default Bookmark Title & Server-Synced Notes
+
+### Problem
+Creating a bookmark required manually typing a non-blank title (blocking 1-tap bookmark creation), existing bookmarks could not be renamed or have their timestamp adjusted without deleting and recreating them manually, and users had no way to attach personal notes that sync across Audiobookshelf and other devices.
+
+### Solution & Implementation
+1. **Default Bookmark Title & 1-Tap Creation (`BookmarksBottomSheet.kt`, `sessions_ui_strings.xml`)**:
+   - Added `bookmark_default_title` (`"Bookmark @ %1$s"`) displayed as the Title field placeholder and automatically used whenever the Title field is left blank so tapping Create saves immediately in 1 tap.
+   - Clamped the `- 1s` timestamp rewind button with `.coerceAtLeast(Duration.ZERO)` to prevent negative bookmark timestamps.
+2. **Server-Synced Notes via Delimited `Bookmark.title` (`BookmarksBottomSheet.kt`, `BookmarksEncodingTest.kt`)**:
+   - Added `encodeBookmarkTitleAndNotes` and `decodeBookmarkTitleAndNotes` helpers separating title and optional notes with `\n` (`"Title\nNotes"`), preserving multi-line notes and normalizing CRLF line endings while storing everything cleanly inside Audiobookshelf's existing `bookmark.title` field.
+   - Rendered decoded notes in `BookmarkListItemContent` below the headline (`maxLines = 2`, `TextOverflow.Ellipsis`).
+   - Added unit tests in `BookmarksEncodingTest.kt` covering plain titles, blank-title default fallback, newline sanitization in titles, multi-line notes round-trip, and CRLF normalization.
+3. **Edit Icon & Long-Press Editing (`BookmarksBottomSheet.kt`)**:
+   - Upgraded `BookmarkListItemContent` to `combinedClickable(onClick, onLongClick = onEditClick)` and added a dedicated `CampfireIcons.Rounded.Edit` button beside Delete.
+   - Unified `CreateNewDialog` into `BookmarkEditorDialog` supporting both create and edit flows (Title, Notes, and timestamp adjustments). When editing an existing bookmark whose `inWholeSeconds` timestamp changed, deletes the old server entry (`removeBookmark`) before saving the updated entry (`createBookmark`).
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
+* `CUSTOM_MODIFICATIONS.md`
