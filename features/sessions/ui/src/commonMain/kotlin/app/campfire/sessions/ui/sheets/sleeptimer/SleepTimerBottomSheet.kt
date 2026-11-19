@@ -66,6 +66,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.campfire.analytics.events.ScreenType
 import app.campfire.analytics.events.ScreenViewEvent
+import app.campfire.audioplayer.AudioPlayer
+import app.campfire.audioplayer.AudioPlayerHolder
 import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.audioplayer.model.RunningTimer
 import app.campfire.audioplayer.ui.composables.RunningTimerCard
@@ -106,10 +108,13 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -130,6 +135,7 @@ internal sealed interface TimerModel {
 
 @ContributesTo(UserScope::class)
 interface SleepTimerBottomSheetComponent {
+  val audioPlayerHolder: AudioPlayerHolder
   val sessionsRepository: SessionsRepository
   val sleepSettings: SleepSettings
 }
@@ -160,7 +166,7 @@ internal suspend fun OverlayHost.showSleepTimerBottomSheet(
   )
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalCoroutinesApi::class)
 @Composable
 internal fun TimerBottomSheetV2(
   runningTimer: RunningTimer?,
@@ -169,6 +175,12 @@ internal fun TimerBottomSheetV2(
   onTimerCleared: () -> Unit,
   component: SleepTimerBottomSheetComponent = rememberComponent(),
 ) {
+  val liveTimer by remember(component) {
+    component.audioPlayerHolder.currentPlayer
+      .filterNotNull()
+      .flatMapLatest { it.runningTimer }
+  }.collectAsState(runningTimer)
+
   SessionSheetLayout(
     modifier = modifier,
     title = { Text(stringResource(Res.string.timer_bottomsheet_title)) },
@@ -178,7 +190,7 @@ internal fun TimerBottomSheetV2(
     // content the way it is everywhere else — the scroll only engages once there is more content
     // than room, which a large font scale can still manage even in the side sheet's two columns.
     AnimatedContent(
-      targetState = runningTimer,
+      targetState = liveTimer,
       modifier = Modifier
         .weight(1f, fill = false)
         .verticalScroll(rememberScrollState()),
@@ -187,6 +199,9 @@ internal fun TimerBottomSheetV2(
         ActiveTimerSheetContent(
           runningTimer = timer,
           onTimerCleared = onTimerCleared,
+          onAdjustTimer = { delta ->
+            component.audioPlayerHolder.currentPlayer.value?.adjustTimer(delta)
+          },
         )
       } else {
         InactiveTimerSheetContent(
@@ -209,6 +224,7 @@ internal fun TimerBottomSheetV2(
 private fun ActiveTimerSheetContent(
   runningTimer: RunningTimer,
   onTimerCleared: () -> Unit,
+  onAdjustTimer: (deltaMillis: Long) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   Column(
@@ -216,6 +232,7 @@ private fun ActiveTimerSheetContent(
   ) {
     RunningTimerCard(
       runningTimer = runningTimer,
+      onAdjustTimer = onAdjustTimer,
     )
 
     ClearTimerButton(
@@ -638,6 +655,12 @@ fun TimerBottomSheetV2Preview() {
           timer = null
         },
         component = object : SleepTimerBottomSheetComponent {
+          override val audioPlayerHolder: AudioPlayerHolder = object : AudioPlayerHolder {
+            override val currentPlayer: StateFlow<AudioPlayer?> = MutableStateFlow(null)
+            override fun setCurrentPlayer(player: AudioPlayer?) = Unit
+            override fun release() = Unit
+          }
+
           override val sleepSettings: SleepSettings = object : SleepSettings {
             override var lastSetSleepTimer: Duration
               get() = mutableLastSetSleepTimer.value

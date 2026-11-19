@@ -104,6 +104,10 @@ class FakeAudioPlayer : AudioPlayer {
     invocations += Invocation.SetTimer(timer)
   }
 
+  override fun adjustTimer(deltaMillis: Long) {
+    invocations += Invocation.AdjustTimer(deltaMillis)
+  }
+
   override fun clearTimer() {
     invocations += Invocation.ClearTimer
   }
@@ -128,6 +132,7 @@ class FakeAudioPlayer : AudioPlayer {
     data class SetPlaybackSpeed(val speed: Float) : Invocation
     data class SetEqualizer(val profile: EqualizerProfile) : Invocation
     data class SetTimer(val timer: PlaybackTimer) : Invocation
+    data class AdjustTimer(val deltaMillis: Long) : Invocation
     data object ClearTimer : Invocation
   }
 }

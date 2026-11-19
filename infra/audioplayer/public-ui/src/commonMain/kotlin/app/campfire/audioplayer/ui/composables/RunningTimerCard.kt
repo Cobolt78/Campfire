@@ -5,6 +5,7 @@ package app.campfire.audioplayer.ui.composables
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,6 +37,7 @@ fun RunningTimerCard(
   runningTimer: RunningTimer,
   modifier: Modifier = Modifier,
   onTimerCleared: (() -> Unit)? = null,
+  onAdjustTimer: ((deltaMillis: Long) -> Unit)? = null,
 ) {
   Surface(
     modifier = modifier
@@ -74,6 +77,37 @@ fun RunningTimerCard(
         modifier = Modifier.align(Alignment.CenterHorizontally),
       )
 
+      if (runningTimer.timer is PlaybackTimer.Epoch && onAdjustTimer != null) {
+        Spacer(Modifier.height(16.dp))
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          val adjustments = listOf(
+            "-5m" to -5 * 60_000L,
+            "-1m" to -1 * 60_000L,
+            "+1m" to 1 * 60_000L,
+            "+5m" to 5 * 60_000L,
+          )
+          adjustments.forEach { (label, deltaMillis) ->
+            FilledTonalButton(
+              onClick = { onAdjustTimer(deltaMillis) },
+              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+              modifier = Modifier.weight(1f),
+            ) {
+              Text(
+                text = label,
+                maxLines = 1,
+                softWrap = false,
+              )
+            }
+          }
+        }
+      }
+
       if (onTimerCleared != null) {
         Row(
           modifier = Modifier
@@ -90,7 +124,7 @@ fun RunningTimerCard(
           }
         }
       } else {
-        Spacer(Modifier.height(56.dp))
+        Spacer(Modifier.height(24.dp))
       }
     }
   }

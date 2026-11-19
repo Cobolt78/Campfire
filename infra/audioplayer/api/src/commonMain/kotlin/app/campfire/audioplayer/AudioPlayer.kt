@@ -102,6 +102,7 @@ interface AudioPlayer {
   fun setPlaybackSpeed(speed: Float)
   fun setEqualizer(profile: EqualizerProfile)
   fun setTimer(timer: PlaybackTimer)
+  fun adjustTimer(deltaMillis: Long) {}
   fun clearTimer()
 
   enum class State {

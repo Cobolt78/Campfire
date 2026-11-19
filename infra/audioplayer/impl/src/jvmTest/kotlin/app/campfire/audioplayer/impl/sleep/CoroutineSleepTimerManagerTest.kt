@@ -306,6 +306,43 @@ class CoroutineSleepTimerManagerTest {
     assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(10_000L)
   }
 
+  @Test
+  fun `adjustTimer extends and shortens countdown while playing and paused`() = runTest {
+    val manager = manager()
+    player.state.value = State.Playing
+    manager.setTimer(PlaybackTimer.Epoch(10.minutes.inWholeMilliseconds))
+
+    // Elapse 2 minutes -> 8m remaining
+    advanceTimeBy(2.minutes.inWholeMilliseconds)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
+      .isEqualTo(8.minutes.inWholeMilliseconds)
+
+    // Extend by +5m -> 13m remaining, fires after 13m (not 8m)
+    manager.adjustTimer(5.minutes.inWholeMilliseconds)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
+      .isEqualTo(13.minutes.inWholeMilliseconds)
+
+    // Shorten by -1m -> 12m remaining
+    manager.adjustTimer((-1).minutes.inWholeMilliseconds)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
+      .isEqualTo(12.minutes.inWholeMilliseconds)
+
+    // Pause, shorten by -20m -> clamps at 1m (60_000ms) rather than expiring
+    player.state.value = State.Paused
+    manager.adjustTimer((-20).minutes.inWholeMilliseconds)
+    assertThat(manager.runningTimer.value?.isPaused).isEqualTo(true)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
+      .isEqualTo(1.minutes.inWholeMilliseconds)
+
+    // Resume and verify it fires at the 1m mark
+    player.state.value = State.Playing
+    advanceTimeBy(1.minutes.inWholeMilliseconds - 1L)
+    assertThat(fades()).isEmpty()
+    advanceTimeBy(2L)
+    assertThat(fades().single().duration).isEqualTo(5.seconds)
+    assertThat(manager.runningTimer.value).isNull()
+  }
+
   private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
     override fun now(): LocalDateTime = error("not used in tests")
     override fun today(): LocalDate = error("not used in tests")

@@ -2835,3 +2835,36 @@ Added a **Delete all bookmarks** header action (`CampfireIcons.Rounded.DeleteSwe
 * `features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt`
 * `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+
+---
+
+## 93. Active Sleep Timer -5m / -1m / +1m / +5m Stepper Controls
+
+### Summary
+Added live `-5m`, `-1m`, `+1m`, and `+5m` adjustment buttons to the active countdown card in the Sleep Timer sheet (`RunningTimerCard.kt` & `SleepTimerBottomSheet.kt`), allowing listeners to extend or shorten a running timer in place without clearing and recreating it.
+
+### Key Changes
+1. **Dynamic Countdown Adjustment (`SleepTimerManager.kt`, `CoroutineSleepTimerManager.kt`, `AudioPlayer.kt`, Players & Fakes)**:
+   - Added `adjustTimer(deltaMillis: Long)` to `SleepTimerManager`, `AudioPlayer`, `ExoPlayerAudioPlayer`, `IosAudioPlayer`, `DesktopAudioPlayer`, and test fakes.
+   - `CoroutineSleepTimerManager.adjustTimer()` computes exact current remaining milliseconds whether playing or paused, clamps downward adjustments at a safe 1-minute floor (`minOf(currentRemaining, 60_000L)` so minus taps never accidentally expire the timer or increase a sub-minute countdown), updates `playbackTimer` and `lastPlaybackTimer` (preserving adjusted length for shake-to-reset), persists to `SleepSettings`, and restarts the countdown or republishes the frozen paused `RunningTimer`.
+   - Added unit test `adjustTimer extends and shortens countdown while playing and paused` in `CoroutineSleepTimerManagerTest.kt`.
+2. **Active Timer Sheet UI & Live Observation (`RunningTimerCard.kt`, `SleepTimerBottomSheet.kt`)**:
+   - Added optional `onAdjustTimer` callback to `RunningTimerCard` rendering a `-5m / -1m / +1m / +5m` row of `FilledTonalButton`s for `PlaybackTimer.Epoch` timers.
+   - Injected `AudioPlayerHolder` into `SleepTimerBottomSheetComponent` so `TimerBottomSheetV2` observes `currentPlayer.runningTimer` live and reflects adjustments immediately inside the open sheet.
+
+### Modified Files:
+* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt`
+* `infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt`
+* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt`
+* `infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
+* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
+* `features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt`
+* `CUSTOM_MODIFICATIONS.md`

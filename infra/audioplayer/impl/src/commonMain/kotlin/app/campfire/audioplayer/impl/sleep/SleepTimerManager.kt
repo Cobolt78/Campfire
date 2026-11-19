@@ -14,6 +14,7 @@ interface SleepTimerManager {
 
   fun onSessionStart()
   fun setTimer(timer: PlaybackTimer)
+  fun adjustTimer(deltaMillis: Long)
   fun clearTimer()
   fun endOfChapter(): Boolean
 

@@ -197,6 +197,35 @@ class CoroutineSleepTimerManager(
     startShakeDetectorIfNeeded()
   }
 
+  override fun adjustTimer(deltaMillis: Long) {
+    val current = playbackTimer as? PlaybackTimer.Epoch ?: return
+    val now = fatherTime.nowInEpochMillis()
+    val resumedAt = countdownResumedAt
+    val currentRemaining = if (resumedAt != null) {
+      (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
+    } else {
+      remainingMillis
+    }
+    // Clamp to at least 1 minute (never increasing an already sub-minute timer on minus taps)
+    val minFloor = if (deltaMillis < 0) minOf(currentRemaining, 60_000L) else 60_000L
+    val newRemaining = (currentRemaining + deltaMillis).coerceAtLeast(minFloor)
+    val newTotal = maxOf(current.epochMillis, newRemaining)
+    val updatedTimer = current.copy(epochMillis = newTotal)
+
+    playbackTimer = updatedTimer
+    lastPlaybackTimer = updatedTimer
+    remainingMillis = newRemaining
+
+    if (resumedAt != null) {
+      countdownResumedAt = null
+      countdownJob?.cancel()
+      resumeCountdown(updatedTimer)
+    } else {
+      persistTimer(updatedTimer, newRemaining)
+      publishRunningTimer(updatedTimer, reference = now, pausedAt = now)
+    }
+  }
+
   private fun startShakeDetectorIfNeeded() {
     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
       ibark { "Shake to reset enabled, starting shake detector" }

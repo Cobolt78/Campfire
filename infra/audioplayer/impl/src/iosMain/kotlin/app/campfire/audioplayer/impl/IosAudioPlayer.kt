@@ -349,6 +349,10 @@ class IosAudioPlayer(
     sleepTimerManager.setTimer(timer)
   }
 
+  override fun adjustTimer(deltaMillis: Long) {
+    sleepTimerManager.adjustTimer(deltaMillis)
+  }
+
   override fun clearTimer() {
     sleepTimerManager.clearTimer()
   }

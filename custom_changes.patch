@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..c17ea3b4
+index 00000000..7693efa4
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2837 @@
+@@ -0,0 +1,2870 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3394,6 +3394,39 @@ index 00000000..c17ea3b4
 +* `features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt`
 +* `features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt`
 +* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
++* `CUSTOM_MODIFICATIONS.md`
++
++
++---
++
++## 93. Active Sleep Timer -5m / -1m / +1m / +5m Stepper Controls
++
++### Summary
++Added live `-5m`, `-1m`, `+1m`, and `+5m` adjustment buttons to the active countdown card in the Sleep Timer sheet (`RunningTimerCard.kt` & `SleepTimerBottomSheet.kt`), allowing listeners to extend or shorten a running timer in place without clearing and recreating it.
++
++### Key Changes
++1. **Dynamic Countdown Adjustment (`SleepTimerManager.kt`, `CoroutineSleepTimerManager.kt`, `AudioPlayer.kt`, Players & Fakes)**:
++   - Added `adjustTimer(deltaMillis: Long)` to `SleepTimerManager`, `AudioPlayer`, `ExoPlayerAudioPlayer`, `IosAudioPlayer`, `DesktopAudioPlayer`, and test fakes.
++   - `CoroutineSleepTimerManager.adjustTimer()` computes exact current remaining milliseconds whether playing or paused, clamps downward adjustments at a safe 1-minute floor (`minOf(currentRemaining, 60_000L)` so minus taps never accidentally expire the timer or increase a sub-minute countdown), updates `playbackTimer` and `lastPlaybackTimer` (preserving adjusted length for shake-to-reset), persists to `SleepSettings`, and restarts the countdown or republishes the frozen paused `RunningTimer`.
++   - Added unit test `adjustTimer extends and shortens countdown while playing and paused` in `CoroutineSleepTimerManagerTest.kt`.
++2. **Active Timer Sheet UI & Live Observation (`RunningTimerCard.kt`, `SleepTimerBottomSheet.kt`)**:
++   - Added optional `onAdjustTimer` callback to `RunningTimerCard` rendering a `-5m / -1m / +1m / +5m` row of `FilledTonalButton`s for `PlaybackTimer.Epoch` timers.
++   - Injected `AudioPlayerHolder` into `SleepTimerBottomSheetComponent` so `TimerBottomSheetV2` observes `currentPlayer.runningTimer` live and reflects adjustments immediately inside the open sheet.
++
++### Modified Files:
++* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt`
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
++* `infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt`
++* `infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt`
++* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
++* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt`
++* `infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt`
++* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
++* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
++* `features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
@@ -17536,10 +17569,111 @@ index 4b7fc2d1..2de5ecc3 100644
          )
        },
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-index 278dcf20..62210af7 100644
+index 278dcf20..eac7f5e2 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-@@ -657,6 +657,24 @@ fun TimerBottomSheetV2Preview() {
+@@ -66,6 +66,8 @@ import androidx.compose.ui.tooling.preview.Preview
+ import androidx.compose.ui.unit.dp
+ import app.campfire.analytics.events.ScreenType
+ import app.campfire.analytics.events.ScreenViewEvent
++import app.campfire.audioplayer.AudioPlayer
++import app.campfire.audioplayer.AudioPlayerHolder
+ import app.campfire.audioplayer.model.PlaybackTimer
+ import app.campfire.audioplayer.model.RunningTimer
+ import app.campfire.audioplayer.ui.composables.RunningTimerCard
+@@ -106,10 +108,13 @@ import kotlin.time.Duration.Companion.hours
+ import kotlin.time.Duration.Companion.minutes
+ import kotlin.time.Duration.Companion.seconds
+ import kotlin.uuid.Uuid
++import kotlinx.coroutines.ExperimentalCoroutinesApi
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.Flow
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.filterNotNull
++import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.flowOf
+ import kotlinx.datetime.LocalDateTime
+ import kotlinx.datetime.LocalTime
+@@ -130,6 +135,7 @@ internal sealed interface TimerModel {
+ 
+ @ContributesTo(UserScope::class)
+ interface SleepTimerBottomSheetComponent {
++  val audioPlayerHolder: AudioPlayerHolder
+   val sessionsRepository: SessionsRepository
+   val sleepSettings: SleepSettings
+ }
+@@ -160,7 +166,7 @@ internal suspend fun OverlayHost.showSleepTimerBottomSheet(
+   )
+ }
+ 
+-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
++@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalCoroutinesApi::class)
+ @Composable
+ internal fun TimerBottomSheetV2(
+   runningTimer: RunningTimer?,
+@@ -169,6 +175,12 @@ internal fun TimerBottomSheetV2(
+   onTimerCleared: () -> Unit,
+   component: SleepTimerBottomSheetComponent = rememberComponent(),
+ ) {
++  val liveTimer by remember(component) {
++    component.audioPlayerHolder.currentPlayer
++      .filterNotNull()
++      .flatMapLatest { it.runningTimer }
++  }.collectAsState(runningTimer)
++
+   SessionSheetLayout(
+     modifier = modifier,
+     title = { Text(stringResource(Res.string.timer_bottomsheet_title)) },
+@@ -178,7 +190,7 @@ internal fun TimerBottomSheetV2(
+     // content the way it is everywhere else — the scroll only engages once there is more content
+     // than room, which a large font scale can still manage even in the side sheet's two columns.
+     AnimatedContent(
+-      targetState = runningTimer,
++      targetState = liveTimer,
+       modifier = Modifier
+         .weight(1f, fill = false)
+         .verticalScroll(rememberScrollState()),
+@@ -187,6 +199,9 @@ internal fun TimerBottomSheetV2(
+         ActiveTimerSheetContent(
+           runningTimer = timer,
+           onTimerCleared = onTimerCleared,
++          onAdjustTimer = { delta ->
++            component.audioPlayerHolder.currentPlayer.value?.adjustTimer(delta)
++          },
+         )
+       } else {
+         InactiveTimerSheetContent(
+@@ -209,6 +224,7 @@ internal fun TimerBottomSheetV2(
+ private fun ActiveTimerSheetContent(
+   runningTimer: RunningTimer,
+   onTimerCleared: () -> Unit,
++  onAdjustTimer: (deltaMillis: Long) -> Unit,
+   modifier: Modifier = Modifier,
+ ) {
+   Column(
+@@ -216,6 +232,7 @@ private fun ActiveTimerSheetContent(
+   ) {
+     RunningTimerCard(
+       runningTimer = runningTimer,
++      onAdjustTimer = onAdjustTimer,
+     )
+ 
+     ClearTimerButton(
+@@ -638,6 +655,12 @@ fun TimerBottomSheetV2Preview() {
+           timer = null
+         },
+         component = object : SleepTimerBottomSheetComponent {
++          override val audioPlayerHolder: AudioPlayerHolder = object : AudioPlayerHolder {
++            override val currentPlayer: StateFlow<AudioPlayer?> = MutableStateFlow(null)
++            override fun setCurrentPlayer(player: AudioPlayer?) = Unit
++            override fun release() = Unit
++          }
++
+           override val sleepSettings: SleepSettings = object : SleepSettings {
+             override var lastSetSleepTimer: Duration
+               get() = mutableLastSetSleepTimer.value
+@@ -657,6 +680,24 @@ fun TimerBottomSheetV2Preview() {
                return mutableShakeToReset
              }
  
@@ -18219,6 +18353,27 @@ index 8d7550c0..fe61778d 100644
                  onPerBookChange = {},
                )
              },
+diff --git a/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt b/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt
+index 58c39a3d..085f61d9 100644
+--- a/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt
++++ b/features/sessions/ui/src/jvmTest/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerSideSheetRenderTest.kt
+@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.Density
+ import androidx.compose.ui.use
+ import androidx.window.core.layout.WindowSizeClass
+ import androidx.window.core.layout.computeWindowSizeClass
++import app.campfire.audioplayer.AudioPlayerHolder
++import app.campfire.audioplayer.test.FakeAudioPlayerHolder
+ import app.campfire.common.compose.LocalWindowSizeClass
+ import app.campfire.common.compose.theme.CampfireTheme
+ import app.campfire.common.compose.widgets.sheets.AdaptiveSheetOverlay
+@@ -107,6 +109,7 @@ class SleepTimerSideSheetRenderTest {
+   }
+ 
+   private object FakeComponent : SleepTimerBottomSheetComponent {
++    override val audioPlayerHolder: AudioPlayerHolder = FakeAudioPlayerHolder()
+     override val sessionsRepository: SessionsRepository = FakeSessionsRepository()
+     override val sleepSettings: SleepSettings = FakeSleepSettings()
+   }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt
 index fc43e3f8..0581c6c9 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt
@@ -20379,6 +20534,18 @@ index 270a7c16..325e3566 100644
  
 -private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
 +private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-(rc|test)(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
+diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
+index ebbfd5fb..a491e749 100644
+--- a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
++++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
+@@ -102,6 +102,7 @@ interface AudioPlayer {
+   fun setPlaybackSpeed(speed: Float)
+   fun setEqualizer(profile: EqualizerProfile)
+   fun setTimer(timer: PlaybackTimer)
++  fun adjustTimer(deltaMillis: Long) {}
+   fun clearTimer()
+ 
+   enum class State {
 diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/battery/BatteryOptimization.kt
 new file mode 100644
 index 00000000..f1ef8acf
@@ -20436,6 +20603,19 @@ index 00000000..ba01899e
 +
 +  override fun refresh() {}
 +}
+diff --git a/infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt b/infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt
+index b496f330..8589cc60 100644
+--- a/infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt
++++ b/infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt
+@@ -34,6 +34,8 @@ class FakeSleepTimerManager : SleepTimerManager {
+     timers += timer
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) = Unit
++
+   override fun clearTimer() {
+     cleared++
+   }
 diff --git a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml b/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
 index 8c91c0a0..e03c0efd 100644
 --- a/infra/audioplayer/impl/src/androidMain/AndroidManifest.xml
@@ -20558,7 +20738,7 @@ index 7647cac8..8a1d06a0 100644
     * Re-notify connected browsers (Android Auto head units, etc.) when the inputs to the
     * browse tree change — the active library (switching libraries changes the root tabs and
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
-index 3d75ff1a..32ba0836 100644
+index 3d75ff1a..59582736 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 @@ -10,6 +10,7 @@ import androidx.media3.common.C
@@ -20722,7 +20902,18 @@ index 3d75ff1a..32ba0836 100644
      }
    }
  
-@@ -878,8 +899,11 @@ class ExoPlayerAudioPlayer(
+@@ -676,6 +697,10 @@ class ExoPlayerAudioPlayer(
+     sleepTimerManager.setTimer(timer)
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) {
++    sleepTimerManager.adjustTimer(deltaMillis)
++  }
++
+   override fun clearTimer() {
+     sleepTimerManager.clearTimer()
+   }
+@@ -878,8 +903,11 @@ class ExoPlayerAudioPlayer(
      // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
      // stop the playback. Coarse queues (remote per-track, single item) transition on tracks
      // or never, so there the boundary detection in updateProgress owns this signal instead.
@@ -20736,7 +20927,7 @@ index 3d75ff1a..32ba0836 100644
      }
    }
  
-@@ -921,6 +945,7 @@ class ExoPlayerAudioPlayer(
+@@ -921,6 +949,7 @@ class ExoPlayerAudioPlayer(
      currentTime.value = player.currentPosition.milliseconds
      currentDuration.value = player.duration.milliseconds
      overallTime.value = player.overallPosition.milliseconds
@@ -20744,7 +20935,7 @@ index 3d75ff1a..32ba0836 100644
    }
  
    /**
-@@ -973,6 +998,64 @@ class ExoPlayerAudioPlayer(
+@@ -973,6 +1002,64 @@ class ExoPlayerAudioPlayer(
      if (play) {
        player.play()
      }
@@ -22164,7 +22355,7 @@ index bf0c0272..c87139c9 100644
        artworkUri = media.coverImageUrl,
        durationMs = track.duration.seconds.inWholeMilliseconds,
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-index 5a85d185..cab5d73b 100644
+index 5a85d185..8da057d0 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 +++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 @@ -24,6 +24,9 @@ import kotlinx.coroutines.Job
@@ -22260,7 +22451,7 @@ index 5a85d185..cab5d73b 100644
    override fun onSessionStart() {
      if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
        if (isNowAnAutoSleepZone()) {
-@@ -108,16 +187,20 @@ class CoroutineSleepTimerManager(
+@@ -108,16 +187,49 @@ class CoroutineSleepTimerManager(
      playbackTimer = timer
      lastPlaybackTimer = timer
      startTimer(timer)
@@ -22272,6 +22463,35 @@ index 5a85d185..cab5d73b 100644
 +      },
 +    )
 +    startShakeDetectorIfNeeded()
++  }
++
++  override fun adjustTimer(deltaMillis: Long) {
++    val current = playbackTimer as? PlaybackTimer.Epoch ?: return
++    val now = fatherTime.nowInEpochMillis()
++    val resumedAt = countdownResumedAt
++    val currentRemaining = if (resumedAt != null) {
++      (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
++    } else {
++      remainingMillis
++    }
++    // Clamp to at least 1 minute (never increasing an already sub-minute timer on minus taps)
++    val minFloor = if (deltaMillis < 0) minOf(currentRemaining, 60_000L) else 60_000L
++    val newRemaining = (currentRemaining + deltaMillis).coerceAtLeast(minFloor)
++    val newTotal = maxOf(current.epochMillis, newRemaining)
++    val updatedTimer = current.copy(epochMillis = newTotal)
++
++    playbackTimer = updatedTimer
++    lastPlaybackTimer = updatedTimer
++    remainingMillis = newRemaining
++
++    if (resumedAt != null) {
++      countdownResumedAt = null
++      countdownJob?.cancel()
++      resumeCountdown(updatedTimer)
++    } else {
++      persistTimer(updatedTimer, newRemaining)
++      publishRunningTimer(updatedTimer, reference = now, pausedAt = now)
++    }
 +  }
  
 +  private fun startShakeDetectorIfNeeded() {
@@ -22288,7 +22508,7 @@ index 5a85d185..cab5d73b 100644
      } else if (sleepSettings.shakeToResetEnabled && shakeDetector.isRunning) {
        dbark { "Shake detector already running, skipping" }
      } else if (!sleepSettings.shakeToResetEnabled && shakeDetector.isRunning) {
-@@ -126,6 +209,16 @@ class CoroutineSleepTimerManager(
+@@ -126,6 +238,16 @@ class CoroutineSleepTimerManager(
      }
    }
  
@@ -22305,7 +22525,7 @@ index 5a85d185..cab5d73b 100644
    private fun resetTimer() {
      dbark { "resetTimer(lastTimer=$lastPlaybackTimer)" }
      if (lastPlaybackTimer != null) {
-@@ -162,6 +255,7 @@ class CoroutineSleepTimerManager(
+@@ -162,6 +284,7 @@ class CoroutineSleepTimerManager(
      remainingMillis = 0L
      playbackTimer = null
      runningTimer.value = null
@@ -22313,7 +22533,7 @@ index 5a85d185..cab5d73b 100644
    }
  
    private fun cancelFade() {
-@@ -266,20 +360,43 @@ class CoroutineSleepTimerManager(
+@@ -266,20 +389,43 @@ class CoroutineSleepTimerManager(
      }
    }
  
@@ -22361,7 +22581,7 @@ index 5a85d185..cab5d73b 100644
        }
      }
    }
-@@ -289,6 +406,7 @@ class CoroutineSleepTimerManager(
+@@ -289,6 +435,7 @@ class CoroutineSleepTimerManager(
      val now = fatherTime.nowInEpochMillis()
      countdownResumedAt = now
      publishRunningTimer(timer, reference = now, pausedAt = null)
@@ -22369,7 +22589,7 @@ index 5a85d185..cab5d73b 100644
  
      val remaining = remainingMillis
      countdownJob?.cancel()
-@@ -302,15 +420,28 @@ class CoroutineSleepTimerManager(
+@@ -302,15 +449,28 @@ class CoroutineSleepTimerManager(
      }
    }
  
@@ -22401,6 +22621,18 @@ index 5a85d185..cab5d73b 100644
      }
      publishRunningTimer(timer, reference = now, pausedAt = now)
    }
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt
+index 501a2507..a73ec7f8 100644
+--- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt
+@@ -14,6 +14,7 @@ interface SleepTimerManager {
+ 
+   fun onSessionStart()
+   fun setTimer(timer: PlaybackTimer)
++  fun adjustTimer(deltaMillis: Long)
+   fun clearTimer()
+   fun endOfChapter(): Boolean
+ 
 diff --git a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt
 index 0d531b30..b6cee351 100644
 --- a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/mediaitem/MediaItemBuilderTest.kt
@@ -22517,6 +22749,21 @@ index 0d531b30..b6cee351 100644
    }
  
    @Test
+diff --git a/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt b/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt
+index 118dce04..0e8554db 100644
+--- a/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt
++++ b/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt
+@@ -349,6 +349,10 @@ class IosAudioPlayer(
+     sleepTimerManager.setTimer(timer)
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) {
++    sleepTimerManager.adjustTimer(deltaMillis)
++  }
++
+   override fun clearTimer() {
+     sleepTimerManager.clearTimer()
+   }
 diff --git a/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt b/infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/battery/IosBatteryOptimization.kt
 new file mode 100644
 index 00000000..383312a7
@@ -22545,6 +22792,21 @@ index 00000000..383312a7
 +  override fun openSettings() {}
 +  override fun refresh() {}
 +}
+diff --git a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
+index a0fe99c5..e5ee1bbb 100644
+--- a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
++++ b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
+@@ -390,6 +390,10 @@ class DesktopAudioPlayer(
+     sleepTimerManager.setTimer(timer)
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) {
++    sleepTimerManager.adjustTimer(deltaMillis)
++  }
++
+   override fun clearTimer() {
+     sleepTimerManager.clearTimer()
+   }
 diff --git a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/battery/JvmBatteryOptimization.kt
 new file mode 100644
 index 00000000..40fd5d99
@@ -22625,7 +22887,7 @@ index 9d13b1f5..89f034b8 100644
    override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
    override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
 diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
-index e248f31e..a499c7ff 100644
+index e248f31e..672b9c95 100644
 --- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 +++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 @@ -11,6 +11,7 @@ import app.campfire.audioplayer.test.FakeAudioPlayer
@@ -22636,7 +22898,7 @@ index e248f31e..a499c7ff 100644
  import app.campfire.settings.test.FakeSleepSettings
  import app.campfire.shake.ShakeDetector
  import assertk.assertThat
-@@ -205,6 +206,106 @@ class CoroutineSleepTimerManagerTest {
+@@ -205,6 +206,143 @@ class CoroutineSleepTimerManagerTest {
      assertThat(manager.endOfChapter()).isFalse()
    }
  
@@ -22740,9 +23002,59 @@ index e248f31e..a499c7ff 100644
 +    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(10_000L)
 +  }
 +
++  @Test
++  fun `adjustTimer extends and shortens countdown while playing and paused`() = runTest {
++    val manager = manager()
++    player.state.value = State.Playing
++    manager.setTimer(PlaybackTimer.Epoch(10.minutes.inWholeMilliseconds))
++
++    // Elapse 2 minutes -> 8m remaining
++    advanceTimeBy(2.minutes.inWholeMilliseconds)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
++      .isEqualTo(8.minutes.inWholeMilliseconds)
++
++    // Extend by +5m -> 13m remaining, fires after 13m (not 8m)
++    manager.adjustTimer(5.minutes.inWholeMilliseconds)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
++      .isEqualTo(13.minutes.inWholeMilliseconds)
++
++    // Shorten by -1m -> 12m remaining
++    manager.adjustTimer((-1).minutes.inWholeMilliseconds)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
++      .isEqualTo(12.minutes.inWholeMilliseconds)
++
++    // Pause, shorten by -20m -> clamps at 1m (60_000ms) rather than expiring
++    player.state.value = State.Paused
++    manager.adjustTimer((-20).minutes.inWholeMilliseconds)
++    assertThat(manager.runningTimer.value?.isPaused).isEqualTo(true)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime))
++      .isEqualTo(1.minutes.inWholeMilliseconds)
++
++    // Resume and verify it fires at the 1m mark
++    player.state.value = State.Playing
++    advanceTimeBy(1.minutes.inWholeMilliseconds - 1L)
++    assertThat(fades()).isEmpty()
++    advanceTimeBy(2L)
++    assertThat(fades().single().duration).isEqualTo(5.seconds)
++    assertThat(manager.runningTimer.value).isNull()
++  }
++
    private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
      override fun now(): LocalDateTime = error("not used in tests")
      override fun today(): LocalDate = error("not used in tests")
+diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt
+index e5d082c9..4c9289d4 100644
+--- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt
++++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt
+@@ -33,6 +33,8 @@ class FakeSleepTimerManager : SleepTimerManager {
+     timers += timer
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) = Unit
++
+   override fun clearTimer() {
+     cleared++
+   }
 diff --git a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
 index 1b4d4dda..f361ba31 100644
 --- a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
@@ -22756,6 +23068,104 @@ index 1b4d4dda..f361ba31 100644
    <string name="action_allow_local_network">Allow local network access</string>
    <string name="label_local_network_rationale">Needed to find cast devices on your network</string>
  
+diff --git a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
+index fe25bc10..f91fd302 100644
+--- a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
++++ b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
+@@ -5,6 +5,7 @@ package app.campfire.audioplayer.ui.composables
+ 
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.PaddingValues
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.Spacer
+ import androidx.compose.foundation.layout.fillMaxWidth
+@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.width
+ import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.FilledTonalButton
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Surface
+@@ -35,6 +37,7 @@ fun RunningTimerCard(
+   runningTimer: RunningTimer,
+   modifier: Modifier = Modifier,
+   onTimerCleared: (() -> Unit)? = null,
++  onAdjustTimer: ((deltaMillis: Long) -> Unit)? = null,
+ ) {
+   Surface(
+     modifier = modifier
+@@ -74,6 +77,37 @@ fun RunningTimerCard(
+         modifier = Modifier.align(Alignment.CenterHorizontally),
+       )
+ 
++      if (runningTimer.timer is PlaybackTimer.Epoch && onAdjustTimer != null) {
++        Spacer(Modifier.height(16.dp))
++        Row(
++          modifier = Modifier
++            .fillMaxWidth()
++            .padding(horizontal = 16.dp),
++          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
++          verticalAlignment = Alignment.CenterVertically,
++        ) {
++          val adjustments = listOf(
++            "-5m" to -5 * 60_000L,
++            "-1m" to -1 * 60_000L,
++            "+1m" to 1 * 60_000L,
++            "+5m" to 5 * 60_000L,
++          )
++          adjustments.forEach { (label, deltaMillis) ->
++            FilledTonalButton(
++              onClick = { onAdjustTimer(deltaMillis) },
++              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
++              modifier = Modifier.weight(1f),
++            ) {
++              Text(
++                text = label,
++                maxLines = 1,
++                softWrap = false,
++              )
++            }
++          }
++        }
++      }
++
+       if (onTimerCleared != null) {
+         Row(
+           modifier = Modifier
+@@ -90,7 +124,7 @@ fun RunningTimerCard(
+           }
+         }
+       } else {
+-        Spacer(Modifier.height(56.dp))
++        Spacer(Modifier.height(24.dp))
+       }
+     }
+   }
+diff --git a/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt b/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
+index 04a29119..dc9ed1d7 100644
+--- a/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
++++ b/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
+@@ -104,6 +104,10 @@ class FakeAudioPlayer : AudioPlayer {
+     invocations += Invocation.SetTimer(timer)
+   }
+ 
++  override fun adjustTimer(deltaMillis: Long) {
++    invocations += Invocation.AdjustTimer(deltaMillis)
++  }
++
+   override fun clearTimer() {
+     invocations += Invocation.ClearTimer
+   }
+@@ -128,6 +132,7 @@ class FakeAudioPlayer : AudioPlayer {
+     data class SetPlaybackSpeed(val speed: Float) : Invocation
+     data class SetEqualizer(val profile: EqualizerProfile) : Invocation
+     data class SetTimer(val timer: PlaybackTimer) : Invocation
++    data class AdjustTimer(val deltaMillis: Long) : Invocation
+     data object ClearTimer : Invocation
+   }
+ }
 diff --git a/infra/shake/build.gradle.kts b/infra/shake/build.gradle.kts
 index c1b9e620..8acb774b 100644
 --- a/infra/shake/build.gradle.kts

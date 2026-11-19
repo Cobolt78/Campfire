@@ -34,6 +34,8 @@ class FakeSleepTimerManager : SleepTimerManager {
     timers += timer
   }
 
+  override fun adjustTimer(deltaMillis: Long) = Unit
+
   override fun clearTimer() {
     cleared++
   }
