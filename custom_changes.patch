@@ -11,15 +11,22 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..c37d8a23 100644
+index c0278c85..ed1940d3 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,538 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,536 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.51-rc2] - 2026-11-19
++## [1.2.51] - 2026-11-19
++
++### Added
++
++- **Smart Background Refresh & Live Home Feed Updates**:
++  - Added 5-minute Stale-While-Revalidate (SWR) background resume refreshing for the Home feed (`Recently Added`, `Continue Listening`, `Continue Series`, etc.) so returning after background audio playback silently catches new server additions without jarring reloads or wasted mobile data on quick app switches.
++  - Hooked the Home feed into real-time Audiobookshelf WebSocket events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`) with a 1.5-second debounce so newly scanned books appear automatically while Campfire is open without hammering the server during batch scans.
++  - Added process-wide foreground resume tracking across all active menus (`Home`, `Library`, `Series`, `Authors`, `Collections`, `Playlists`, `Latest Episodes`, `Continue Series`, `Podcast Downloads`, `Statistics`, and `Upcoming`) so whichever menu is active automatically refreshes after returning from a 5+ minute background stale-out (including when popping back from a detail screen).
 +
 +### Fixed
 +
@@ -28,16 +35,7 @@ index c0278c85..c37d8a23 100644
 +- **Continue Series Screen Endless Loading**:
 +  - Fixed a SQLite foreign key constraint failure during `Continue Series` join/series backfill queries when orphaned book series metadata existed locally, which silently killed the reactive flow and left the Continue Series spinner spinning indefinitely.
 +- **Shake-to-Reset Sensitivity & Live Settings**:
-+  - Re-calibrated Shake-to-Reset using gravity-subtracted linear acceleration deltas across both positive and negative gravity phases (`VeryHigh` now responds cleanly to slight movements, while `VeryLow` requires sustained firm shaking), added a 500ms cooldown to prevent double-fires, and observed sleep shake settings live so sensitivity changes apply immediately even while a timer is already running.
-+
-+## [1.2.51-rc1] - 2026-11-17
-+
-+### Added
-+
-+- **Smart Background Refresh & Live Home Feed Updates**:
-+  - Added 5-minute Stale-While-Revalidate (SWR) background resume refreshing for the Home feed (`Recently Added`, `Continue Listening`, `Continue Series`, etc.) so returning after background audio playback silently catches new server additions without jarring reloads or wasted mobile data on quick app switches.
-+  - Hooked the Home feed into real-time Audiobookshelf WebSocket events (`ItemAdded`, `ItemsAdded`, `ItemRemoved`) with a 1.5-second debounce so newly scanned books appear automatically while Campfire is open without hammering the server during batch scans.
-+  - Added process-wide foreground resume tracking across all active menus (`Home`, `Library`, `Series`, `Authors`, `Collections`, `Playlists`, `Latest Episodes`, `Continue Series`, `Podcast Downloads`, `Statistics`, and `Upcoming`) so whichever menu is active automatically refreshes after returning from a 5+ minute background stale-out (including when popping back from a detail screen).
++  - Re-calibrated Shake-to-Reset using gravity-subtracted linear acceleration deltas across both upward and downward shake phases (`VeryHigh` now responds cleanly to slight movements, while `VeryLow` requires sustained firm shaking), added a 500ms cooldown to prevent double-fires, and observed sleep shake settings live so sensitivity changes apply immediately even while a timer is already running.
 +
 +## [1.2.50] - 2026-11-16
 +
@@ -556,7 +554,7 @@ index c0278c85..c37d8a23 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..99147f60
+index 00000000..30db7131
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
 @@ -0,0 +1,2777 @@
@@ -3243,7 +3241,7 @@ index 00000000..99147f60
 +
 +---
 +
-+## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)
++## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51)
 +
 +### Problem
 +When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
@@ -3297,7 +3295,7 @@ index 00000000..99147f60
 +
 +---
 +
-+## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51-rc2)
++## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51)
 +
 +### Problem
 +1. **Search Bar Keyboard Enter Collapsed Search**: Tapping Enter/Search on the soft keyboard in `CampfireSearchAppBar` called `searchBarState.animateToCollapsed()`, closing the expanded search results view instead of dismissing the keyboard while keeping search results visible.
@@ -19909,7 +19907,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..86dd1aa8 100644
+index f41126a7..2b718799 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -19917,13 +19915,13 @@ index f41126a7..86dd1aa8 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.51-rc2
++campfire.version=1.2.51
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025102
++campfire.versionCode=1025199
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

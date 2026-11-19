@@ -2681,7 +2681,7 @@ On Android 16/17 (Samsung One UI 8, `targetSdk 37`), starting or resuming audiob
 
 ---
 
-## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)
+## 89. Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51)
 
 ### Problem
 When Campfire remains alive in the background (with Battery Optimization set to Unrestricted for reliable background playback), root menus (`HomePresenter`, `LibraryPresenter`, `SeriesPresenter`, `AuthorsPresenter`, `CollectionsPresenter`, `PlaylistsPresenter`, etc.) remain retained in Circuit's backstack rather than restarting from scratch:
@@ -2735,7 +2735,7 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 
 ---
 
-## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51-rc2)
+## 90. Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51)
 
 ### Problem
 1. **Search Bar Keyboard Enter Collapsed Search**: Tapping Enter/Search on the soft keyboard in `CampfireSearchAppBar` called `searchBarState.animateToCollapsed()`, closing the expanded search results view instead of dismissing the keyboard while keeping search results visible.
