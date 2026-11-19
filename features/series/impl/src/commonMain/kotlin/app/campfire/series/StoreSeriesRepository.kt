@@ -59,6 +59,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
@@ -66,6 +67,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mobilenativefoundation.store.store5.Fetcher
 import org.mobilenativefoundation.store.store5.MemoryPolicy
@@ -328,17 +330,18 @@ class StoreSeriesRepository(
   @OptIn(ExperimentalCoroutinesApi::class)
   private val continueSeriesFlow: Flow<List<Series>> by lazy {
     userRepository.observeCurrentUser()
+      .distinctUntilChangedBy { it.id to it.selectedLibraryId }
       .flatMapLatest { user ->
-        runCatching {
-          withContext(dispatcherProvider.databaseWrite) {
+        repositoryScope.launch(dispatcherProvider.databaseWrite) {
+          runCatching {
             db.transaction {
               db.seriesQueries.insertMissingShelfSeries(user.id)
               db.seriesBookJoinQueries.insertMissingShelfJoins()
               db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
             }
+          }.onFailure {
+            bark(LogPriority.WARN, throwable = it) { "Failed to backfill continue series joins" }
           }
-        }.onFailure {
-          bark(LogPriority.WARN, throwable = it) { "Failed to backfill continue series joins" }
         }
         db.seriesQueries
           .selectContinueSeries(
@@ -418,7 +421,7 @@ class StoreSeriesRepository(
       val networkShelves = api.getPersonalizedHome(
         libraryId = user.selectedLibraryId,
         bustCache = true,
-        limit = 250,
+        limit = 50,
       ).getOrThrow()
 
       val continueShelf = networkShelves.firstOrNull { it.id.startsWith("continue-series") }

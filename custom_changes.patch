@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..b267cc45
+index 00000000..c17ea3b4
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2798 @@
+@@ -0,0 +1,2837 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3356,6 +3356,45 @@ index 00000000..b267cc45
 +* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 +* `CUSTOM_MODIFICATIONS.md`
++
++
++---
++
++## 92. Live Download Network Check, Seek Buffering Sleep-Timer Guard & Continue Series Cold-Start Speedup
++
++### Problem
++1. **Stale Mobile Data Download Warning (`NetworkType.android.kt`, `ExpressiveControlSlot.kt`, `PodcastEpisodeBottomSheet.kt`)**: Opening a book or episode while on cellular data cached `true` inside `remember(context)`, so toggling Wi-Fi ON and tapping Download again without leaving the screen still triggered the Mobile Data Warning dialog.
++2. **Sleep Timer Resetting on Forward/Backward Skips (`CoroutineSleepTimerManager.kt`)**: Seeking/skipping causes ExoPlayer to briefly emit `AudioPlayer.State.Buffering`. Because `pauseCountdown()` treated any non-`Playing` state identically, having `resetTimerOnPause` enabled reset the active sleep timer back to full duration every time the listener skipped forward or backward.
++3. **Continue Series Cold-Start 45–60s Delay (`DatabaseFactory.kt`, `StoreSeriesRepository.kt`, `ContinueSeriesPresenter.kt`)**:
++   - `continueSeriesFlow` blocked initial local SQLite emissions on the single-threaded `databaseWrite` dispatcher while running backfill joins.
++   - `media`, `mediaProgress`, and `shelfJoin` lacked indexes for `selectContinueSeries` joins, triggering correlated full-table scans.
++   - `refreshContinueSeries()` requested `limit = 250, bustCache = true` over remote/VPN connections and re-fetched unconditionally on every navigation back into Continue Series.
++
++### Solution & Implementation
++1. **Button-Action Cellular Check (`NetworkType.*`, `ExpressiveControlSlot.kt`, `PodcastEpisodeBottomSheet.kt`)**:
++   - Added `rememberIsCellularOrMeteredChecker(): () -> Boolean` evaluating `ConnectivityManager` live at the moment the Download button is clicked.
++2. **Distinguish `Buffering` from `Paused` in Sleep Timer (`CoroutineSleepTimerManager.kt`, `CoroutineSleepTimerManagerTest.kt`)**:
++   - Added `isUserPause: Boolean` to `pauseCountdown()`. `Buffering` and `Initializing` freeze the countdown without triggering `resetTimerOnPause`, while `Paused`/`Finished`/`Disabled` still apply `resetTimerOnPause` (including `Playing -> Buffering -> Paused` transitions).
++   - Added regression test `buffering during seek does not reset timer when resetTimerOnPause is enabled`.
++3. **Continue Series Cold-Start & Index Optimization (`DatabaseFactory.kt`, `StoreSeriesRepository.kt`, `ContinueSeriesPresenter.kt`)**:
++   - Executed non-destructive `CREATE INDEX IF NOT EXISTS` statements in `DatabaseFactory.build()` on `media(libraryItemId)`, `media(metadata_series_id)`, `mediaProgress(userId, libraryItemId)`, and `shelfJoin(entityId)`.
++   - Launched the Continue Series join backfill asynchronously on `repositoryScope` with `distinctUntilChangedBy { it.id to it.selectedLibraryId }` so cached SQLite series emit immediately.
++   - Reduced `refreshContinueSeries()` `getPersonalizedHome` limit from `250` to `50` and added a 5-minute cooldown (`lastRefreshEpochMillis`) on automatic Continue Series entry refreshes when `memoryCache` is populated (manual pull-to-refresh still forces a network fetch).
++
++### Modified Files:
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt`
++* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
++* `common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt`
++* `common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt`
++* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt`
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
++* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
++* `data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt`
++* `features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt`
++* `features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt`
++* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
++* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -4530,10 +4569,10 @@ index 71757dbb..548cfbe4 100644
        if (e is BackingStoreException) throw e
 diff --git a/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
 new file mode 100644
-index 00000000..9fd3ad95
+index 00000000..eff1807f
 --- /dev/null
 +++ b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,37 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -4546,27 +4585,37 @@ index 00000000..9fd3ad95
 +import androidx.compose.runtime.remember
 +import androidx.compose.ui.platform.LocalContext
 +
++private fun isCurrentlyCellularOrMetered(context: Context): Boolean {
++  return try {
++    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
++    val activeNetwork = cm?.activeNetwork
++    val capabilities = activeNetwork?.let { cm.getNetworkCapabilities(it) }
++    capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true ||
++      capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
++  } catch (_: Throwable) {
++    false
++  }
++}
++
 +@Composable
 +actual fun rememberIsCellularOrMetered(): Boolean {
 +  val context = LocalContext.current
++  return isCurrentlyCellularOrMetered(context)
++}
++
++@Composable
++actual fun rememberIsCellularOrMeteredChecker(): () -> Boolean {
++  val context = LocalContext.current
 +  return remember(context) {
-+    try {
-+      val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-+      val activeNetwork = cm?.activeNetwork
-+      val capabilities = activeNetwork?.let { cm.getNetworkCapabilities(it) }
-+      capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true ||
-+        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
-+    } catch (_: Throwable) {
-+      false
-+    }
++    { isCurrentlyCellularOrMetered(context) }
 +  }
 +}
 diff --git a/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt b/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt
 new file mode 100644
-index 00000000..7c6e9709
+index 00000000..d5d16d09
 --- /dev/null
 +++ b/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,12 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -4576,6 +4625,9 @@ index 00000000..7c6e9709
 +
 +@Composable
 +actual fun rememberIsCellularOrMetered(): Boolean = false
++
++@Composable
++actual fun rememberIsCellularOrMeteredChecker(): () -> Boolean = { false }
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt
 index 93993495..c80ad233 100644
 --- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/icons/rounded/Forward.kt
@@ -5018,10 +5070,10 @@ index 00000000..dfd41235
 +}
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
 new file mode 100644
-index 00000000..660fd819
+index 00000000..7025b394
 --- /dev/null
 +++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,20 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -5035,6 +5087,13 @@ index 00000000..660fd819
 + */
 +@Composable
 +expect fun rememberIsCellularOrMetered(): Boolean
++
++/**
++ * Returns a callback that evaluates whether the device is currently connected via cellular
++ * or a metered connection at the exact moment it is invoked (e.g. on a button tap).
++ */
++@Composable
++expect fun rememberIsCellularOrMeteredChecker(): () -> Boolean
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
 index 9d968200..2927bdde 100644
 --- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
@@ -5471,10 +5530,10 @@ index 00000000..896b1261
 +}
 diff --git a/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt b/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt
 new file mode 100644
-index 00000000..7c6e9709
+index 00000000..d5d16d09
 --- /dev/null
 +++ b/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,12 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -5484,6 +5543,9 @@ index 00000000..7c6e9709
 +
 +@Composable
 +actual fun rememberIsCellularOrMetered(): Boolean = false
++
++@Composable
++actual fun rememberIsCellularOrMeteredChecker(): () -> Boolean = { false }
 diff --git a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt b/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
 index c15f21c6..6fcfd1cb 100644
 --- a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
@@ -6602,6 +6664,34 @@ index e9c64d4d..0af021b9 100644
        buildString {
          // Tag
          if (tag != null) {
+diff --git a/data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt b/data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt
+index 8289f754..98c2f63e 100644
+--- a/data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt
++++ b/data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt
+@@ -71,7 +71,14 @@ class DatabaseFactory(
+       metadata_seriesAdapter = SeriesSequenceListAdapter,
+     )
+ 
+-  fun build(): CampfireDatabase = CampfireDatabase(
++  fun build(): CampfireDatabase {
++    runCatching {
++      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_media_libraryItemId ON media(libraryItemId)", 0)
++      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_media_metadata_series_id ON media(metadata_series_id)", 0)
++      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_mediaProgress_user_item ON mediaProgress(userId, libraryItemId)", 0)
++      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_shelfJoin_entityId ON shelfJoin(entityId)", 0)
++    }
++    return CampfireDatabase(
+     driver = driver,
+     serverAdapter = Server.Adapter(
+       loggerScannerLogsToKeepAdapter = IntColumnAdapter,
+@@ -220,5 +227,6 @@ class DatabaseFactory(
+     podcastEpisodePageJoinAdapter = PodcastEpisodePageJoin.Adapter(
+       pageIndexAdapter = IntColumnAdapter,
+     ),
+-  )
++    )
++  }
+ }
 diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq
 index 18d4be3e..68888c08 100644
 --- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq
@@ -11298,7 +11388,7 @@ index 2785a544..4af9bc7b 100644
  }
 +
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
-index 055637bb..96e10900 100644
+index 055637bb..ce4ed5d4 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt
 @@ -41,6 +41,8 @@ class ExpressiveControlSlot(
@@ -11319,7 +11409,7 @@ index 055637bb..96e10900 100644
 +    var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
 +    var showCellularWarningDialog by remember { mutableStateOf(false) }
 +
-+    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
++    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMeteredChecker()
 +
      val scope = rememberCoroutineScope()
      val snackBarHost = LocalSnackBarHost.current
@@ -11329,7 +11419,7 @@ index 055637bb..96e10900 100644
        },
        onDownloadClick = {
 -        if (showConfirmDownloadDialogSetting) {
-+        if (warnOnCellularDownloadSetting && isCellularOrMetered) {
++        if (warnOnCellularDownloadSetting && isCellularOrMetered()) {
 +          showCellularWarningDialog = true
 +        } else if (showConfirmDownloadDialogSetting) {
            showConfirmDownloadDialog = true
@@ -11506,7 +11596,7 @@ index 832a9296..58bac96a 100644
            Spacer(Modifier.width(12.dp))
            Icon(
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
-index 798a6a99..5e4461bf 100644
+index 798a6a99..46cbdf69 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt
 @@ -131,6 +131,14 @@ private fun PodcastEpisodeBottomSheet(
@@ -11519,7 +11609,7 @@ index 798a6a99..5e4461bf 100644
 +  var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
 +  var showCellularWarningDialog by remember { mutableStateOf(false) }
 +
-+  val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
++  val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMeteredChecker()
 +
    if (showDownloadConfirmation) {
      ConfirmDownloadDialog(
@@ -11592,7 +11682,7 @@ index 798a6a99..5e4461bf 100644
        onPlayClick = { state.eventSink(PodcastEpisodeUiEvent.PlayClick) },
        onDownloadClick = {
 -        if (state.showConfirmDownloadDialog) {
-+        if (state.warnOnCellularDownload && isCellularOrMetered) {
++        if (state.warnOnCellularDownload && isCellularOrMetered()) {
 +          showCellularWarningDialog = true
 +        } else if (state.showConfirmDownloadDialog) {
            showDownloadConfirmation = true
@@ -13683,7 +13773,7 @@ index e61b281e..edb20179 100644
 +  suspend fun refreshContinueSeries(): Result<Unit>
  }
 diff --git a/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt b/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
-index 1ec7cd64..1d1f1dd3 100644
+index 1ec7cd64..544aed31 100644
 --- a/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
 +++ b/features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt
 @@ -23,7 +23,11 @@ import app.campfire.core.session.serverUrl
@@ -13706,7 +13796,7 @@ index 1ec7cd64..1d1f1dd3 100644
  import app.cash.sqldelight.coroutines.asFlow
  import app.cash.sqldelight.coroutines.mapToList
  import app.cash.sqldelight.coroutines.mapToOneOrNull
-@@ -47,14 +52,20 @@ import dev.zacsweers.metro.SingleIn
+@@ -47,14 +52,22 @@ import dev.zacsweers.metro.SingleIn
  import kotlin.coroutines.cancellation.CancellationException
  import kotlin.io.encoding.ExperimentalEncodingApi
  import kotlin.time.Duration.Companion.minutes
@@ -13717,6 +13807,7 @@ index 1ec7cd64..1d1f1dd3 100644
  import kotlinx.coroutines.flow.Flow
 +import kotlinx.coroutines.flow.SharingStarted
 +import kotlinx.coroutines.flow.distinctUntilChanged
++import kotlinx.coroutines.flow.distinctUntilChangedBy
  import kotlinx.coroutines.flow.filterNot
  import kotlinx.coroutines.flow.flatMapLatest
 +import kotlinx.coroutines.flow.flowOn
@@ -13724,10 +13815,11 @@ index 1ec7cd64..1d1f1dd3 100644
  import kotlinx.coroutines.flow.mapLatest
  import kotlinx.coroutines.flow.mapNotNull
 +import kotlinx.coroutines.flow.shareIn
++import kotlinx.coroutines.launch
  import kotlinx.coroutines.withContext
  import org.mobilenativefoundation.store.store5.Fetcher
  import org.mobilenativefoundation.store.store5.MemoryPolicy
-@@ -105,24 +116,28 @@ class StoreSeriesRepository(
+@@ -105,24 +118,28 @@ class StoreSeriesRepository(
        withContext(dispatcherProvider.io) {
          val series = async { api.getSeriesById(s.libraryId, s.seriesId) }
          val books = async {
@@ -13769,7 +13861,7 @@ index 1ec7cd64..1d1f1dd3 100644
            )
          }.asFetcherResult()
        }
-@@ -157,23 +172,23 @@ class StoreSeriesRepository(
+@@ -157,23 +174,23 @@ class StoreSeriesRepository(
  
              // This is the series' full book list, so replace its links rather than adding to
              // them — books removed from the series (or the server) would otherwise linger.
@@ -13803,7 +13895,7 @@ index 1ec7cd64..1d1f1dd3 100644
  
                // Insert junction entry
                db.seriesBookJoinQueries.insert(
-@@ -303,5 +318,188 @@ class StoreSeriesRepository(
+@@ -303,5 +320,189 @@ class StoreSeriesRepository(
              items
            }
        }
@@ -13817,17 +13909,18 @@ index 1ec7cd64..1d1f1dd3 100644
 +  @OptIn(ExperimentalCoroutinesApi::class)
 +  private val continueSeriesFlow: Flow<List<Series>> by lazy {
 +    userRepository.observeCurrentUser()
++      .distinctUntilChangedBy { it.id to it.selectedLibraryId }
 +      .flatMapLatest { user ->
-+        runCatching {
-+          withContext(dispatcherProvider.databaseWrite) {
++        repositoryScope.launch(dispatcherProvider.databaseWrite) {
++          runCatching {
 +            db.transaction {
 +              db.seriesQueries.insertMissingShelfSeries(user.id)
 +              db.seriesBookJoinQueries.insertMissingShelfJoins()
 +              db.seriesBookJoinQueries.insertMissingMediaSeriesJoins()
 +            }
++          }.onFailure {
++            bark(LogPriority.WARN, throwable = it) { "Failed to backfill continue series joins" }
 +          }
-+        }.onFailure {
-+          bark(LogPriority.WARN, throwable = it) { "Failed to backfill continue series joins" }
 +        }
 +        db.seriesQueries
 +          .selectContinueSeries(
@@ -13907,7 +14000,7 @@ index 1ec7cd64..1d1f1dd3 100644
 +      val networkShelves = api.getPersonalizedHome(
 +        libraryId = user.selectedLibraryId,
 +        bustCache = true,
-+        limit = 250,
++        limit = 50,
 +      ).getOrThrow()
 +
 +      val continueShelf = networkShelves.firstOrNull { it.id.startsWith("continue-series") }
@@ -14111,10 +14204,10 @@ index 9ef25851..0d5b5c8c 100644
        withContext(dispatcherProvider.databaseWrite) {
 diff --git a/features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt b/features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt
 new file mode 100644
-index 00000000..7980544f
+index 00000000..19e9c779
 --- /dev/null
 +++ b/features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt
-@@ -0,0 +1,306 @@
+@@ -0,0 +1,308 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -14198,7 +14291,9 @@ index 00000000..7980544f
 +    }
 +    val repository = createRepository(db, api)
 +
-+    val series = repository.observeContinueSeries().first { it.isNotEmpty() }
++    val series = repository.observeContinueSeries().first { list ->
++      list.any { !it.books.isNullOrEmpty() }
++    }
 +    assertThat(series.map { it.id }).containsExactly("series-valid")
 +    assertThat(series.single().books.orEmpty().map { it.id }).containsExactly("book-valid")
 +
@@ -14486,10 +14581,10 @@ index bab90470..67c5391d 100644
  </resources>
 diff --git a/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
 new file mode 100644
-index 00000000..b53dd0e3
+index 00000000..8408f493
 --- /dev/null
 +++ b/features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,241 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -14569,11 +14664,16 @@ index 00000000..b53dd0e3
 +    val coroutineScope = rememberCoroutineScope()
 +    var isRefreshing by remember { mutableStateOf(false) }
 +
-+    fun refresh() {
++    fun refresh(force: Boolean = false) {
++      if (!force && memoryCache != null && fatherTime.nowInEpochMillis() - lastRefreshEpochMillis < 300_000L) {
++        return
++      }
 +      coroutineScope.launch {
 +        isRefreshing = true
 +        try {
-+          seriesRepository.refreshContinueSeries()
++          if (seriesRepository.refreshContinueSeries().isSuccess) {
++            lastRefreshEpochMillis = fatherTime.nowInEpochMillis()
++          }
 +        } finally {
 +          isRefreshing = false
 +        }
@@ -14581,7 +14681,7 @@ index 00000000..b53dd0e3
 +    }
 +
 +    LaunchedEffect(Unit) {
-+      refresh()
++      refresh(force = false)
 +    }
 +
 +    RefreshOnForegroundStaleOut(
@@ -14681,7 +14781,7 @@ index 00000000..b53dd0e3
 +    ) { event ->
 +      when (event) {
 +        ContinueSeriesUiEvent.Back -> navigator.pop()
-+        ContinueSeriesUiEvent.Refresh -> refresh()
++        ContinueSeriesUiEvent.Refresh -> refresh(force = true)
 +
 +        is ContinueSeriesUiEvent.OpenSeries -> {
 +          analytics.send(ContentSelected(ContentType.Series))
@@ -14717,8 +14817,12 @@ index 00000000..b53dd0e3
 +    @kotlin.concurrent.Volatile
 +    private var memoryCache: List<ContinueSeriesItem>? = null
 +
++    @kotlin.concurrent.Volatile
++    private var lastRefreshEpochMillis: Long = 0L
++
 +    internal fun clearMemoryCache() {
 +      memoryCache = null
++      lastRefreshEpochMillis = 0L
 +    }
 +  }
 +}
@@ -22060,7 +22164,7 @@ index bf0c0272..c87139c9 100644
        artworkUri = media.coverImageUrl,
        durationMs = track.duration.seconds.inWholeMilliseconds,
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
-index 5a85d185..60ff0cd8 100644
+index 5a85d185..cab5d73b 100644
 --- a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 +++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt
 @@ -24,6 +24,9 @@ import kotlinx.coroutines.Job
@@ -22209,7 +22313,7 @@ index 5a85d185..60ff0cd8 100644
    }
  
    private fun cancelFade() {
-@@ -266,20 +360,34 @@ class CoroutineSleepTimerManager(
+@@ -266,20 +360,43 @@ class CoroutineSleepTimerManager(
      }
    }
  
@@ -22241,14 +22345,23 @@ index 5a85d185..60ff0cd8 100644
 -        if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
 +      try {
 +        player.state.collect { state ->
-+          if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
++          when (state) {
++            AudioPlayer.State.Playing -> resumeCountdown(timer)
++            AudioPlayer.State.Buffering,
++            AudioPlayer.State.Initializing,
++            -> pauseCountdown(timer, isUserPause = false)
++            AudioPlayer.State.Paused,
++            AudioPlayer.State.Finished,
++            AudioPlayer.State.Disabled,
++            -> pauseCountdown(timer, isUserPause = true)
++          }
 +        }
 +      } catch (e: Exception) {
 +        dbark { "Failed observing player state for sleep timer: ${e.message}" }
        }
      }
    }
-@@ -289,6 +397,7 @@ class CoroutineSleepTimerManager(
+@@ -289,6 +406,7 @@ class CoroutineSleepTimerManager(
      val now = fatherTime.nowInEpochMillis()
      countdownResumedAt = now
      publishRunningTimer(timer, reference = now, pausedAt = null)
@@ -22256,7 +22369,12 @@ index 5a85d185..60ff0cd8 100644
  
      val remaining = remainingMillis
      countdownJob?.cancel()
-@@ -306,11 +415,18 @@ class CoroutineSleepTimerManager(
+@@ -302,15 +420,28 @@ class CoroutineSleepTimerManager(
+     }
+   }
+ 
+-  private fun pauseCountdown(timer: PlaybackTimer.Epoch) {
++  private fun pauseCountdown(timer: PlaybackTimer.Epoch, isUserPause: Boolean = true) {
      val now = fatherTime.nowInEpochMillis()
      val resumedAt = countdownResumedAt
      if (resumedAt != null) {
@@ -22266,13 +22384,19 @@ index 5a85d185..60ff0cd8 100644
        countdownJob?.cancel()
        countdownJob = null
 +      cancelFade()
-+      if (sleepSettings.resetTimerOnPause) {
++      if (isUserPause && sleepSettings.resetTimerOnPause) {
 +        dbark { "Playback paused with reset-on-pause enabled, resetting sleep timer to ${timer.epochMillis}ms" }
 +        remainingMillis = timer.epochMillis
 +      } else {
-+        dbark { "Playback paused, freezing sleep timer" }
++        dbark { "Playback paused/buffering (isUserPause=$isUserPause), freezing sleep timer" }
 +        remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
 +      }
++      persistTimer(timer, remainingMillis)
++    } else if (isUserPause && sleepSettings.resetTimerOnPause && remainingMillis != timer.epochMillis) {
++      // If we transitioned Playing -> Buffering -> Paused, resumedAt was already cleared on Buffering;
++      // apply the reset-on-pause now that the player actually entered Paused.
++      dbark { "Playback transitioned from buffering to paused with reset-on-pause enabled, resetting sleep timer" }
++      remainingMillis = timer.epochMillis
 +      persistTimer(timer, remainingMillis)
      }
      publishRunningTimer(timer, reference = now, pausedAt = now)
@@ -22501,7 +22625,7 @@ index 9d13b1f5..89f034b8 100644
    override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
    override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
 diff --git a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
-index e248f31e..c28e4bff 100644
+index e248f31e..a499c7ff 100644
 --- a/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 +++ b/infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt
 @@ -11,6 +11,7 @@ import app.campfire.audioplayer.test.FakeAudioPlayer
@@ -22512,7 +22636,7 @@ index e248f31e..c28e4bff 100644
  import app.campfire.settings.test.FakeSleepSettings
  import app.campfire.shake.ShakeDetector
  import assertk.assertThat
-@@ -205,6 +206,84 @@ class CoroutineSleepTimerManagerTest {
+@@ -205,6 +206,106 @@ class CoroutineSleepTimerManagerTest {
      assertThat(manager.endOfChapter()).isFalse()
    }
  
@@ -22592,6 +22716,28 @@ index e248f31e..c28e4bff 100644
 +      applicationScope = backgroundScope,
 +    )
 +    assertThat(manager).isNotNull()
++  }
++
++  @Test
++  fun `buffering during seek does not reset timer when resetTimerOnPause is enabled`() = runTest {
++    settings.resetTimerOnPause = true
++    val manager = manager()
++    player.state.value = State.Playing
++    manager.setTimer(PlaybackTimer.Epoch(10_000L))
++
++    advanceTimeBy(4_000L)
++
++    // Seeking/skipping briefly puts ExoPlayer into Buffering before returning to Playing
++    player.state.value = State.Buffering
++    advanceTimeBy(500L)
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(6_000L)
++
++    player.state.value = State.Playing
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(6_000L)
++
++    // An actual pause still resets the timer back to full duration
++    player.state.value = State.Paused
++    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(10_000L)
 +  }
 +
    private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {

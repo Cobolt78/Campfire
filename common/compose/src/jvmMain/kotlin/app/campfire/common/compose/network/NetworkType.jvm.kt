@@ -7,3 +7,6 @@ import androidx.compose.runtime.Composable
 
 @Composable
 actual fun rememberIsCellularOrMetered(): Boolean = false
+
+@Composable
+actual fun rememberIsCellularOrMeteredChecker(): () -> Boolean = { false }

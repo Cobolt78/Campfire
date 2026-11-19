@@ -2796,3 +2796,42 @@ Added a **Delete all bookmarks** header action (`CampfireIcons.Rounded.DeleteSwe
 * `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+
+---
+
+## 92. Live Download Network Check, Seek Buffering Sleep-Timer Guard & Continue Series Cold-Start Speedup
+
+### Problem
+1. **Stale Mobile Data Download Warning (`NetworkType.android.kt`, `ExpressiveControlSlot.kt`, `PodcastEpisodeBottomSheet.kt`)**: Opening a book or episode while on cellular data cached `true` inside `remember(context)`, so toggling Wi-Fi ON and tapping Download again without leaving the screen still triggered the Mobile Data Warning dialog.
+2. **Sleep Timer Resetting on Forward/Backward Skips (`CoroutineSleepTimerManager.kt`)**: Seeking/skipping causes ExoPlayer to briefly emit `AudioPlayer.State.Buffering`. Because `pauseCountdown()` treated any non-`Playing` state identically, having `resetTimerOnPause` enabled reset the active sleep timer back to full duration every time the listener skipped forward or backward.
+3. **Continue Series Cold-Start 45–60s Delay (`DatabaseFactory.kt`, `StoreSeriesRepository.kt`, `ContinueSeriesPresenter.kt`)**:
+   - `continueSeriesFlow` blocked initial local SQLite emissions on the single-threaded `databaseWrite` dispatcher while running backfill joins.
+   - `media`, `mediaProgress`, and `shelfJoin` lacked indexes for `selectContinueSeries` joins, triggering correlated full-table scans.
+   - `refreshContinueSeries()` requested `limit = 250, bustCache = true` over remote/VPN connections and re-fetched unconditionally on every navigation back into Continue Series.
+
+### Solution & Implementation
+1. **Button-Action Cellular Check (`NetworkType.*`, `ExpressiveControlSlot.kt`, `PodcastEpisodeBottomSheet.kt`)**:
+   - Added `rememberIsCellularOrMeteredChecker(): () -> Boolean` evaluating `ConnectivityManager` live at the moment the Download button is clicked.
+2. **Distinguish `Buffering` from `Paused` in Sleep Timer (`CoroutineSleepTimerManager.kt`, `CoroutineSleepTimerManagerTest.kt`)**:
+   - Added `isUserPause: Boolean` to `pauseCountdown()`. `Buffering` and `Initializing` freeze the countdown without triggering `resetTimerOnPause`, while `Paused`/`Finished`/`Disabled` still apply `resetTimerOnPause` (including `Playing -> Buffering -> Paused` transitions).
+   - Added regression test `buffering during seek does not reset timer when resetTimerOnPause is enabled`.
+3. **Continue Series Cold-Start & Index Optimization (`DatabaseFactory.kt`, `StoreSeriesRepository.kt`, `ContinueSeriesPresenter.kt`)**:
+   - Executed non-destructive `CREATE INDEX IF NOT EXISTS` statements in `DatabaseFactory.build()` on `media(libraryItemId)`, `media(metadata_series_id)`, `mediaProgress(userId, libraryItemId)`, and `shelfJoin(entityId)`.
+   - Launched the Continue Series join backfill asynchronously on `repositoryScope` with `distinctUntilChangedBy { it.id to it.selectedLibraryId }` so cached SQLite series emit immediately.
+   - Reduced `refreshContinueSeries()` `getPersonalizedHome` limit from `250` to `50` and added a 5-minute cooldown (`lastRefreshEpochMillis`) on automatic Continue Series entry refreshes when `memoryCache` is populated (manual pull-to-refresh still forces a network fetch).
+
+### Modified Files:
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/network/NetworkType.kt`
+* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/network/NetworkType.android.kt`
+* `common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt`
+* `common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/composables/slots/ExpressiveControlSlot.kt`
+* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/podcast/episode/PodcastEpisodeBottomSheet.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
+* `data/db/core/src/commonMain/kotlin/app/campfire/db/DatabaseFactory.kt`
+* `features/series/impl/src/commonMain/kotlin/app/campfire/series/StoreSeriesRepository.kt`
+* `features/series/impl/src/commonTest/kotlin/app/campfire/series/StoreSeriesRepositoryContinueSeriesTest.kt`
+* `features/series/ui/src/commonMain/kotlin/app/campfire/series/ui/continueseries/ContinueSeriesPresenter.kt`
+* `CUSTOM_MODIFICATIONS.md`

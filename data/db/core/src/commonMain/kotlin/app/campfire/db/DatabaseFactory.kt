@@ -71,7 +71,14 @@ class DatabaseFactory(
       metadata_seriesAdapter = SeriesSequenceListAdapter,
     )
 
-  fun build(): CampfireDatabase = CampfireDatabase(
+  fun build(): CampfireDatabase {
+    runCatching {
+      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_media_libraryItemId ON media(libraryItemId)", 0)
+      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_media_metadata_series_id ON media(metadata_series_id)", 0)
+      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_mediaProgress_user_item ON mediaProgress(userId, libraryItemId)", 0)
+      driver.execute(null, "CREATE INDEX IF NOT EXISTS index_shelfJoin_entityId ON shelfJoin(entityId)", 0)
+    }
+    return CampfireDatabase(
     driver = driver,
     serverAdapter = Server.Adapter(
       loggerScannerLogsToKeepAdapter = IntColumnAdapter,
@@ -220,5 +227,6 @@ class DatabaseFactory(
     podcastEpisodePageJoinAdapter = PodcastEpisodePageJoin.Adapter(
       pageIndexAdapter = IntColumnAdapter,
     ),
-  )
+    )
+  }
 }

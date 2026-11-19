@@ -77,11 +77,16 @@ class ContinueSeriesPresenter(
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
 
-    fun refresh() {
+    fun refresh(force: Boolean = false) {
+      if (!force && memoryCache != null && fatherTime.nowInEpochMillis() - lastRefreshEpochMillis < 300_000L) {
+        return
+      }
       coroutineScope.launch {
         isRefreshing = true
         try {
-          seriesRepository.refreshContinueSeries()
+          if (seriesRepository.refreshContinueSeries().isSuccess) {
+            lastRefreshEpochMillis = fatherTime.nowInEpochMillis()
+          }
         } finally {
           isRefreshing = false
         }
@@ -89,7 +94,7 @@ class ContinueSeriesPresenter(
     }
 
     LaunchedEffect(Unit) {
-      refresh()
+      refresh(force = false)
     }
 
     RefreshOnForegroundStaleOut(
@@ -189,7 +194,7 @@ class ContinueSeriesPresenter(
     ) { event ->
       when (event) {
         ContinueSeriesUiEvent.Back -> navigator.pop()
-        ContinueSeriesUiEvent.Refresh -> refresh()
+        ContinueSeriesUiEvent.Refresh -> refresh(force = true)
 
         is ContinueSeriesUiEvent.OpenSeries -> {
           analytics.send(ContentSelected(ContentType.Series))
@@ -225,8 +230,12 @@ class ContinueSeriesPresenter(
     @kotlin.concurrent.Volatile
     private var memoryCache: List<ContinueSeriesItem>? = null
 
+    @kotlin.concurrent.Volatile
+    private var lastRefreshEpochMillis: Long = 0L
+
     internal fun clearMemoryCache() {
       memoryCache = null
+      lastRefreshEpochMillis = 0L
     }
   }
 }

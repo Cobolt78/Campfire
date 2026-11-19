@@ -384,7 +384,16 @@ class CoroutineSleepTimerManager(
     playbackStateJob = applicationScope.launch(dispatcherProvider.main) {
       try {
         player.state.collect { state ->
-          if (state == AudioPlayer.State.Playing) resumeCountdown(timer) else pauseCountdown(timer)
+          when (state) {
+            AudioPlayer.State.Playing -> resumeCountdown(timer)
+            AudioPlayer.State.Buffering,
+            AudioPlayer.State.Initializing,
+            -> pauseCountdown(timer, isUserPause = false)
+            AudioPlayer.State.Paused,
+            AudioPlayer.State.Finished,
+            AudioPlayer.State.Disabled,
+            -> pauseCountdown(timer, isUserPause = true)
+          }
         }
       } catch (e: Exception) {
         dbark { "Failed observing player state for sleep timer: ${e.message}" }
@@ -411,7 +420,7 @@ class CoroutineSleepTimerManager(
     }
   }
 
-  private fun pauseCountdown(timer: PlaybackTimer.Epoch) {
+  private fun pauseCountdown(timer: PlaybackTimer.Epoch, isUserPause: Boolean = true) {
     val now = fatherTime.nowInEpochMillis()
     val resumedAt = countdownResumedAt
     if (resumedAt != null) {
@@ -419,13 +428,19 @@ class CoroutineSleepTimerManager(
       countdownJob?.cancel()
       countdownJob = null
       cancelFade()
-      if (sleepSettings.resetTimerOnPause) {
+      if (isUserPause && sleepSettings.resetTimerOnPause) {
         dbark { "Playback paused with reset-on-pause enabled, resetting sleep timer to ${timer.epochMillis}ms" }
         remainingMillis = timer.epochMillis
       } else {
-        dbark { "Playback paused, freezing sleep timer" }
+        dbark { "Playback paused/buffering (isUserPause=$isUserPause), freezing sleep timer" }
         remainingMillis = (remainingMillis - (now - resumedAt)).coerceAtLeast(0L)
       }
+      persistTimer(timer, remainingMillis)
+    } else if (isUserPause && sleepSettings.resetTimerOnPause && remainingMillis != timer.epochMillis) {
+      // If we transitioned Playing -> Buffering -> Paused, resumedAt was already cleared on Buffering;
+      // apply the reset-on-pause now that the player actually entered Paused.
+      dbark { "Playback transitioned from buffering to paused with reset-on-pause enabled, resetting sleep timer" }
+      remainingMillis = timer.epochMillis
       persistTimer(timer, remainingMillis)
     }
     publishRunningTimer(timer, reference = now, pausedAt = now)

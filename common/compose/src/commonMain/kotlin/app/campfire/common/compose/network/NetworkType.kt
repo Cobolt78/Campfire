@@ -11,3 +11,10 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 expect fun rememberIsCellularOrMetered(): Boolean
+
+/**
+ * Returns a callback that evaluates whether the device is currently connected via cellular
+ * or a metered connection at the exact moment it is invoked (e.g. on a button tap).
+ */
+@Composable
+expect fun rememberIsCellularOrMeteredChecker(): () -> Boolean

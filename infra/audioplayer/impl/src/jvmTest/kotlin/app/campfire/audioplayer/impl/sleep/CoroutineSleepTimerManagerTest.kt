@@ -284,6 +284,28 @@ class CoroutineSleepTimerManagerTest {
     assertThat(manager).isNotNull()
   }
 
+  @Test
+  fun `buffering during seek does not reset timer when resetTimerOnPause is enabled`() = runTest {
+    settings.resetTimerOnPause = true
+    val manager = manager()
+    player.state.value = State.Playing
+    manager.setTimer(PlaybackTimer.Epoch(10_000L))
+
+    advanceTimeBy(4_000L)
+
+    // Seeking/skipping briefly puts ExoPlayer into Buffering before returning to Playing
+    player.state.value = State.Buffering
+    advanceTimeBy(500L)
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(6_000L)
+
+    player.state.value = State.Playing
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(6_000L)
+
+    // An actual pause still resets the timer back to full duration
+    player.state.value = State.Paused
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(10_000L)
+  }
+
   private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
     override fun now(): LocalDateTime = error("not used in tests")
     override fun today(): LocalDate = error("not used in tests")

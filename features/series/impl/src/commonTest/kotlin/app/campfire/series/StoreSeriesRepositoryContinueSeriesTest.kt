@@ -81,7 +81,9 @@ class StoreSeriesRepositoryContinueSeriesTest {
     }
     val repository = createRepository(db, api)
 
-    val series = repository.observeContinueSeries().first { it.isNotEmpty() }
+    val series = repository.observeContinueSeries().first { list ->
+      list.any { !it.books.isNullOrEmpty() }
+    }
     assertThat(series.map { it.id }).containsExactly("series-valid")
     assertThat(series.single().books.orEmpty().map { it.id }).containsExactly("book-valid")
 

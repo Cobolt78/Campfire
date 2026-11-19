@@ -65,7 +65,7 @@ class ExpressiveControlSlot(
     var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
     var showCellularWarningDialog by remember { mutableStateOf(false) }
 
-    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
+    val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMeteredChecker()
 
     val scope = rememberCoroutineScope()
     val snackBarHost = LocalSnackBarHost.current
@@ -112,7 +112,7 @@ class ExpressiveControlSlot(
         eventSink(LibraryItemUiEvent.PlayClick(method))
       },
       onDownloadClick = {
-        if (warnOnCellularDownloadSetting && isCellularOrMetered) {
+        if (warnOnCellularDownloadSetting && isCellularOrMetered()) {
           showCellularWarningDialog = true
         } else if (showConfirmDownloadDialogSetting) {
           showConfirmDownloadDialog = true

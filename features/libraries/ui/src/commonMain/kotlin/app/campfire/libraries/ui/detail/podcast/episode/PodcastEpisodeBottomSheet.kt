@@ -137,7 +137,7 @@ private fun PodcastEpisodeBottomSheet(
   var showConfirmMarkFinishedDialog by remember { mutableStateOf(false) }
   var showCellularWarningDialog by remember { mutableStateOf(false) }
 
-  val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMetered()
+  val isCellularOrMetered = app.campfire.common.compose.network.rememberIsCellularOrMeteredChecker()
 
   if (showDownloadConfirmation) {
     ConfirmDownloadDialog(
@@ -278,7 +278,7 @@ private fun PodcastEpisodeBottomSheet(
       canDownload = state.canDownload,
       onPlayClick = { state.eventSink(PodcastEpisodeUiEvent.PlayClick) },
       onDownloadClick = {
-        if (state.warnOnCellularDownload && isCellularOrMetered) {
+        if (state.warnOnCellularDownload && isCellularOrMetered()) {
           showCellularWarningDialog = true
         } else if (state.showConfirmDownloadDialog) {
           showDownloadConfirmation = true
