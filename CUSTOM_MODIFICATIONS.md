@@ -94,6 +94,15 @@ This document captures all custom features, bug fixes, and UI improvements added
 87. [Precision Playback Speed Bottom Sheet: Steppers, 0.05x Snap & Commit-on-Release (v1.2.49)](#87-precision-playback-speed-bottom-sheet-steppers-005x-snap--commit-on-release-v1249)
 88. [Background Bluetooth Playback Self-Healing & MediaSessionService Foreground Promotion (v1.2.50)](#88-background-bluetooth-playback-self-healing--mediasessionservice-foreground-promotion-v1250)
 89. [Foreground Stale-While-Revalidate (5-Min) & Home Socket Auto-Refresh (v1.2.51-rc1)](#89-foreground-stale-while-revalidate-5-min--home-socket-auto-refresh-v1251-rc1)
+90. [Search Keyboard Enter, Continue Series Foreign Key Crash & Shake Sensitivity Fixes (v1.2.51-rc2)](#90-search-keyboard-enter-continue-series-foreign-key-crash--shake-sensitivity-fixes-v1251-rc2)
+91. [Delete All Bookmarks Action & Sheet Header Polish (v1.2.52-rc1)](#91-delete-all-bookmarks-action--sheet-header-polish-v1252-rc1)
+92. [Wi-Fi Download Re-check, Sleep Timer Skip Buffering Fix & Continue Series Cold-Start Speedup (v1.2.52-rc1)](#92-wi-fi-download-re-check-sleep-timer-skip-buffering-fix--continue-series-cold-start-speedup-v1252-rc1)
+93. [Active Sleep Timer -5m / -1m / +1m / +5m Stepper Buttons (v1.2.52-rc1)](#93-active-sleep-timer--5m---1m--1m--5m-stepper-buttons-v1252-rc1)
+94. [Search Cache Restoration on Back Navigation (v1.2.52-rc1)](#94-search-cache-restoration-on-back-navigation-v1252-rc1)
+95. [Edit Bookmark Name, Default Bookmark Title & Server-Synced Notes (v1.2.52-rc1)](#95-edit-bookmark-name-default-bookmark-title--server-synced-notes-v1252-rc1)
+96. [Expanded Downloads Sort Options & Home Screen Downloads Shelf Sync (v1.2.52-rc1)](#96-expanded-downloads-sort-options--home-screen-downloads-shelf-sync-v1252-rc1)
+97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52-rc1)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252-rc1)
+98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52-rc1)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252-rc1)
 
 ---
 
@@ -3013,4 +3022,6 @@ Non-admin users or accounts with legacy/partial playback sessions or empty libra
 * `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt`
 * `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt`
 * `features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

@@ -17,6 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.52-rc1] - 2026-11-20
+
+### Added
+
+- **Bookmarks: Delete All, Edit, Default Titles & Server-Synced Notes**:
+  - Added a header **Delete all bookmarks** action with confirmation dialog (`BookmarksBottomSheet`), an **Edit** button and long-press gesture on every bookmark, automatic `"Bookmark @ <time>"` fallback titles for 1-tap creation, and optional notes encoded cleanly into the synced bookmark title (`Title\nNotes`).
+- **Active Sleep Timer Time Adjustments**:
+  - Added `-5m`, `-1m`, `+1m`, and `+5m` buttons directly inside the active Sleep Timer sheet card so you can extend or shorten a running timer without cancelling it.
+- **Expanded Downloads Sort Modes & Home Shelf Sync**:
+  - Added **Custom Order** (with inline Up/Down buttons in both list and grid views), **Currently Listening**, **Progress**, **Time Remaining**, and **Series** sort modes for Downloads, persisted across restarts and mirrored automatically on the Home screen's **Downloads** shelf.
+- **Customizable Home Screen Shelf Order**:
+  - Long-press any shelf heading on Home to open a compact Reorder Mode (`Reset` / `Done`) to move sections up or down.
+
+### Fixed
+
+- **Mobile Data Download Prompt After Switching to Wi-Fi**:
+  - Re-evaluates active network transport and metered capabilities live when tapping Download instead of using a cached state from when the book screen opened.
+- **Sleep Timer Reset During Skips**:
+  - Ignores transient `Buffering` / `Initializing` transitions during forward/backward skips and seeks so `Reset timer on pause` only triggers on actual pauses.
+- **Continue Series Slow Cold Start**:
+  - Added non-destructive startup SQLite indexes, stopped blocking the initial local DB emission on background write backfills, and lowered the `getPersonalizedHome` cold-start limit from 250 to 50 with a 5-minute presenter cooldown.
+- **Instant Search Back-Navigation**:
+  - Restores recent search results immediately from memory cache when navigating back from a search result without re-running the 400ms loading delay or fetching from the network again.
+- **Statistics Loading Failures for Non-Admin & Legacy Accounts**:
+  - Switched user listening stats to prefer `/api/me/listening-stats` (with fallback), made legacy `PlaybackSession` fields nullable-safe, added empty-list and zero-last-week guards in `StatsPresenter`, and added error logging.
+
 ## [1.2.51] - 2026-11-19
 
 ### Added
