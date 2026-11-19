@@ -2984,3 +2984,33 @@ Users had no way to customize the vertical order of headings/shelves on the Home
 * `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 * `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
 * `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 98. Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint
+
+### Problem
+Non-admin users or accounts with legacy/partial playback sessions or empty library stats could fail loading the Statistics screen with `"Uh-oh! Looks like something went wrong while loading your stats"`:
+- `KtorAudioBookShelfApi.getListeningStats()` only queried `api/users/$currentUserId/listening-stats` instead of the standard `/api/me/listening-stats` self-endpoint.
+- `PlaybackSession` JSON deserialization lacked safe defaults for nullable/omitted legacy fields (such as `deviceInfo`, `chapters`, `displayTitle`, `displayAuthor`, `mediaPlayer`, `serverVersion`, `date`, and `dayOfWeek`).
+- `StatsPresenter` had unlogged `.catch` blocks, called `.maxOf { ... }` on potentially empty `largestItems` / `longestItems` / `authorsWithCount` lists (throwing `NoSuchElementException`), and divided `(weekTime - lastWeekTime) / lastWeekTime` when `lastWeekTime == Duration.ZERO` (`NaN`/`Infinity`).
+
+### Solution & Implementation
+1. **Non-Admin Stats Endpoint (`KtorAudioBookShelfApi.kt`)**:
+   - Updated `getListeningStats()` to try `api/me/listening-stats` first and fall back to `api/users/$currentUserId/listening-stats` only if the first call fails.
+2. **Legacy Session Deserialization Safety (`PlaybackSession.kt`, `PlaybackSessionMapping.kt`, `PlaybackSessionDeserializationTest.kt`)**:
+   - Added nullable/empty defaults on `PlaybackSession` optional fields (`chapters`, `displayTitle`, `displayAuthor`, `coverPath`, `duration`, `playMethod`, `mediaPlayer`, `deviceInfo`, `serverVersion`, `date`, `dayOfWeek`, `startTime`, `currentTime`, `startedAt`, `updatedAt`) and safe fallbacks in `PlaybackSessionMapping.kt` (plus `requireNotNull(sessions.firstNotNullOfOrNull { it.deviceInfo })` in `syncLocalSessions`).
+3. **Stats Processing Hardening & Logging (`StatsPresenter.kt`, `LongestItemBarChart.kt`, `StatsPresenterTest.kt`)**:
+   - Added `Corked("StatsPresenter")` `ebark(throwable)` error logging in both `.catch` blocks.
+   - Guarded `.maxOf { ... }` calls on `largestItems`, `longestItems`, and `authorsWithCount` with `.isNotEmpty()` / `.isNullOrEmpty()`, added `.coerceAtLeast(1L)`/`.coerceAtLeast(1)` denominators, guarded `LongestItemBarChart` against `Duration.ZERO`, and replaced `(weekTime - lastWeekTime) / lastWeekTime` with a zero-safe `weekOverWeekChange` calculation.
+
+### Modified Files:
+* `data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt`
+* `data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt`
+* `data/network/impl/src/commonTest/kotlin/app/campfire/network/models/PlaybackSessionDeserializationTest.kt`
+* `data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt`
+* `features/stats/ui/build.gradle.kts`
+* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt`
+* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt`
+* `features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt`
+* `CUSTOM_MODIFICATIONS.md`

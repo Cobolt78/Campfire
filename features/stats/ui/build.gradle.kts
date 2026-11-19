@@ -19,5 +19,14 @@ kotlin {
         implementation(libs.compose.components.resources)
       }
     }
+
+    commonTest {
+      dependencies {
+        implementation(projects.common.test)
+        implementation(projects.features.user.test)
+        implementation(libs.bundles.test.common)
+        implementation(libs.bundles.test.ui)
+      }
+    }
   }
 }

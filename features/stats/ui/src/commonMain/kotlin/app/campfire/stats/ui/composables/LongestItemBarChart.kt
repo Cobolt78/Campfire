@@ -44,12 +44,16 @@ internal fun LongestItemBarChart(
     modifier = modifier,
   ) {
     model.longestItems.forEach { item ->
-      val progress = item.duration / model.longestDuration
+      val progress = if (model.longestDuration > kotlin.time.Duration.ZERO) {
+        (item.duration / model.longestDuration).toFloat()
+      } else {
+        0f
+      }
       ChartBar(
         imageUrl = item.coverImageUrl,
         title = item.title,
         trailingLabel = item.duration.readoutAtMost(DurationUnit.HOURS),
-        progress = progress.toFloat(),
+        progress = progress,
         modifier = Modifier.clickable {
           onItemClick(item)
         },

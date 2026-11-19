@@ -554,10 +554,10 @@ index c0278c85..ed1940d3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..c38828a4
+index 00000000..860be82c
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,2986 @@
+@@ -0,0 +1,3016 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3543,6 +3543,36 @@ index 00000000..c38828a4
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfHeader.kt`
 +* `features/home/ui/src/commonMain/kotlin/app/campfire/home/ui/composables/ShelfListItem.kt`
 +* `features/home/ui/src/commonTest/kotlin/app/campfire/home/ui/HomePresenterTest.kt`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 98. Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint
++
++### Problem
++Non-admin users or accounts with legacy/partial playback sessions or empty library stats could fail loading the Statistics screen with `"Uh-oh! Looks like something went wrong while loading your stats"`:
++- `KtorAudioBookShelfApi.getListeningStats()` only queried `api/users/$currentUserId/listening-stats` instead of the standard `/api/me/listening-stats` self-endpoint.
++- `PlaybackSession` JSON deserialization lacked safe defaults for nullable/omitted legacy fields (such as `deviceInfo`, `chapters`, `displayTitle`, `displayAuthor`, `mediaPlayer`, `serverVersion`, `date`, and `dayOfWeek`).
++- `StatsPresenter` had unlogged `.catch` blocks, called `.maxOf { ... }` on potentially empty `largestItems` / `longestItems` / `authorsWithCount` lists (throwing `NoSuchElementException`), and divided `(weekTime - lastWeekTime) / lastWeekTime` when `lastWeekTime == Duration.ZERO` (`NaN`/`Infinity`).
++
++### Solution & Implementation
++1. **Non-Admin Stats Endpoint (`KtorAudioBookShelfApi.kt`)**:
++   - Updated `getListeningStats()` to try `api/me/listening-stats` first and fall back to `api/users/$currentUserId/listening-stats` only if the first call fails.
++2. **Legacy Session Deserialization Safety (`PlaybackSession.kt`, `PlaybackSessionMapping.kt`, `PlaybackSessionDeserializationTest.kt`)**:
++   - Added nullable/empty defaults on `PlaybackSession` optional fields (`chapters`, `displayTitle`, `displayAuthor`, `coverPath`, `duration`, `playMethod`, `mediaPlayer`, `deviceInfo`, `serverVersion`, `date`, `dayOfWeek`, `startTime`, `currentTime`, `startedAt`, `updatedAt`) and safe fallbacks in `PlaybackSessionMapping.kt` (plus `requireNotNull(sessions.firstNotNullOfOrNull { it.deviceInfo })` in `syncLocalSessions`).
++3. **Stats Processing Hardening & Logging (`StatsPresenter.kt`, `LongestItemBarChart.kt`, `StatsPresenterTest.kt`)**:
++   - Added `Corked("StatsPresenter")` `ebark(throwable)` error logging in both `.catch` blocks.
++   - Guarded `.maxOf { ... }` calls on `largestItems`, `longestItems`, and `authorsWithCount` with `.isNotEmpty()` / `.isNullOrEmpty()`, added `.coerceAtLeast(1L)`/`.coerceAtLeast(1)` denominators, guarded `LongestItemBarChart` against `Duration.ZERO`, and replaced `(weekTime - lastWeekTime) / lastWeekTime` with a zero-safe `weekOverWeekChange` calculation.
++
++### Modified Files:
++* `data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt`
++* `data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt`
++* `data/network/impl/src/commonTest/kotlin/app/campfire/network/models/PlaybackSessionDeserializationTest.kt`
++* `data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt`
++* `features/stats/ui/build.gradle.kts`
++* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt`
++* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt`
++* `features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
@@ -7347,6 +7377,40 @@ index 80caa240..efbfa999 100644
            series = metadata_series,
          ),
          authors = metadataAuthors.map {
+diff --git a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt
+index 8f0901c8..ff527542 100644
+--- a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt
++++ b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PlaybackSessionMapping.kt
+@@ -23,16 +23,22 @@ suspend fun NetworkPlaybackSession.asDomainModel(urlHydrator: UrlHydrator): Play
+     mediaType = mediaType,
+     mediaMetadata = mediaMetadata.asDomainModel(),
+     chapters = chapters.map { it.asDomainModel() },
+-    displayTitle = displayTitle,
+-    displayAuthor = displayAuthor,
++    displayTitle = displayTitle ?: "",
++    displayAuthor = displayAuthor ?: "",
+     coverImageUrl = urlHydrator.hydrateLibraryItem(libraryItemId),
+     duration = duration.seconds,
+     playMethod = playMethod,
+-    mediaPlayer = mediaPlayer,
+-    deviceInfo = deviceInfo.asDomainModel(),
+-    serverVersion = serverVersion,
+-    date = date,
+-    dayOfWeek = dayOfWeek,
++    mediaPlayer = mediaPlayer ?: "",
++    deviceInfo = deviceInfo?.asDomainModel() ?: DeviceInfo(
++      id = "",
++      userId = userId,
++      deviceId = "",
++      clientName = "",
++      clientVersion = "",
++    ),
++    serverVersion = serverVersion ?: "",
++    date = date ?: "",
++    dayOfWeek = dayOfWeek ?: "",
+     timeListening = timeListening ?: 0f,
+     startTime = startTime,
+     currentTime = currentTime,
 diff --git a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PodcastMapping.kt b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PodcastMapping.kt
 index 7eab13a8..2a92da79 100644
 --- a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/PodcastMapping.kt
@@ -7627,6 +7691,50 @@ index 2805bd1d..2cf653ee 100644
      override val userMediaProgress: MediaProgress? = null,
    ) : LibraryItemExpanded()
  
+diff --git a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt
+index 5834e86a..2258190e 100644
+--- a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt
++++ b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PlaybackSession.kt
+@@ -12,22 +12,22 @@ data class PlaybackSession(
+   val libraryId: String,
+   val libraryItemId: String,
+   val episodeId: String? = null,
+-  val mediaType: String,
++  val mediaType: String = "book",
+   val mediaMetadata: ExpandedBookMetadata,
+-  val chapters: List<BookChapter>,
+-  val displayTitle: String,
+-  val displayAuthor: String,
+-  val coverPath: String?,
+-  val duration: Double,
+-  val playMethod: Int,
+-  val mediaPlayer: String,
+-  val deviceInfo: DeviceInfo,
+-  val serverVersion: String,
+-  val date: String,
+-  val dayOfWeek: String,
+-  val timeListening: Float?,
+-  val startTime: Float,
+-  val currentTime: Float,
+-  val startedAt: Long,
+-  val updatedAt: Long,
++  val chapters: List<BookChapter> = emptyList(),
++  val displayTitle: String? = null,
++  val displayAuthor: String? = null,
++  val coverPath: String? = null,
++  val duration: Double = 0.0,
++  val playMethod: Int = 0,
++  val mediaPlayer: String? = null,
++  val deviceInfo: DeviceInfo? = null,
++  val serverVersion: String? = null,
++  val date: String? = null,
++  val dayOfWeek: String? = null,
++  val timeListening: Float? = null,
++  val startTime: Float = 0f,
++  val currentTime: Float = 0f,
++  val startedAt: Long = 0L,
++  val updatedAt: Long = 0L,
+ )
 diff --git a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt b/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt
 index fa60179e..31acd48e 100644
 --- a/data/network/api/src/commonMain/kotlin/app/campfire/network/models/PodcastMetadata.kt
@@ -7863,7 +7971,7 @@ index 00000000..5c73dbe9
 +  """.trimIndent()
 +}
 diff --git a/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt b/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
-index 3a1d8f0a..80f449e4 100644
+index 3a1d8f0a..8248589c 100644
 --- a/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
 +++ b/data/network/impl/src/commonMain/kotlin/app/campfire/network/KtorAudioBookShelfApi.kt
 @@ -45,6 +45,7 @@ import app.campfire.network.models.LibraryItemMinified
@@ -7981,6 +8089,26 @@ index 3a1d8f0a..80f449e4 100644
      }.map { it.results }
    }
  
+@@ -609,7 +673,7 @@ class KtorAudioBookShelfApi(
+         method = HttpMethod.Post
+         setBody(
+           SyncSessionRequest(
+-            deviceInfo = sessions.first().deviceInfo,
++            deviceInfo = requireNotNull(sessions.firstNotNullOfOrNull { it.deviceInfo }),
+             sessions = sessions,
+           ),
+         )
+@@ -725,6 +789,10 @@ class KtorAudioBookShelfApi(
+ 
+   override suspend fun getListeningStats(): Result<ListeningStats> {
+     val currentUserId = userSession.userId ?: return Result.failure(NotLoggedInException())
++    val meResult = trySendRequest<ListeningStats> {
++      hydratedClientRequest("api/me/listening-stats")
++    }
++    if (meResult.isSuccess) return meResult
+     return trySendRequest {
+       hydratedClientRequest("api/users/$currentUserId/listening-stats")
+     }
 diff --git a/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt b/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
 index f7d00892..a271bb9c 100644
 --- a/data/network/impl/src/commonMain/kotlin/app/campfire/network/di/HttpClientModule.kt
@@ -8120,6 +8248,61 @@ index 93843f34..63225640 100644
    override suspend fun getExtraHeaders(userId: UserId): Map<String, String>? = extraHeaders
    override suspend fun setExtraHeaders(userId: UserId, headers: Map<String, String>) = Unit
    override fun observeExtraHeaders(userId: UserId): Flow<Map<String, String>> = emptyFlow()
+diff --git a/data/network/impl/src/commonTest/kotlin/app/campfire/network/models/PlaybackSessionDeserializationTest.kt b/data/network/impl/src/commonTest/kotlin/app/campfire/network/models/PlaybackSessionDeserializationTest.kt
+new file mode 100644
+index 00000000..ce36290b
+--- /dev/null
++++ b/data/network/impl/src/commonTest/kotlin/app/campfire/network/models/PlaybackSessionDeserializationTest.kt
+@@ -0,0 +1,49 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.network.models
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertNull
++import kotlinx.serialization.json.Json
++
++class PlaybackSessionDeserializationTest {
++
++  private val json = Json {
++    isLenient = true
++    ignoreUnknownKeys = true
++  }
++
++  @Test
++  fun deserializesLegacyPlaybackSessionWithNullAndMissingOptionalFields() {
++    val payload = """
++      {
++        "id": "sess_1",
++        "userId": "user_1",
++        "libraryId": "lib_1",
++        "libraryItemId": "item_1",
++        "mediaType": "book",
++        "mediaMetadata": {
++          "title": "Legacy Book"
++        },
++        "displayTitle": null,
++        "displayAuthor": null,
++        "coverPath": null,
++        "mediaPlayer": null,
++        "deviceInfo": null,
++        "serverVersion": null,
++        "date": null,
++        "dayOfWeek": null,
++        "timeListening": 120.5
++      }
++    """.trimIndent()
++
++    val session = json.decodeFromString<PlaybackSession>(payload)
++    assertEquals("sess_1", session.id)
++    assertEquals(emptyList(), session.chapters)
++    assertNull(session.displayTitle)
++    assertNull(session.deviceInfo)
++    assertEquals(120.5f, session.timeListening)
++  }
++}
 diff --git a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
 index 8ab31610..a86dbb3d 100644
 --- a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
@@ -21773,11 +21956,30 @@ index 16dfd2f2..5ac06410 100644
        // Shake to Reset
        SwitchSetting(
          value = state.sleepSettings.shakeToReset,
+diff --git a/features/stats/ui/build.gradle.kts b/features/stats/ui/build.gradle.kts
+index 88483636..6c216f26 100644
+--- a/features/stats/ui/build.gradle.kts
++++ b/features/stats/ui/build.gradle.kts
+@@ -19,5 +19,14 @@ kotlin {
+         implementation(libs.compose.components.resources)
+       }
+     }
++
++    commonTest {
++      dependencies {
++        implementation(projects.common.test)
++        implementation(projects.features.user.test)
++        implementation(libs.bundles.test.common)
++        implementation(libs.bundles.test.ui)
++      }
++    }
+   }
+ }
 diff --git a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
-index ef0c2135..ab583afe 100644
+index ef0c2135..d3737988 100644
 --- a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
 +++ b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt
-@@ -10,11 +10,14 @@ import androidx.compose.runtime.mutableStateOf
+@@ -10,11 +10,15 @@ import androidx.compose.runtime.mutableStateOf
  import androidx.compose.runtime.remember
  import androidx.compose.runtime.rememberCoroutineScope
  import androidx.compose.runtime.setValue
@@ -21789,10 +21991,11 @@ index ef0c2135..ab583afe 100644
  import app.campfire.core.di.UserScope
 +import app.campfire.core.lifecycle.ForegroundResumeTracker
 +import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
++import app.campfire.core.logging.Corked
  import app.campfire.core.model.LibraryStats
  import app.campfire.core.model.ListeningStats
  import app.campfire.core.model.MediaProgress
-@@ -55,6 +58,7 @@ class StatsPresenter(
+@@ -55,6 +59,7 @@ class StatsPresenter(
    private val fatherTime: FatherTime,
    private val dispatcherProvider: DispatcherProvider,
    private val navigator: Navigator,
@@ -21800,7 +22003,29 @@ index ef0c2135..ab583afe 100644
  ) : Presenter<StatsUiState> {
  
    @Composable
-@@ -80,6 +84,14 @@ class StatsPresenter(
+@@ -62,7 +67,10 @@ class StatsPresenter(
+     val libraryStats by remember {
+       statsRepository.getLibraryStats()
+         .map { LoadState.Loaded(processStats(it)) }
+-        .catch<LoadState<out List<StatsUiModel>>> { emit(LoadState.Error) }
++        .catch<LoadState<out List<StatsUiModel>>> { e ->
++          ebark(throwable = e) { "Failed to load library stats" }
++          emit(LoadState.Error)
++        }
+     }.collectAsState(LoadState.Loading)
+ 
+     val listeningStats by remember {
+@@ -74,12 +82,23 @@ class StatsPresenter(
+           .onStart { emit(emptyList()) },
+       ) { stats, progress ->
+         LoadState.Loaded(processStats(stats, progress))
+-      }.catch<LoadState<out List<StatsUiModel>>> { emit(LoadState.Error) }
++      }.catch<LoadState<out List<StatsUiModel>>> { e ->
++        ebark(throwable = e) { "Failed to load listening stats" }
++        emit(LoadState.Error)
++      }
+     }.collectAsState(LoadState.Loading)
+ 
      val scope = rememberCoroutineScope()
      var isRefreshing by remember { mutableStateOf(false) }
  
@@ -21815,6 +22040,243 @@ index ef0c2135..ab583afe 100644
      return StatsUiState(
        libraryStats = libraryStats,
        listeningStats = listeningStats,
+@@ -157,12 +176,16 @@ class StatsPresenter(
+       val lastWeekTime = lastWeekDurations.values
+         .fold(Duration.ZERO) { acc, duration -> acc + duration }
+ 
+-      val diff = (weekTime - lastWeekTime) / lastWeekTime
++      val weekOverWeekChange = if (lastWeekTime <= Duration.ZERO) {
++        if (weekTime > Duration.ZERO) 100.0 else 0.0
++      } else {
++        ((weekTime - lastWeekTime) / lastWeekTime) * 100.0
++      }
+ 
+       add(
+         StatsUiModel.WeeklyListening(
+           weekTime = weekTime,
+-          weekOverWeekChange = diff * 100.0,
++          weekOverWeekChange = weekOverWeekChange,
+           thisWeek = currentWeekDurations.toImmutableMap(),
+           lastWeek = lastWeekDurations.toImmutableMap(),
+         ),
+@@ -262,31 +285,38 @@ class StatsPresenter(
+         ),
+       )
+ 
+-      add(
+-        StatsUiModel.LargestItems(
+-          largestSizeInBytes = libraryStats.largestItems.maxOf { it.sizeInBytes },
+-          totalSizeInBytes = libraryStats.totalSizeInBytes,
+-          largestItems = libraryStats.largestItems.toImmutableList(),
+-        ),
+-      )
++      if (libraryStats.largestItems.isNotEmpty()) {
++        add(
++          StatsUiModel.LargestItems(
++            largestSizeInBytes = libraryStats.largestItems.maxOf { it.sizeInBytes }.coerceAtLeast(1L),
++            totalSizeInBytes = libraryStats.totalSizeInBytes,
++            largestItems = libraryStats.largestItems.toImmutableList(),
++          ),
++        )
++      }
+ 
+-      add(
+-        StatsUiModel.LongestItems(
+-          longestDuration = libraryStats.longestItems.maxOf { it.duration },
+-          totalDuration = libraryStats.totalDuration,
+-          longestItems = libraryStats.longestItems.toImmutableList(),
+-        ),
+-      )
++      if (libraryStats.longestItems.isNotEmpty()) {
++        add(
++          StatsUiModel.LongestItems(
++            longestDuration = libraryStats.longestItems.maxOf { it.duration },
++            totalDuration = libraryStats.totalDuration,
++            longestItems = libraryStats.longestItems.toImmutableList(),
++          ),
++        )
++      }
+ 
+-      if (libraryStats.authorsWithCount != null && libraryStats.totalAuthors != null) {
++      val authorsWithCount = libraryStats.authorsWithCount
++      if (!authorsWithCount.isNullOrEmpty() && libraryStats.totalAuthors != null) {
+         add(
+           StatsUiModel.TopAuthors(
+-            largestCount = libraryStats.authorsWithCount!!.maxOf { it.count },
++            largestCount = authorsWithCount.maxOf { it.count }.coerceAtLeast(1),
+             totalCount = libraryStats.totalAuthors!!,
+-            authors = libraryStats.authorsWithCount!!.toImmutableList(),
++            authors = authorsWithCount.toImmutableList(),
+           ),
+         )
+       }
+     }
+   }
++
++  companion object : Corked("StatsPresenter")
+ }
+diff --git a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt
+index 126b02ed..3bd891cb 100644
+--- a/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt
++++ b/features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt
+@@ -44,12 +44,16 @@ internal fun LongestItemBarChart(
+     modifier = modifier,
+   ) {
+     model.longestItems.forEach { item ->
+-      val progress = item.duration / model.longestDuration
++      val progress = if (model.longestDuration > kotlin.time.Duration.ZERO) {
++        (item.duration / model.longestDuration).toFloat()
++      } else {
++        0f
++      }
+       ChartBar(
+         imageUrl = item.coverImageUrl,
+         title = item.title,
+         trailingLabel = item.duration.readoutAtMost(DurationUnit.HOURS),
+-        progress = progress.toFloat(),
++        progress = progress,
+         modifier = Modifier.clickable {
+           onItemClick(item)
+         },
+diff --git a/features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt b/features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt
+new file mode 100644
+index 00000000..e06515ff
+--- /dev/null
++++ b/features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt
+@@ -0,0 +1,133 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.stats.ui
++
++import app.campfire.common.screens.StatisticsScreen
++import app.campfire.common.test.coroutines.asTestDispatcherProvider
++import app.campfire.core.coroutines.DispatcherProvider
++import app.campfire.core.coroutines.LoadState
++import app.campfire.core.model.LibraryStats
++import app.campfire.core.model.ListeningStats
++import app.campfire.core.time.FatherTime
++import app.campfire.stats.api.StatsRepository
++import app.campfire.user.test.FakeMediaProgressRepository
++import com.slack.circuit.test.FakeNavigator
++import com.slack.circuit.test.test
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertIs
++import kotlin.test.assertTrue
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.minutes
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.MutableSharedFlow
++import kotlinx.coroutines.test.runTest
++import kotlinx.datetime.LocalDate
++import kotlinx.datetime.LocalDateTime
++
++class StatsPresenterTest {
++
++  private val fakeFatherTime = object : FatherTime {
++    override fun now(): LocalDateTime = LocalDateTime(2025, 6, 15, 12, 0)
++    override fun nowInEpochMillis(): Long = 1_700_000_000_000L
++    override fun today(): LocalDate = LocalDate(2025, 6, 15)
++  }
++
++  private fun createPresenter(
++    dispatcherProvider: DispatcherProvider,
++    libraryStatsFlow: Flow<LibraryStats>,
++    listeningStatsFlow: Flow<ListeningStats>,
++  ): StatsPresenter {
++    val repo = object : StatsRepository {
++      override fun getLibraryStats(): Flow<LibraryStats> = libraryStatsFlow
++      override fun getUserStats(): Flow<ListeningStats> = listeningStatsFlow
++      override suspend fun refresh(): Result<Unit> = Result.success(Unit)
++    }
++    return StatsPresenter(
++      statsRepository = repo,
++      mediaProgressRepository = FakeMediaProgressRepository(),
++      fatherTime = fakeFatherTime,
++      dispatcherProvider = dispatcherProvider,
++      navigator = FakeNavigator(StatisticsScreen),
++    )
++  }
++
++  @Test
++  fun emptyLibraryStatListsLoadWithoutNoSuchElementError() = runTest {
++    val libFlow = MutableSharedFlow<LibraryStats>(replay = 1)
++    val userFlow = MutableSharedFlow<ListeningStats>(replay = 1)
++    libFlow.tryEmit(
++      LibraryStats(
++        totalItems = 0,
++        totalAuthors = 0,
++        totalGenres = 0,
++        totalSizeInBytes = 0L,
++        totalDuration = Duration.ZERO,
++        numAudioTracks = 0,
++        largestItems = emptyList(),
++        authorsWithCount = emptyList(),
++        genresWithCount = emptyList(),
++        longestItems = emptyList(),
++      ),
++    )
++    userFlow.tryEmit(
++      ListeningStats(
++        totalTime = Duration.ZERO,
++        today = Duration.ZERO,
++        days = emptyMap(),
++        dayOfWeek = emptyMap(),
++        items = emptyList(),
++        recentSessions = emptyList(),
++      ),
++    )
++
++    createPresenter(asTestDispatcherProvider(), libFlow, userFlow).test {
++      var state = awaitItem()
++      while (state.libraryStats !is LoadState.Loaded || state.listeningStats !is LoadState.Loaded) {
++        state = awaitItem()
++      }
++
++      val libModels = assertIs<LoadState.Loaded<List<StatsUiModel>>>(state.libraryStats).data
++      assertEquals(1, libModels.size)
++      assertIs<StatsUiModel.LibraryTotals>(libModels.single())
++
++      val userModels = assertIs<LoadState.Loaded<List<StatsUiModel>>>(state.listeningStats).data
++      val weekly = userModels.filterIsInstance<StatsUiModel.WeeklyListening>().single()
++      assertTrue(weekly.weekOverWeekChange.isFinite())
++      assertEquals(0.0, weekly.weekOverWeekChange)
++
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
++  @Test
++  fun zeroLastWeekListeningProducesFiniteWeekOverWeekChange() = runTest {
++    val libFlow = MutableSharedFlow<LibraryStats>(replay = 1)
++    val userFlow = MutableSharedFlow<ListeningStats>(replay = 1)
++    userFlow.tryEmit(
++      ListeningStats(
++        totalTime = 30.minutes,
++        today = 30.minutes,
++        days = mapOf(LocalDate(2025, 6, 15) to 30.minutes),
++        dayOfWeek = emptyMap(),
++        items = emptyList(),
++        recentSessions = emptyList(),
++      ),
++    )
++
++    createPresenter(asTestDispatcherProvider(), libFlow, userFlow).test {
++      var state = awaitItem()
++      while (state.listeningStats !is LoadState.Loaded) {
++        state = awaitItem()
++      }
++
++      val userModels = assertIs<LoadState.Loaded<List<StatsUiModel>>>(state.listeningStats).data
++      val weekly = userModels.filterIsInstance<StatsUiModel.WeeklyListening>().single()
++      assertTrue(weekly.weekOverWeekChange.isFinite())
++      assertEquals(100.0, weekly.weekOverWeekChange)
++
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++}
 diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt
 index 953d9434..8d3087c0 100644
 --- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/StoreMediaProgressRepository.kt

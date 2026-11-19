@@ -18,6 +18,7 @@ import app.campfire.core.coroutines.LoadState
 import app.campfire.core.di.UserScope
 import app.campfire.core.lifecycle.ForegroundResumeTracker
 import app.campfire.core.lifecycle.NoOpForegroundResumeTracker
+import app.campfire.core.logging.Corked
 import app.campfire.core.model.LibraryStats
 import app.campfire.core.model.ListeningStats
 import app.campfire.core.model.MediaProgress
@@ -66,7 +67,10 @@ class StatsPresenter(
     val libraryStats by remember {
       statsRepository.getLibraryStats()
         .map { LoadState.Loaded(processStats(it)) }
-        .catch<LoadState<out List<StatsUiModel>>> { emit(LoadState.Error) }
+        .catch<LoadState<out List<StatsUiModel>>> { e ->
+          ebark(throwable = e) { "Failed to load library stats" }
+          emit(LoadState.Error)
+        }
     }.collectAsState(LoadState.Loading)
 
     val listeningStats by remember {
@@ -78,7 +82,10 @@ class StatsPresenter(
           .onStart { emit(emptyList()) },
       ) { stats, progress ->
         LoadState.Loaded(processStats(stats, progress))
-      }.catch<LoadState<out List<StatsUiModel>>> { emit(LoadState.Error) }
+      }.catch<LoadState<out List<StatsUiModel>>> { e ->
+        ebark(throwable = e) { "Failed to load listening stats" }
+        emit(LoadState.Error)
+      }
     }.collectAsState(LoadState.Loading)
 
     val scope = rememberCoroutineScope()
@@ -169,12 +176,16 @@ class StatsPresenter(
       val lastWeekTime = lastWeekDurations.values
         .fold(Duration.ZERO) { acc, duration -> acc + duration }
 
-      val diff = (weekTime - lastWeekTime) / lastWeekTime
+      val weekOverWeekChange = if (lastWeekTime <= Duration.ZERO) {
+        if (weekTime > Duration.ZERO) 100.0 else 0.0
+      } else {
+        ((weekTime - lastWeekTime) / lastWeekTime) * 100.0
+      }
 
       add(
         StatsUiModel.WeeklyListening(
           weekTime = weekTime,
-          weekOverWeekChange = diff * 100.0,
+          weekOverWeekChange = weekOverWeekChange,
           thisWeek = currentWeekDurations.toImmutableMap(),
           lastWeek = lastWeekDurations.toImmutableMap(),
         ),
@@ -274,31 +285,38 @@ class StatsPresenter(
         ),
       )
 
-      add(
-        StatsUiModel.LargestItems(
-          largestSizeInBytes = libraryStats.largestItems.maxOf { it.sizeInBytes },
-          totalSizeInBytes = libraryStats.totalSizeInBytes,
-          largestItems = libraryStats.largestItems.toImmutableList(),
-        ),
-      )
+      if (libraryStats.largestItems.isNotEmpty()) {
+        add(
+          StatsUiModel.LargestItems(
+            largestSizeInBytes = libraryStats.largestItems.maxOf { it.sizeInBytes }.coerceAtLeast(1L),
+            totalSizeInBytes = libraryStats.totalSizeInBytes,
+            largestItems = libraryStats.largestItems.toImmutableList(),
+          ),
+        )
+      }
 
-      add(
-        StatsUiModel.LongestItems(
-          longestDuration = libraryStats.longestItems.maxOf { it.duration },
-          totalDuration = libraryStats.totalDuration,
-          longestItems = libraryStats.longestItems.toImmutableList(),
-        ),
-      )
+      if (libraryStats.longestItems.isNotEmpty()) {
+        add(
+          StatsUiModel.LongestItems(
+            longestDuration = libraryStats.longestItems.maxOf { it.duration },
+            totalDuration = libraryStats.totalDuration,
+            longestItems = libraryStats.longestItems.toImmutableList(),
+          ),
+        )
+      }
 
-      if (libraryStats.authorsWithCount != null && libraryStats.totalAuthors != null) {
+      val authorsWithCount = libraryStats.authorsWithCount
+      if (!authorsWithCount.isNullOrEmpty() && libraryStats.totalAuthors != null) {
         add(
           StatsUiModel.TopAuthors(
-            largestCount = libraryStats.authorsWithCount!!.maxOf { it.count },
+            largestCount = authorsWithCount.maxOf { it.count }.coerceAtLeast(1),
             totalCount = libraryStats.totalAuthors!!,
-            authors = libraryStats.authorsWithCount!!.toImmutableList(),
+            authors = authorsWithCount.toImmutableList(),
           ),
         )
       }
     }
   }
+
+  companion object : Corked("StatsPresenter")
 }

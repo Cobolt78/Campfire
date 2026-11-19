@@ -673,7 +673,7 @@ class KtorAudioBookShelfApi(
         method = HttpMethod.Post
         setBody(
           SyncSessionRequest(
-            deviceInfo = sessions.first().deviceInfo,
+            deviceInfo = requireNotNull(sessions.firstNotNullOfOrNull { it.deviceInfo }),
             sessions = sessions,
           ),
         )
@@ -789,6 +789,10 @@ class KtorAudioBookShelfApi(
 
   override suspend fun getListeningStats(): Result<ListeningStats> {
     val currentUserId = userSession.userId ?: return Result.failure(NotLoggedInException())
+    val meResult = trySendRequest<ListeningStats> {
+      hydratedClientRequest("api/me/listening-stats")
+    }
+    if (meResult.isSuccess) return meResult
     return trySendRequest {
       hydratedClientRequest("api/users/$currentUserId/listening-stats")
     }
