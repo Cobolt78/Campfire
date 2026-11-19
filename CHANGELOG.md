@@ -17,14 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.52-rc2] - 2026-11-20
-
-### Changed
-
-- **Downloads Custom Sort Drag-and-Drop Reordering**:
-  - Replaced Up/Down buttons in **Downloads -> Custom Order** with 500ms long-press drag-and-drop across both List and Grid views (`sh.calvin.reorderable`), featuring a subtle top hint banner, visual card lift + haptic feedback, variable-speed edge auto-scrolling when dragging near the top or bottom (faster near edges, slower/stopped near the center), and single-write persistence on release.
-
-## [1.2.52-rc1] - 2026-11-20
+## [1.2.52] - 2026-11-20
 
 ### Added
 
@@ -32,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added a header **Delete all bookmarks** action with confirmation dialog (`BookmarksBottomSheet`), an **Edit** button and long-press gesture on every bookmark, automatic `"Bookmark @ <time>"` fallback titles for 1-tap creation, and optional notes encoded cleanly into the synced bookmark title (`Title\nNotes`).
 - **Active Sleep Timer Time Adjustments**:
   - Added `-5m`, `-1m`, `+1m`, and `+5m` buttons directly inside the active Sleep Timer sheet card so you can extend or shorten a running timer without cancelling it.
-- **Expanded Downloads Sort Modes & Home Shelf Sync**:
-  - Added **Custom Order** (with inline Up/Down buttons in both list and grid views), **Currently Listening**, **Progress**, **Time Remaining**, and **Series** sort modes for Downloads, persisted across restarts and mirrored automatically on the Home screen's **Downloads** shelf.
+- **Expanded Downloads Sort Modes, Long-Press Drag Reordering & Home Shelf Sync**:
+  - Added **Custom Order** (500ms long-press drag-and-drop across both List and Grid views with a `"Hold and drag any book to reorder"` hint banner, lifted card highlight + haptics, and speed-controlled top/bottom edge auto-scrolling), **Currently Listening**, **Progress**, **Time Remaining**, and **Series** sort modes for Downloads, persisted across restarts and mirrored automatically on the Home screen's **Downloads** shelf.
 - **Customizable Home Screen Shelf Order**:
   - Long-press any shelf heading on Home to open a compact Reorder Mode (`Reset` / `Done`) to move sections up or down.
 
