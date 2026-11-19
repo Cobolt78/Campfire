@@ -27,6 +27,7 @@ kotlin {
 
         implementation(libs.circuitx.overlays)
         implementation(libs.compose.rich.text)
+        implementation(libs.reorderable)
         implementation(libs.swatchbuckler.compose)
         implementation(libs.swatchbuckler.coil)
         implementation(libs.androidx.paging.common)

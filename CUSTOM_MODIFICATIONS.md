@@ -2942,9 +2942,9 @@ The Downloads screen only offered a limited set of ephemeral sorts (`RecentlyPla
    - `RemainingTime` sorts by remaining duration `(durationInMillis * (1f - actualProgress))`; `Series` sorts by series name and numeric sequence; `Custom` honors user-arranged IDs and appends newly downloaded items at the end.
 2. **Persisted Settings (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
    - Added `downloadsSortMode`, `downloadsSortAscending`, and `downloadsCustomOrder` (plus observers and account-seed keys `KEY_DOWNLOADS_SORT_MODE`, `KEY_DOWNLOADS_SORT_ASCENDING`, `KEY_DOWNLOADS_CUSTOM_ORDER`).
-3. **Custom Reordering & Sync (`DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
-   - Wired `DownloadsPresenter` to persist sort settings and handle `DownloadsUiEvent.MoveItem(itemId, delta)`.
-   - Added `CustomReorderButtons` (`ArrowDropUp` / `ArrowDropDown`) to both list items (`LibraryItemListItem.trailingContent`) and grid cards (`DownloadedBookGridCard`) in `DownloadsUi.kt` when `Custom` sort is active, with `animateItem()`.
+3. **500ms Long-Press Drag-and-Drop Reordering & Home Sync (`features/libraries/ui/build.gradle.kts`, `DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
+   - Wired `DownloadsPresenter` to persist sort settings, apply `ReorderItem(fromKey, toKey)` in memory during active drag, and commit `downloadsCustomOrder` once on `ReorderStopped`.
+   - Replaced Up/Down arrow buttons in `DownloadsUi.kt` with `sh.calvin.reorderable:3.1.0` (`rememberReorderableLazyListState` / `rememberReorderableLazyGridState`) across both list and grid views (`downloadReorderModifier` with `longPressTimeoutMillis = 500L`, haptic feedback, visual elevation/scale/border lift, `120.dp` edge auto-scroll gradient via `rememberScroller`, and a `"Hold and drag any book to reorder"` hint banner).
    - Injected `LibraryViewSettings` into `HomePresenter`, sorted `completedDownloadEntries` using the exact same `sortDownloadedItems` helper, and added `shelf.id == "downloads"` to `ShelfListItem.shouldResetOnUpdate` so the Home Downloads shelf resets scroll to index 0 when reordered.
 
 ### Modified Files:
@@ -2953,6 +2953,7 @@ The Downloads screen only offered a limited set of ephemeral sorts (`RecentlyPla
 * `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
 * `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
 * `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
+* `features/libraries/ui/build.gradle.kts`
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt`
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt`
 * `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`

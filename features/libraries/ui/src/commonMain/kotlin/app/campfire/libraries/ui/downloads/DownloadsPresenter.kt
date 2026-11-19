@@ -6,7 +6,9 @@ package app.campfire.libraries.ui.downloads
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.ActionEvent
 import app.campfire.analytics.events.ContentSelected
@@ -57,6 +59,7 @@ class DownloadsPresenter(
     val customOrder by remember {
       libraryViewSettings.observeDownloadsCustomOrder()
     }.collectAsState()
+    var activeDragOrder by remember { mutableStateOf<List<String>?>(null) }
 
     val completedDownloads by remember {
       offlineDownloadManager.observeAll()
@@ -93,7 +96,14 @@ class DownloadsPresenter(
 
     val isLoading = completedDownloads == null || userMediaProgress == null
 
-    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending, customOrder) {
+    val items = remember(
+      completedDownloads,
+      userMediaProgress,
+      sortMode,
+      sortAscending,
+      customOrder,
+      activeDragOrder,
+    ) {
       val dlList = completedDownloads ?: return@remember emptyList()
       val progressMap = userMediaProgress ?: emptyMap()
 
@@ -105,11 +115,22 @@ class DownloadsPresenter(
         )
       }
 
+      val effectiveCustomOrder = if (sortMode == DownloadsSort.Custom && activeDragOrder != null) {
+        activeDragOrder!!
+      } else {
+        customOrder
+      }
+      val effectiveAscending = if (sortMode == DownloadsSort.Custom && activeDragOrder != null) {
+        true
+      } else {
+        sortAscending
+      }
+
       sortDownloadedItems(
         items = rawItems,
         sortMode = sortMode,
-        sortAscending = sortAscending,
-        customOrder = customOrder,
+        sortAscending = effectiveAscending,
+        customOrder = effectiveCustomOrder,
         libraryItem = { it.libraryItem },
         progress = { it.progress },
         downloadUpdateTimeMs = { it.download.updateTimeMs },
@@ -138,6 +159,7 @@ class DownloadsPresenter(
         }
 
         is DownloadsUiEvent.SelectSort -> {
+          activeDragOrder = null
           if (sortMode == event.sort) {
             libraryViewSettings.downloadsSortAscending = !sortAscending
           } else {
@@ -151,22 +173,27 @@ class DownloadsPresenter(
         }
 
         DownloadsUiEvent.ToggleSortDirection -> {
+          activeDragOrder = null
           libraryViewSettings.downloadsSortAscending = !sortAscending
         }
 
-        is DownloadsUiEvent.MoveItem -> {
-          val currentIds = items.map { it.libraryItem.id }.toMutableList()
-          val index = currentIds.indexOf(event.itemId)
-          if (index != -1) {
-            val targetIndex = (index + event.delta).coerceIn(0, currentIds.lastIndex)
-            if (targetIndex != index) {
-              val moved = currentIds.removeAt(index)
-              currentIds.add(targetIndex, moved)
-              libraryViewSettings.downloadsCustomOrder = currentIds
-              if (!sortAscending) {
-                libraryViewSettings.downloadsSortAscending = true
-              }
+        is DownloadsUiEvent.ReorderItem -> {
+          val working = (activeDragOrder ?: items.map { it.libraryItem.id }).toMutableList()
+          val fromIndex = working.indexOf(event.fromKey)
+          val toIndex = working.indexOf(event.toKey)
+          if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
+            working.add(toIndex, working.removeAt(fromIndex))
+            activeDragOrder = working
+          }
+        }
+
+        DownloadsUiEvent.ReorderStopped -> {
+          activeDragOrder?.let { finalOrder ->
+            libraryViewSettings.downloadsCustomOrder = finalOrder
+            if (!sortAscending) {
+              libraryViewSettings.downloadsSortAscending = true
             }
+            activeDragOrder = null
           }
         }
       }

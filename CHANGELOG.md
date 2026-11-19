@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.52-rc2] - 2026-11-20
+
+### Changed
+
+- **Downloads Custom Sort Drag-and-Drop Reordering**:
+  - Replaced Up/Down buttons in **Downloads -> Custom Order** with 500ms long-press drag-and-drop across both List and Grid views (`sh.calvin.reorderable`), featuring a subtle top hint banner, visual card lift + haptic feedback, variable-speed edge auto-scrolling when dragging near the top or bottom (faster near edges, slower/stopped near the center), and single-write persistence on release.
+
 ## [1.2.52-rc1] - 2026-11-20
 
 ### Added

@@ -11,14 +11,21 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..916c3398 100644
+index c0278c85..b8a7b050 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,562 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,569 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.52-rc2] - 2026-11-20
++
++### Changed
++
++- **Downloads Custom Sort Drag-and-Drop Reordering**:
++  - Replaced Up/Down buttons in **Downloads -> Custom Order** with 500ms long-press drag-and-drop across both List and Grid views (`sh.calvin.reorderable`), featuring a subtle top hint banner, visual card lift + haptic feedback, variable-speed edge auto-scrolling when dragging near the top or bottom (faster near edges, slower/stopped near the center), and single-write persistence on release.
++
 +## [1.2.52-rc1] - 2026-11-20
 +
 +### Added
@@ -580,10 +587,10 @@ index c0278c85..916c3398 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..a410b9f5
+index 00000000..3cf68c0c
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3027 @@
+@@ -0,0 +1,3028 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -3528,9 +3535,9 @@ index 00000000..a410b9f5
 +   - `RemainingTime` sorts by remaining duration `(durationInMillis * (1f - actualProgress))`; `Series` sorts by series name and numeric sequence; `Custom` honors user-arranged IDs and appends newly downloaded items at the end.
 +2. **Persisted Settings (`LibraryViewSettings.kt`, `LibraryViewSettingsImpl.kt`, `TestLibraryViewSettings.kt`)**:
 +   - Added `downloadsSortMode`, `downloadsSortAscending`, and `downloadsCustomOrder` (plus observers and account-seed keys `KEY_DOWNLOADS_SORT_MODE`, `KEY_DOWNLOADS_SORT_ASCENDING`, `KEY_DOWNLOADS_CUSTOM_ORDER`).
-+3. **Custom Reordering & Sync (`DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
-+   - Wired `DownloadsPresenter` to persist sort settings and handle `DownloadsUiEvent.MoveItem(itemId, delta)`.
-+   - Added `CustomReorderButtons` (`ArrowDropUp` / `ArrowDropDown`) to both list items (`LibraryItemListItem.trailingContent`) and grid cards (`DownloadedBookGridCard`) in `DownloadsUi.kt` when `Custom` sort is active, with `animateItem()`.
++3. **500ms Long-Press Drag-and-Drop Reordering & Home Sync (`features/libraries/ui/build.gradle.kts`, `DownloadsUiState.kt`, `DownloadsPresenter.kt`, `DownloadsUi.kt`, `HomePresenter.kt`, `ShelfListItem.kt`)**:
++   - Wired `DownloadsPresenter` to persist sort settings, apply `ReorderItem(fromKey, toKey)` in memory during active drag, and commit `downloadsCustomOrder` once on `ReorderStopped`.
++   - Replaced Up/Down arrow buttons in `DownloadsUi.kt` with `sh.calvin.reorderable:3.1.0` (`rememberReorderableLazyListState` / `rememberReorderableLazyGridState`) across both list and grid views (`downloadReorderModifier` with `longPressTimeoutMillis = 500L`, haptic feedback, visual elevation/scale/border lift, `120.dp` edge auto-scroll gradient via `rememberScroller`, and a `"Hold and drag any book to reorder"` hint banner).
 +   - Injected `LibraryViewSettings` into `HomePresenter`, sorted `completedDownloadEntries` using the exact same `sortDownloadedItems` helper, and added `shelf.id == "downloads"` to `ShelfListItem.shouldResetOnUpdate` so the Home Downloads shelf resets scroll to index 0 when reordered.
 +
 +### Modified Files:
@@ -3539,6 +3546,7 @@ index 00000000..a410b9f5
 +* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/LibraryViewSettings.kt`
 +* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/LibraryViewSettingsImpl.kt`
 +* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/TestLibraryViewSettings.kt`
++* `features/libraries/ui/build.gradle.kts`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt`
 +* `features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt`
@@ -12182,6 +12190,18 @@ index 48d78c7d..6e11870c 100644
              }
  
              pagedResponse.data.forEach { item ->
+diff --git a/features/libraries/ui/build.gradle.kts b/features/libraries/ui/build.gradle.kts
+index a36b8746..35a5a3b7 100644
+--- a/features/libraries/ui/build.gradle.kts
++++ b/features/libraries/ui/build.gradle.kts
+@@ -27,6 +27,7 @@ kotlin {
+ 
+         implementation(libs.circuitx.overlays)
+         implementation(libs.compose.rich.text)
++        implementation(libs.reorderable)
+         implementation(libs.swatchbuckler.compose)
+         implementation(libs.swatchbuckler.coil)
+         implementation(libs.androidx.paging.common)
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt
 index 5d18a44d..6c742944 100644
 --- a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/detail/LibraryItemUi.kt
@@ -12825,10 +12845,10 @@ index cd54b662..3935d0a0 100644
  ) : CircuitUiState
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
 new file mode 100644
-index 00000000..23def546
+index 00000000..e5401ea9
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenter.kt
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,202 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -12837,7 +12857,9 @@ index 00000000..23def546
 +import androidx.compose.runtime.Composable
 +import androidx.compose.runtime.collectAsState
 +import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
 +import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
 +import app.campfire.analytics.Analytics
 +import app.campfire.analytics.events.ActionEvent
 +import app.campfire.analytics.events.ContentSelected
@@ -12888,6 +12910,7 @@ index 00000000..23def546
 +    val customOrder by remember {
 +      libraryViewSettings.observeDownloadsCustomOrder()
 +    }.collectAsState()
++    var activeDragOrder by remember { mutableStateOf<List<String>?>(null) }
 +
 +    val completedDownloads by remember {
 +      offlineDownloadManager.observeAll()
@@ -12924,7 +12947,14 @@ index 00000000..23def546
 +
 +    val isLoading = completedDownloads == null || userMediaProgress == null
 +
-+    val items = remember(completedDownloads, userMediaProgress, sortMode, sortAscending, customOrder) {
++    val items = remember(
++      completedDownloads,
++      userMediaProgress,
++      sortMode,
++      sortAscending,
++      customOrder,
++      activeDragOrder,
++    ) {
 +      val dlList = completedDownloads ?: return@remember emptyList()
 +      val progressMap = userMediaProgress ?: emptyMap()
 +
@@ -12936,11 +12966,22 @@ index 00000000..23def546
 +        )
 +      }
 +
++      val effectiveCustomOrder = if (sortMode == DownloadsSort.Custom && activeDragOrder != null) {
++        activeDragOrder!!
++      } else {
++        customOrder
++      }
++      val effectiveAscending = if (sortMode == DownloadsSort.Custom && activeDragOrder != null) {
++        true
++      } else {
++        sortAscending
++      }
++
 +      sortDownloadedItems(
 +        items = rawItems,
 +        sortMode = sortMode,
-+        sortAscending = sortAscending,
-+        customOrder = customOrder,
++        sortAscending = effectiveAscending,
++        customOrder = effectiveCustomOrder,
 +        libraryItem = { it.libraryItem },
 +        progress = { it.progress },
 +        downloadUpdateTimeMs = { it.download.updateTimeMs },
@@ -12969,6 +13010,7 @@ index 00000000..23def546
 +        }
 +
 +        is DownloadsUiEvent.SelectSort -> {
++          activeDragOrder = null
 +          if (sortMode == event.sort) {
 +            libraryViewSettings.downloadsSortAscending = !sortAscending
 +          } else {
@@ -12982,22 +13024,27 @@ index 00000000..23def546
 +        }
 +
 +        DownloadsUiEvent.ToggleSortDirection -> {
++          activeDragOrder = null
 +          libraryViewSettings.downloadsSortAscending = !sortAscending
 +        }
 +
-+        is DownloadsUiEvent.MoveItem -> {
-+          val currentIds = items.map { it.libraryItem.id }.toMutableList()
-+          val index = currentIds.indexOf(event.itemId)
-+          if (index != -1) {
-+            val targetIndex = (index + event.delta).coerceIn(0, currentIds.lastIndex)
-+            if (targetIndex != index) {
-+              val moved = currentIds.removeAt(index)
-+              currentIds.add(targetIndex, moved)
-+              libraryViewSettings.downloadsCustomOrder = currentIds
-+              if (!sortAscending) {
-+                libraryViewSettings.downloadsSortAscending = true
-+              }
++        is DownloadsUiEvent.ReorderItem -> {
++          val working = (activeDragOrder ?: items.map { it.libraryItem.id }).toMutableList()
++          val fromIndex = working.indexOf(event.fromKey)
++          val toIndex = working.indexOf(event.toKey)
++          if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
++            working.add(toIndex, working.removeAt(fromIndex))
++            activeDragOrder = working
++          }
++        }
++
++        DownloadsUiEvent.ReorderStopped -> {
++          activeDragOrder?.let { finalOrder ->
++            libraryViewSettings.downloadsCustomOrder = finalOrder
++            if (!sortAscending) {
++              libraryViewSettings.downloadsSortAscending = true
 +            }
++            activeDragOrder = null
 +          }
 +        }
 +      }
@@ -13006,15 +13053,20 @@ index 00000000..23def546
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
 new file mode 100644
-index 00000000..ebe48e61
+index 00000000..bf3524d1
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUi.kt
-@@ -0,0 +1,396 @@
+@@ -0,0 +1,519 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
 +package app.campfire.libraries.ui.downloads
 +
++import androidx.compose.animation.core.animateDpAsState
++import androidx.compose.animation.core.animateFloatAsState
++import androidx.compose.foundation.basicMarquee
++import androidx.compose.foundation.border
++import androidx.compose.foundation.interaction.MutableInteractionSource
 +import androidx.compose.foundation.layout.Arrangement
 +import androidx.compose.foundation.layout.Box
 +import androidx.compose.foundation.layout.Column
@@ -13022,14 +13074,22 @@ index 00000000..ebe48e61
 +import androidx.compose.foundation.layout.Row
 +import androidx.compose.foundation.layout.Spacer
 +import androidx.compose.foundation.layout.add
++import androidx.compose.foundation.layout.aspectRatio
 +import androidx.compose.foundation.layout.exclude
 +import androidx.compose.foundation.layout.fillMaxSize
 +import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
 +import androidx.compose.foundation.layout.padding
 +import androidx.compose.foundation.layout.size
 +import androidx.compose.foundation.layout.width
 +import androidx.compose.foundation.lazy.LazyColumn
-+import androidx.compose.foundation.lazy.itemsIndexed
++import androidx.compose.foundation.lazy.grid.GridCells
++import androidx.compose.foundation.lazy.grid.GridItemSpan
++import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
++import androidx.compose.foundation.lazy.grid.items
++import androidx.compose.foundation.lazy.grid.rememberLazyGridState
++import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.rememberLazyListState
 +import androidx.compose.material3.CircularProgressIndicator
 +import androidx.compose.material3.DropdownMenu
 +import androidx.compose.material3.DropdownMenuItem
@@ -13038,41 +13098,43 @@ index 00000000..ebe48e61
 +import androidx.compose.material3.IconButton
 +import androidx.compose.material3.MaterialTheme
 +import androidx.compose.material3.Scaffold
++import androidx.compose.material3.Surface
 +import androidx.compose.material3.Text
 +import androidx.compose.runtime.Composable
++import androidx.compose.runtime.CompositionLocalProvider
 +import androidx.compose.runtime.getValue
 +import androidx.compose.runtime.mutableStateOf
 +import androidx.compose.runtime.remember
 +import androidx.compose.runtime.setValue
 +import androidx.compose.ui.Alignment
 +import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.graphicsLayer
++import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 +import androidx.compose.ui.input.nestedscroll.nestedScroll
++import androidx.compose.ui.layout.ContentScale
++import androidx.compose.ui.platform.LocalDensity
++import androidx.compose.ui.platform.LocalHapticFeedback
++import androidx.compose.ui.platform.LocalViewConfiguration
++import androidx.compose.ui.platform.ViewConfiguration
 +import androidx.compose.ui.text.font.FontWeight
 +import androidx.compose.ui.unit.dp
++import androidx.compose.ui.zIndex
 +import app.campfire.audioplayer.offline.asWidgetStatus
 +import app.campfire.common.compose.CampfireWindowInsets
 +import app.campfire.common.compose.OverlappedNavigationBarInsets
 +import app.campfire.common.compose.icons.CampfireIcons
-+import app.campfire.common.compose.icons.rounded.ArrowDropDown
-+import app.campfire.common.compose.icons.rounded.ArrowDropUp
++import app.campfire.common.compose.icons.rounded.DragIndicator
 +import app.campfire.common.compose.icons.rounded.SortAsc
 +import app.campfire.common.compose.icons.rounded.SortDesc
 +import app.campfire.common.compose.widgets.CampfireTopAppBar
-+import app.campfire.common.compose.widgets.EmptyState
-+import androidx.compose.foundation.basicMarquee
-+import androidx.compose.foundation.layout.aspectRatio
-+import androidx.compose.foundation.layout.height
-+import androidx.compose.foundation.lazy.grid.GridCells
-+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-+import androidx.compose.foundation.lazy.grid.itemsIndexed
-+import androidx.compose.ui.layout.ContentScale
 +import app.campfire.common.compose.widgets.ElevatedContentCard
++import app.campfire.common.compose.widgets.EmptyState
 +import app.campfire.common.compose.widgets.ItemImage
 +import app.campfire.common.compose.widgets.LibraryItemListItem
 +import app.campfire.common.compose.widgets.MediaFinishedIndicator
 +import app.campfire.common.compose.widgets.MediaProgressBar
-+import app.campfire.common.compose.widgets.OfflineStatusIndicator
 +import app.campfire.common.compose.widgets.NavigationBackButton
++import app.campfire.common.compose.widgets.OfflineStatusIndicator
 +import app.campfire.common.compose.widgets.adaptiveEnterAlwaysScrollBehavior
 +import app.campfire.common.screens.DownloadsScreen
 +import app.campfire.core.di.UserScope
@@ -13082,6 +13144,11 @@ index 00000000..ebe48e61
 +import app.campfire.ui.navigation.bar.CampfireNavigationBarWindowInsets
 +import com.slack.circuit.codegen.annotations.CircuitInject
 +import kotlin.math.roundToInt
++import sh.calvin.reorderable.ReorderableCollectionItemScope
++import sh.calvin.reorderable.ReorderableItem
++import sh.calvin.reorderable.rememberReorderableLazyGridState
++import sh.calvin.reorderable.rememberReorderableLazyListState
++import sh.calvin.reorderable.rememberScroller
 +
 +@OptIn(ExperimentalMaterial3Api::class)
 +@CircuitInject(DownloadsScreen::class, UserScope::class)
@@ -13187,76 +13254,161 @@ index 00000000..ebe48e61
 +      }
 +
 +      else -> {
-+        if (state.alternateView) {
-+          LazyVerticalGrid(
-+            columns = GridCells.Adaptive(minSize = 160.dp),
-+            modifier = Modifier.fillMaxSize(),
-+            contentPadding = PaddingValues(
-+              top = paddingValues.calculateTopPadding() + 8.dp,
-+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
-+              start = 16.dp,
-+              end = 16.dp,
-+            ),
-+            horizontalArrangement = Arrangement.spacedBy(12.dp),
-+            verticalArrangement = Arrangement.spacedBy(12.dp),
-+          ) {
-+            itemsIndexed(
-+              items = state.items,
-+              key = { _, item -> item.libraryItem.id },
-+            ) { index, item ->
-+              DownloadedBookGridCard(
-+                item = item,
-+                isCustomSort = state.sortMode == DownloadsSort.Custom,
-+                canMoveUp = index > 0,
-+                canMoveDown = index < state.items.lastIndex,
-+                onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
-+                onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
-+                onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
-+                modifier = Modifier.animateItem(),
-+              )
-+            }
++        val haptics = LocalHapticFeedback.current
++        val density = LocalDensity.current
++        val maxAutoScrollPxPerSecond = with(density) { 1800.dp.toPx() }
++        val baseViewConfig = LocalViewConfiguration.current
++        val reorderViewConfig = remember(baseViewConfig) {
++          object : ViewConfiguration by baseViewConfig {
++            override val longPressTimeoutMillis: Long = 500L
 +          }
-+        } else {
-+          LazyColumn(
-+            modifier = Modifier.fillMaxSize(),
-+            contentPadding = PaddingValues(
-+              top = paddingValues.calculateTopPadding() + 8.dp,
-+              bottom = paddingValues.calculateBottomPadding() + 16.dp,
-+              start = 16.dp,
-+              end = 16.dp,
-+            ),
-+            verticalArrangement = Arrangement.spacedBy(8.dp),
-+          ) {
-+            itemsIndexed(
-+              items = state.items,
-+              key = { _, item -> item.libraryItem.id },
-+            ) { index, item ->
-+              val subtitle = buildString {
-+                item.libraryItem.media.metadata.authorName?.let { append(it) }
-+                if (item.download.contentLength > 0) {
-+                  if (isNotEmpty()) append(" • ")
-+                  append(formatFileSize(item.download.contentLength))
++        }
++        val isCustomSort = state.sortMode == DownloadsSort.Custom
++        val showHint = isCustomSort && state.items.size > 1
++
++        CompositionLocalProvider(LocalViewConfiguration provides reorderViewConfig) {
++          if (state.alternateView) {
++            val gridState = rememberLazyGridState()
++            val gridScroller = rememberScroller(
++              scrollableState = gridState,
++              pixelPerSecond = maxAutoScrollPxPerSecond,
++            )
++            val reorderGridState = rememberReorderableLazyGridState(
++              lazyGridState = gridState,
++              scrollThresholdPadding = paddingValues,
++              scrollThreshold = 120.dp,
++              scroller = gridScroller,
++            ) { from, to ->
++              val fromKey = from.key as? String ?: return@rememberReorderableLazyGridState
++              val toKey = to.key as? String ?: return@rememberReorderableLazyGridState
++              haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
++              state.eventSink(DownloadsUiEvent.ReorderItem(fromKey, toKey))
++            }
++
++            LazyVerticalGrid(
++              state = gridState,
++              columns = GridCells.Adaptive(minSize = 160.dp),
++              modifier = Modifier.fillMaxSize(),
++              contentPadding = PaddingValues(
++                top = paddingValues.calculateTopPadding() + 8.dp,
++                bottom = paddingValues.calculateBottomPadding() + 16.dp,
++                start = 16.dp,
++                end = 16.dp,
++              ),
++              horizontalArrangement = Arrangement.spacedBy(12.dp),
++              verticalArrangement = Arrangement.spacedBy(12.dp),
++            ) {
++              if (showHint) {
++                item(
++                  key = "custom_reorder_hint",
++                  span = { GridItemSpan(maxLineSpan) },
++                  contentType = "hint",
++                ) {
++                  CustomReorderHintBanner()
 +                }
 +              }
 +
-+              LibraryItemListItem(
-+                libraryItem = item.libraryItem,
-+                onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
-+                mediaProgress = item.progress,
-+                offlineStatus = item.download.asWidgetStatus(),
-+                subtitleOverride = subtitle.ifEmpty { null },
-+                trailingContent = {
-+                  if (state.sortMode == DownloadsSort.Custom) {
-+                    CustomReorderButtons(
-+                      canMoveUp = index > 0,
-+                      canMoveDown = index < state.items.lastIndex,
-+                      onMoveUp = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, -1)) },
-+                      onMoveDown = { state.eventSink(DownloadsUiEvent.MoveItem(item.libraryItem.id, 1)) },
-+                    )
++              items(
++                items = state.items,
++                key = { it.libraryItem.id },
++              ) { item ->
++                ReorderableItem(reorderGridState, key = item.libraryItem.id) { isDragging ->
++                  val interactionSource = remember { MutableInteractionSource() }
++                  DownloadedBookGridCard(
++                    item = item,
++                    onBookClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
++                    modifier = Modifier
++                      .animateItem()
++                      .downloadReorderModifier(
++                        scope = this@ReorderableItem,
++                        enabled = isCustomSort,
++                        isDragging = isDragging,
++                        interactionSource = interactionSource,
++                        onDragStarted = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
++                        onDragStopped = {
++                          haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
++                          state.eventSink(DownloadsUiEvent.ReorderStopped)
++                        },
++                      ),
++                  )
++                }
++              }
++            }
++          } else {
++            val listState = rememberLazyListState()
++            val listScroller = rememberScroller(
++              scrollableState = listState,
++              pixelPerSecond = maxAutoScrollPxPerSecond,
++            )
++            val reorderListState = rememberReorderableLazyListState(
++              lazyListState = listState,
++              scrollThresholdPadding = paddingValues,
++              scrollThreshold = 120.dp,
++              scroller = listScroller,
++            ) { from, to ->
++              val fromKey = from.key as? String ?: return@rememberReorderableLazyListState
++              val toKey = to.key as? String ?: return@rememberReorderableLazyListState
++              haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
++              state.eventSink(DownloadsUiEvent.ReorderItem(fromKey, toKey))
++            }
++
++            LazyColumn(
++              state = listState,
++              modifier = Modifier.fillMaxSize(),
++              contentPadding = PaddingValues(
++                top = paddingValues.calculateTopPadding() + 8.dp,
++                bottom = paddingValues.calculateBottomPadding() + 16.dp,
++                start = 16.dp,
++                end = 16.dp,
++              ),
++              verticalArrangement = Arrangement.spacedBy(8.dp),
++            ) {
++              if (showHint) {
++                item(
++                  key = "custom_reorder_hint",
++                  contentType = "hint",
++                ) {
++                  CustomReorderHintBanner()
++                }
++              }
++
++              items(
++                items = state.items,
++                key = { it.libraryItem.id },
++              ) { item ->
++                val subtitle = buildString {
++                  item.libraryItem.media.metadata.authorName?.let { append(it) }
++                  if (item.download.contentLength > 0) {
++                    if (isNotEmpty()) append(" • ")
++                    append(formatFileSize(item.download.contentLength))
 +                  }
-+                },
-+                modifier = Modifier.animateItem(),
-+              )
++                }
++
++                ReorderableItem(reorderListState, key = item.libraryItem.id) { isDragging ->
++                  val interactionSource = remember { MutableInteractionSource() }
++                  LibraryItemListItem(
++                    libraryItem = item.libraryItem,
++                    onClick = { state.eventSink(DownloadsUiEvent.ItemClick(item.libraryItem)) },
++                    mediaProgress = item.progress,
++                    offlineStatus = item.download.asWidgetStatus(),
++                    subtitleOverride = subtitle.ifEmpty { null },
++                    interactionSource = interactionSource,
++                    modifier = Modifier
++                      .animateItem()
++                      .downloadReorderModifier(
++                        scope = this@ReorderableItem,
++                        enabled = isCustomSort,
++                        isDragging = isDragging,
++                        interactionSource = interactionSource,
++                        onDragStarted = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
++                        onDragStopped = {
++                          haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
++                          state.eventSink(DownloadsUiEvent.ReorderStopped)
++                        },
++                      ),
++                  )
++                }
++              }
 +            }
 +          }
 +        }
@@ -13279,35 +13431,68 @@ index 00000000..ebe48e61
 +}
 +
 +@Composable
-+private fun CustomReorderButtons(
-+  canMoveUp: Boolean,
-+  canMoveDown: Boolean,
-+  onMoveUp: () -> Unit,
-+  onMoveDown: () -> Unit,
-+  modifier: Modifier = Modifier,
-+) {
-+  Row(
-+    modifier = modifier,
-+    verticalAlignment = Alignment.CenterVertically,
-+  ) {
-+    IconButton(
-+      onClick = onMoveUp,
-+      enabled = canMoveUp,
-+      modifier = Modifier.size(36.dp),
-+    ) {
-+      Icon(
-+        imageVector = CampfireIcons.Rounded.ArrowDropUp,
-+        contentDescription = "Move up",
-+      )
++private fun Modifier.downloadReorderModifier(
++  scope: ReorderableCollectionItemScope,
++  enabled: Boolean,
++  isDragging: Boolean,
++  interactionSource: MutableInteractionSource,
++  onDragStarted: () -> Unit,
++  onDragStopped: () -> Unit,
++): Modifier {
++  val scale by animateFloatAsState(if (isDragging) 1.03f else 1f)
++  val elevation by animateDpAsState(if (isDragging) 12.dp else 0.dp)
++  val cardShape = MaterialTheme.shapes.large
++  val base = this
++    .zIndex(if (isDragging) 1f else 0f)
++    .graphicsLayer {
++      scaleX = scale
++      scaleY = scale
++      shape = cardShape
++      shadowElevation = elevation.toPx()
 +    }
-+    IconButton(
-+      onClick = onMoveDown,
-+      enabled = canMoveDown,
-+      modifier = Modifier.size(36.dp),
++    .then(
++      if (isDragging) {
++        Modifier.border(
++          width = 1.5.dp,
++          color = MaterialTheme.colorScheme.primary,
++          shape = cardShape,
++        )
++      } else {
++        Modifier
++      },
++    )
++  return with(scope) {
++    base.longPressDraggableHandle(
++      enabled = enabled,
++      interactionSource = interactionSource,
++      onDragStarted = { onDragStarted() },
++      onDragStopped = onDragStopped,
++    )
++  }
++}
++
++@Composable
++private fun CustomReorderHintBanner(modifier: Modifier = Modifier) {
++  Surface(
++    modifier = modifier.fillMaxWidth(),
++    shape = MaterialTheme.shapes.medium,
++    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
++    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++  ) {
++    Row(
++      modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
++      verticalAlignment = Alignment.CenterVertically,
++      horizontalArrangement = Arrangement.spacedBy(8.dp),
 +    ) {
 +      Icon(
-+        imageVector = CampfireIcons.Rounded.ArrowDropDown,
-+        contentDescription = "Move down",
++        imageVector = CampfireIcons.Rounded.DragIndicator,
++        contentDescription = null,
++        modifier = Modifier.size(18.dp),
++      )
++      Text(
++        text = "Hold and drag any book to reorder",
++        style = MaterialTheme.typography.bodySmall,
++        fontWeight = FontWeight.Medium,
 +      )
 +    }
 +  }
@@ -13316,11 +13501,6 @@ index 00000000..ebe48e61
 +@Composable
 +private fun DownloadedBookGridCard(
 +  item: DownloadedBookItem,
-+  isCustomSort: Boolean,
-+  canMoveUp: Boolean,
-+  canMoveDown: Boolean,
-+  onMoveUp: () -> Unit,
-+  onMoveDown: () -> Unit,
 +  onBookClick: (LibraryItem) -> Unit,
 +  modifier: Modifier = Modifier,
 +) {
@@ -13392,26 +13572,16 @@ index 00000000..ebe48e61
 +            color = MaterialTheme.colorScheme.onSurfaceVariant,
 +          )
 +        }
-+
-+        if (isCustomSort) {
-+          CustomReorderButtons(
-+            canMoveUp = canMoveUp,
-+            canMoveDown = canMoveDown,
-+            onMoveUp = onMoveUp,
-+            onMoveDown = onMoveDown,
-+            modifier = Modifier.align(Alignment.End),
-+          )
-+        }
 +      }
 +    }
 +  }
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
 new file mode 100644
-index 00000000..7fe3a90f
+index 00000000..b91f2569
 --- /dev/null
 +++ b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/downloads/DownloadsUiState.kt
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,39 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -13448,7 +13618,8 @@ index 00000000..7fe3a90f
 +  data class ItemClick(val item: LibraryItem) : DownloadsUiEvent
 +  data class SelectSort(val sort: DownloadsSort) : DownloadsUiEvent
 +  data object ToggleSortDirection : DownloadsUiEvent
-+  data class MoveItem(val itemId: String, val delta: Int) : DownloadsUiEvent
++  data class ReorderItem(val fromKey: String, val toKey: String) : DownloadsUiEvent
++  data object ReorderStopped : DownloadsUiEvent
 +}
 diff --git a/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt b/features/libraries/ui/src/commonMain/kotlin/app/campfire/libraries/ui/paged/LibraryPresenter.kt
 index 75eae713..300bd7a7 100644
@@ -13591,10 +13762,10 @@ index 48031e7a..6fa0df7d 100644
      }
 diff --git a/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
 new file mode 100644
-index 00000000..28912286
+index 00000000..db4fdc4e
 --- /dev/null
 +++ b/features/libraries/ui/src/commonTest/kotlin/app/campfire/libraries/ui/downloads/DownloadsPresenterTest.kt
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,139 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -13719,11 +13890,16 @@ index 00000000..28912286
 +      }
 +      assertThat(loaded.items.map { it.libraryItem.id }).isEqualTo(listOf("item_a", "item_b"))
 +
-+      loaded.eventSink(DownloadsUiEvent.MoveItem("item_b", -1))
++      loaded.eventSink(DownloadsUiEvent.ReorderItem("item_b", "item_a"))
 +      var reordered = awaitItem()
 +      while (reordered.items.map { it.libraryItem.id } != listOf("item_b", "item_a")) {
 +        reordered = awaitItem()
 +      }
++      // Settings are persisted only when drag completes
++      assertThat(libraryViewSettings.downloadsCustomOrder).isEqualTo(listOf("item_a", "item_b"))
++
++      reordered.eventSink(DownloadsUiEvent.ReorderStopped)
++      testScheduler.advanceUntilIdle()
 +      assertThat(libraryViewSettings.downloadsCustomOrder).isEqualTo(listOf("item_b", "item_a"))
 +      cancelAndIgnoreRemainingEvents()
 +    }
@@ -22699,7 +22875,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..e318e9d3 100644
+index f41126a7..d7b25bc1 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -22707,13 +22883,13 @@ index f41126a7..e318e9d3 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.52-rc1
++campfire.version=1.2.52-rc2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025201
++campfire.versionCode=1025202
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

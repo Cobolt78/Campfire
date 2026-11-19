@@ -34,5 +34,6 @@ sealed interface DownloadsUiEvent : CircuitUiEvent {
   data class ItemClick(val item: LibraryItem) : DownloadsUiEvent
   data class SelectSort(val sort: DownloadsSort) : DownloadsUiEvent
   data object ToggleSortDirection : DownloadsUiEvent
-  data class MoveItem(val itemId: String, val delta: Int) : DownloadsUiEvent
+  data class ReorderItem(val fromKey: String, val toKey: String) : DownloadsUiEvent
+  data object ReorderStopped : DownloadsUiEvent
 }

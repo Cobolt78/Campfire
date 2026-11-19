@@ -122,11 +122,16 @@ class DownloadsPresenterTest {
       }
       assertThat(loaded.items.map { it.libraryItem.id }).isEqualTo(listOf("item_a", "item_b"))
 
-      loaded.eventSink(DownloadsUiEvent.MoveItem("item_b", -1))
+      loaded.eventSink(DownloadsUiEvent.ReorderItem("item_b", "item_a"))
       var reordered = awaitItem()
       while (reordered.items.map { it.libraryItem.id } != listOf("item_b", "item_a")) {
         reordered = awaitItem()
       }
+      // Settings are persisted only when drag completes
+      assertThat(libraryViewSettings.downloadsCustomOrder).isEqualTo(listOf("item_a", "item_b"))
+
+      reordered.eventSink(DownloadsUiEvent.ReorderStopped)
+      testScheduler.advanceUntilIdle()
       assertThat(libraryViewSettings.downloadsCustomOrder).isEqualTo(listOf("item_b", "item_a"))
       cancelAndIgnoreRemainingEvents()
     }
