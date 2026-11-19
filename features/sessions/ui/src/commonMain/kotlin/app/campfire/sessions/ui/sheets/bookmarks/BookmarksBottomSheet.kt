@@ -3,6 +3,7 @@
 
 package app.campfire.sessions.ui.sheets.bookmarks
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,6 +72,7 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
 import app.campfire.common.compose.icons.rounded.BookmarkStar
 import app.campfire.common.compose.icons.rounded.Delete
 import app.campfire.common.compose.icons.rounded.DeleteForever
+import app.campfire.common.compose.icons.rounded.DeleteSweep
 import app.campfire.common.compose.icons.rounded.Forward5
 import app.campfire.common.compose.icons.rounded.Replay
 import app.campfire.common.compose.icons.rounded.Schedule
@@ -88,6 +91,7 @@ import app.campfire.core.model.LibraryItemId
 import app.campfire.sessions.ui.sheets.SessionSheetLayout
 import app.campfire.user.api.BookmarkRepository
 import campfire.features.sessions.ui.generated.resources.Res
+import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
 import campfire.features.sessions.ui.generated.resources.action_delete_bookmark
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_action_create
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_empty_message
@@ -95,6 +99,9 @@ import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_er
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_delete
+import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_action_confirm
+import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_message
+import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_title
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
@@ -136,19 +143,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId): 
         ScreenViewEvent("Bookmarks", ScreenType.Overlay)
       }
 
-      SessionSheetLayout(
-        title = { Text(stringResource(Res.string.bookmark_bottomsheet_title)) },
-      ) {
-        BookmarksBottomSheet(
-          libraryItemId = id,
-          onBookmarkClick = { bookmark ->
-            overlayNavigator.finish(BookmarkResult.Selected(bookmark))
-          },
-        )
-        Spacer(
-          Modifier.navigationBarsPadding(),
-        )
-      }
+      BookmarksBottomSheet(
+        libraryItemId = id,
+        onBookmarkClick = { bookmark ->
+          overlayNavigator.finish(BookmarkResult.Selected(bookmark))
+        },
+        modifier = Modifier.navigationBarsPadding(),
+      )
     },
   )
 }
@@ -173,86 +174,165 @@ private fun BookmarksBottomSheet(
       .catch<LoadState<out List<Bookmark>>> { emit(LoadState.Error) }
   }.collectAsState(LoadState.Loading)
 
-  var showCreateDialog by remember { mutableStateOf<Duration?>(null) }
+  val loadedBookmarks = (loadState as? LoadState.Loaded<List<Bookmark>>)?.data.orEmpty()
 
-  Box(
+  var showCreateDialog by remember { mutableStateOf<Duration?>(null) }
+  var showDeleteAllDialog by remember { mutableStateOf(false) }
+
+  SessionSheetLayout(
     modifier = modifier,
-  ) {
-    LazyColumn {
-      loadState
-        .onLoaded { bookmarks ->
-          items(bookmarks) { bookmark ->
-            BookmarkListItem(
-              bookmark = bookmark,
-              onClick = {
-                onBookmarkClick(bookmark)
-              },
-              onDeleteClick = {
-                scope.launch {
-                  Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
-                  component.bookmarkRepository
-                    .removeBookmark(bookmark.libraryItemId, bookmark.time)
-                }
-              },
-              modifier = Modifier.animateItem(),
+    title = { Text(stringResource(Res.string.bookmark_bottomsheet_title)) },
+    trailingContent = {
+      AnimatedVisibility(
+        visible = loadedBookmarks.isNotEmpty(),
+        modifier = Modifier.align(Alignment.CenterEnd),
+      ) {
+        val deleteAllLabel = stringResource(Res.string.action_delete_all_bookmarks)
+        IconButtonTooltip(text = deleteAllLabel) {
+          IconButton(
+            onClick = { showDeleteAllDialog = true },
+          ) {
+            Icon(
+              CampfireIcons.Rounded.DeleteSweep,
+              contentDescription = deleteAllLabel,
+              tint = MaterialTheme.colorScheme.error,
             )
           }
+        }
+      }
+    },
+  ) {
+    Box {
+      LazyColumn {
+        loadState
+          .onLoaded { bookmarks ->
+            items(
+              items = bookmarks,
+              key = { it.time.inWholeSeconds },
+            ) { bookmark ->
+              BookmarkListItem(
+                bookmark = bookmark,
+                onClick = {
+                  onBookmarkClick(bookmark)
+                },
+                onDeleteClick = {
+                  scope.launch {
+                    Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
+                    component.bookmarkRepository
+                      .removeBookmark(bookmark.libraryItemId, bookmark.time)
+                  }
+                },
+                modifier = Modifier.animateItem(),
+              )
+            }
 
-          if (bookmarks.isEmpty()) {
+            if (bookmarks.isEmpty()) {
+              item {
+                Box(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                    text = stringResource(Res.string.bookmark_bottomsheet_empty_message),
+                    style = MaterialTheme.typography.bodyLarge,
+                  )
+                }
+              }
+            }
+          }
+          .onLoading {
             item {
               Box(
                 modifier = Modifier
                   .fillMaxWidth()
-                  .height(100.dp),
+                  .height(300.dp),
+                contentAlignment = Alignment.Center,
+              ) {
+                CircularProgressIndicator()
+              }
+            }
+          }
+          .onError {
+            item {
+              Box(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 24.dp)
+                  .height(200.dp),
                 contentAlignment = Alignment.Center,
               ) {
                 Text(
-                  text = stringResource(Res.string.bookmark_bottomsheet_empty_message),
-                  style = MaterialTheme.typography.bodyLarge,
+                  text = stringResource(Res.string.bookmark_bottomsheet_error_message),
+                  textAlign = TextAlign.Center,
                 )
               }
             }
           }
-        }
-        .onLoading {
-          item {
-            Box(
-              modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp),
-              contentAlignment = Alignment.Center,
-            ) {
-              CircularProgressIndicator()
-            }
-          }
-        }
-        .onError {
-          item {
-            Box(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .height(200.dp),
-              contentAlignment = Alignment.Center,
-            ) {
-              Text(
-                text = stringResource(Res.string.bookmark_bottomsheet_error_message),
-                textAlign = TextAlign.Center,
-              )
-            }
-          }
-        }
 
-      item {
-        CreateNewListItem(
-          currentTime = currentTime,
-          onClick = {
-            showCreateDialog = currentTime
-          },
-          modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        item(key = "create_new_bookmark") {
+          CreateNewListItem(
+            currentTime = currentTime,
+            onClick = {
+              showCreateDialog = currentTime
+            },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+          )
+        }
       }
     }
+  }
+
+  if (showDeleteAllDialog && loadedBookmarks.isNotEmpty()) {
+    val bookmarksToDelete = loadedBookmarks.toList()
+    AlertDialog(
+      onDismissRequest = { showDeleteAllDialog = false },
+      icon = {
+        Icon(
+          CampfireIcons.Rounded.DeleteSweep,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.error,
+        )
+      },
+      title = {
+        Text(text = stringResource(Res.string.bookmark_delete_all_dialog_title))
+      },
+      text = {
+        Text(
+          text = stringResource(
+            Res.string.bookmark_delete_all_dialog_message,
+            bookmarksToDelete.size,
+          ),
+        )
+      },
+      dismissButton = {
+        TextButton(
+          onClick = { showDeleteAllDialog = false },
+        ) {
+          Text(stringResource(Res.string.bookmark_delete_action_cancel))
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            showDeleteAllDialog = false
+            bookmarksToDelete.forEach { bookmark ->
+              scope.launch {
+                Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
+                component.bookmarkRepository
+                  .removeBookmark(bookmark.libraryItemId, bookmark.time)
+              }
+            }
+          },
+          colors = ButtonDefaults.textButtonColors(
+            contentColor = MaterialTheme.colorScheme.error,
+          ),
+        ) {
+          Text(stringResource(Res.string.bookmark_delete_all_action_confirm))
+        }
+      },
+    )
   }
 
   if (showCreateDialog != null) {

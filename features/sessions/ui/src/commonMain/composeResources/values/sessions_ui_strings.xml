@@ -53,6 +53,10 @@
   <string name="bookmark_delete_title">Are you sure?</string>
   <string name="bookmark_delete_action_cancel">Cancel</string>
   <string name="bookmark_delete_action_delete">Delete</string>
+  <string name="action_delete_all_bookmarks">Delete all bookmarks</string>
+  <string name="bookmark_delete_all_dialog_title">Delete all bookmarks?</string>
+  <string name="bookmark_delete_all_dialog_message">Are you sure you want to delete all %1$d bookmarks for this book? This cannot be undone.</string>
+  <string name="bookmark_delete_all_action_confirm">Delete all</string>
 
   <string name="bookmark_new_dialog_title">New bookmark</string>
   <string name="bookmark_new_dialog_label_title">Title</string>

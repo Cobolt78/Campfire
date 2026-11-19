@@ -2775,3 +2775,24 @@ When Campfire remains alive in the background (with Battery Optimization set to 
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
+
+
+---
+
+## 91. Delete All Bookmarks Action & Confirmation Dialog
+
+### Summary
+Added a **Delete all bookmarks** header action (`CampfireIcons.Rounded.DeleteSweep`) with a confirmation `AlertDialog` inside `BookmarksBottomSheet.kt`, allowing listeners to delete all bookmarks for the current audiobook in one confirmed action.
+
+### Key Changes
+1. **String Resources (`sessions_ui_strings.xml`)**:
+   - Added `action_delete_all_bookmarks`, `bookmark_delete_all_dialog_title`, `bookmark_delete_all_dialog_message`, and `bookmark_delete_all_action_confirm`.
+2. **Header Action & Confirmation Dialog (`BookmarksBottomSheet.kt`)**:
+   - Moved `SessionSheetLayout` inside `BookmarksBottomSheet` (matching `ChapterListBottomSheet` and `PlaybackHistoryBottomSheet`) and wired `trailingContent` with an `AnimatedVisibility(visible = loadedBookmarks.isNotEmpty())` `DeleteSweep` icon button.
+   - Tapping the button opens an `AlertDialog` showing the bookmark count and confirming before removing each bookmark via `bookmarkRepository.removeBookmark(...)` alongside `Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))`.
+   - Added stable `key`s (`it.time.inWholeSeconds` for bookmark items and `"create_new_bookmark"` for the create button) inside the `LazyColumn`.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `CUSTOM_MODIFICATIONS.md`
