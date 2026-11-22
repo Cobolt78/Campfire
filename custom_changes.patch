@@ -11,14 +11,23 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..f5b57f20 100644
+index c0278c85..3af0f97f 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,562 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,571 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.53] - 2026-11-22
++
++### Fixed
++
++- **Bookmarks Disappearing on Scroll, Endless Loading & Store5 Deadlock**:
++  - Fixed the bookmark bottom sheet stalling indefinitely on the loading spinner and bookmarks disappearing when scrolling or re-opening after failed/offline bookmark syncs.
++  - Replaced Store5's `MutableStore` (`RealMutableStore`) in the bookmark repository with a standard read-only `Store` plus explicit `Mutex`-guarded optimistic local writes and pending-sync replay in `StoreBookmarkRepository`, eliminating `RealMutableStore.tryEagerlyResolveConflicts`'s self-deadlock on its non-reentrant `storeLock` and unsafe cancellation lock leaks.
++  - Updated `bookmarkFailedCreate` and `bookmarkFailedDelete` primary keys to `(userId, libraryItemId, timeInSeconds)` (migration `11`) so multiple unsynced bookmarks per book queue reliably, filtered replay strictly to queued unsynced entries, preserved pending offline creates and suppressed pending offline deletes across full user refreshes, normalized bookmark `createdAt` epoch seconds vs. milliseconds, and hardened `BookmarksBottomSheet` against cancellation/key-state loss.
++
 +## [1.2.52] - 2026-11-20
 +
 +### Added
@@ -580,10 +589,10 @@ index c0278c85..f5b57f20 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..c050cdb6
+index 00000000..97ef0134
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3028 @@
+@@ -0,0 +1,3073 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -689,6 +698,7 @@ index 00000000..c050cdb6
 +96. [Expanded Downloads Sort Options & Home Screen Downloads Shelf Sync (v1.2.52)](#96-expanded-downloads-sort-options--home-screen-downloads-shelf-sync-v1252)
 +97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 +98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
++99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
 +
 +---
 +
@@ -3609,6 +3619,50 @@ index 00000000..c050cdb6
 +* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt`
 +* `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt`
 +* `features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt`
++* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 99. Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)
++
++### Problem
++Users with many bookmarks or intermittent offline/server sync failures (notably reported on Android 12) experienced two severe bookmark regressions:
++1. Opening the bookmarks sheet after a failed create/delete stalled on the loading spinner indefinitely, even across app restarts, preventing access to existing bookmarks or saving new ones.
++2. Scrolling in the bookmarks sheet or closing the sheet mid-mutation caused bookmarks to disappear and reappear on subsequent opens.
++
++### Root Causes Identified
++1. **Store5 `5.0.0` `RealMutableStore` Self-Deadlock & Lock Leak**: `RealMutableStore.tryEagerlyResolveConflicts` acquires non-reentrant `storeLock` via `withThreadSafety`; on `UpdaterResult.Success`, it invokes `updateWriteRequestQueue` → `withWriteRequestQueueLock` → `withThreadSafety`, attempting to lock `storeLock` a second time and permanently self-deadlocking `bookmarkStore`. Additionally, `withThreadSafety` lacked a `try / finally` unlock guard on cancellation/exception.
++2. **Primary Key & Replay Over-Synchronization**: `bookmarkFailedCreate` and `bookmarkFailedDelete` used `PRIMARY KEY (userId, libraryItemId)`, silently overwriting multiple pending mutations on the same book and crashing/mis-replaying in the bookkeeper/updater.
++3. **Full User Refresh Data Clobbering**: `BookmarkSourceOfTruthFactory.writeAll` deleted offline creates not yet returned by `GET /api/me` and resurrected pending offline deletes from stale server snapshots.
++4. **Epoch Units & UI Sheet Cancellation**: `BookmarkMapping.kt` multiplied already-millisecond or mixed-unit `createdAt` timestamps without checking magnitude; `BookmarksBottomSheet.kt` lacked `libraryItemId` keying on `remember` and `NonCancellable` guards on `Delete All` / save callbacks.
++
++### Solution & Implementation
++1. **Replace `MutableStore` with Read-Only `Store` + Explicit `Mutex`-Guarded Sync (`BookmarkStore.kt`, `BookmarkFetcherFactory.kt`, `BookmarkSourceOfTruthFactory.kt`, `StoreBookmarkRepository.kt`)**:
++   - Converted `BookmarkStore.Factory` to build a standard read-only `Store<Operation.Item, List<Bookmark>>` (`StoreBuilder` + `MemoryPolicy` max size 0) and removed `BookmarkUpdaterFactory.kt` and `BookmarkBookkeeperFactory.kt`.
++   - Observed `db.bookmarksQueries.selectForItem` directly in `StoreBookmarkRepository.observeBookmarks` with coalesced background refreshes in `UserScope` (`coroutineScopeHolder`), so cached bookmarks render instantaneously and never disappear on network errors.
++   - Added write-ahead optimistic SQLite transactions (`bookmarks` + `bookmarkFailedCreate`/`bookmarkFailedDelete`) paired with `syncMutex.withLock` (`try/finally`-safe) replay of queued creates and deletes before `StoreReadRequest.fresh(...)`.
++2. **SQLDelight Migration 11 & Epoch Normalization (`bookmarkBookkeeping.sq`, `11.sqm`, `BookmarkMapping.kt`)**:
++   - Updated `bookmarkFailedCreate` and `bookmarkFailedDelete` primary keys to `(userId, libraryItemId, timeInSeconds)` with `INSERT OR REPLACE` and per-entry/per-user queries.
++   - Protected `pendingCreateKeys` from deletion and suppressed `pendingDeleteKeys` resurrection inside `BookmarkSourceOfTruthFactory.writeAll` transactions.
++   - Normalized `createdAt` seconds vs. milliseconds in `BookmarkMapping.kt` (`epochToInstant`).
++3. **UI Sheet Resilience & Regression Tests (`BookmarksBottomSheet.kt`, `FakeAudioBookShelfApi.kt`, `BookmarkMappingTest.kt`, `StoreBookmarkRepositoryTest.kt`)**:
++   - Keyed sheet state on `libraryItemId`, sequentialized `Delete All` deletion, and wrapped save/delete actions in `NonCancellable`.
++   - Added unit tests covering cached preservation on network failure, multiple offline creates & selective replay, `writeAll` conflict preservation, and observer cancellation without Store deadlock.
++
++### Modified Files:
++* `data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq`
++* `data/db/core/src/commonMain/sqldelight/migrations/11.sqm`
++* `data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt`
++* `data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/BookmarkMappingTest.kt`
++* `data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
++* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt`
++* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt`
++* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt`
++* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt`
++* `features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt`
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
@@ -7195,6 +7249,66 @@ index 8289f754..98c2f63e 100644
 +    )
 +  }
  }
+diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq
+index 1aa8f3aa..e2831cd5 100644
+--- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq
++++ b/data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq
+@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS bookmarkFailedCreate (
+   libraryItemId TEXT NOT NULL,
+   timeInSeconds INTEGER AS Int NOT NULL,
+   timestamp INTEGER NOT NULL,
+-  PRIMARY KEY (libraryItemId, userId),
++  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
+   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+ );
+ 
+@@ -14,18 +14,18 @@ CREATE TABLE IF NOT EXISTS bookmarkFailedDelete (
+   libraryItemId TEXT NOT NULL,
+   timeInSeconds INTEGER AS Int NOT NULL,
+   timestamp INTEGER NOT NULL,
+-  PRIMARY KEY (libraryItemId, userId),
++  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
+   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+ );
+ 
+ -- Queries
+ 
+ insertFailedCreate:
+-INSERT INTO bookmarkFailedCreate
++INSERT OR REPLACE INTO bookmarkFailedCreate
+ VALUES ?;
+ 
+ insertFailedDelete:
+-INSERT INTO bookmarkFailedDelete
++INSERT OR REPLACE INTO bookmarkFailedDelete
+ VALUES ?;
+ 
+ selectFailedCreate:
+@@ -38,6 +38,24 @@ SELECT timestamp FROM bookmarkFailedDelete
+ WHERE userId = ?
+   AND libraryItemId = ?;
+ 
++selectFailedCreateEntries:
++SELECT * FROM bookmarkFailedCreate
++WHERE userId = ?
++  AND libraryItemId = ?;
++
++selectFailedDeleteEntries:
++SELECT * FROM bookmarkFailedDelete
++WHERE userId = ?
++  AND libraryItemId = ?;
++
++selectAllFailedCreateEntriesForUser:
++SELECT * FROM bookmarkFailedCreate
++WHERE userId = ?;
++
++selectAllFailedDeleteEntriesForUser:
++SELECT * FROM bookmarkFailedDelete
++WHERE userId = ?;
++
+ deleteFailedCreate:
+ DELETE FROM bookmarkFailedCreate
+ WHERE userId = ?
 diff --git a/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq b/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq
 index 18d4be3e..68888c08 100644
 --- a/data/db/core/src/commonMain/sqldelight/app/campfire/data/libraryItems.sq
@@ -7358,6 +7472,46 @@ index 1100f5be..f50922f3 100644
  
  disable:
  UPDATE session
+diff --git a/data/db/core/src/commonMain/sqldelight/migrations/11.sqm b/data/db/core/src/commonMain/sqldelight/migrations/11.sqm
+new file mode 100644
+index 00000000..37dde2d8
+--- /dev/null
++++ b/data/db/core/src/commonMain/sqldelight/migrations/11.sqm
+@@ -0,0 +1,34 @@
++import kotlin.Int;
++
++-- Include timeInSeconds in the primary key of bookmarkFailedCreate and bookmarkFailedDelete
++-- so multiple pending offline bookmark mutations on the same book do not collide or
++-- trigger UNIQUE constraint failures.
++CREATE TABLE bookmarkFailedCreate_new (
++  userId TEXT NOT NULL,
++  libraryItemId TEXT NOT NULL,
++  timeInSeconds INTEGER AS Int NOT NULL,
++  timestamp INTEGER NOT NULL,
++  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
++  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
++);
++
++INSERT OR IGNORE INTO bookmarkFailedCreate_new
++SELECT userId, libraryItemId, timeInSeconds, timestamp FROM bookmarkFailedCreate;
++
++DROP TABLE bookmarkFailedCreate;
++ALTER TABLE bookmarkFailedCreate_new RENAME TO bookmarkFailedCreate;
++
++CREATE TABLE bookmarkFailedDelete_new (
++  userId TEXT NOT NULL,
++  libraryItemId TEXT NOT NULL,
++  timeInSeconds INTEGER AS Int NOT NULL,
++  timestamp INTEGER NOT NULL,
++  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
++  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
++);
++
++INSERT OR IGNORE INTO bookmarkFailedDelete_new
++SELECT userId, libraryItemId, timeInSeconds, timestamp FROM bookmarkFailedDelete;
++
++DROP TABLE bookmarkFailedDelete;
++ALTER TABLE bookmarkFailedDelete_new RENAME TO bookmarkFailedDelete;
 diff --git a/data/db/core/src/jvmMain/kotlin/app/campfire/db/DesktopSqliteDriver.kt b/data/db/core/src/jvmMain/kotlin/app/campfire/db/DesktopSqliteDriver.kt
 index 1323ff8f..2fc98160 100644
 --- a/data/db/core/src/jvmMain/kotlin/app/campfire/db/DesktopSqliteDriver.kt
@@ -7388,6 +7542,44 @@ index ff4e5237..ce3ae217 100644
 +    }
    }
  }
+diff --git a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt
+index 8569e519..81e961da 100644
+--- a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt
++++ b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt
+@@ -13,13 +13,23 @@ import kotlin.time.Instant
+ import kotlinx.datetime.TimeZone
+ import kotlinx.datetime.toLocalDateTime
+ 
++private const val EPOCH_MILLIS_THRESHOLD = 100_000_000_000L
++
++private fun epochToInstant(epoch: Long): Instant {
++  return if (epoch > EPOCH_MILLIS_THRESHOLD) {
++    Instant.fromEpochMilliseconds(epoch)
++  } else {
++    Instant.fromEpochSeconds(epoch)
++  }
++}
++
+ fun NetworkBookmark.asDbModel(userId: String): DbBookmark {
+   return DbBookmark(
+     userId = userId,
+     libraryItemId = libraryItemId,
+     title = title,
+     timeInSeconds = time.roundToInt(),
+-    createdAt = Instant.fromEpochSeconds(createdAt).toLocalDateTime(TimeZone.UTC),
++    createdAt = epochToInstant(createdAt).toLocalDateTime(TimeZone.UTC),
+   )
+ }
+ 
+@@ -29,7 +39,7 @@ fun NetworkBookmark.asDomainModel(userId: String): Bookmark {
+     libraryItemId = libraryItemId,
+     title = title,
+     time = time.seconds,
+-    createdAt = Instant.fromEpochSeconds(createdAt).toLocalDateTime(TimeZone.UTC),
++    createdAt = epochToInstant(createdAt).toLocalDateTime(TimeZone.UTC),
+   )
+ }
+ 
 diff --git a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/LibraryItemMapping.kt b/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/LibraryItemMapping.kt
 index 80caa240..efbfa999 100644
 --- a/data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/LibraryItemMapping.kt
@@ -7609,6 +7801,59 @@ index 10fb5011..2b0d0e29 100644
        afterCommit {
          bark("LibraryItemDao", LogPriority.VERBOSE) {
            "LibraryItem[${item.id.loggableId}] (book) inserted"
+diff --git a/data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/BookmarkMappingTest.kt b/data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/BookmarkMappingTest.kt
+new file mode 100644
+index 00000000..7d59fd3c
+--- /dev/null
++++ b/data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/BookmarkMappingTest.kt
+@@ -0,0 +1,47 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.data.mapping
++
++import app.campfire.db.LocalDateTimeAdapter
++import app.campfire.network.models.AudioBookmark
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import kotlin.test.Test
++
++class BookmarkMappingTest {
++
++  @Test
++  fun epochMillisecondsCreatedAtMapsToModernYear() {
++    val network = AudioBookmark(
++      libraryItemId = "li_inn_side_shop",
++      title = "Bookmark @ 12:34",
++      time = 754f,
++      createdAt = 1_668_120_083_771L,
++    )
++
++    val domain = network.asDomainModel("user-1")
++    val dbModel = network.asDbModel("user-1")
++
++    assertThat(domain.createdAt.year).isEqualTo(2022)
++    assertThat(dbModel.createdAt.year).isEqualTo(2022)
++    assertThat(LocalDateTimeAdapter.decode(LocalDateTimeAdapter.encode(dbModel.createdAt)))
++      .isEqualTo(dbModel.createdAt)
++  }
++
++  @Test
++  fun epochSecondsCreatedAtAlsoMapsToModernYear() {
++    val network = AudioBookmark(
++      libraryItemId = "li_inn_side_shop",
++      title = "Bookmark @ 12:34",
++      time = 754f,
++      createdAt = 1_668_120_083L,
++    )
++
++    val domain = network.asDomainModel("user-1")
++    val dbModel = network.asDbModel("user-1")
++
++    assertThat(domain.createdAt.year).isEqualTo(2022)
++    assertThat(dbModel.createdAt.year).isEqualTo(2022)
++  }
++}
 diff --git a/data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/PodcastMappingTest.kt b/data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/PodcastMappingTest.kt
 new file mode 100644
 index 00000000..3a1c03e9
@@ -8342,7 +8587,7 @@ index 00000000..ce36290b
 +  }
 +}
 diff --git a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
-index 8ab31610..a86dbb3d 100644
+index 8ab31610..67d9e89a 100644
 --- a/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
 +++ b/data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt
 @@ -20,6 +20,7 @@ import app.campfire.network.models.LibraryItemMinified
@@ -8403,6 +8648,48 @@ index 8ab31610..a86dbb3d 100644
    override suspend fun getAuthors(
      libraryId: String,
      sortMode: String?,
+@@ -337,19 +364,39 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
+     return deleteMediaProgressResult(mediaProgressId)
+   }
+ 
++  val createdBookmarks = mutableListOf<Triple<String, Int, String>>()
++  var createBookmarkResult: suspend (libraryItemId: String, timeInSeconds: Int, title: String) -> Result<AudioBookmark> =
++    { libraryItemId, timeInSeconds, title ->
++      Result.success(
++        AudioBookmark(
++          libraryItemId = libraryItemId,
++          title = title,
++          time = timeInSeconds.toFloat(),
++          createdAt = 1_700_000_000_000L,
++        ),
++      )
++    }
++
++  val removedBookmarks = mutableListOf<Pair<String, Int>>()
++  var removeBookmarkResult: suspend (libraryItemId: String, timeInSeconds: Int) -> Result<Unit> = { _, _ ->
++    Result.success(Unit)
++  }
++
+   override suspend fun createBookmark(
+     libraryItemId: String,
+     timeInSeconds: Int,
+     title: String,
+   ): Result<AudioBookmark> {
+-    TODO("Not yet implemented")
++    createdBookmarks += Triple(libraryItemId, timeInSeconds, title)
++    return createBookmarkResult(libraryItemId, timeInSeconds, title)
+   }
+ 
+   override suspend fun removeBookmark(
+     libraryItemId: String,
+     timeInSeconds: Int,
+   ): Result<Unit> {
+-    TODO("Not yet implemented")
++    removedBookmarks += libraryItemId to timeInSeconds
++    return removeBookmarkResult(libraryItemId, timeInSeconds)
+   }
+ 
+   override suspend fun syncLocalSessions(sessions: List<PlaybackSession>): Result<SyncLocalSessionsResult> {
 diff --git a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt b/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
 index 2798de1a..71b7cf31 100644
 --- a/features/auth/impl/src/commonMain/kotlin/app/campfire/auth/DefaultAuthRepository.kt
@@ -18698,7 +18985,7 @@ index ea2a2a3e..de11276a 100644
        },
      )
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-index d22e71e4..a56c1415 100644
+index d22e71e4..67e2b1c3 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 @@ -3,9 +3,10 @@
@@ -18762,7 +19049,21 @@ index d22e71e4..a56c1415 100644
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_label_title
-@@ -136,19 +150,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
+@@ -107,11 +121,13 @@ import dev.zacsweers.metro.ContributesTo
+ import kotlin.time.Duration
+ import kotlin.time.Duration.Companion.seconds
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.flow.catch
+ import kotlinx.coroutines.flow.filterNotNull
+ import kotlinx.coroutines.flow.flatMapLatest
+ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
+ import org.jetbrains.compose.resources.stringResource
+ 
+ sealed interface BookmarkResult {
+@@ -136,19 +152,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
          ScreenViewEvent("Bookmarks", ScreenType.Overlay)
        }
  
@@ -18789,7 +19090,14 @@ index d22e71e4..a56c1415 100644
      },
    )
  }
-@@ -173,103 +181,205 @@ private fun BookmarksBottomSheet(
+@@ -167,109 +177,215 @@ private fun BookmarksBottomSheet(
+     component.audioPlayerHolder.currentPlayer.filterNotNull().flatMapLatest { it.overallTime }
+   }.collectAsState(0.seconds)
+ 
+-  val loadState by remember {
++  val loadState by remember(libraryItemId) {
+     component.bookmarkRepository.observeBookmarks(libraryItemId)
+       .map { LoadState.Loaded(it) }
        .catch<LoadState<out List<Bookmark>>> { emit(LoadState.Error) }
    }.collectAsState(LoadState.Loading)
  
@@ -18995,11 +19303,13 @@ index d22e71e4..a56c1415 100644
            onClick = {
 -            showCreateDialog = currentTime
 +            showDeleteAllDialog = false
-+            bookmarksToDelete.forEach { bookmark ->
-+              scope.launch {
-+                Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
-+                component.bookmarkRepository
-+                  .removeBookmark(bookmark.libraryItemId, bookmark.time)
++            scope.launch {
++              withContext(NonCancellable) {
++                bookmarksToDelete.forEach { bookmark ->
++                  Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
++                  component.bookmarkRepository
++                    .removeBookmark(bookmark.libraryItemId, bookmark.time)
++                }
 +              }
 +            }
            },
@@ -19040,28 +19350,35 @@ index d22e71e4..a56c1415 100644
 +      onSave = { encodedTitle, timestamp ->
          scope.launch {
 -          Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
-+          if (existing != null) {
-+            if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
-+              component.bookmarkRepository
-+                .removeBookmark(libraryItemId, existing.time)
-+            }
-+          } else {
-+            Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
-+          }
-           component.bookmarkRepository
-             .createBookmark(
-               libraryItemId = libraryItemId,
-               timestamp = timestamp,
+-          component.bookmarkRepository
+-            .createBookmark(
+-              libraryItemId = libraryItemId,
+-              timestamp = timestamp,
 -              title = title,
-+              title = encodedTitle,
-             )
+-            )
++          withContext(NonCancellable) {
++            if (existing != null) {
++              if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
++                component.bookmarkRepository
++                  .removeBookmark(libraryItemId, existing.time)
++              }
++            } else {
++              Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
++            }
++            component.bookmarkRepository
++              .createBookmark(
++                libraryItemId = libraryItemId,
++                timestamp = timestamp,
++                title = encodedTitle,
++              )
++          }
          }
          showCreateDialog = null
 +        editingBookmark = null
        },
      )
    }
-@@ -279,6 +389,7 @@ private fun BookmarksBottomSheet(
+@@ -279,6 +395,7 @@ private fun BookmarksBottomSheet(
  private fun BookmarkListItem(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -19069,7 +19386,7 @@ index d22e71e4..a56c1415 100644
    onDeleteClick: () -> Unit,
    modifier: Modifier = Modifier,
  ) {
-@@ -289,6 +400,7 @@ private fun BookmarkListItem(
+@@ -289,6 +406,7 @@ private fun BookmarkListItem(
      BookmarkListItemContent(
        bookmark = bookmark,
        onClick = onClick,
@@ -19077,7 +19394,7 @@ index d22e71e4..a56c1415 100644
        onDeleteClick = {
          isConfirmDeleteVisible = true
        },
-@@ -340,11 +452,18 @@ private fun BookmarkListItem(
+@@ -340,11 +458,18 @@ private fun BookmarkListItem(
  private fun BookmarkListItemContent(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -19097,7 +19414,7 @@ index d22e71e4..a56c1415 100644
      colors = ListItemDefaults.colors(containerColor = Color.Transparent),
      leadingContent = {
        Icon(
-@@ -352,31 +471,59 @@ private fun BookmarkListItemContent(
+@@ -352,31 +477,59 @@ private fun BookmarkListItemContent(
          contentDescription = null,
        )
      },
@@ -19177,7 +19494,7 @@ index d22e71e4..a56c1415 100644
          }
        }
      },
-@@ -405,13 +552,19 @@ private fun CreateNewListItem(
+@@ -405,13 +558,19 @@ private fun CreateNewListItem(
  }
  
  @Composable
@@ -19200,7 +19517,7 @@ index d22e71e4..a56c1415 100644
  
    BasicAlertDialog(
      modifier = modifier,
-@@ -436,7 +589,13 @@ private fun CreateNewDialog(
+@@ -436,7 +595,13 @@ private fun CreateNewDialog(
            Spacer(Modifier.height(16.dp))
  
            Text(
@@ -19215,7 +19532,7 @@ index d22e71e4..a56c1415 100644
              style = MaterialTheme.typography.headlineSmall,
              color = MaterialTheme.colorScheme.onSurface,
            )
-@@ -457,7 +616,7 @@ private fun CreateNewDialog(
+@@ -457,7 +622,7 @@ private fun CreateNewDialog(
              IconButtonTooltip(text = rewindLabel) {
                IconButton(
                  onClick = {
@@ -19224,7 +19541,7 @@ index d22e71e4..a56c1415 100644
                  },
                  colors = IconButtonDefaults.iconButtonColors(
                    contentColor = MaterialTheme.colorScheme.primary,
-@@ -497,13 +656,27 @@ private fun CreateNewDialog(
+@@ -497,13 +662,27 @@ private fun CreateNewDialog(
  
            Spacer(Modifier.height(16.dp))
  
@@ -19253,7 +19570,7 @@ index d22e71e4..a56c1415 100644
              modifier = Modifier.fillMaxWidth(),
            )
  
-@@ -519,12 +692,26 @@ private fun CreateNewDialog(
+@@ -519,12 +698,26 @@ private fun CreateNewDialog(
                Text(stringResource(Res.string.bookmark_new_dialog_action_cancel))
              }
              TextButton(
@@ -19283,7 +19600,7 @@ index d22e71e4..a56c1415 100644
              }
            }
          }
-@@ -532,3 +719,28 @@ private fun CreateNewDialog(
+@@ -532,3 +725,28 @@ private fun CreateNewDialog(
      },
    )
  }
@@ -22773,6 +23090,1228 @@ index 29a81d46..23fd7d20 100644
 +    }
    }
  }
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt
+index 9ed946b4..b04599a4 100644
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt
++++ b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt
+@@ -3,75 +3,315 @@
+ 
+ package app.campfire.user.bookmarks
+ 
++import app.campfire.CampfireDatabase
++import app.campfire.core.coroutines.CoroutineScopeHolder
++import app.campfire.core.coroutines.DispatcherProvider
+ import app.campfire.core.di.UserScope
++import app.campfire.core.di.qualifier.ForScope
+ import app.campfire.core.model.Bookmark
+ import app.campfire.core.model.LibraryItemId
++import app.campfire.core.model.UserId
+ import app.campfire.core.session.UserSession
+ import app.campfire.core.session.userId
++import app.campfire.core.time.FatherTime
++import app.campfire.data.BookmarkFailedCreate
++import app.campfire.data.BookmarkFailedDelete
++import app.campfire.data.Bookmarks
++import app.campfire.data.mapping.asDomainModel
+ import app.campfire.data.mapping.store.debugLogging
++import app.campfire.network.AudioBookShelfApi
+ import app.campfire.user.api.BookmarkRepository
+ import app.campfire.user.bookmarks.store.BookmarkStore
+-import app.campfire.user.bookmarks.store.BookmarkStore.Operation.Mutation.Create
+-import app.campfire.user.bookmarks.store.BookmarkStore.Operation.Mutation.Delete
++import app.cash.sqldelight.async.coroutines.awaitAsList
++import app.cash.sqldelight.coroutines.asFlow
++import app.cash.sqldelight.coroutines.mapToList
+ import dev.zacsweers.metro.ContributesBinding
+ import dev.zacsweers.metro.Inject
+ import dev.zacsweers.metro.SingleIn
+ import kotlin.time.Duration
+-import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CoroutineStart
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.distinctUntilChanged
+ import kotlinx.coroutines.flow.emptyFlow
+-import kotlinx.coroutines.flow.filterNot
++import kotlinx.coroutines.flow.firstOrNull
+ import kotlinx.coroutines.flow.map
+-import org.mobilenativefoundation.store.store5.ExperimentalStoreApi
++import kotlinx.coroutines.flow.onStart
++import kotlinx.coroutines.job
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.sync.Mutex
++import kotlinx.coroutines.sync.withLock
++import kotlinx.coroutines.withContext
+ import org.mobilenativefoundation.store.store5.StoreReadRequest
+ import org.mobilenativefoundation.store.store5.StoreReadResponse
+-import org.mobilenativefoundation.store.store5.StoreWriteRequest
++import org.mobilenativefoundation.store.store5.StoreReadResponseOrigin
+ 
+-@OptIn(ExperimentalStoreApi::class)
+ @SingleIn(UserScope::class)
+ @ContributesBinding(UserScope::class)
+ @Inject
+ class StoreBookmarkRepository(
+   private val userSession: UserSession,
+   private val storeFactory: BookmarkStore.Factory,
++  private val api: AudioBookShelfApi,
++  private val db: CampfireDatabase,
++  private val dispatcherProvider: DispatcherProvider,
++  private val fatherTime: FatherTime,
++  @ForScope(UserScope::class) private val coroutineScopeHolder: CoroutineScopeHolder,
+ ) : BookmarkRepository {
+ 
+   private val bookmarkStore by lazy { storeFactory.create() }
++  private val refreshMutex = Mutex()
++  private val syncMutex = Mutex()
++  private val activeRefreshes = mutableMapOf<Pair<UserId, LibraryItemId>, Job>()
+ 
+-  @OptIn(ExperimentalCoroutinesApi::class)
+   override fun observeBookmarks(libraryItemId: LibraryItemId): Flow<List<Bookmark>> {
+     val userId = userSession.userId ?: return emptyFlow()
+-    val request = StoreReadRequest.cached(
+-      BookmarkStore.Operation.Item(userId, libraryItemId),
+-      refresh = true,
+-    )
+ 
+-    return bookmarkStore.stream<List<Bookmark>>(request)
++    // Observe SQLite directly so local cached bookmarks emit immediately, never disappear on
++    // background refresh errors, and never contend on Store5's broken MutableStore lock.
++    return db.bookmarksQueries.selectForItem(userId, libraryItemId)
++      .asFlow()
++      .mapToList(dispatcherProvider.databaseRead)
++      .map { rows ->
++        rows.map { it.asDomainModel() }.sortedBy(Bookmark::time)
++      }
++      .onStart {
++        triggerRefresh(userId, libraryItemId)
++      }
++      .distinctUntilChanged()
++  }
++
++  private suspend fun triggerRefresh(
++    userId: UserId,
++    libraryItemId: LibraryItemId,
++  ) = withContext(NonCancellable) {
++    val key = userId to libraryItemId
++    refreshMutex.withLock {
++      if (activeRefreshes[key]?.isActive == true) return@withContext
++
++      val job = coroutineScopeHolder.get().launch(start = CoroutineStart.LAZY) {
++        val self = coroutineContext.job
++        try {
++          syncItem(userId, libraryItemId)
++        } catch (e: CancellationException) {
++          throw e
++        } catch (e: Exception) {
++          BookmarkStore.ebark(throwable = e) { "Failed to refresh bookmarks for $libraryItemId" }
++        } finally {
++          withContext(NonCancellable) {
++            refreshMutex.withLock {
++              if (activeRefreshes[key] === self) {
++                activeRefreshes.remove(key)
++              }
++            }
++          }
++        }
++      }
++      activeRefreshes[key] = job
++      job.start()
++    }
++  }
++
++  private suspend fun syncItem(
++    userId: UserId,
++    libraryItemId: LibraryItemId,
++  ) = syncMutex.withLock {
++    val pendingResolved = syncPendingMutations(userId, libraryItemId)
++    if (!pendingResolved) {
++      BookmarkStore.dbark { "Pending bookmark sync incomplete for $libraryItemId; keeping queued mutations" }
++    }
++
++    val request = StoreReadRequest.fresh(BookmarkStore.Operation.Item(userId, libraryItemId))
++    bookmarkStore.stream(request)
+       .debugLogging(BookmarkStore.tag)
+-      .filterNot { it is StoreReadResponse.Loading || it is StoreReadResponse.NoNewData }
+-      .map { it.dataOrNull() ?: emptyList() }
+-      .map { it.sortedBy(Bookmark::time) }
++      .firstOrNull { response ->
++        response !is StoreReadResponse.Loading &&
++          (response.origin is StoreReadResponseOrigin.Fetcher || response is StoreReadResponse.Error)
++      }
++  }
++
++  private suspend fun syncPendingMutations(
++    userId: UserId,
++    libraryItemId: LibraryItemId,
++  ): Boolean {
++    val failedCreates = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarkBookkeepingQueries
++        .selectFailedCreateEntries(userId, libraryItemId)
++        .awaitAsList()
++    }
++    for (failedCreate in failedCreates) {
++      if (!syncCreateIfPending(userId, libraryItemId, failedCreate.timeInSeconds)) {
++        return false
++      }
++    }
++
++    val failedDeletes = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarkBookkeepingQueries
++        .selectFailedDeleteEntries(userId, libraryItemId)
++        .awaitAsList()
++    }
++    for (failedDelete in failedDeletes) {
++      if (!syncDeleteIfPending(userId, libraryItemId, failedDelete.timeInSeconds)) {
++        return false
++      }
++    }
++
++    return true
++  }
++
++  private suspend fun syncCreateIfPending(
++    userId: UserId,
++    libraryItemId: LibraryItemId,
++    timeInSeconds: Int,
++  ): Boolean {
++    val isPending = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarkBookkeepingQueries
++        .selectFailedCreateEntries(userId, libraryItemId)
++        .awaitAsList()
++        .any { it.timeInSeconds == timeInSeconds }
++    }
++    if (!isPending) return true
++
++    val localBookmark = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarksQueries
++        .selectForItem(userId, libraryItemId)
++        .awaitAsList()
++        .firstOrNull { it.timeInSeconds == timeInSeconds }
++    }
++    if (localBookmark == null) {
++      withContext(dispatcherProvider.databaseWrite + NonCancellable) {
++        db.bookmarkBookkeepingQueries.deleteFailedCreate(
++          userId = userId,
++          libraryItemId = libraryItemId,
++          timeInSeconds = timeInSeconds,
++        )
++      }
++      return true
++    }
++
++    val result = api.createBookmark(libraryItemId, timeInSeconds, localBookmark.title)
++    BookmarkStore.ibark { "create ($timeInSeconds) --> $result" }
++    if (result.isFailure) return false
++
++    val latestTitle = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarksQueries
++        .selectForItem(userId, libraryItemId)
++        .awaitAsList()
++        .firstOrNull { it.timeInSeconds == timeInSeconds }
++        ?.title
++    }
++    if (latestTitle == localBookmark.title) {
++      withContext(dispatcherProvider.databaseWrite + NonCancellable) {
++        db.bookmarkBookkeepingQueries.deleteFailedCreate(
++          userId = userId,
++          libraryItemId = libraryItemId,
++          timeInSeconds = timeInSeconds,
++        )
++      }
++    }
++    return true
++  }
++
++  private suspend fun syncDeleteIfPending(
++    userId: UserId,
++    libraryItemId: LibraryItemId,
++    timeInSeconds: Int,
++  ): Boolean {
++    val isPending = withContext(dispatcherProvider.databaseRead + NonCancellable) {
++      db.bookmarkBookkeepingQueries
++        .selectFailedDeleteEntries(userId, libraryItemId)
++        .awaitAsList()
++        .any { it.timeInSeconds == timeInSeconds }
++    }
++    if (!isPending) return true
++
++    val result = api.removeBookmark(libraryItemId, timeInSeconds)
++    BookmarkStore.ibark { "delete ($timeInSeconds) --> $result" }
++    if (result.isFailure) return false
++
++    withContext(dispatcherProvider.databaseWrite + NonCancellable) {
++      db.bookmarkBookkeepingQueries.deleteFailedDelete(
++        userId = userId,
++        libraryItemId = libraryItemId,
++        timeInSeconds = timeInSeconds,
++      )
++    }
++    return true
+   }
+ 
+   override suspend fun createBookmark(libraryItemId: LibraryItemId, timestamp: Duration, title: String) {
+     val currentUserId = userSession.userId ?: return
++    val timeInSeconds = timestamp.inWholeSeconds.toInt()
+ 
+-    val request = StoreWriteRequest.of<BookmarkStore.Operation, List<Bookmark>, BookmarkStore.Update>(
+-      key = Create(currentUserId, libraryItemId, timestamp.inWholeSeconds.toInt(), title),
+-      value = emptyList(),
+-    )
+-    val response = bookmarkStore.write(request)
+-    BookmarkStore.ibark { "create --> $response" }
++    // Persist the bookmark and pending-sync record atomically before network I/O so the UI updates
++    // immediately and concurrent GET /api/me refreshes cannot drop unsynced bookmarks.
++    withContext(dispatcherProvider.databaseWrite + NonCancellable) {
++      db.bookmarksQueries.transaction {
++        db.bookmarksQueries.insert(
++          Bookmarks(
++            userId = currentUserId,
++            libraryItemId = libraryItemId,
++            title = title,
++            timeInSeconds = timeInSeconds,
++            createdAt = fatherTime.now(),
++          ),
++        )
++        db.bookmarkBookkeepingQueries.deleteFailedDelete(
++          userId = currentUserId,
++          libraryItemId = libraryItemId,
++          timeInSeconds = timeInSeconds,
++        )
++        db.bookmarkBookkeepingQueries.insertFailedCreate(
++          BookmarkFailedCreate(
++            userId = currentUserId,
++            libraryItemId = libraryItemId,
++            timeInSeconds = timeInSeconds,
++            timestamp = fatherTime.nowInEpochMillis(),
++          ),
++        )
++      }
++    }
++
++    withContext(NonCancellable) {
++      syncMutex.withLock {
++        syncCreateIfPending(currentUserId, libraryItemId, timeInSeconds)
++      }
++    }
+   }
+ 
+   override suspend fun removeBookmark(libraryItemId: LibraryItemId, timestamp: Duration) {
+     val currentUserId = userSession.userId ?: return
++    val timeInSeconds = timestamp.inWholeSeconds.toInt()
++
++    withContext(dispatcherProvider.databaseWrite + NonCancellable) {
++      db.bookmarksQueries.transaction {
++        db.bookmarksQueries.delete(
++          userId = currentUserId,
++          libraryItemId = libraryItemId,
++          timeInSeconds = timeInSeconds,
++        )
++        db.bookmarkBookkeepingQueries.deleteFailedCreate(
++          userId = currentUserId,
++          libraryItemId = libraryItemId,
++          timeInSeconds = timeInSeconds,
++        )
++        db.bookmarkBookkeepingQueries.insertFailedDelete(
++          BookmarkFailedDelete(
++            userId = currentUserId,
++            libraryItemId = libraryItemId,
++            timeInSeconds = timeInSeconds,
++            timestamp = fatherTime.nowInEpochMillis(),
++          ),
++        )
++      }
++    }
+ 
+-    val request = StoreWriteRequest.of<BookmarkStore.Operation, List<Bookmark>, BookmarkStore.Update>(
+-      key = Delete(currentUserId, libraryItemId, timestamp.inWholeSeconds.toInt()),
+-      value = emptyList(),
+-    )
+-    val response = bookmarkStore.write(request)
+-    BookmarkStore.ibark { "delete --> $response" }
++    withContext(NonCancellable) {
++      syncMutex.withLock {
++        syncDeleteIfPending(currentUserId, libraryItemId, timeInSeconds)
++      }
++    }
+   }
+ }
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkBookkeeperFactory.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkBookkeeperFactory.kt
+deleted file mode 100644
+index 0eca0deb..00000000
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkBookkeeperFactory.kt
++++ /dev/null
+@@ -1,105 +0,0 @@
+-// Copyright 2026, Drew Heavner and the Campfire project contributors
+-// SPDX-License-Identifier: GPL-3.0-only
+-
+-package app.campfire.user.bookmarks.store
+-
+-import app.campfire.CampfireDatabase
+-import app.campfire.account.api.UserSessionManager
+-import app.campfire.core.coroutines.DispatcherProvider
+-import app.campfire.core.model.LibraryItemId
+-import app.campfire.core.model.UserId
+-import app.campfire.core.session.userId
+-import app.campfire.data.BookmarkFailedCreate
+-import app.campfire.data.BookmarkFailedDelete
+-import app.cash.sqldelight.async.coroutines.awaitAsList
+-import kotlinx.coroutines.withContext
+-import org.mobilenativefoundation.store.store5.Bookkeeper
+-
+-class BookmarkBookkeeperFactory(
+-  private val userSessionManager: UserSessionManager,
+-  private val db: CampfireDatabase,
+-  private val dispatcherProvider: DispatcherProvider,
+-) {
+-
+-  fun create(): Bookkeeper<BookmarkStore.Operation> {
+-    return Bookkeeper.by(
+-      getLastFailedSync = { operation ->
+-        require(operation is BookmarkStore.Operation.Item)
+-        getLastFailedSync(operation.userId, operation.libraryItemId)
+-      },
+-      setLastFailedSync = { operation, timestamp ->
+-        require(operation is BookmarkStore.Operation.Mutation)
+-        setLastFailedSync(operation, timestamp)
+-        true
+-      },
+-      clear = { operation ->
+-        clear(operation)
+-        true
+-      },
+-      clearAll = {
+-        val currentUserId = userSessionManager.current.userId ?: return@by false
+-        withContext(dispatcherProvider.databaseWrite) {
+-          db.bookmarkBookkeepingQueries.deleteAll(currentUserId)
+-        }
+-        true
+-      },
+-    )
+-  }
+-
+-  private suspend fun getLastFailedSync(userId: UserId, libraryItemId: LibraryItemId): Long? {
+-    val failedCreates = db.bookmarkBookkeepingQueries.selectFailedCreate(userId, libraryItemId).awaitAsList()
+-    val failedDeletes = db.bookmarkBookkeepingQueries.selectFailedDelete(userId, libraryItemId).awaitAsList()
+-
+-    return failedCreates.firstOrNull() ?: failedDeletes.firstOrNull()
+-  }
+-
+-  private suspend fun setLastFailedSync(
+-    operation: BookmarkStore.Operation.Mutation,
+-    timestamp: Long,
+-  ) = withContext(dispatcherProvider.databaseWrite) {
+-    when (operation) {
+-      is BookmarkStore.Operation.Mutation.Create -> db.bookmarkBookkeepingQueries.insertFailedCreate(
+-        BookmarkFailedCreate(
+-          operation.userId,
+-          operation.libraryItemId,
+-          operation.timeInSeconds,
+-          timestamp,
+-        ),
+-      )
+-
+-      is BookmarkStore.Operation.Mutation.Delete -> db.bookmarkBookkeepingQueries.insertFailedDelete(
+-        BookmarkFailedDelete(
+-          operation.userId,
+-          operation.libraryItemId,
+-          operation.timeInSeconds,
+-          timestamp,
+-        ),
+-      )
+-    }
+-  }
+-
+-  private suspend fun clear(operation: BookmarkStore.Operation) = withContext(dispatcherProvider.databaseWrite) {
+-    when (operation) {
+-      is BookmarkStore.Operation.Item -> {
+-        db.bookmarkBookkeepingQueries.transaction {
+-          db.bookmarkBookkeepingQueries.deleteAllFailedCreate(operation.userId, operation.libraryItemId)
+-          db.bookmarkBookkeepingQueries.deleteAllFailedDelete(operation.userId, operation.libraryItemId)
+-        }
+-      }
+-      is BookmarkStore.Operation.Mutation.Create -> {
+-        db.bookmarkBookkeepingQueries.deleteFailedCreate(
+-          userId = operation.userId,
+-          libraryItemId = operation.libraryItemId,
+-          timeInSeconds = operation.timeInSeconds,
+-        )
+-      }
+-      is BookmarkStore.Operation.Mutation.Delete -> {
+-        db.bookmarkBookkeepingQueries.deleteFailedDelete(
+-          userId = operation.userId,
+-          libraryItemId = operation.libraryItemId,
+-          timeInSeconds = operation.timeInSeconds,
+-        )
+-      }
+-    }
+-  }
+-}
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt
+index fa76465c..1e4de525 100644
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt
++++ b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt
+@@ -3,19 +3,21 @@
+ 
+ package app.campfire.user.bookmarks.store
+ 
++import app.campfire.core.model.Bookmark
++import app.campfire.data.mapping.asDomainModel
+ import app.campfire.data.mapping.asFetcherResult
+ import app.campfire.network.AudioBookShelfApi
+-import app.campfire.network.models.User
+ import org.mobilenativefoundation.store.store5.Fetcher
+ 
+ class BookmarkFetcherFactory(
+   private val api: AudioBookShelfApi,
+ ) {
+ 
+-  fun create(): Fetcher<BookmarkStore.Operation, User> {
+-    return Fetcher.ofResult { operation ->
+-      require(operation is BookmarkStore.Operation.Item)
+-      api.getCurrentUser().asFetcherResult()
++  fun create(): Fetcher<BookmarkStore.Operation.Item, List<Bookmark>> {
++    return Fetcher.ofResult {
++      api.getCurrentUser()
++        .map { user -> user.bookmarks.map { it.asDomainModel(user.id) } }
++        .asFetcherResult()
+     }
+   }
+ }
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt
+index 2af1a877..1bff99a5 100644
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt
++++ b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt
+@@ -10,13 +10,12 @@ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.UserId
+ import app.campfire.core.model.isContentDifferent
+ import app.campfire.core.model.isSame
+-import app.campfire.core.time.FatherTime
+-import app.campfire.data.Bookmarks
+ import app.campfire.data.mapping.asDbModel
+ import app.campfire.data.mapping.asDomainModel
+ import app.cash.sqldelight.async.coroutines.awaitAsList
+ import app.cash.sqldelight.coroutines.asFlow
+ import app.cash.sqldelight.coroutines.mapToList
++import kotlinx.coroutines.NonCancellable
+ import kotlinx.coroutines.flow.Flow
+ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.withContext
+@@ -25,18 +24,28 @@ import org.mobilenativefoundation.store.store5.SourceOfTruth
+ class BookmarkSourceOfTruthFactory(
+   private val db: CampfireDatabase,
+   private val dispatcherProvider: DispatcherProvider,
+-  private val fatherTime: FatherTime,
+ ) {
+ 
+-  fun create(): SourceOfTruth<BookmarkStore.Operation, List<Bookmark>, List<Bookmark>> {
++  fun create(): SourceOfTruth<BookmarkStore.Operation.Item, List<Bookmark>, List<Bookmark>> {
+     return SourceOfTruth.of(
+       reader = { operation ->
+-        require(operation is BookmarkStore.Operation.Item)
+         BookmarkStore.dbark { "handleRead($operation)" }
+         observeForItem(operation.userId, operation.libraryItemId)
+       },
+-      writer = { operation, bookmarks -> handleWrite(operation, bookmarks) },
+-      delete = { operation -> handleDelete(operation) },
++      writer = { operation, bookmarks ->
++        BookmarkStore.dbark { "handleWrite($operation, $bookmarks)" }
++        writeAll(
++          userId = operation.userId,
++          bookmarks = bookmarks,
++        )
++      },
++      delete = { operation ->
++        BookmarkStore.dbark { "handleDelete($operation)" }
++        deleteAll(
++          userId = operation.userId,
++          libraryItemId = operation.libraryItemId,
++        )
++      },
+     )
+   }
+ 
+@@ -49,63 +58,34 @@ class BookmarkSourceOfTruthFactory(
+       }
+   }
+ 
+-  private suspend fun handleWrite(
+-    operation: BookmarkStore.Operation,
+-    bookmarks: List<Bookmark> = emptyList(),
+-  ) {
+-    BookmarkStore.dbark { "handleWrite($operation, $bookmarks)" }
+-    when (operation) {
+-      is BookmarkStore.Operation.Item -> writeAll(
+-        userId = operation.userId,
+-        bookmarks = bookmarks,
+-      )
+-
+-      is BookmarkStore.Operation.Mutation.Create -> createOne(
+-        userId = operation.userId,
+-        libraryItemId = operation.libraryItemId,
+-        timeInSeconds = operation.timeInSeconds,
+-        title = operation.title,
+-      )
+-
+-      else -> handleDelete(operation)
+-    }
+-  }
+-
+-  private suspend fun handleDelete(
+-    operation: BookmarkStore.Operation,
+-  ) {
+-    BookmarkStore.dbark { "handleDelete($operation)" }
+-    when (operation) {
+-      is BookmarkStore.Operation.Item -> deleteAll(
+-        userId = operation.userId,
+-        libraryItemId = operation.libraryItemId,
+-      )
+-
+-      is BookmarkStore.Operation.Mutation.Create -> deleteOne(
+-        userId = operation.userId,
+-        libraryItemId = operation.libraryItemId,
+-        timeInSeconds = operation.timeInSeconds,
+-      )
+-
+-      is BookmarkStore.Operation.Mutation.Delete -> deleteOne(
+-        userId = operation.userId,
+-        libraryItemId = operation.libraryItemId,
+-        timeInSeconds = operation.timeInSeconds,
+-      )
+-    }
+-  }
+-
+   private suspend fun writeAll(
+     userId: UserId,
+     bookmarks: List<Bookmark>,
+-  ) = withContext(dispatcherProvider.databaseWrite) {
++  ) = withContext(dispatcherProvider.databaseWrite + NonCancellable) {
+     db.bookmarksQueries.transaction {
+       val currentItems = db.bookmarksQueries.selectForUser(userId)
+         .awaitAsList()
+         .map { it.asDomainModel() }
+         .toMutableList()
+ 
++      val pendingCreateKeys = db.bookmarkBookkeepingQueries
++        .selectAllFailedCreateEntriesForUser(userId)
++        .awaitAsList()
++        .map { it.libraryItemId to it.timeInSeconds }
++        .toSet()
++
++      val pendingDeleteKeys = db.bookmarkBookkeepingQueries
++        .selectAllFailedDeleteEntriesForUser(userId)
++        .awaitAsList()
++        .map { it.libraryItemId to it.timeInSeconds }
++        .toSet()
++
+       bookmarks.forEach { bookmark ->
++        val bookmarkKey = bookmark.libraryItemId to bookmark.time.inWholeSeconds.toInt()
++        if (bookmarkKey in pendingDeleteKeys) {
++          return@forEach
++        }
++
+         val existing = currentItems.find { it isSame bookmark }
+           ?.also { currentItems.remove(it) }
+ 
+@@ -119,8 +99,14 @@ class BookmarkSourceOfTruthFactory(
+         }
+       }
+ 
+-      // Remove local items that are no longer on the server
++      // Remove local items that are no longer on the server, preserving offline creates
++      // that have not yet synced to the server.
+       currentItems.forEach { deadBookmark ->
++        val deadKey = deadBookmark.libraryItemId to deadBookmark.time.inWholeSeconds.toInt()
++        if (deadKey in pendingCreateKeys) {
++          return@forEach
++        }
++
+         db.bookmarksQueries.delete(
+           userId = deadBookmark.userId,
+           libraryItemId = deadBookmark.libraryItemId,
+@@ -130,31 +116,6 @@ class BookmarkSourceOfTruthFactory(
+     }
+   }
+ 
+-  private suspend fun createOne(
+-    userId: UserId,
+-    libraryItemId: LibraryItemId,
+-    timeInSeconds: Int,
+-    title: String,
+-  ) = withContext(dispatcherProvider.databaseWrite) {
+-    db.bookmarksQueries.insert(
+-      Bookmarks(
+-        userId = userId,
+-        libraryItemId = libraryItemId,
+-        title = title,
+-        timeInSeconds = timeInSeconds,
+-        createdAt = fatherTime.now(),
+-      ),
+-    )
+-  }
+-
+-  private suspend fun deleteOne(
+-    userId: UserId,
+-    libraryItemId: LibraryItemId,
+-    timeInSeconds: Int,
+-  ) = withContext(dispatcherProvider.databaseWrite) {
+-    db.bookmarksQueries.delete(userId, libraryItemId, timeInSeconds)
+-  }
+-
+   private suspend fun deleteAll(
+     userId: UserId,
+     libraryItemId: LibraryItemId,
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt
+index f5332391..a0f95632 100644
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt
++++ b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt
+@@ -4,21 +4,16 @@
+ package app.campfire.user.bookmarks.store
+ 
+ import app.campfire.CampfireDatabase
+-import app.campfire.account.api.UserSessionManager
+ import app.campfire.core.coroutines.DispatcherProvider
+ import app.campfire.core.logging.Cork
+ import app.campfire.core.model.Bookmark
+ import app.campfire.core.model.LibraryItemId
+ import app.campfire.core.model.UserId
+-import app.campfire.core.time.FatherTime
+-import app.campfire.data.mapping.asDomainModel
+ import app.campfire.network.AudioBookShelfApi
+-import app.campfire.network.models.User
+ import dev.zacsweers.metro.Inject
+-import org.mobilenativefoundation.store.store5.Converter
+-import org.mobilenativefoundation.store.store5.ExperimentalStoreApi
+-import org.mobilenativefoundation.store.store5.MutableStore
+-import org.mobilenativefoundation.store.store5.MutableStoreBuilder
++import org.mobilenativefoundation.store.store5.MemoryPolicy
++import org.mobilenativefoundation.store.store5.Store
++import org.mobilenativefoundation.store.store5.StoreBuilder
+ 
+ object BookmarkStore : Cork {
+ 
+@@ -27,33 +22,24 @@ object BookmarkStore : Cork {
+ 
+   @Inject
+   class Factory(
+-    userSessionManager: UserSessionManager,
+     api: AudioBookShelfApi,
+     db: CampfireDatabase,
+     dispatcherProvider: DispatcherProvider,
+-    fatherTime: FatherTime,
+   ) {
+     private val fetcherFactory = BookmarkFetcherFactory(api)
+-    private val sourceOfTruthFactory = BookmarkSourceOfTruthFactory(db, dispatcherProvider, fatherTime)
+-    private val updaterFactory = BookmarkUpdaterFactory(api)
+-    private val bookkeeperFactory = BookmarkBookkeeperFactory(userSessionManager, db, dispatcherProvider)
+-
+-    @OptIn(ExperimentalStoreApi::class)
+-    fun create(): MutableStore<Operation, List<Bookmark>> {
+-      return MutableStoreBuilder.from(
+-        fetcher = fetcherFactory.create(),
+-        sourceOfTruth = sourceOfTruthFactory.create(),
+-        converter = createConverter(),
+-      ).build(
+-        updater = updaterFactory.create(),
+-        bookkeeper = bookkeeperFactory.create(),
+-      )
+-    }
+-
+-    private fun createConverter(): Converter<User, List<Bookmark>, List<Bookmark>> {
+-      return Converter.Builder<User, List<Bookmark>, List<Bookmark>>()
+-        .fromNetworkToLocal { user -> user.bookmarks.map { it.asDomainModel(user.id) } }
+-        .fromOutputToLocal { it }
++    private val sourceOfTruthFactory = BookmarkSourceOfTruthFactory(db, dispatcherProvider)
++
++    fun create(): Store<Operation.Item, List<Bookmark>> {
++      return StoreBuilder
++        .from(
++          fetcher = fetcherFactory.create(),
++          sourceOfTruth = sourceOfTruthFactory.create(),
++        )
++        .cachePolicy(
++          MemoryPolicy.builder<Operation.Item, List<Bookmark>>()
++            .setMaxSize(0)
++            .build(),
++        )
+         .build()
+     }
+   }
+@@ -63,25 +49,5 @@ object BookmarkStore : Cork {
+       val userId: UserId,
+       val libraryItemId: LibraryItemId,
+     ) : Operation
+-
+-    sealed interface Mutation : Operation {
+-      data class Create(
+-        val userId: UserId,
+-        val libraryItemId: LibraryItemId,
+-        val timeInSeconds: Int,
+-        val title: String,
+-      ) : Mutation
+-
+-      data class Delete(
+-        val userId: UserId,
+-        val libraryItemId: LibraryItemId,
+-        val timeInSeconds: Int,
+-      ) : Mutation
+-    }
+-  }
+-
+-  sealed interface Update {
+-    data object Success : Update
+-    data object Failure : Update
+   }
+ }
+diff --git a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkUpdaterFactory.kt b/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkUpdaterFactory.kt
+deleted file mode 100644
+index ab51f42b..00000000
+--- a/features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkUpdaterFactory.kt
++++ /dev/null
+@@ -1,96 +0,0 @@
+-// Copyright 2026, Drew Heavner and the Campfire project contributors
+-// SPDX-License-Identifier: GPL-3.0-only
+-
+-package app.campfire.user.bookmarks.store
+-
+-import app.campfire.core.model.Bookmark
+-import app.campfire.core.model.LibraryItemId
+-import app.campfire.core.model.UserId
+-import app.campfire.data.mapping.asDomainModel
+-import app.campfire.network.AudioBookShelfApi
+-import org.mobilenativefoundation.store.store5.OnUpdaterCompletion
+-import org.mobilenativefoundation.store.store5.Updater
+-import org.mobilenativefoundation.store.store5.UpdaterResult
+-
+-class BookmarkUpdaterFactory(
+-  private val api: AudioBookShelfApi,
+-) {
+-
+-  fun create(): Updater<BookmarkStore.Operation, List<Bookmark>, BookmarkStore.Update> {
+-    return Updater.by(
+-      post = { operation, bookmarks ->
+-        BookmarkStore.dbark { "post --> $operation, $bookmarks" }
+-        handlePost(operation, bookmarks)
+-      },
+-      onCompletion = OnUpdaterCompletion(
+-        onSuccess = {
+-          BookmarkStore.ibark { "Updater completed successfully: $it" }
+-        },
+-        onFailure = {
+-          BookmarkStore.ebark { "Updater failed: $it" }
+-        },
+-      ),
+-    )
+-  }
+-
+-  private suspend fun handlePost(
+-    operation: BookmarkStore.Operation,
+-    bookmarks: List<Bookmark>,
+-  ): UpdaterResult = when (operation) {
+-    is BookmarkStore.Operation.Item -> {
+-      bookmarks.forEach {
+-        val result = createOne(
+-          it.userId,
+-          it.libraryItemId,
+-          it.time.inWholeSeconds.toInt(),
+-          it.title,
+-        )
+-
+-        BookmarkStore.vbark { "posting ~~> B(${it.time.inWholeSeconds}) = $result" }
+-
+-        if (result is UpdaterResult.Error) {
+-          return result
+-        }
+-      }
+-
+-      UpdaterResult.Success.Typed(Unit)
+-    }
+-
+-    is BookmarkStore.Operation.Mutation.Create -> createOne(
+-      operation.userId,
+-      operation.libraryItemId,
+-      operation.timeInSeconds,
+-      operation.title,
+-    )
+-
+-    is BookmarkStore.Operation.Mutation.Delete -> deleteOne(
+-      libraryItemId = operation.libraryItemId,
+-      timeInSeconds = operation.timeInSeconds,
+-    )
+-  }
+-
+-  private suspend fun createOne(
+-    userId: UserId,
+-    libraryItemId: LibraryItemId,
+-    timeInSeconds: Int,
+-    title: String,
+-  ): UpdaterResult {
+-    return api.createBookmark(libraryItemId, timeInSeconds, title).map { it.asDomainModel(userId) }.asUpdaterResult()
+-  }
+-
+-  private suspend fun deleteOne(
+-    libraryItemId: LibraryItemId,
+-    timeInSeconds: Int,
+-  ): UpdaterResult {
+-    return api.removeBookmark(libraryItemId, timeInSeconds).asUpdaterResult()
+-  }
+-
+-  private fun <T : Any> Result<T>.asUpdaterResult(): UpdaterResult {
+-    return when {
+-      isSuccess -> UpdaterResult.Success.Typed(getOrThrow())
+-      else -> exceptionOrNull()?.let {
+-        UpdaterResult.Error.Exception(it)
+-      } ?: UpdaterResult.Error.Message("Error occurred while updating")
+-    }
+-  }
+-}
+diff --git a/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt b/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt
+new file mode 100644
+index 00000000..9a59c3a7
+--- /dev/null
++++ b/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt
+@@ -0,0 +1,339 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.user
++
++import app.campfire.CampfireDatabase
++import app.campfire.core.coroutines.CoroutineScopeHolder
++import app.campfire.core.coroutines.DispatcherProvider
++import app.campfire.core.model.Bookmark
++import app.campfire.core.session.UserSession
++import app.campfire.core.time.FatherTime
++import app.campfire.data.Bookmarks
++import app.campfire.data.mapping.asDatabaseModel
++import app.campfire.data.mapping.asDomainModel
++import app.campfire.db.test.testDb
++import app.campfire.network.models.AudioBookmark
++import app.campfire.network.models.User as NetworkUser
++import app.campfire.network.models.UserPermissions
++import app.campfire.network.test.FakeAudioBookShelfApi
++import app.campfire.user.bookmarks.StoreBookmarkRepository
++import app.campfire.user.bookmarks.store.BookmarkStore
++import app.cash.sqldelight.async.coroutines.awaitAsList
++import assertk.assertThat
++import assertk.assertions.containsExactly
++import assertk.assertions.containsExactlyInAnyOrder
++import assertk.assertions.doesNotContain
++import assertk.assertions.hasSize
++import kotlin.test.Test
++import kotlin.time.Duration.Companion.seconds
++import kotlinx.coroutines.CompletableDeferred
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.first
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeout
++import kotlinx.datetime.LocalDate
++import kotlinx.datetime.LocalDateTime
++
++class StoreBookmarkRepositoryTest {
++
++  private val serverUrl = "https://abs.example.com"
++  private val fixedNow = LocalDateTime(2026, 1, 1, 12, 0, 0)
++
++  private val dispatchers = DispatcherProvider(
++    io = Dispatchers.Default,
++    databaseWrite = Dispatchers.Default,
++    databaseRead = Dispatchers.Default,
++    computation = Dispatchers.Default,
++    main = Dispatchers.Default,
++  )
++
++  private val fatherTime = object : FatherTime {
++    override fun now(): LocalDateTime = fixedNow
++    override fun today(): LocalDate = fixedNow.date
++    override fun nowInEpochMillis(): Long = 1_767_268_800_000L
++  }
++
++  private suspend fun <T> withRealTimeout(
++    timeoutMillis: Long = 5_000L,
++    block: suspend CoroutineScope.() -> T,
++  ): T = withContext(Dispatchers.Default) {
++    withTimeout(timeoutMillis, block)
++  }
++
++  private fun networkUser(
++    bookmarks: List<AudioBookmark> = emptyList(),
++  ) = NetworkUser(
++    id = USER_ID,
++    username = "listener",
++    type = "user",
++    mediaProgress = emptyList(),
++    seriesHideFromContinueListening = emptyList(),
++    bookmarks = bookmarks,
++    isActive = true,
++    isLocked = false,
++    lastSeen = 0L,
++    createdAt = 0L,
++    permissions = UserPermissions(
++      download = true,
++      update = false,
++      delete = false,
++      upload = false,
++      accessAllLibraries = true,
++      accessAllTags = true,
++      accessExplicitContent = true,
++    ),
++    librariesAccessible = emptyList(),
++  )
++
++  private suspend fun seedUser(db: CampfireDatabase) {
++    db.usersQueries.insert(networkUser().asDatabaseModel(serverUrl, "lib-1"))
++  }
++
++  private suspend fun insertLocalBookmark(
++    db: CampfireDatabase,
++    timeInSeconds: Int,
++    title: String = "Bookmark @$timeInSeconds",
++  ) {
++    db.bookmarksQueries.insert(
++      Bookmarks(
++        userId = USER_ID,
++        libraryItemId = BOOK_ID,
++        title = title,
++        timeInSeconds = timeInSeconds,
++        createdAt = fixedNow,
++      ),
++    )
++  }
++
++  private fun createRepository(
++    db: CampfireDatabase,
++    api: FakeAudioBookShelfApi,
++    scope: CoroutineScope,
++  ): StoreBookmarkRepository {
++    val domainUser = networkUser().asDomainModel(serverUrl, "lib-1")
++    val session = UserSession.LoggedIn(domainUser)
++    return StoreBookmarkRepository(
++      userSession = session,
++      storeFactory = BookmarkStore.Factory(
++        api = api,
++        db = db,
++        dispatcherProvider = dispatchers,
++      ),
++      api = api,
++      db = db,
++      dispatcherProvider = dispatchers,
++      fatherTime = fatherTime,
++      coroutineScopeHolder = CoroutineScopeHolder { scope },
++    )
++  }
++
++  @Test
++  fun observeBookmarks_keepsCachedBookmarksWhenRefreshFails() = testDb { db ->
++    seedUser(db)
++    (1..12).forEach { i ->
++      insertLocalBookmark(db, timeInSeconds = i * 60, title = "Bookmark #$i")
++    }
++    val fetchAttempted = CompletableDeferred<Unit>()
++    val api = FakeAudioBookShelfApi().apply {
++      currentUserResult = {
++        withContext(Dispatchers.Default) { delay(50) }
++        fetchAttempted.complete(Unit)
++        Result.failure(IllegalStateException("network timeout"))
++      }
++    }
++    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
++    val repository = createRepository(db, api, scope)
++
++    val observed = MutableStateFlow<List<List<Bookmark>>>(emptyList())
++    val collector = scope.launch {
++      repository.observeBookmarks(BOOK_ID).collect { list ->
++        observed.value = observed.value + listOf(list)
++      }
++    }
++
++    withRealTimeout {
++      val initial = observed.first { it.isNotEmpty() }.first()
++      assertThat(initial).hasSize(12)
++      fetchAttempted.await()
++    }
++    withContext(Dispatchers.Default) { delay(300) }
++
++    // Never wipes cached bookmarks to emptyList when background GET /api/me fails
++    assertThat(observed.value.last()).hasSize(12)
++    assertThat(observed.value).doesNotContain(emptyList<Bookmark>())
++
++    collector.cancel()
++    scope.cancel()
++  }
++
++  @Test
++  fun offlineCreates_storeAllPendingEntries_doNotCrashAndReplayOnlyUnsynced() = testDb { db ->
++    seedUser(db)
++    // Existing 12 synced bookmarks on server & DB
++    val initialServerBookmarks = (1..12).map { i ->
++      AudioBookmark(
++        libraryItemId = BOOK_ID,
++        title = "Synced #$i",
++        time = (i * 10).toFloat(),
++        createdAt = 1_700_000_000_000L,
++      )
++    }
++    initialServerBookmarks.forEach { insertLocalBookmark(db, it.time.toInt(), it.title) }
++
++    val offlineFetchAttempted = CompletableDeferred<Unit>()
++    val api = FakeAudioBookShelfApi().apply {
++      createBookmarkResult = { _, _, _ -> Result.failure(IllegalStateException("offline")) }
++      currentUserResult = {
++        offlineFetchAttempted.complete(Unit)
++        Result.failure(IllegalStateException("offline"))
++      }
++    }
++    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
++    val repository = createRepository(db, api, scope)
++
++    // Fail two creates on the same book while offline
++    repository.createBookmark(BOOK_ID, 130.seconds, "Offline 130")
++    repository.createBookmark(BOOK_ID, 140.seconds, "Offline 140")
++
++    val failedEntries = db.bookmarkBookkeepingQueries.selectFailedCreateEntries(USER_ID, BOOK_ID).awaitAsList()
++    assertThat(failedEntries.map { it.timeInSeconds }).containsExactlyInAnyOrder(130, 140)
++
++    // Observing while still offline and while eager conflict resolution fails must not throw or stall
++    withRealTimeout {
++      val stillOffline = repository.observeBookmarks(BOOK_ID).first { it.size == 14 }
++      assertThat(stillOffline.map { it.time.inWholeSeconds.toInt() })
++        .containsExactly(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140)
++      offlineFetchAttempted.await()
++    }
++    withContext(Dispatchers.Default) { delay(150) }
++
++    // Come back online: server receives ONLY the 2 unsynced bookmarks (not all 12 already-synced ones)
++    api.createdBookmarks.clear()
++    val syncedAll14 = initialServerBookmarks + listOf(
++      AudioBookmark(BOOK_ID, "Offline 130", 130f, 1_700_000_000_000L),
++      AudioBookmark(BOOK_ID, "Offline 140", 140f, 1_700_000_000_000L),
++    )
++    api.createBookmarkResult = { libraryItemId, timeInSeconds, title ->
++      Result.success(AudioBookmark(libraryItemId, title, timeInSeconds.toFloat(), 1_700_000_000_000L))
++    }
++    api.currentUserResult = { Result.success(networkUser(bookmarks = syncedAll14)) }
++
++    withRealTimeout {
++      repository.observeBookmarks(BOOK_ID).first { it.size == 14 }
++      while (db.bookmarkBookkeepingQueries.selectFailedCreateEntries(USER_ID, BOOK_ID).awaitAsList().isNotEmpty()) {
++        delay(25)
++      }
++    }
++
++    assertThat(api.createdBookmarks.map { it.second }).containsExactlyInAnyOrder(130, 140)
++    scope.cancel()
++  }
++
++  @Test
++  fun writeAll_preservesPendingOfflineCreates_andDoesNotResurrectPendingOfflineDeletes() = testDb { db ->
++    seedUser(db)
++    insertLocalBookmark(db, 10, "Bookmark 10")
++    insertLocalBookmark(db, 20, "Bookmark 20")
++
++    val api = FakeAudioBookShelfApi().apply {
++      createBookmarkResult = { _, _, _ -> Result.failure(IllegalStateException("offline")) }
++      removeBookmarkResult = { _, _ -> Result.failure(IllegalStateException("offline")) }
++      // Server still has old snapshot [10, 20] plus a new bookmark [99] from another device
++      currentUserResult = {
++        Result.success(
++          networkUser(
++            bookmarks = listOf(
++              AudioBookmark(BOOK_ID, "Bookmark 10", 10f, 1_700_000_000_000L),
++              AudioBookmark(BOOK_ID, "Bookmark 20", 20f, 1_700_000_000_000L),
++              AudioBookmark(BOOK_ID, "Remote 99", 99f, 1_700_000_000_000L),
++            ),
++          ),
++        )
++      }
++    }
++    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
++    val repository = createRepository(db, api, scope)
++
++    repository.removeBookmark(BOOK_ID, 10.seconds)
++    repository.createBookmark(BOOK_ID, 30.seconds, "Bookmark 30")
++
++    // Wait until writeAll commits Remote 99 so we prove writeAll actually executed:
++    // Offline delete 10 must NOT resurrect and offline create 30 must NOT be deleted.
++    withRealTimeout {
++      val synced = repository.observeBookmarks(BOOK_ID).first { list ->
++        list.any { it.time.inWholeSeconds == 99L }
++      }
++      assertThat(synced.map { it.time.inWholeSeconds.toInt() }).containsExactly(20, 30, 99)
++    }
++
++    scope.cancel()
++  }
++
++  @Test
++  fun cancellingObserverDuringConflictSync_doesNotDeadlockStoreLock() = testDb { db ->
++    seedUser(db)
++    insertLocalBookmark(db, 100, "Pending")
++    val syncStarted = CompletableDeferred<Unit>()
++    val allowSyncToProceed = CompletableDeferred<Unit>()
++
++    val api = FakeAudioBookShelfApi().apply {
++      createBookmarkResult = { _, _, _ -> Result.failure(IllegalStateException("initial offline")) }
++      currentUserResult = { Result.failure(IllegalStateException("offline")) }
++    }
++    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
++    val repository = createRepository(db, api, scope)
++
++    // Plant a failed create so next observe triggers tryEagerlyResolveConflicts
++    repository.createBookmark(BOOK_ID, 100.seconds, "Pending")
++
++    api.createBookmarkResult = { libraryItemId, timeInSeconds, title ->
++      syncStarted.complete(Unit)
++      allowSyncToProceed.await()
++      Result.success(AudioBookmark(libraryItemId, title, timeInSeconds.toFloat(), 1_700_000_000_000L))
++    }
++    api.currentUserResult = {
++      Result.success(
++        networkUser(
++          bookmarks = listOf(AudioBookmark(BOOK_ID, "Pending", 100f, 1_700_000_000_000L)),
++        ),
++      )
++    }
++
++    // Start observing in a short-lived sheet scope and cancel it immediately after eager sync begins
++    val uiScope = CoroutineScope(Job() + Dispatchers.Default)
++    val uiCollectJob = uiScope.launch {
++      repository.observeBookmarks(BOOK_ID).collect {}
++    }
++
++    withRealTimeout {
++      syncStarted.await()
++    }
++    uiCollectJob.cancel()
++    uiScope.cancel()
++    allowSyncToProceed.complete(Unit)
++
++    // Verify subsequent mutations & observations do NOT deadlock on storeLock
++    withRealTimeout {
++      repository.createBookmark(BOOK_ID, 200.seconds, "Created after cancel")
++      val latest = repository.observeBookmarks(BOOK_ID).first { list ->
++        list.any { it.time.inWholeSeconds == 200L }
++      }
++      assertThat(latest.map { it.time.inWholeSeconds.toInt() }).containsExactly(100, 200)
++    }
++
++    scope.cancel()
++  }
++
++  private companion object {
++    const val USER_ID = "user-1"
++    const val BOOK_ID = "li_inn_side_shop"
++  }
++}
 diff --git a/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreUserRepositoryTest.kt b/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreUserRepositoryTest.kt
 index 96562a8d..db22824e 100644
 --- a/features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreUserRepositoryTest.kt
@@ -22868,7 +24407,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..12a3fe3a 100644
+index f41126a7..43f48a0f 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -22876,13 +24415,13 @@ index f41126a7..12a3fe3a 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.52
++campfire.version=1.2.53
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025299
++campfire.versionCode=1025399
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

@@ -364,19 +364,39 @@ class FakeAudioBookShelfApi : AudioBookShelfApi {
     return deleteMediaProgressResult(mediaProgressId)
   }
 
+  val createdBookmarks = mutableListOf<Triple<String, Int, String>>()
+  var createBookmarkResult: suspend (libraryItemId: String, timeInSeconds: Int, title: String) -> Result<AudioBookmark> =
+    { libraryItemId, timeInSeconds, title ->
+      Result.success(
+        AudioBookmark(
+          libraryItemId = libraryItemId,
+          title = title,
+          time = timeInSeconds.toFloat(),
+          createdAt = 1_700_000_000_000L,
+        ),
+      )
+    }
+
+  val removedBookmarks = mutableListOf<Pair<String, Int>>()
+  var removeBookmarkResult: suspend (libraryItemId: String, timeInSeconds: Int) -> Result<Unit> = { _, _ ->
+    Result.success(Unit)
+  }
+
   override suspend fun createBookmark(
     libraryItemId: String,
     timeInSeconds: Int,
     title: String,
   ): Result<AudioBookmark> {
-    TODO("Not yet implemented")
+    createdBookmarks += Triple(libraryItemId, timeInSeconds, title)
+    return createBookmarkResult(libraryItemId, timeInSeconds, title)
   }
 
   override suspend fun removeBookmark(
     libraryItemId: String,
     timeInSeconds: Int,
   ): Result<Unit> {
-    TODO("Not yet implemented")
+    removedBookmarks += libraryItemId to timeInSeconds
+    return removeBookmarkResult(libraryItemId, timeInSeconds)
   }
 
   override suspend fun syncLocalSessions(sessions: List<PlaybackSession>): Result<SyncLocalSessionsResult> {

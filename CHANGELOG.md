@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.53] - 2026-11-22
+
+### Fixed
+
+- **Bookmarks Disappearing on Scroll, Endless Loading & Store5 Deadlock**:
+  - Fixed the bookmark bottom sheet stalling indefinitely on the loading spinner and bookmarks disappearing when scrolling or re-opening after failed/offline bookmark syncs.
+  - Replaced Store5's `MutableStore` (`RealMutableStore`) in the bookmark repository with a standard read-only `Store` plus explicit `Mutex`-guarded optimistic local writes and pending-sync replay in `StoreBookmarkRepository`, eliminating `RealMutableStore.tryEagerlyResolveConflicts`'s self-deadlock on its non-reentrant `storeLock` and unsafe cancellation lock leaks.
+  - Updated `bookmarkFailedCreate` and `bookmarkFailedDelete` primary keys to `(userId, libraryItemId, timeInSeconds)` (migration `11`) so multiple unsynced bookmarks per book queue reliably, filtered replay strictly to queued unsynced entries, preserved pending offline creates and suppressed pending offline deletes across full user refreshes, normalized bookmark `createdAt` epoch seconds vs. milliseconds, and hardened `BookmarksBottomSheet` against cancellation/key-state loss.
+
 ## [1.2.52] - 2026-11-20
 
 ### Added

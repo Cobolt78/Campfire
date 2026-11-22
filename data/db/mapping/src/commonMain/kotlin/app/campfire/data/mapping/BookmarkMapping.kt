@@ -13,13 +13,23 @@ import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
+private const val EPOCH_MILLIS_THRESHOLD = 100_000_000_000L
+
+private fun epochToInstant(epoch: Long): Instant {
+  return if (epoch > EPOCH_MILLIS_THRESHOLD) {
+    Instant.fromEpochMilliseconds(epoch)
+  } else {
+    Instant.fromEpochSeconds(epoch)
+  }
+}
+
 fun NetworkBookmark.asDbModel(userId: String): DbBookmark {
   return DbBookmark(
     userId = userId,
     libraryItemId = libraryItemId,
     title = title,
     timeInSeconds = time.roundToInt(),
-    createdAt = Instant.fromEpochSeconds(createdAt).toLocalDateTime(TimeZone.UTC),
+    createdAt = epochToInstant(createdAt).toLocalDateTime(TimeZone.UTC),
   )
 }
 
@@ -29,7 +39,7 @@ fun NetworkBookmark.asDomainModel(userId: String): Bookmark {
     libraryItemId = libraryItemId,
     title = title,
     time = time.seconds,
-    createdAt = Instant.fromEpochSeconds(createdAt).toLocalDateTime(TimeZone.UTC),
+    createdAt = epochToInstant(createdAt).toLocalDateTime(TimeZone.UTC),
   )
 }
 

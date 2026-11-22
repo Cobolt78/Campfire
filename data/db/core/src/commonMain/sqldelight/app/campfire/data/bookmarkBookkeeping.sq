@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS bookmarkFailedCreate (
   libraryItemId TEXT NOT NULL,
   timeInSeconds INTEGER AS Int NOT NULL,
   timestamp INTEGER NOT NULL,
-  PRIMARY KEY (libraryItemId, userId),
+  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
 );
 
@@ -14,18 +14,18 @@ CREATE TABLE IF NOT EXISTS bookmarkFailedDelete (
   libraryItemId TEXT NOT NULL,
   timeInSeconds INTEGER AS Int NOT NULL,
   timestamp INTEGER NOT NULL,
-  PRIMARY KEY (libraryItemId, userId),
+  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
 );
 
 -- Queries
 
 insertFailedCreate:
-INSERT INTO bookmarkFailedCreate
+INSERT OR REPLACE INTO bookmarkFailedCreate
 VALUES ?;
 
 insertFailedDelete:
-INSERT INTO bookmarkFailedDelete
+INSERT OR REPLACE INTO bookmarkFailedDelete
 VALUES ?;
 
 selectFailedCreate:
@@ -37,6 +37,24 @@ selectFailedDelete:
 SELECT timestamp FROM bookmarkFailedDelete
 WHERE userId = ?
   AND libraryItemId = ?;
+
+selectFailedCreateEntries:
+SELECT * FROM bookmarkFailedCreate
+WHERE userId = ?
+  AND libraryItemId = ?;
+
+selectFailedDeleteEntries:
+SELECT * FROM bookmarkFailedDelete
+WHERE userId = ?
+  AND libraryItemId = ?;
+
+selectAllFailedCreateEntriesForUser:
+SELECT * FROM bookmarkFailedCreate
+WHERE userId = ?;
+
+selectAllFailedDeleteEntriesForUser:
+SELECT * FROM bookmarkFailedDelete
+WHERE userId = ?;
 
 deleteFailedCreate:
 DELETE FROM bookmarkFailedCreate

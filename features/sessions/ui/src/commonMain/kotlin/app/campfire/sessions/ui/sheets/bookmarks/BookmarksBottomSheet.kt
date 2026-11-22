@@ -121,11 +121,13 @@ import dev.zacsweers.metro.ContributesTo
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 
 sealed interface BookmarkResult {
@@ -175,7 +177,7 @@ private fun BookmarksBottomSheet(
     component.audioPlayerHolder.currentPlayer.filterNotNull().flatMapLatest { it.overallTime }
   }.collectAsState(0.seconds)
 
-  val loadState by remember {
+  val loadState by remember(libraryItemId) {
     component.bookmarkRepository.observeBookmarks(libraryItemId)
       .map { LoadState.Loaded(it) }
       .catch<LoadState<out List<Bookmark>>> { emit(LoadState.Error) }
@@ -328,11 +330,13 @@ private fun BookmarksBottomSheet(
         TextButton(
           onClick = {
             showDeleteAllDialog = false
-            bookmarksToDelete.forEach { bookmark ->
-              scope.launch {
-                Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
-                component.bookmarkRepository
-                  .removeBookmark(bookmark.libraryItemId, bookmark.time)
+            scope.launch {
+              withContext(NonCancellable) {
+                bookmarksToDelete.forEach { bookmark ->
+                  Analytics.send(PlaybackActionEvent(BookmarkObj, Deleted))
+                  component.bookmarkRepository
+                    .removeBookmark(bookmark.libraryItemId, bookmark.time)
+                }
               }
             }
           },
@@ -363,20 +367,22 @@ private fun BookmarksBottomSheet(
       },
       onSave = { encodedTitle, timestamp ->
         scope.launch {
-          if (existing != null) {
-            if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
-              component.bookmarkRepository
-                .removeBookmark(libraryItemId, existing.time)
+          withContext(NonCancellable) {
+            if (existing != null) {
+              if (timestamp.inWholeSeconds != existing.time.inWholeSeconds) {
+                component.bookmarkRepository
+                  .removeBookmark(libraryItemId, existing.time)
+              }
+            } else {
+              Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
             }
-          } else {
-            Analytics.send(PlaybackActionEvent(BookmarkObj, Created))
+            component.bookmarkRepository
+              .createBookmark(
+                libraryItemId = libraryItemId,
+                timestamp = timestamp,
+                title = encodedTitle,
+              )
           }
-          component.bookmarkRepository
-            .createBookmark(
-              libraryItemId = libraryItemId,
-              timestamp = timestamp,
-              title = encodedTitle,
-            )
         }
         showCreateDialog = null
         editingBookmark = null

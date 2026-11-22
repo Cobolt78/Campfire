@@ -103,6 +103,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 96. [Expanded Downloads Sort Options & Home Screen Downloads Shelf Sync (v1.2.52)](#96-expanded-downloads-sort-options--home-screen-downloads-shelf-sync-v1252)
 97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
+99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
 
 ---
 
@@ -3023,6 +3024,50 @@ Non-admin users or accounts with legacy/partial playback sessions or empty libra
 * `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/StatsPresenter.kt`
 * `features/stats/ui/src/commonMain/kotlin/app/campfire/stats/ui/composables/LongestItemBarChart.kt`
 * `features/stats/ui/src/commonTest/kotlin/app/campfire/stats/ui/StatsPresenterTest.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 99. Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)
+
+### Problem
+Users with many bookmarks or intermittent offline/server sync failures (notably reported on Android 12) experienced two severe bookmark regressions:
+1. Opening the bookmarks sheet after a failed create/delete stalled on the loading spinner indefinitely, even across app restarts, preventing access to existing bookmarks or saving new ones.
+2. Scrolling in the bookmarks sheet or closing the sheet mid-mutation caused bookmarks to disappear and reappear on subsequent opens.
+
+### Root Causes Identified
+1. **Store5 `5.0.0` `RealMutableStore` Self-Deadlock & Lock Leak**: `RealMutableStore.tryEagerlyResolveConflicts` acquires non-reentrant `storeLock` via `withThreadSafety`; on `UpdaterResult.Success`, it invokes `updateWriteRequestQueue` → `withWriteRequestQueueLock` → `withThreadSafety`, attempting to lock `storeLock` a second time and permanently self-deadlocking `bookmarkStore`. Additionally, `withThreadSafety` lacked a `try / finally` unlock guard on cancellation/exception.
+2. **Primary Key & Replay Over-Synchronization**: `bookmarkFailedCreate` and `bookmarkFailedDelete` used `PRIMARY KEY (userId, libraryItemId)`, silently overwriting multiple pending mutations on the same book and crashing/mis-replaying in the bookkeeper/updater.
+3. **Full User Refresh Data Clobbering**: `BookmarkSourceOfTruthFactory.writeAll` deleted offline creates not yet returned by `GET /api/me` and resurrected pending offline deletes from stale server snapshots.
+4. **Epoch Units & UI Sheet Cancellation**: `BookmarkMapping.kt` multiplied already-millisecond or mixed-unit `createdAt` timestamps without checking magnitude; `BookmarksBottomSheet.kt` lacked `libraryItemId` keying on `remember` and `NonCancellable` guards on `Delete All` / save callbacks.
+
+### Solution & Implementation
+1. **Replace `MutableStore` with Read-Only `Store` + Explicit `Mutex`-Guarded Sync (`BookmarkStore.kt`, `BookmarkFetcherFactory.kt`, `BookmarkSourceOfTruthFactory.kt`, `StoreBookmarkRepository.kt`)**:
+   - Converted `BookmarkStore.Factory` to build a standard read-only `Store<Operation.Item, List<Bookmark>>` (`StoreBuilder` + `MemoryPolicy` max size 0) and removed `BookmarkUpdaterFactory.kt` and `BookmarkBookkeeperFactory.kt`.
+   - Observed `db.bookmarksQueries.selectForItem` directly in `StoreBookmarkRepository.observeBookmarks` with coalesced background refreshes in `UserScope` (`coroutineScopeHolder`), so cached bookmarks render instantaneously and never disappear on network errors.
+   - Added write-ahead optimistic SQLite transactions (`bookmarks` + `bookmarkFailedCreate`/`bookmarkFailedDelete`) paired with `syncMutex.withLock` (`try/finally`-safe) replay of queued creates and deletes before `StoreReadRequest.fresh(...)`.
+2. **SQLDelight Migration 11 & Epoch Normalization (`bookmarkBookkeeping.sq`, `11.sqm`, `BookmarkMapping.kt`)**:
+   - Updated `bookmarkFailedCreate` and `bookmarkFailedDelete` primary keys to `(userId, libraryItemId, timeInSeconds)` with `INSERT OR REPLACE` and per-entry/per-user queries.
+   - Protected `pendingCreateKeys` from deletion and suppressed `pendingDeleteKeys` resurrection inside `BookmarkSourceOfTruthFactory.writeAll` transactions.
+   - Normalized `createdAt` seconds vs. milliseconds in `BookmarkMapping.kt` (`epochToInstant`).
+3. **UI Sheet Resilience & Regression Tests (`BookmarksBottomSheet.kt`, `FakeAudioBookShelfApi.kt`, `BookmarkMappingTest.kt`, `StoreBookmarkRepositoryTest.kt`)**:
+   - Keyed sheet state on `libraryItemId`, sequentialized `Delete All` deletion, and wrapped save/delete actions in `NonCancellable`.
+   - Added unit tests covering cached preservation on network failure, multiple offline creates & selective replay, `writeAll` conflict preservation, and observer cancellation without Store deadlock.
+
+### Modified Files:
+* `data/db/core/src/commonMain/sqldelight/app/campfire/data/bookmarkBookkeeping.sq`
+* `data/db/core/src/commonMain/sqldelight/migrations/11.sqm`
+* `data/db/mapping/src/commonMain/kotlin/app/campfire/data/mapping/BookmarkMapping.kt`
+* `data/db/mapping/src/commonTest/kotlin/app/campfire/data/mapping/BookmarkMappingTest.kt`
+* `data/network/test/src/commonMain/kotlin/app/campfire/network/test/FakeAudioBookShelfApi.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/StoreBookmarkRepository.kt`
+* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkFetcherFactory.kt`
+* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkSourceOfTruthFactory.kt`
+* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt`
+* `features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

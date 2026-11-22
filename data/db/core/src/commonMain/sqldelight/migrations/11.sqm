@@ -1,0 +1,34 @@
+import kotlin.Int;
+
+-- Include timeInSeconds in the primary key of bookmarkFailedCreate and bookmarkFailedDelete
+-- so multiple pending offline bookmark mutations on the same book do not collide or
+-- trigger UNIQUE constraint failures.
+CREATE TABLE bookmarkFailedCreate_new (
+  userId TEXT NOT NULL,
+  libraryItemId TEXT NOT NULL,
+  timeInSeconds INTEGER AS Int NOT NULL,
+  timestamp INTEGER NOT NULL,
+  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO bookmarkFailedCreate_new
+SELECT userId, libraryItemId, timeInSeconds, timestamp FROM bookmarkFailedCreate;
+
+DROP TABLE bookmarkFailedCreate;
+ALTER TABLE bookmarkFailedCreate_new RENAME TO bookmarkFailedCreate;
+
+CREATE TABLE bookmarkFailedDelete_new (
+  userId TEXT NOT NULL,
+  libraryItemId TEXT NOT NULL,
+  timeInSeconds INTEGER AS Int NOT NULL,
+  timestamp INTEGER NOT NULL,
+  PRIMARY KEY (userId, libraryItemId, timeInSeconds),
+  FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO bookmarkFailedDelete_new
+SELECT userId, libraryItemId, timeInSeconds, timestamp FROM bookmarkFailedDelete;
+
+DROP TABLE bookmarkFailedDelete;
+ALTER TABLE bookmarkFailedDelete_new RENAME TO bookmarkFailedDelete;
