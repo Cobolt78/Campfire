@@ -11,14 +11,17 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..3af0f97f 100644
+index c0278c85..0fc79e66 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,571 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,574 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++- **Search Stuck on Loading Spinner**:
++  - Fixed new (never-before-searched) queries spinning forever. The v1.2.52 search back-navigation cache switched the Store request to `cached(refresh = false)`, but the search database reader never emits `null` for unseen queries, so Store5 never started the network request. Restored `freshWithFallBackToSourceOfTruth`; instant back-navigation still comes from the in-memory recent-search cache.
++
 +## [1.2.53] - 2026-11-22
 +
 +### Fixed
@@ -589,10 +592,10 @@ index c0278c85..3af0f97f 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..97ef0134
+index 00000000..357d37e3
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3073 @@
+@@ -0,0 +1,3093 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -699,6 +702,7 @@ index 00000000..97ef0134
 +97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 +98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 +99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
++100. [Search Endless Spinner Fix for Uncached Queries (Unreleased)](#100-search-endless-spinner-fix-for-uncached-queries-unreleased)
 +
 +---
 +
@@ -3664,6 +3668,25 @@ index 00000000..97ef0134
 +* `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt`
 +* `features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt`
 +* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++
++---
++
++## 100. Search Endless Spinner Fix for Uncached Queries (Unreleased)
++
++### Problem
++Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
++
++### Root Cause
++Section 94 (Search Cache Restoration on Back Navigation) changed `StoreSearchRepository.searchCurrentLibrary` from `StoreReadRequest.freshWithFallBackToSourceOfTruth(key)` to `StoreReadRequest.cached(key, refresh = false)`. In Store5 `5.0.0`, `RealStore.diskNetworkCombined` only releases the fetcher (`networkLock.complete`) when `request.refresh` is true or the source of truth emits a `null` value. `SearchSourceOfTruthFactory.handleRead` uses `mapNotNull`, so it never emits anything for an unseen query, and the network search never runs.
++
++### Solution & Implementation
++- Restored `StoreReadRequest.freshWithFallBackToSourceOfTruth(key)` in `StoreSearchRepository.kt` (the upstream behavior). The Section 94 instant back-navigation still works through `recentCache` / `getCachedResult` in `StoreSearchRepository` and `SearchPresenter`.
++
++### Modified Files:
++* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
@@ -15407,7 +15430,7 @@ index 612faa98..2f73e5d8 100644
 +  fun getCachedResult(query: String): SearchResult.Success? = null
  }
 diff --git a/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt b/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
-index b39c1c60..034468ce 100644
+index b39c1c60..23590fb1 100644
 --- a/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
 +++ b/features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt
 @@ -4,6 +4,8 @@
@@ -15468,16 +15491,17 @@ index b39c1c60..034468ce 100644
    @OptIn(ExperimentalCoroutinesApi::class)
    override fun searchCurrentLibrary(query: String): Flow<SearchResult> {
      return userRepository.observeCurrentUser()
-@@ -38,7 +66,7 @@ class StoreSearchRepository(
+@@ -38,6 +66,9 @@ class StoreSearchRepository(
            libraryId = user.selectedLibraryId,
            text = query,
          )
--        val request = StoreReadRequest.freshWithFallBackToSourceOfTruth(key)
-+        val request = StoreReadRequest.cached(key, refresh = false)
++        // Must hit the fetcher: SearchSourceOfTruthFactory.handleRead uses mapNotNull, so it never
++        // emits null for an unseen query and Store5 would never start the network fetch (endless
++        // spinner). Instant back-navigation is served by recentCache / getCachedResult instead.
+         val request = StoreReadRequest.freshWithFallBackToSourceOfTruth(key)
          store.stream(request)
            .filterNot { it is StoreReadResponse.NoNewData }
-           .mapLatest { response ->
-@@ -49,6 +77,25 @@ class StoreSearchRepository(
+@@ -49,6 +80,25 @@ class StoreSearchRepository(
                else -> SearchResult.Error
              }
            }

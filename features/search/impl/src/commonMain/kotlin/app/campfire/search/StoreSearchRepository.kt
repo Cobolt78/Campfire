@@ -66,7 +66,10 @@ class StoreSearchRepository(
           libraryId = user.selectedLibraryId,
           text = query,
         )
-        val request = StoreReadRequest.cached(key, refresh = false)
+        // Must hit the fetcher: SearchSourceOfTruthFactory.handleRead uses mapNotNull, so it never
+        // emits null for an unseen query and Store5 would never start the network fetch (endless
+        // spinner). Instant back-navigation is served by recentCache / getCachedResult instead.
+        val request = StoreReadRequest.freshWithFallBackToSourceOfTruth(key)
         store.stream(request)
           .filterNot { it is StoreReadResponse.NoNewData }
           .mapLatest { response ->

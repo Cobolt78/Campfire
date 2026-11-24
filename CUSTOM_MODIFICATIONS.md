@@ -104,6 +104,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
+100. [Search Endless Spinner Fix for Uncached Queries (Unreleased)](#100-search-endless-spinner-fix-for-uncached-queries-unreleased)
 
 ---
 
@@ -3069,5 +3070,24 @@ Users with many bookmarks or intermittent offline/server sync failures (notably 
 * `features/user/impl/src/commonMain/kotlin/app/campfire/user/bookmarks/store/BookmarkStore.kt`
 * `features/user/impl/src/commonTest/kotlin/app/campfire/user/StoreBookmarkRepositoryTest.kt`
 * `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+
+---
+
+## 100. Search Endless Spinner Fix for Uncached Queries (Unreleased)
+
+### Problem
+Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
+
+### Root Cause
+Section 94 (Search Cache Restoration on Back Navigation) changed `StoreSearchRepository.searchCurrentLibrary` from `StoreReadRequest.freshWithFallBackToSourceOfTruth(key)` to `StoreReadRequest.cached(key, refresh = false)`. In Store5 `5.0.0`, `RealStore.diskNetworkCombined` only releases the fetcher (`networkLock.complete`) when `request.refresh` is true or the source of truth emits a `null` value. `SearchSourceOfTruthFactory.handleRead` uses `mapNotNull`, so it never emits anything for an unseen query, and the network search never runs.
+
+### Solution & Implementation
+- Restored `StoreReadRequest.freshWithFallBackToSourceOfTruth(key)` in `StoreSearchRepository.kt` (the upstream behavior). The Section 94 instant back-navigation still works through `recentCache` / `getCachedResult` in `StoreSearchRepository` and `SearchPresenter`.
+
+### Modified Files:
+* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
