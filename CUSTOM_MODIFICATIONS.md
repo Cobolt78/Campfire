@@ -104,7 +104,8 @@ This document captures all custom features, bug fixes, and UI improvements added
 97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
-100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)](#100-search-endless-spinner-fix-for-uncached-queries-v1254-rc2)
+100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54)](#100-search-endless-spinner-fix-for-uncached-queries-v1254)
+101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 
 ---
 
@@ -3076,7 +3077,7 @@ Users with many bookmarks or intermittent offline/server sync failures (notably 
 
 ---
 
-## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)
+## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54)
 
 ### Problem
 Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
@@ -3089,6 +3090,36 @@ Section 94 (Search Cache Restoration on Back Navigation) changed `StoreSearchRep
 
 ### Modified Files:
 * `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 101. In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)
+
+### Problem
+Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app updater hanging when attempting to install downloaded updates, whereas downloading the APK manually in a browser worked.
+
+### Root Causes
+1. `GitHubAppUpdateSource.launchPackageInstaller` only checked `packageManager.canRequestPackageInstalls()` inside a `catch` block if `startActivity(...)` threw, rather than up front before starting installation.
+2. Self-updating via deprecated `Intent.ACTION_VIEW` + Campfire's `FileProvider` (`cacheDir`) while Campfire remained running could stall Samsung One UI's Package Installer hand-off.
+3. `AppUpdateWidgetImpl` treated only `Failed` and `Canceled` as terminal states, hiding the action button once `"Download completed!"` appeared so users could not re-launch or retry the install prompt if dismissed or interrupted.
+
+### Solution & Implementation
+1. **Up-Front Unknown-Apps Permission Check (`GitHubAppUpdateSource.kt`)**:
+   - Added `ensureInstallPermission()` before downloading and before committing the install session; opens `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES` immediately if not granted and emits `Status.Canceled`.
+2. **Native `PackageInstaller.Session` API (`GitHubAppUpdateSource.kt`, `GitHubInstallReceiver.kt`, `AndroidManifest.xml`)**:
+   - Abandons stale `mySessions` before creating a new `MODE_FULL_INSTALL` session, streams and `fsync`s the verified downloaded APK (`campfire-update-<versionCode>.apk`) into the system install session, and commits with an explicit `FLAG_MUTABLE` `PendingIntent` delivered to `GitHubInstallReceiver`.
+   - Awaits `InstallSessionOutcome` (`PendingUserAction`, `Success`, `Canceled`, `Failed`, `TimedOut`) and launches `confirmIntent` via `Dispatchers.Main` (with receiver fallback if no active waiter exists).
+3. **Persistent `"Install"` Button (`AppUpdateWidgetImpl.kt`)**:
+   - Kept a full `LinearProgressIndicator` plus an **"Install"** button visible on `Status.Downloaded` (reusing the cached verified APK without re-downloading) and **"Try again"** on `Failed` / `Canceled`.
+
+### Modified Files:
+* `app/android/src/main/AndroidManifest.xml`
+* `app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt`
+* `app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt`
+* `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

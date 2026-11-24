@@ -4,11 +4,12 @@
 package app.campfire.android.updates
 
 import android.app.Application
+import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import app.campfire.core.app.ApplicationInfo
 import app.campfire.core.app.Flavor
 import app.campfire.core.di.AppScope
@@ -32,10 +33,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * [AppUpdateSource] backed by GitHub Releases API for custom releases.
@@ -238,6 +239,11 @@ class GitHubAppUpdateSource(
   override suspend fun installUpdate(): Flow<AppUpdateProgress> = flow {
     emit(AppUpdateProgress(-1L, -1L, Status.Pending))
 
+    if (!ensureInstallPermission()) {
+      emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
+      return@flow
+    }
+
     val downloadUrl = cachedDownloadUrl ?: run {
       getAvailableUpdate()
       cachedDownloadUrl
@@ -249,101 +255,198 @@ class GitHubAppUpdateSource(
       return@flow
     }
 
+    val versionCode = cachedUpdate?.versionCode ?: appStateSettings.cachedUpdateVersionCode
     val updateDir = File(application.cacheDir, "updates")
     if (!updateDir.exists()) {
       updateDir.mkdirs()
     }
-    val apkFile = File(updateDir, "campfire-update.apk")
-    if (apkFile.exists()) {
-      apkFile.delete()
-    }
+    val apkFile = File(updateDir, "campfire-update-$versionCode.apk")
+    val partFile = File(updateDir, "campfire-update-$versionCode.apk.part")
 
     try {
-      val request = Request.Builder()
-        .url(downloadUrl)
-        .header("User-Agent", applicationInfo.userAgent)
-        .build()
-
-      okHttpClient.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) {
-          bark(LogPriority.ERROR) { "Failed to download update APK: HTTP ${response.code}" }
-          emit(AppUpdateProgress(-1L, -1L, Status.Failed))
-          return@flow
+      if (!apkFile.exists() || apkFile.length() <= 0L) {
+        if (partFile.exists()) {
+          partFile.delete()
         }
 
-        val body = response.body
+        val request = Request.Builder()
+          .url(downloadUrl)
+          .header("User-Agent", applicationInfo.userAgent)
+          .build()
 
-        val totalBytes = body.contentLength()
-        var bytesDownloaded = 0L
-        var lastEmitTime = 0L
+        okHttpClient.newCall(request).execute().use { response ->
+          if (!response.isSuccessful) {
+            bark(LogPriority.ERROR) { "Failed to download update APK: HTTP ${response.code}" }
+            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+            return@flow
+          }
 
-        val buffer = ByteArray(32 * 1024)
-        body.byteStream().use { input ->
-          apkFile.outputStream().use { output ->
-            var read: Int
-            while (input.read(buffer).also { read = it } != -1) {
-              output.write(buffer, 0, read)
-              bytesDownloaded += read
-              val now = System.currentTimeMillis()
-              if (now - lastEmitTime > 100L || bytesDownloaded == totalBytes) {
-                lastEmitTime = now
-                emit(
-                  AppUpdateProgress(
-                    bytes = bytesDownloaded,
-                    totalBytes = totalBytes,
-                    status = Status.Downloading,
-                  ),
-                )
+          val body = response.body
+          val totalBytes = body.contentLength()
+          var bytesDownloaded = 0L
+          var lastEmitTime = 0L
+
+          val buffer = ByteArray(32 * 1024)
+          body.byteStream().use { input ->
+            partFile.outputStream().use { output ->
+              var read: Int
+              while (input.read(buffer).also { read = it } != -1) {
+                output.write(buffer, 0, read)
+                bytesDownloaded += read
+                val now = System.currentTimeMillis()
+                if (now - lastEmitTime > 100L || bytesDownloaded == totalBytes) {
+                  lastEmitTime = now
+                  emit(
+                    AppUpdateProgress(
+                      bytes = bytesDownloaded,
+                      totalBytes = totalBytes,
+                      status = Status.Downloading,
+                    ),
+                  )
+                }
               }
+              output.flush()
             }
-            output.flush()
+          }
+
+          if (totalBytes > 0L && bytesDownloaded != totalBytes) {
+            partFile.delete()
+            bark(LogPriority.ERROR) { "Incomplete APK download: $bytesDownloaded / $totalBytes" }
+            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+            return@flow
+          }
+
+          updateDir.listFiles()?.forEach { file ->
+            if (file != partFile) {
+              file.delete()
+            }
+          }
+          if (!partFile.renameTo(apkFile)) {
+            partFile.delete()
+            bark(LogPriority.ERROR) { "Failed to finalize downloaded APK" }
+            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+            return@flow
+          }
+        }
+      } else {
+        val cachedSize = apkFile.length()
+        emit(AppUpdateProgress(cachedSize, cachedSize, Status.Downloading))
+      }
+
+      if (!ensureInstallPermission()) {
+        emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
+        return@flow
+      }
+
+      val apkSize = apkFile.length()
+      when (val outcome = commitInstallSession(apkFile)) {
+        is GitHubInstallReceiver.InstallSessionOutcome.PendingUserAction -> {
+          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
+          withContext(Dispatchers.Main) {
+            application.startActivity(outcome.confirmIntent)
           }
         }
 
-        emit(
-          AppUpdateProgress(
-            bytes = bytesDownloaded,
-            totalBytes = totalBytes,
-            status = Status.Downloaded,
-          ),
-        )
+        GitHubInstallReceiver.InstallSessionOutcome.Success -> {
+          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
+        }
 
-        launchPackageInstaller(apkFile)
+        GitHubInstallReceiver.InstallSessionOutcome.Canceled -> {
+          emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
+        }
+
+        is GitHubInstallReceiver.InstallSessionOutcome.Failed -> {
+          bark(LogPriority.ERROR) { "Install session failed: ${outcome.message}" }
+          emit(AppUpdateProgress(-1L, -1L, Status.Failed))
+        }
+
+        GitHubInstallReceiver.InstallSessionOutcome.TimedOut -> {
+          bark(LogPriority.ERROR) { "Timed out waiting for PackageInstaller session response" }
+          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
+        }
       }
+    } catch (e: SecurityException) {
+      bark(LogPriority.ERROR, throwable = e) { "Install permission denied" }
+      openUnknownAppSourcesSettings()
+      emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
     } catch (e: Exception) {
       bark(LogPriority.ERROR, throwable = e) { "Error downloading/installing update" }
       emit(AppUpdateProgress(-1L, -1L, Status.Failed))
     }
   }.flowOn(Dispatchers.IO)
 
-  private fun launchPackageInstaller(apkFile: File) {
-    try {
-      val contentUri = FileProvider.getUriForFile(
-        application,
-        "${application.packageName}.update_provider",
-        apkFile,
-      )
+  private fun ensureInstallPermission(): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !application.packageManager.canRequestPackageInstalls()) {
+      openUnknownAppSourcesSettings()
+      return false
+    }
+    return true
+  }
 
-      val installIntent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(contentUri, "application/vnd.android.package-archive")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+  private fun openUnknownAppSourcesSettings() {
+    try {
+      val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+        data = Uri.parse("package:${application.packageName}")
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
+      application.startActivity(settingsIntent)
+    } catch (settingsError: Exception) {
+      bark(LogPriority.ERROR, throwable = settingsError) { "Failed to open unknown app sources settings" }
+    }
+  }
 
-      application.startActivity(installIntent)
-    } catch (e: Exception) {
-      bark(LogPriority.ERROR, throwable = e) { "Failed to launch package installer" }
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !application.packageManager.canRequestPackageInstalls()) {
-        try {
-          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-            data = Uri.parse("package:${application.packageName}")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          }
-          application.startActivity(settingsIntent)
-        } catch (settingsError: Exception) {
-          bark(LogPriority.ERROR, throwable = settingsError) { "Failed to open unknown app sources settings" }
-        }
+  private suspend fun commitInstallSession(apkFile: File): GitHubInstallReceiver.InstallSessionOutcome {
+    val packageInstaller = application.packageManager.packageInstaller
+    for (existing in packageInstaller.mySessions) {
+      runCatching { packageInstaller.abandonSession(existing.sessionId) }
+    }
+
+    val apkSize = apkFile.length()
+    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+      setAppPackageName(application.packageName)
+      setSize(apkSize)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        setPackageSource(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE)
       }
+    }
+
+    val sessionId = packageInstaller.createSession(params)
+    val resultDeferred = GitHubInstallReceiver.registerPendingSession(sessionId)
+    var committed = false
+    try {
+      packageInstaller.openSession(sessionId).use { session ->
+        session.openWrite("campfire-update.apk", 0, apkSize).use { output ->
+          apkFile.inputStream().use { input ->
+            input.copyTo(output, bufferSize = 32 * 1024)
+          }
+          session.fsync(output)
+        }
+
+        val statusIntent = Intent(application, GitHubInstallReceiver::class.java).apply {
+          action = GitHubInstallReceiver.ACTION_INSTALL_STATUS
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+          application,
+          sessionId,
+          statusIntent,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+        )
+        session.commit(pendingIntent.intentSender)
+        committed = true
+      }
+
+      return withTimeoutOrNull(15_000L) {
+        resultDeferred.await()
+      } ?: run {
+        GitHubInstallReceiver.unregisterPendingSession(sessionId)
+        GitHubInstallReceiver.InstallSessionOutcome.TimedOut
+      }
+    } catch (t: Throwable) {
+      GitHubInstallReceiver.unregisterPendingSession(sessionId)
+      if (!committed) {
+        runCatching { packageInstaller.abandonSession(sessionId) }
+      }
+      throw t
     }
   }
 

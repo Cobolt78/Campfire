@@ -50,6 +50,11 @@
         android:resource="@xml/shortcuts" />
     </activity>
 
+    <!-- Receiver for GitHub PackageInstaller session updates -->
+    <receiver
+      android:name=".updates.GitHubInstallReceiver"
+      android:exported="false" />
+
     <!-- FileProvider for GitHub in-app APK installer -->
     <provider
       android:name="androidx.core.content.FileProvider"

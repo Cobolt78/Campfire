@@ -11,20 +11,24 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..ca89aed3 100644
+index c0278c85..c1faad81 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,578 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,582 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
-+## [1.2.54-rc2] - 2026-11-25
++## [1.2.54] - 2026-11-25
 +
 +### Fixed
 +
 +- **Search Stuck on Loading Spinner**:
 +  - Fixed new (never-before-searched) queries spinning forever. The v1.2.52 search back-navigation cache switched the Store request to `cached(refresh = false)`, but the search database reader never emits `null` for unseen queries, so Store5 never started the network request. Restored `freshWithFallBackToSourceOfTruth`; instant back-navigation still comes from the in-memory recent-search cache.
++- **In-App GitHub Updater Installation Hangs (Android 12 / PackageInstaller)**:
++  - Check `packageManager.canRequestPackageInstalls()` up front before downloading/installing and redirect directly to Settings if `"Install unknown apps"` is not enabled.
++  - Switched APK installation from deprecated `Intent.ACTION_VIEW` + `FileProvider` to Android's native `PackageInstaller.Session` API (`GitHubInstallReceiver`), abandoning stale pending sessions first and streaming directly into a system install session.
++  - Kept the **"Install"** button visible on `"Download completed!"` in `AppUpdateWidgetImpl` so users can immediately trigger or retry installation using the cached verified APK without re-downloading.
 +
 +## [1.2.53] - 2026-11-22
 +
@@ -596,10 +600,10 @@ index c0278c85..ca89aed3 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..395c5c8d
+index 00000000..81a49de4
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3094 @@
+@@ -0,0 +1,3125 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -706,7 +710,8 @@ index 00000000..395c5c8d
 +97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 +98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 +99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
-+100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)](#100-search-endless-spinner-fix-for-uncached-queries-v1254-rc2)
++100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54)](#100-search-endless-spinner-fix-for-uncached-queries-v1254)
++101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 +
 +---
 +
@@ -3678,7 +3683,7 @@ index 00000000..395c5c8d
 +
 +---
 +
-+## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)
++## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54)
 +
 +### Problem
 +Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
@@ -3691,6 +3696,36 @@ index 00000000..395c5c8d
 +
 +### Modified Files:
 +* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
++* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 101. In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)
++
++### Problem
++Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app updater hanging when attempting to install downloaded updates, whereas downloading the APK manually in a browser worked.
++
++### Root Causes
++1. `GitHubAppUpdateSource.launchPackageInstaller` only checked `packageManager.canRequestPackageInstalls()` inside a `catch` block if `startActivity(...)` threw, rather than up front before starting installation.
++2. Self-updating via deprecated `Intent.ACTION_VIEW` + Campfire's `FileProvider` (`cacheDir`) while Campfire remained running could stall Samsung One UI's Package Installer hand-off.
++3. `AppUpdateWidgetImpl` treated only `Failed` and `Canceled` as terminal states, hiding the action button once `"Download completed!"` appeared so users could not re-launch or retry the install prompt if dismissed or interrupted.
++
++### Solution & Implementation
++1. **Up-Front Unknown-Apps Permission Check (`GitHubAppUpdateSource.kt`)**:
++   - Added `ensureInstallPermission()` before downloading and before committing the install session; opens `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES` immediately if not granted and emits `Status.Canceled`.
++2. **Native `PackageInstaller.Session` API (`GitHubAppUpdateSource.kt`, `GitHubInstallReceiver.kt`, `AndroidManifest.xml`)**:
++   - Abandons stale `mySessions` before creating a new `MODE_FULL_INSTALL` session, streams and `fsync`s the verified downloaded APK (`campfire-update-<versionCode>.apk`) into the system install session, and commits with an explicit `FLAG_MUTABLE` `PendingIntent` delivered to `GitHubInstallReceiver`.
++   - Awaits `InstallSessionOutcome` (`PendingUserAction`, `Success`, `Canceled`, `Failed`, `TimedOut`) and launches `confirmIntent` via `Dispatchers.Main` (with receiver fallback if no active waiter exists).
++3. **Persistent `"Install"` Button (`AppUpdateWidgetImpl.kt`)**:
++   - Kept a full `LinearProgressIndicator` plus an **"Install"** button visible on `Status.Downloaded` (reusing the cached verified APK without re-downloading) and **"Try again"** on `Failed` / `Canceled`.
++
++### Modified Files:
++* `app/android/src/main/AndroidManifest.xml`
++* `app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt`
++* `app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt`
++* `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
@@ -3810,7 +3845,7 @@ index 5f36eb58..78496c6d 100644
  class DebugAppUpdateSource(
    private val fake: FakeAppUpdateSource,
 diff --git a/app/android/src/main/AndroidManifest.xml b/app/android/src/main/AndroidManifest.xml
-index 0e30e5db..a3e6b60f 100644
+index 0e30e5db..1e878b4e 100644
 --- a/app/android/src/main/AndroidManifest.xml
 +++ b/app/android/src/main/AndroidManifest.xml
 @@ -12,6 +12,8 @@
@@ -3822,7 +3857,7 @@ index 0e30e5db..a3e6b60f 100644
  
    <application
      android:name=".CampfireApplication"
-@@ -39,8 +41,26 @@
+@@ -39,8 +41,31 @@
          <category android:name="android.intent.category.INFO" />
          <category android:name="android.intent.category.LAUNCHER" />
        </intent-filter>
@@ -3835,6 +3870,11 @@ index 0e30e5db..a3e6b60f 100644
 +        android:resource="@xml/shortcuts" />
      </activity>
  
++    <!-- Receiver for GitHub PackageInstaller session updates -->
++    <receiver
++      android:name=".updates.GitHubInstallReceiver"
++      android:exported="false" />
++
 +    <!-- FileProvider for GitHub in-app APK installer -->
 +    <provider
 +      android:name="androidx.core.content.FileProvider"
@@ -4004,21 +4044,22 @@ index 2cc4bd1c..21387680 100644
    fun provideActivityLocale(activity: Activity): Locale {
 diff --git a/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
 new file mode 100644
-index 00000000..0d42d7e0
+index 00000000..25d1d3f8
 --- /dev/null
 +++ b/app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt
-@@ -0,0 +1,371 @@
+@@ -0,0 +1,474 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
 +package app.campfire.android.updates
 +
 +import android.app.Application
++import android.app.PendingIntent
 +import android.content.Intent
++import android.content.pm.PackageInstaller
 +import android.net.Uri
 +import android.os.Build
 +import android.provider.Settings
-+import androidx.core.content.FileProvider
 +import app.campfire.core.app.ApplicationInfo
 +import app.campfire.core.app.Flavor
 +import app.campfire.core.di.AppScope
@@ -4042,10 +4083,10 @@ index 00000000..0d42d7e0
 +import kotlinx.coroutines.flow.flow
 +import kotlinx.coroutines.flow.flowOn
 +import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeoutOrNull
 +import okhttp3.OkHttpClient
 +import okhttp3.Request
 +import org.json.JSONArray
-+import org.json.JSONObject
 +
 +/**
 + * [AppUpdateSource] backed by GitHub Releases API for custom releases.
@@ -4248,6 +4289,11 @@ index 00000000..0d42d7e0
 +  override suspend fun installUpdate(): Flow<AppUpdateProgress> = flow {
 +    emit(AppUpdateProgress(-1L, -1L, Status.Pending))
 +
++    if (!ensureInstallPermission()) {
++      emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
++      return@flow
++    }
++
 +    val downloadUrl = cachedDownloadUrl ?: run {
 +      getAvailableUpdate()
 +      cachedDownloadUrl
@@ -4259,101 +4305,198 @@ index 00000000..0d42d7e0
 +      return@flow
 +    }
 +
++    val versionCode = cachedUpdate?.versionCode ?: appStateSettings.cachedUpdateVersionCode
 +    val updateDir = File(application.cacheDir, "updates")
 +    if (!updateDir.exists()) {
 +      updateDir.mkdirs()
 +    }
-+    val apkFile = File(updateDir, "campfire-update.apk")
-+    if (apkFile.exists()) {
-+      apkFile.delete()
-+    }
++    val apkFile = File(updateDir, "campfire-update-$versionCode.apk")
++    val partFile = File(updateDir, "campfire-update-$versionCode.apk.part")
 +
 +    try {
-+      val request = Request.Builder()
-+        .url(downloadUrl)
-+        .header("User-Agent", applicationInfo.userAgent)
-+        .build()
-+
-+      okHttpClient.newCall(request).execute().use { response ->
-+        if (!response.isSuccessful) {
-+          bark(LogPriority.ERROR) { "Failed to download update APK: HTTP ${response.code}" }
-+          emit(AppUpdateProgress(-1L, -1L, Status.Failed))
-+          return@flow
++      if (!apkFile.exists() || apkFile.length() <= 0L) {
++        if (partFile.exists()) {
++          partFile.delete()
 +        }
 +
-+        val body = response.body
++        val request = Request.Builder()
++          .url(downloadUrl)
++          .header("User-Agent", applicationInfo.userAgent)
++          .build()
 +
-+        val totalBytes = body.contentLength()
-+        var bytesDownloaded = 0L
-+        var lastEmitTime = 0L
++        okHttpClient.newCall(request).execute().use { response ->
++          if (!response.isSuccessful) {
++            bark(LogPriority.ERROR) { "Failed to download update APK: HTTP ${response.code}" }
++            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
++            return@flow
++          }
 +
-+        val buffer = ByteArray(32 * 1024)
-+        body.byteStream().use { input ->
-+          apkFile.outputStream().use { output ->
-+            var read: Int
-+            while (input.read(buffer).also { read = it } != -1) {
-+              output.write(buffer, 0, read)
-+              bytesDownloaded += read
-+              val now = System.currentTimeMillis()
-+              if (now - lastEmitTime > 100L || bytesDownloaded == totalBytes) {
-+                lastEmitTime = now
-+                emit(
-+                  AppUpdateProgress(
-+                    bytes = bytesDownloaded,
-+                    totalBytes = totalBytes,
-+                    status = Status.Downloading,
-+                  ),
-+                )
++          val body = response.body
++          val totalBytes = body.contentLength()
++          var bytesDownloaded = 0L
++          var lastEmitTime = 0L
++
++          val buffer = ByteArray(32 * 1024)
++          body.byteStream().use { input ->
++            partFile.outputStream().use { output ->
++              var read: Int
++              while (input.read(buffer).also { read = it } != -1) {
++                output.write(buffer, 0, read)
++                bytesDownloaded += read
++                val now = System.currentTimeMillis()
++                if (now - lastEmitTime > 100L || bytesDownloaded == totalBytes) {
++                  lastEmitTime = now
++                  emit(
++                    AppUpdateProgress(
++                      bytes = bytesDownloaded,
++                      totalBytes = totalBytes,
++                      status = Status.Downloading,
++                    ),
++                  )
++                }
 +              }
++              output.flush()
 +            }
-+            output.flush()
++          }
++
++          if (totalBytes > 0L && bytesDownloaded != totalBytes) {
++            partFile.delete()
++            bark(LogPriority.ERROR) { "Incomplete APK download: $bytesDownloaded / $totalBytes" }
++            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
++            return@flow
++          }
++
++          updateDir.listFiles()?.forEach { file ->
++            if (file != partFile) {
++              file.delete()
++            }
++          }
++          if (!partFile.renameTo(apkFile)) {
++            partFile.delete()
++            bark(LogPriority.ERROR) { "Failed to finalize downloaded APK" }
++            emit(AppUpdateProgress(-1L, -1L, Status.Failed))
++            return@flow
++          }
++        }
++      } else {
++        val cachedSize = apkFile.length()
++        emit(AppUpdateProgress(cachedSize, cachedSize, Status.Downloading))
++      }
++
++      if (!ensureInstallPermission()) {
++        emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
++        return@flow
++      }
++
++      val apkSize = apkFile.length()
++      when (val outcome = commitInstallSession(apkFile)) {
++        is GitHubInstallReceiver.InstallSessionOutcome.PendingUserAction -> {
++          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
++          withContext(Dispatchers.Main) {
++            application.startActivity(outcome.confirmIntent)
 +          }
 +        }
 +
-+        emit(
-+          AppUpdateProgress(
-+            bytes = bytesDownloaded,
-+            totalBytes = totalBytes,
-+            status = Status.Downloaded,
-+          ),
-+        )
++        GitHubInstallReceiver.InstallSessionOutcome.Success -> {
++          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
++        }
 +
-+        launchPackageInstaller(apkFile)
++        GitHubInstallReceiver.InstallSessionOutcome.Canceled -> {
++          emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
++        }
++
++        is GitHubInstallReceiver.InstallSessionOutcome.Failed -> {
++          bark(LogPriority.ERROR) { "Install session failed: ${outcome.message}" }
++          emit(AppUpdateProgress(-1L, -1L, Status.Failed))
++        }
++
++        GitHubInstallReceiver.InstallSessionOutcome.TimedOut -> {
++          bark(LogPriority.ERROR) { "Timed out waiting for PackageInstaller session response" }
++          emit(AppUpdateProgress(apkSize, apkSize, Status.Downloaded))
++        }
 +      }
++    } catch (e: SecurityException) {
++      bark(LogPriority.ERROR, throwable = e) { "Install permission denied" }
++      openUnknownAppSourcesSettings()
++      emit(AppUpdateProgress(-1L, -1L, Status.Canceled))
 +    } catch (e: Exception) {
 +      bark(LogPriority.ERROR, throwable = e) { "Error downloading/installing update" }
 +      emit(AppUpdateProgress(-1L, -1L, Status.Failed))
 +    }
 +  }.flowOn(Dispatchers.IO)
 +
-+  private fun launchPackageInstaller(apkFile: File) {
-+    try {
-+      val contentUri = FileProvider.getUriForFile(
-+        application,
-+        "${application.packageName}.update_provider",
-+        apkFile,
-+      )
++  private fun ensureInstallPermission(): Boolean {
++    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !application.packageManager.canRequestPackageInstalls()) {
++      openUnknownAppSourcesSettings()
++      return false
++    }
++    return true
++  }
 +
-+      val installIntent = Intent(Intent.ACTION_VIEW).apply {
-+        setDataAndType(contentUri, "application/vnd.android.package-archive")
-+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
++  private fun openUnknownAppSourcesSettings() {
++    try {
++      val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
++        data = Uri.parse("package:${application.packageName}")
 +        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 +      }
++      application.startActivity(settingsIntent)
++    } catch (settingsError: Exception) {
++      bark(LogPriority.ERROR, throwable = settingsError) { "Failed to open unknown app sources settings" }
++    }
++  }
 +
-+      application.startActivity(installIntent)
-+    } catch (e: Exception) {
-+      bark(LogPriority.ERROR, throwable = e) { "Failed to launch package installer" }
-+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !application.packageManager.canRequestPackageInstalls()) {
-+        try {
-+          val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-+            data = Uri.parse("package:${application.packageName}")
-+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-+          }
-+          application.startActivity(settingsIntent)
-+        } catch (settingsError: Exception) {
-+          bark(LogPriority.ERROR, throwable = settingsError) { "Failed to open unknown app sources settings" }
-+        }
++  private suspend fun commitInstallSession(apkFile: File): GitHubInstallReceiver.InstallSessionOutcome {
++    val packageInstaller = application.packageManager.packageInstaller
++    for (existing in packageInstaller.mySessions) {
++      runCatching { packageInstaller.abandonSession(existing.sessionId) }
++    }
++
++    val apkSize = apkFile.length()
++    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
++      setAppPackageName(application.packageName)
++      setSize(apkSize)
++      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++        setPackageSource(PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE)
 +      }
++    }
++
++    val sessionId = packageInstaller.createSession(params)
++    val resultDeferred = GitHubInstallReceiver.registerPendingSession(sessionId)
++    var committed = false
++    try {
++      packageInstaller.openSession(sessionId).use { session ->
++        session.openWrite("campfire-update.apk", 0, apkSize).use { output ->
++          apkFile.inputStream().use { input ->
++            input.copyTo(output, bufferSize = 32 * 1024)
++          }
++          session.fsync(output)
++        }
++
++        val statusIntent = Intent(application, GitHubInstallReceiver::class.java).apply {
++          action = GitHubInstallReceiver.ACTION_INSTALL_STATUS
++        }
++        val pendingIntent = PendingIntent.getBroadcast(
++          application,
++          sessionId,
++          statusIntent,
++          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
++        )
++        session.commit(pendingIntent.intentSender)
++        committed = true
++      }
++
++      return withTimeoutOrNull(15_000L) {
++        resultDeferred.await()
++      } ?: run {
++        GitHubInstallReceiver.unregisterPendingSession(sessionId)
++        GitHubInstallReceiver.InstallSessionOutcome.TimedOut
++      }
++    } catch (t: Throwable) {
++      GitHubInstallReceiver.unregisterPendingSession(sessionId)
++      if (!committed) {
++        runCatching { packageInstaller.abandonSession(sessionId) }
++      }
++      throw t
 +    }
 +  }
 +
@@ -4376,6 +4519,101 @@ index 00000000..0d42d7e0
 +    private fun parseVersionName(raw: String): String {
 +      val match = Regex("""(?:v)?(\d+\.\d+\.\d+(?:[.-]rc\d+)?)""", RegexOption.IGNORE_CASE).find(raw)
 +      return match?.groupValues?.get(1) ?: ""
++    }
++  }
++}
+diff --git a/app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt b/app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt
+new file mode 100644
+index 00000000..65b114ca
+--- /dev/null
++++ b/app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt
+@@ -0,0 +1,89 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.android.updates
++
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.content.pm.PackageInstaller
++import android.os.Build
++import app.campfire.core.logging.LogPriority
++import app.campfire.core.logging.bark
++import java.util.concurrent.ConcurrentHashMap
++import kotlinx.coroutines.CompletableDeferred
++
++class GitHubInstallReceiver : BroadcastReceiver() {
++
++  override fun onReceive(context: Context, intent: Intent?) {
++    if (intent == null || intent.action != ACTION_INSTALL_STATUS) return
++
++    val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
++    val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
++    val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
++
++    when (status) {
++      PackageInstaller.STATUS_PENDING_USER_ACTION -> {
++        val confirmIntent: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++          intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
++        } else {
++          @Suppress("DEPRECATION")
++          intent.getParcelableExtra(Intent.EXTRA_INTENT)
++        }
++        if (confirmIntent != null) {
++          confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++          val delivered = completeSession(sessionId, InstallSessionOutcome.PendingUserAction(confirmIntent))
++          if (!delivered) {
++            runCatching { context.startActivity(confirmIntent) }
++          }
++        } else {
++          bark(LogPriority.ERROR) { "PackageInstaller requested user action without confirm intent: $message" }
++          completeSession(sessionId, InstallSessionOutcome.Failed("Missing confirmation intent"))
++        }
++      }
++
++      PackageInstaller.STATUS_SUCCESS -> {
++        bark { "PackageInstaller session $sessionId succeeded" }
++        completeSession(sessionId, InstallSessionOutcome.Success)
++      }
++
++      PackageInstaller.STATUS_FAILURE_ABORTED -> {
++        bark { "PackageInstaller session $sessionId aborted: $message" }
++        completeSession(sessionId, InstallSessionOutcome.Canceled)
++      }
++
++      else -> {
++        bark(LogPriority.ERROR) { "PackageInstaller session $sessionId failed (status=$status): $message" }
++        completeSession(sessionId, InstallSessionOutcome.Failed(message))
++      }
++    }
++  }
++
++  sealed interface InstallSessionOutcome {
++    data class PendingUserAction(val confirmIntent: Intent) : InstallSessionOutcome
++    data object Success : InstallSessionOutcome
++    data object Canceled : InstallSessionOutcome
++    data class Failed(val message: String?) : InstallSessionOutcome
++    data object TimedOut : InstallSessionOutcome
++  }
++
++  companion object {
++    const val ACTION_INSTALL_STATUS = "app.campfire.android.updates.INSTALL_STATUS"
++    private val pendingSessions = ConcurrentHashMap<Int, CompletableDeferred<InstallSessionOutcome>>()
++
++    fun registerPendingSession(sessionId: Int): CompletableDeferred<InstallSessionOutcome> {
++      return CompletableDeferred<InstallSessionOutcome>().also { deferred ->
++        pendingSessions[sessionId] = deferred
++      }
++    }
++
++    fun unregisterPendingSession(sessionId: Int) {
++      pendingSessions.remove(sessionId)
++    }
++
++    private fun completeSession(sessionId: Int, outcome: InstallSessionOutcome): Boolean {
++      val deferred = pendingSessions.remove(sessionId) ?: return false
++      return deferred.complete(outcome)
 +    }
 +  }
 +}
@@ -24436,7 +24674,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..fe9f3856 100644
+index f41126a7..c7a014c8 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -24444,13 +24682,13 @@ index f41126a7..fe9f3856 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.54-rc2
++campfire.version=1.2.54
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025402
++campfire.versionCode=1025499
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -27676,7 +27914,7 @@ index 2c789f5d..95bb0d38 100644
    val versionName: String,
    val versionCode: Long,
 diff --git a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
-index 9e34e26a..319f6dbf 100644
+index 9e34e26a..aa20c882 100644
 --- a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 +++ b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 @@ -71,8 +71,6 @@ class AppUpdateWidgetImpl(
@@ -27749,6 +27987,113 @@ index 9e34e26a..319f6dbf 100644
    private suspend fun OverlayHost.showAppUpdateSheet(appUpdate: AppUpdate) {
      show(
        BottomSheetOverlay<AppUpdate, Unit>(
+@@ -218,43 +236,65 @@ class AppUpdateWidgetImpl(
+       Spacer(Modifier.height(24.dp))
+ 
+       val progress = updateProgress
+-      if (progress == null || progress.status.isTerminal) {
+-        if (progress != null) {
++      when (progress?.status) {
++        null,
++        AppUpdateProgress.Status.Downloaded,
++        AppUpdateProgress.Status.Failed,
++        AppUpdateProgress.Status.Canceled,
++        -> {
++          if (progress != null) {
++            if (progress.status == AppUpdateProgress.Status.Downloaded) {
++              LinearProgressIndicator(
++                progress = { 1f },
++                modifier = Modifier.fillMaxWidth(),
++              )
++              Spacer(Modifier.height(8.dp))
++            }
++            Text(
++              text = progress.statusText,
++              style = MaterialTheme.typography.bodyMedium,
++              fontWeight = FontWeight.Medium,
++            )
++            Spacer(Modifier.height(8.dp))
++          }
++          Button(
++            onClick = {
++              scope.launch {
++                appUpdateSource.installUpdate()
++                  .collect { updateProgress = it }
++              }
++            },
++            modifier = Modifier.fillMaxWidth(),
++          ) {
++            val buttonLabel = when (progress?.status) {
++              AppUpdateProgress.Status.Downloaded -> "Install"
++              AppUpdateProgress.Status.Failed, AppUpdateProgress.Status.Canceled -> "Try again"
++              else -> "Update now"
++            }
++            Text(buttonLabel)
++          }
++        }
++
++        AppUpdateProgress.Status.Pending,
++        AppUpdateProgress.Status.Downloading,
++        -> {
++          if (progress.status == AppUpdateProgress.Status.Pending) {
++            LinearProgressIndicator(
++              modifier = Modifier.fillMaxWidth(),
++            )
++          } else {
++            LinearProgressIndicator(
++              progress = { progress.progress },
++              modifier = Modifier.fillMaxWidth(),
++            )
++          }
++          Spacer(Modifier.height(8.dp))
+           Text(
+             text = progress.statusText,
+             style = MaterialTheme.typography.bodyMedium,
+             fontWeight = FontWeight.Medium,
+           )
+-          Spacer(Modifier.height(8.dp))
+         }
+-        Button(
+-          onClick = {
+-            scope.launch {
+-              appUpdateSource.installUpdate()
+-                .collect { updateProgress = it }
+-            }
+-          },
+-          modifier = Modifier.fillMaxWidth(),
+-        ) {
+-          Text(if (progress == null) "Update now" else "Try again")
+-        }
+-      } else {
+-        if (progress.status == AppUpdateProgress.Status.Pending) {
+-          LinearProgressIndicator(
+-            modifier = Modifier.fillMaxWidth(),
+-          )
+-        } else {
+-          LinearProgressIndicator(
+-            progress = { progress.progress },
+-            modifier = Modifier.fillMaxWidth(),
+-          )
+-        }
+-        Spacer(Modifier.height(8.dp))
+-        Text(
+-          text = progress.statusText,
+-          style = MaterialTheme.typography.bodyMedium,
+-          fontWeight = FontWeight.Medium,
+-        )
+       }
+ 
+       Spacer(Modifier.height(16.dp))
+@@ -335,9 +375,6 @@ private fun AppUpdateWidgetCard(
+   }
+ }
+ 
+-private val AppUpdateProgress.Status.isTerminal: Boolean
+-  get() = this == AppUpdateProgress.Status.Failed || this == AppUpdateProgress.Status.Canceled
+-
+ private val AppUpdateProgress.statusText: String
+   get() = when (status) {
+     AppUpdateProgress.Status.Pending -> "Download queued…"
 diff --git a/ui/appbar/src/commonMain/kotlin/app/campfire/ui/appbar/CampfireSearchAppBar.kt b/ui/appbar/src/commonMain/kotlin/app/campfire/ui/appbar/CampfireSearchAppBar.kt
 index d9cdc5b0..9e9499c1 100644
 --- a/ui/appbar/src/commonMain/kotlin/app/campfire/ui/appbar/CampfireSearchAppBar.kt

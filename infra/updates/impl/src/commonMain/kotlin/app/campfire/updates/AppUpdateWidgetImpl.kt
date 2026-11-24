@@ -236,43 +236,65 @@ class AppUpdateWidgetImpl(
       Spacer(Modifier.height(24.dp))
 
       val progress = updateProgress
-      if (progress == null || progress.status.isTerminal) {
-        if (progress != null) {
+      when (progress?.status) {
+        null,
+        AppUpdateProgress.Status.Downloaded,
+        AppUpdateProgress.Status.Failed,
+        AppUpdateProgress.Status.Canceled,
+        -> {
+          if (progress != null) {
+            if (progress.status == AppUpdateProgress.Status.Downloaded) {
+              LinearProgressIndicator(
+                progress = { 1f },
+                modifier = Modifier.fillMaxWidth(),
+              )
+              Spacer(Modifier.height(8.dp))
+            }
+            Text(
+              text = progress.statusText,
+              style = MaterialTheme.typography.bodyMedium,
+              fontWeight = FontWeight.Medium,
+            )
+            Spacer(Modifier.height(8.dp))
+          }
+          Button(
+            onClick = {
+              scope.launch {
+                appUpdateSource.installUpdate()
+                  .collect { updateProgress = it }
+              }
+            },
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            val buttonLabel = when (progress?.status) {
+              AppUpdateProgress.Status.Downloaded -> "Install"
+              AppUpdateProgress.Status.Failed, AppUpdateProgress.Status.Canceled -> "Try again"
+              else -> "Update now"
+            }
+            Text(buttonLabel)
+          }
+        }
+
+        AppUpdateProgress.Status.Pending,
+        AppUpdateProgress.Status.Downloading,
+        -> {
+          if (progress.status == AppUpdateProgress.Status.Pending) {
+            LinearProgressIndicator(
+              modifier = Modifier.fillMaxWidth(),
+            )
+          } else {
+            LinearProgressIndicator(
+              progress = { progress.progress },
+              modifier = Modifier.fillMaxWidth(),
+            )
+          }
+          Spacer(Modifier.height(8.dp))
           Text(
             text = progress.statusText,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
           )
-          Spacer(Modifier.height(8.dp))
         }
-        Button(
-          onClick = {
-            scope.launch {
-              appUpdateSource.installUpdate()
-                .collect { updateProgress = it }
-            }
-          },
-          modifier = Modifier.fillMaxWidth(),
-        ) {
-          Text(if (progress == null) "Update now" else "Try again")
-        }
-      } else {
-        if (progress.status == AppUpdateProgress.Status.Pending) {
-          LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth(),
-          )
-        } else {
-          LinearProgressIndicator(
-            progress = { progress.progress },
-            modifier = Modifier.fillMaxWidth(),
-          )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-          text = progress.statusText,
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.Medium,
-        )
       }
 
       Spacer(Modifier.height(16.dp))
@@ -352,9 +374,6 @@ private fun AppUpdateWidgetCard(
     }
   }
 }
-
-private val AppUpdateProgress.Status.isTerminal: Boolean
-  get() = this == AppUpdateProgress.Status.Failed || this == AppUpdateProgress.Status.Canceled
 
 private val AppUpdateProgress.statusText: String
   get() = when (status) {

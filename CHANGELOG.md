@@ -17,12 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.54-rc2] - 2026-11-25
+## [1.2.54] - 2026-11-25
 
 ### Fixed
 
 - **Search Stuck on Loading Spinner**:
   - Fixed new (never-before-searched) queries spinning forever. The v1.2.52 search back-navigation cache switched the Store request to `cached(refresh = false)`, but the search database reader never emits `null` for unseen queries, so Store5 never started the network request. Restored `freshWithFallBackToSourceOfTruth`; instant back-navigation still comes from the in-memory recent-search cache.
+- **In-App GitHub Updater Installation Hangs (Android 12 / PackageInstaller)**:
+  - Check `packageManager.canRequestPackageInstalls()` up front before downloading/installing and redirect directly to Settings if `"Install unknown apps"` is not enabled.
+  - Switched APK installation from deprecated `Intent.ACTION_VIEW` + `FileProvider` to Android's native `PackageInstaller.Session` API (`GitHubInstallReceiver`), abandoning stale pending sessions first and streaming directly into a system install session.
+  - Kept the **"Install"** button visible on `"Download completed!"` in `AppUpdateWidgetImpl` so users can immediately trigger or retry installation using the cached verified APK without re-downloading.
 
 ## [1.2.53] - 2026-11-22
 
