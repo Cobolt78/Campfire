@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.54-rc2] - 2026-11-25
+
+### Fixed
+
 - **Search Stuck on Loading Spinner**:
   - Fixed new (never-before-searched) queries spinning forever. The v1.2.52 search back-navigation cache switched the Store request to `cached(refresh = false)`, but the search database reader never emits `null` for unseen queries, so Store5 never started the network request. Restored `freshWithFallBackToSourceOfTruth`; instant back-navigation still comes from the in-memory recent-search cache.
 

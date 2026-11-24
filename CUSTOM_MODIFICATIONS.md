@@ -104,7 +104,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
-100. [Search Endless Spinner Fix for Uncached Queries (Unreleased)](#100-search-endless-spinner-fix-for-uncached-queries-unreleased)
+100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)](#100-search-endless-spinner-fix-for-uncached-queries-v1254-rc2)
 
 ---
 
@@ -3076,7 +3076,7 @@ Users with many bookmarks or intermittent offline/server sync failures (notably 
 
 ---
 
-## 100. Search Endless Spinner Fix for Uncached Queries (Unreleased)
+## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)
 
 ### Problem
 Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
@@ -3089,5 +3089,6 @@ Section 94 (Search Cache Restoration on Back Navigation) changed `StoreSearchRep
 
 ### Modified Files:
 * `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
+* `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

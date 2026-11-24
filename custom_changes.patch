@@ -11,14 +11,18 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..0fc79e66 100644
+index c0278c85..ca89aed3 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,574 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,578 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.54-rc2] - 2026-11-25
++
++### Fixed
++
 +- **Search Stuck on Loading Spinner**:
 +  - Fixed new (never-before-searched) queries spinning forever. The v1.2.52 search back-navigation cache switched the Store request to `cached(refresh = false)`, but the search database reader never emits `null` for unseen queries, so Store5 never started the network request. Restored `freshWithFallBackToSourceOfTruth`; instant back-navigation still comes from the in-memory recent-search cache.
 +
@@ -592,10 +596,10 @@ index c0278c85..0fc79e66 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..357d37e3
+index 00000000..395c5c8d
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3093 @@
+@@ -0,0 +1,3094 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -702,7 +706,7 @@ index 00000000..357d37e3
 +97. [Rearranging Home Page Shelves (Hold Heading for Compact Reorder Mode) (v1.2.52)](#97-rearranging-home-page-shelves-hold-heading-for-compact-reorder-mode-v1252)
 +98. [Statistics Hardening, Diagnostic Logging & `/api/me/listening-stats` Endpoint (v1.2.52)](#98-statistics-hardening-diagnostic-logging--apimelistening-stats-endpoint-v1252)
 +99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
-+100. [Search Endless Spinner Fix for Uncached Queries (Unreleased)](#100-search-endless-spinner-fix-for-uncached-queries-unreleased)
++100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)](#100-search-endless-spinner-fix-for-uncached-queries-v1254-rc2)
 +
 +---
 +
@@ -3674,7 +3678,7 @@ index 00000000..357d37e3
 +
 +---
 +
-+## 100. Search Endless Spinner Fix for Uncached Queries (Unreleased)
++## 100. Search Endless Spinner Fix for Uncached Queries (v1.2.54-rc2)
 +
 +### Problem
 +Since v1.2.52, searching for any title that had not been searched before showed the loading spinner forever.
@@ -3687,6 +3691,7 @@ index 00000000..357d37e3
 +
 +### Modified Files:
 +* `features/search/impl/src/commonMain/kotlin/app/campfire/search/StoreSearchRepository.kt`
++* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
@@ -24431,7 +24436,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..43f48a0f 100644
+index f41126a7..fe9f3856 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -24439,13 +24444,13 @@ index f41126a7..43f48a0f 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.53
++campfire.version=1.2.54-rc2
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025399
++campfire.versionCode=1025402
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
