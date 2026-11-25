@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+## [1.2.56-rc1] - 2026-11-25
+
+### Added
 - **Notification & Lock Screen "Add Bookmark" Action**:
   - Added an optional **Add Bookmark button in notification** toggle (default `false`) in **Settings → Headset & Remote Controls** under **Media Notification & Lock Screen**, exposing a visible **Add Bookmark** overflow action button on Android media notifications and lock screen controls via `WidgetSessionCommand.ADD_BOOKMARK`.
 - **Remote Action Audio Chimes & Haptic Confirmation**:
@@ -22,12 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Headset & Remote Controls Clarity & Direct Controller Bookmark Support**:
   - Clarified **Wired Headset (Single Button)** vs. **Bluetooth & Dedicated Buttons** descriptions to explain headset button hardware signals vs. single-button multi-tap detection.
   - Wired `RemoteControlAction.ADD_BOOKMARK` inside `RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer` so controllers emitting direct `seekToNext()` / `seekToPrevious()` commands also create bookmarks.
-
-### Deprecated
-
-### Removed
-
-### Fixed
 
 ## [1.2.55] - 2026-11-25
 

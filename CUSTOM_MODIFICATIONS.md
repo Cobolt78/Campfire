@@ -3218,5 +3218,6 @@ Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app
 * `infra/audioplayer/impl/src/androidMain/res/values/strings.xml`
 * `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMath.kt`
 * `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMathTest.kt`
+* `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
