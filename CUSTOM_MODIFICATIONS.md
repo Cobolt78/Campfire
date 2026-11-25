@@ -107,7 +107,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54)](#100-search-endless-spinner-fix-for-uncached-queries-v1254)
 101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
-103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56-custom)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256-custom)
+103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 
 ---
 
@@ -3166,7 +3166,7 @@ Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app
 
 ---
 
-## 103. Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56-custom)
+## 103. Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)
 
 ### Background & Findings
 1. Live ADB `logcat` diagnostics on Shokz OpenRun Pro 2 Bluetooth headphones confirmed their firmware maps double-tap directly to AVRCP `OperationId=75` (`KEYCODE_MEDIA_NEXT` / 87) and triple-tap to `KEYCODE_MEDIA_PREVIOUS`, while swallowing quadruple-taps at the headset MCU with zero Android `KeyEvent` or AVRCP packets emitted.

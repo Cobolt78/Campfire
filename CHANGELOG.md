@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [1.2.56-rc1] - 2026-11-25
+## [1.2.56] - 2026-11-25
 
 ### Added
 - **Notification & Lock Screen "Add Bookmark" Action**:
