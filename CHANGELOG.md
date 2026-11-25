@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.55] - 2026-11-25
+
+### Fixed
+
+- **Automatic Sleep Timer Re-Triggering After Manual Clear**:
+  - Manually clearing an automatic sleep timer during its scheduled hours now suppresses re-arming for that same sleep window across pause/resume cycles, book switches, and service/app restarts, and automatically resets once leaving the window, entering the next scheduled night, or toggling Auto Sleep off.
+- **"Shake Awake" Playing Audiobooks While Paused or in Other Apps**:
+  - Scoped `ShakeDetector` strictly to active playback (`Playing`) with a timer and the 30-second grace window immediately after natural sleep-timer expiry (`endTimer`).
+  - Stops the accelerometer listener immediately whenever playback pauses manually, loses audio focus to another app, stops, or releases (covering both timed and `End of Chapter` timers), and only permits shake-to-resume playback during that explicit post-expiry grace window.
+
 ## [1.2.54] - 2026-11-25
 
 ### Fixed

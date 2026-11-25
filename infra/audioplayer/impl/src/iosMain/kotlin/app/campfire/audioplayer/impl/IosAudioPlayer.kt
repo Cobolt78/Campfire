@@ -293,6 +293,7 @@ class IosAudioPlayer(
   }
 
   override fun stop() {
+    sleepTimerManager.release()
     preparedSession = null
     finishedListener = null
     player.close()

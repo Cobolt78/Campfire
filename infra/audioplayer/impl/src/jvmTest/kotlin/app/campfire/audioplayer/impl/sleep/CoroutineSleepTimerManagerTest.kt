@@ -33,6 +33,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 
 class CoroutineSleepTimerManagerTest {
 
@@ -40,13 +41,15 @@ class CoroutineSleepTimerManagerTest {
     fadeOutDuration = 5.seconds
   }
   private val player = FakeAudioPlayer()
+  private val shakeDetector = ShakeDetector()
+  private var fakeNow = LocalDateTime(2026, 11, 25, 22, 30, 0)
 
   private fun TestScope.manager(): CoroutineSleepTimerManager {
     val dispatcher = UnconfinedTestDispatcher(testScheduler)
     return CoroutineSleepTimerManager(
       player = player,
       sleepSettings = settings,
-      shakeDetector = ShakeDetector(),
+      shakeDetector = shakeDetector,
       dispatcherProvider = DispatcherProvider(
         io = dispatcher,
         databaseWrite = dispatcher,
@@ -54,7 +57,7 @@ class CoroutineSleepTimerManagerTest {
         computation = dispatcher,
         main = dispatcher,
       ),
-      fatherTime = SchedulerFatherTime(this),
+      fatherTime = SchedulerFatherTime(this, nowProvider = { fakeNow }),
       applicationScope = backgroundScope,
     )
   }
@@ -270,7 +273,7 @@ class CoroutineSleepTimerManagerTest {
     val manager = CoroutineSleepTimerManager(
       player = throwingPlayer,
       sleepSettings = settings,
-      shakeDetector = ShakeDetector(),
+      shakeDetector = shakeDetector,
       dispatcherProvider = DispatcherProvider(
         io = dispatcher,
         databaseWrite = dispatcher,
@@ -278,10 +281,11 @@ class CoroutineSleepTimerManagerTest {
         computation = dispatcher,
         main = dispatcher,
       ),
-      fatherTime = SchedulerFatherTime(this),
+      fatherTime = SchedulerFatherTime(this, nowProvider = { fakeNow }),
       applicationScope = backgroundScope,
     )
     assertThat(manager).isNotNull()
+    assertThat(shakeDetector.isRunning).isFalse()
   }
 
   @Test
@@ -343,9 +347,132 @@ class CoroutineSleepTimerManagerTest {
     assertThat(manager.runningTimer.value).isNull()
   }
 
-  private class SchedulerFatherTime(private val scope: TestScope) : FatherTime {
-    override fun now(): LocalDateTime = error("not used in tests")
-    override fun today(): LocalDate = error("not used in tests")
+  @Test
+  fun `cleared auto sleep timer stays dismissed for same window across book switch and service restart`() = runTest {
+    settings.autoSleepTimerEnabled = true
+    settings.autoSleepStart = LocalTime(22, 0)
+    settings.autoSleepEnd = LocalTime(6, 0)
+    settings.autoSleepTimer = SleepSettings.AutoSleepTimer.Epoch(15.minutes.inWholeMilliseconds)
+
+    fakeNow = LocalDateTime(2026, 11, 25, 22, 30, 0)
+    player.state.value = State.Playing
+    var manager = manager()
+
+    manager.onSessionStart()
+    assertThat(manager.runningTimer.value).isNotNull()
+
+    // Adjust +1m, then clear manually -> stays null even on repeated onSessionStart (resume / book switch)
+    manager.adjustTimer(1.minutes.inWholeMilliseconds)
+    manager.clearTimer()
+    assertThat(manager.runningTimer.value).isNull()
+
+    manager.onSessionStart()
+    assertThat(manager.runningTimer.value).isNull()
+
+    // Past midnight within the SAME overnight window (2026-11-25 22:00 .. 2026-11-26 06:00), after service restart
+    fakeNow = LocalDateTime(2026, 11, 26, 1, 30, 0)
+    manager.release()
+    manager = manager()
+    manager.onSessionStart()
+    assertThat(manager.runningTimer.value).isNull()
+
+    // Next night's window starts automatically even if app was never opened during the day
+    fakeNow = LocalDateTime(2026, 11, 26, 22, 15, 0)
+    manager.onSessionStart()
+    assertThat(manager.runningTimer.value).isNotNull()
+    assertThat(manager.runningTimer.value?.timer?.isAutoSleepTimer).isEqualTo(true)
+  }
+
+  @Test
+  fun `toggling auto sleep off resets dismissal for current window`() = runTest {
+    settings.autoSleepTimerEnabled = true
+    settings.autoSleepStart = LocalTime(22, 0)
+    settings.autoSleepEnd = LocalTime(6, 0)
+    fakeNow = LocalDateTime(2026, 11, 25, 23, 0, 0)
+    player.state.value = State.Playing
+
+    val manager = manager()
+    manager.onSessionStart()
+    manager.clearTimer()
+    assertThat(manager.runningTimer.value).isNull()
+
+    settings.autoSleepTimerEnabled = false
+    settings.autoSleepTimerEnabled = true
+    manager.onSessionStart()
+    assertThat(manager.runningTimer.value).isNotNull()
+  }
+
+  @Test
+  fun `shake detector stops when playback pauses or service releases and does not wake paused player`() = runTest {
+    settings.shakeToResetEnabled = true
+    val manager = manager()
+    player.state.value = State.Playing
+
+    manager.setTimer(PlaybackTimer.Epoch(10_000L))
+    assertThat(shakeDetector.isRunning).isTrue()
+
+    // Another app takes audio focus / user pauses -> accelerometer must unregister immediately
+    player.state.value = State.Paused
+    assertThat(shakeDetector.isRunning).isFalse()
+
+    // Changing shake sensitivity while paused must not turn the sensor back on
+    settings.shakeSensitivity = SleepSettings.ShakeSensitivity.VeryLow
+    assertThat(shakeDetector.isRunning).isFalse()
+
+    // Shaking while paused never wakes playback
+    shakeDetector.simulateShake()
+    assertThat(player.invocations.filterIsInstance<Invocation.PlayPause>()).isEmpty()
+
+    // Resuming playback re-enables shake detection
+    player.state.value = State.Playing
+    assertThat(shakeDetector.isRunning).isTrue()
+
+    // Releasing player stops shake detector even while state is Playing, keeping persisted timer on disk
+    manager.release()
+    assertThat(shakeDetector.isRunning).isFalse()
+    assertThat(settings.activeSleepTimer).isNotNull()
+  }
+
+  @Test
+  fun `shake detector allows resume only during 30s grace window after timer expires`() = runTest {
+    settings.shakeToResetEnabled = true
+    val manager = manager()
+    player.state.value = State.Playing
+
+    manager.setTimer(PlaybackTimer.Epoch(10_000L))
+    advanceTimeBy(4_000L)
+
+    // Shake while playing resets the timer countdown cleanly without calling playPause
+    shakeDetector.simulateShake()
+    assertThat(manager.runningTimer.value?.remainingMillis(testScheduler.currentTime)).isEqualTo(10_000L)
+    assertThat(player.invocations.filterIsInstance<Invocation.PlayPause>()).isEmpty()
+
+    // Let timer expire -> post-expiry 30s grace window allows shake to resume
+    advanceTimeBy(10_001L)
+    assertThat(fades()).hasSize(1)
+    assertThat(shakeDetector.isRunning).isTrue()
+    player.state.value = State.Paused
+
+    shakeDetector.simulateShake()
+    assertThat(player.invocations.filterIsInstance<Invocation.PlayPause>()).hasSize(1)
+    assertThat(manager.runningTimer.value).isNotNull()
+
+    // Simulate player resumed and let it expire again; after 30s, shake stops cleanly
+    player.state.value = State.Playing
+    advanceTimeBy(10_001L)
+    assertThat(fades()).hasSize(2)
+    assertThat(shakeDetector.isRunning).isTrue()
+
+    advanceTimeBy(30_001L)
+    assertThat(shakeDetector.isRunning).isFalse()
+  }
+
+  private class SchedulerFatherTime(
+    private val scope: TestScope,
+    private val nowProvider: () -> LocalDateTime = { error("not used in tests") },
+  ) : FatherTime {
+    override fun now(): LocalDateTime = nowProvider()
+    override fun today(): LocalDate = nowProvider().date
     override fun nowInEpochMillis(): Long = scope.testScheduler.currentTime
   }
 }

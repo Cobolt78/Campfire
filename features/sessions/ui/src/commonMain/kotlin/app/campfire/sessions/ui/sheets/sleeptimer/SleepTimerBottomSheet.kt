@@ -698,6 +698,8 @@ fun TimerBottomSheetV2Preview() {
               return mutableActiveSleepTimer
             }
 
+            override var dismissedAutoSleepWindow: String? = null
+
             override var shakeSensitivity: SleepSettings.ShakeSensitivity
               get() = TODO("Not yet implemented")
               set(value) {}

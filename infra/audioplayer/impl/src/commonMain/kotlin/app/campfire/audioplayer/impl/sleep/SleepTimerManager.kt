@@ -17,6 +17,7 @@ interface SleepTimerManager {
   fun adjustTimer(deltaMillis: Long)
   fun clearTimer()
   fun endOfChapter(): Boolean
+  fun release()
 
   interface Factory {
     fun create(

@@ -307,6 +307,7 @@ class DesktopAudioPlayer(
   }
 
   override fun stop() {
+    sleepTimerManager.release()
     stopped = true
     preparedSession = null
     finishedListener = null

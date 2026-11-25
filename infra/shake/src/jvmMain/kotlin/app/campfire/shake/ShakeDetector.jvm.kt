@@ -9,15 +9,24 @@ import dev.zacsweers.metro.SingleIn
 
 actual class ShakeDetector {
 
+  private var listener: Listener? = null
+  private var running: Boolean = false
+
   actual val isAvailable: Boolean = false
-  actual val isRunning: Boolean = false
+  actual val isRunning: Boolean get() = running
 
   actual fun start(sensitivity: ShakeSensitivity, listener: Listener) {
-    // No-op
+    this.listener = listener
+    this.running = true
   }
 
   actual fun stop() {
-    // No-op
+    this.listener = null
+    this.running = false
+  }
+
+  fun simulateShake() {
+    listener?.onShake()
   }
 
   actual fun interface Listener {

@@ -40,7 +40,12 @@ class FakeSleepSettings : SleepSettings {
   private val _autoSleepTimerEnabled = MutableStateFlow(false)
   override var autoSleepTimerEnabled: Boolean
     get() = _autoSleepTimerEnabled.value
-    set(value) { _autoSleepTimerEnabled.value = value }
+    set(value) {
+      _autoSleepTimerEnabled.value = value
+      if (!value) {
+        dismissedAutoSleepWindow = null
+      }
+    }
   override fun observeAutoSleepTimerEnabled(): StateFlow<Boolean> = _autoSleepTimerEnabled.asStateFlow()
 
   private val _autoSleepStart = MutableStateFlow(LocalTime(22, 0))
@@ -90,4 +95,6 @@ class FakeSleepSettings : SleepSettings {
     get() = _activeSleepTimer.value
     set(value) { _activeSleepTimer.value = value }
   override fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?> = _activeSleepTimer.asStateFlow()
+
+  override var dismissedAutoSleepWindow: String? = null
 }

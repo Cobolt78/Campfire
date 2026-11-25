@@ -52,6 +52,13 @@ interface SleepSettings {
   var activeSleepTimer: PersistedSleepTimer?
   fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?>
 
+  /**
+   * Key identifying the auto sleep timer window that the user manually dismissed
+   * (formatted as `"<windowStartDate>|<startTime>|<endTime>"`), preventing re-arming during
+   * the same window across pause/resume, book switches, or service restarts.
+   */
+  var dismissedAutoSleepWindow: String?
+
   data class PersistedSleepTimer(
     val isEndOfChapter: Boolean,
     val totalDurationMillis: Long,

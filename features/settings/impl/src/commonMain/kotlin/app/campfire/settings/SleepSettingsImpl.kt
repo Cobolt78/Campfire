@@ -49,7 +49,14 @@ class SleepSettingsImpl(
     KEY_AUTO_SLEEP_TIMER_ENABLED,
     DefaultAutoSleepTimerEnabled,
   )
-  override var autoSleepTimerEnabled: Boolean by autoSleepTimerEnabledProperty
+  override var autoSleepTimerEnabled: Boolean
+    get() = autoSleepTimerEnabledProperty.getValue(this, SleepSettings::autoSleepTimerEnabled)
+    set(value) {
+      autoSleepTimerEnabledProperty.setValue(this, SleepSettings::autoSleepTimerEnabled, value)
+      if (!value) {
+        dismissedAutoSleepWindow = null
+      }
+    }
   override fun observeAutoSleepTimerEnabled(): StateFlow<Boolean> = autoSleepTimerEnabledProperty.observe()
 
   // 10:00 PM
@@ -124,6 +131,9 @@ class SleepSettingsImpl(
       .map { it?.toPersistedSleepTimer() }
       .stateIn(scope, SharingStarted.Lazily, initial)
   }
+
+  private val dismissedAutoSleepWindowProperty = stringOrNullSetting(KEY_DISMISSED_AUTO_SLEEP_WINDOW)
+  override var dismissedAutoSleepWindow: String? by dismissedAutoSleepWindowProperty
 }
 
 private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
@@ -138,6 +148,7 @@ private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
 private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
 private const val KEY_ACTIVE_SLEEP_TIMER = "pref_active_sleep_timer"
+private const val KEY_DISMISSED_AUTO_SLEEP_WINDOW = "pref_dismissed_auto_sleep_window"
 
 private const val ACTIVE_TIMER_SEPARATOR = "|"
 

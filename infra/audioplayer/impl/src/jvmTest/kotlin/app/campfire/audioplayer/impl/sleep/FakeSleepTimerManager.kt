@@ -20,6 +20,7 @@ class FakeSleepTimerManager : SleepTimerManager {
 
   val timers = mutableListOf<PlaybackTimer>()
   var cleared = 0
+  var released = 0
 
   val factory: SleepTimerManager.Factory = object : SleepTimerManager.Factory {
     override fun create(player: AudioPlayer): SleepTimerManager = this@FakeSleepTimerManager
@@ -42,5 +43,9 @@ class FakeSleepTimerManager : SleepTimerManager {
   override fun endOfChapter(): Boolean {
     endOfChapterCalls++
     return endOfChapterResult
+  }
+
+  override fun release() {
+    released++
   }
 }

@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalTime
+import kotlinx.datetime.minus
 
 @AssistedInject
 class CoroutineSleepTimerManager(
@@ -61,10 +63,12 @@ class CoroutineSleepTimerManager(
 
   private var playbackTimer: PlaybackTimer? = null
   private var lastPlaybackTimer: PlaybackTimer? = null
+  private var canShakeToResumeAfterExpiry = false
   private var countdownJob: Job? = null
   private var playbackStateJob: Job? = null
   private var fadeJob: Job? = null
   private var shakeDetectorJob: Job? = null
+  private var shakeSettingsJob: Job? = null
 
   /**
    * Time left on the running [PlaybackTimer.Epoch] timer. Exact while the countdown is paused;
@@ -79,7 +83,8 @@ class CoroutineSleepTimerManager(
   }
 
   private fun observeShakeSettings() {
-    applicationScope.launch(dispatcherProvider.main) {
+    shakeSettingsJob?.cancel()
+    shakeSettingsJob = applicationScope.launch(dispatcherProvider.main) {
       combine(
         sleepSettings.observeShakeToResetEnabled(),
         sleepSettings.observeShakeSensitivity(),
@@ -94,7 +99,7 @@ class CoroutineSleepTimerManager(
               dbark { "Shake to reset disabled, stopping ShakeDetector" }
               shakeDetector.stop()
             }
-          } else if (playbackTimer != null || lastPlaybackTimer != null) {
+          } else if ((playbackTimer != null && isPlayerPlaying()) || canShakeToResumeAfterExpiry) {
             ibark { "Applying updated shake sensitivity: $sensitivity" }
             startShakeDetector(sensitivity.asShakeSensitivity())
           }
@@ -111,14 +116,12 @@ class CoroutineSleepTimerManager(
         playbackTimer = timer
         lastPlaybackTimer = timer
         startTimer(timer)
-        startShakeDetectorIfNeeded()
       } else {
         if (persisted.remainingMillis > 0L) {
           val timer = PlaybackTimer.Epoch(persisted.totalDurationMillis, isAutoSleepTimer = persisted.isAutoSleepTimer)
           playbackTimer = timer
           lastPlaybackTimer = timer
           startTimer(timer, initialRemainingMillis = persisted.remainingMillis)
-          startShakeDetectorIfNeeded()
         } else {
           dbark { "Persisted sleep timer has 0 remaining millis; clearing" }
           sleepSettings.activeSleepTimer = null
@@ -150,37 +153,54 @@ class CoroutineSleepTimerManager(
   }
 
   override fun onSessionStart() {
-    if (sleepSettings.autoSleepTimerEnabled && playbackTimer == null) {
-      if (isNowAnAutoSleepZone()) {
-        ibark { "Starting auto sleep timer" }
-        val newTimer = when (val sleepTimer = sleepSettings.autoSleepTimer) {
-          is SleepSettings.AutoSleepTimer.Epoch -> PlaybackTimer.Epoch(sleepTimer.millis, true)
-          SleepSettings.AutoSleepTimer.EndOfChapter -> PlaybackTimer.EndOfChapter(true)
-        }
-        setTimer(newTimer)
+    if (!sleepSettings.autoSleepTimerEnabled) return
+    val windowKey = currentAutoSleepWindowKey()
+    if (windowKey == null) {
+      if (sleepSettings.dismissedAutoSleepWindow != null) {
+        sleepSettings.dismissedAutoSleepWindow = null
       }
+      return
     }
+    if (playbackTimer != null) return
+    if (sleepSettings.dismissedAutoSleepWindow == windowKey) {
+      dbark { "Auto sleep timer dismissed for current window ($windowKey); skipping" }
+      return
+    }
+
+    ibark { "Starting auto sleep timer" }
+    val newTimer = when (val sleepTimer = sleepSettings.autoSleepTimer) {
+      is SleepSettings.AutoSleepTimer.Epoch -> PlaybackTimer.Epoch(sleepTimer.millis, true)
+      SleepSettings.AutoSleepTimer.EndOfChapter -> PlaybackTimer.EndOfChapter(true)
+    }
+    setTimer(newTimer)
   }
 
-  private fun isNowAnAutoSleepZone(): Boolean {
-    val now = fatherTime.now().time
+  private fun currentAutoSleepWindowKey(): String? {
+    val nowDateTime = fatherTime.now()
+    val now = nowDateTime.time
     val start = sleepSettings.autoSleepStart
     val end = sleepSettings.autoSleepEnd
 
-    if (end > start) {
-      return now in start..end
-    } else if (end < start) {
-      return now in start..LocalTime.Midnight ||
-        now in LocalTime.Zero..end
-    } else {
-      // This should never happen, and ideally we prevent
-      // this on the UI level.
-      return now == start
+    val inZone = when {
+      end > start -> now in start..end
+      end < start -> now >= start || now <= end
+      else -> now == start
     }
+    if (!inZone) return null
+
+    val windowStartDate = if (end < start && now <= end) {
+      nowDateTime.date - DatePeriod(days = 1)
+    } else {
+      nowDateTime.date
+    }
+    return "$windowStartDate|$start|$end"
   }
 
   override fun setTimer(timer: PlaybackTimer) {
     ibark { "setTimer($timer)" }
+    canShakeToResumeAfterExpiry = false
+    shakeDetectorJob?.cancel()
+    shakeDetectorJob = null
     clearTimerInternal()
     // A timer set (or reset via shake) mid-fade supersedes the fade, so keep listening
     cancelFade()
@@ -194,7 +214,6 @@ class CoroutineSleepTimerManager(
         is PlaybackTimer.EndOfChapter -> 0L
       },
     )
-    startShakeDetectorIfNeeded()
   }
 
   override fun adjustTimer(deltaMillis: Long) {
@@ -226,6 +245,14 @@ class CoroutineSleepTimerManager(
     }
   }
 
+  private fun isPlayerPlaying(): Boolean {
+    return try {
+      player.state.value == AudioPlayer.State.Playing
+    } catch (_: Exception) {
+      false
+    }
+  }
+
   private fun startShakeDetectorIfNeeded() {
     if (sleepSettings.shakeToResetEnabled && !shakeDetector.isRunning) {
       ibark { "Shake to reset enabled, starting shake detector" }
@@ -234,7 +261,17 @@ class CoroutineSleepTimerManager(
       dbark { "Shake detector already running, skipping" }
     } else if (!sleepSettings.shakeToResetEnabled && shakeDetector.isRunning) {
       dbark { "Shake detector running, and not enabled. Stopping" }
-      stopShakeDetector()
+      shakeDetector.stop()
+    }
+  }
+
+  private fun pauseShakeDetector() {
+    canShakeToResumeAfterExpiry = false
+    shakeDetectorJob?.cancel()
+    shakeDetectorJob = null
+    if (shakeDetector.isRunning) {
+      dbark { "Playback paused, stopping ShakeDetector" }
+      shakeDetector.stop()
     }
   }
 
@@ -249,29 +286,54 @@ class CoroutineSleepTimerManager(
   }
 
   private fun resetTimer() {
-    dbark { "resetTimer(lastTimer=$lastPlaybackTimer)" }
-    if (lastPlaybackTimer != null) {
-      // Cancel our shake detector time out job so that it doesn't kill
-      // the shake detection while the timer is re-activated
-      shakeDetectorJob?.cancel()
-      shakeDetectorJob = null
+    val timerToReset = lastPlaybackTimer ?: return
+    val canReset = (playbackTimer != null && isPlayerPlaying()) || canShakeToResumeAfterExpiry
+    if (!canReset) {
+      dbark { "Ignoring shake outside active playback or post-expiry window" }
+      return
+    }
+    dbark { "resetTimer(lastTimer=$timerToReset, canResume=$canShakeToResumeAfterExpiry)" }
+    val allowResume = canShakeToResumeAfterExpiry
+    canShakeToResumeAfterExpiry = false
+    shakeDetectorJob?.cancel()
+    shakeDetectorJob = null
 
-      // Re-active the last playback timer
-      setTimer(lastPlaybackTimer!!)
+    setTimer(timerToReset)
 
-      // If the player is paused (i.e. the previous timer finished) be sure to resume
-      // playback
-      if (player.state.value == AudioPlayer.State.Paused) {
-        player.playPause()
-      }
+    // Only resume playback if the timer just expired during the grace window
+    if (allowResume && player.state.value == AudioPlayer.State.Paused) {
+      player.playPause()
     }
   }
 
   override fun clearTimer() {
-    ibark { "clearTimer(current=$playbackTimer)" }
+    val clearingTimer = playbackTimer ?: runningTimer.value?.timer
+    ibark { "clearTimer(current=$clearingTimer)" }
+    if (clearingTimer?.isAutoSleepTimer == true) {
+      val windowKey = currentAutoSleepWindowKey()
+      if (windowKey != null) {
+        ibark { "Auto sleep timer cleared manually; suppressing re-trigger for window $windowKey" }
+        sleepSettings.dismissedAutoSleepWindow = windowKey
+      }
+    }
+    canShakeToResumeAfterExpiry = false
     clearTimerInternal()
     cancelFade()
-    stopShakeDetector()
+    stopShakeDetector(clearLastTimer = true)
+  }
+
+  override fun release() {
+    dbark { "release()" }
+    shakeSettingsJob?.cancel()
+    shakeSettingsJob = null
+    canShakeToResumeAfterExpiry = false
+    countdownJob?.cancel()
+    countdownJob = null
+    playbackStateJob?.cancel()
+    playbackStateJob = null
+    fadeJob?.cancel()
+    fadeJob = null
+    stopShakeDetector(clearLastTimer = true)
   }
 
   private fun clearTimerInternal() {
@@ -332,27 +394,44 @@ class CoroutineSleepTimerManager(
       cancelFadeIfPlaybackResumes(fade)
     }
 
-    // If we hit the end of the sleep timer delay for an amount of time,
-    // then stop the shake detector allowing a brief period of time where the user
-    // can shake to resume and reset the last known timer
+    lastPlaybackTimer = endedTimer
     stopShakeDetector(withDelay = true)
   }
 
-  private fun stopShakeDetector(withDelay: Boolean = false) {
-    if (!shakeDetector.isRunning) {
-      lastPlaybackTimer = null
-      dbark { "ShakeDetector is not running, clearing last playback timer" }
-    } else if (!withDelay || lastPlaybackTimer == null) {
-      dbark { "Stopping ShakeDetector without delay" }
-      shakeDetector.stop()
-      lastPlaybackTimer = null
+  private fun stopShakeDetector(withDelay: Boolean = false, clearLastTimer: Boolean = !withDelay) {
+    shakeDetectorJob?.cancel()
+    shakeDetectorJob = null
+    if (!withDelay || lastPlaybackTimer == null) {
+      canShakeToResumeAfterExpiry = false
+      if (shakeDetector.isRunning) {
+        dbark { "Stopping ShakeDetector without delay" }
+        shakeDetector.stop()
+      } else {
+        dbark { "ShakeDetector is not running" }
+      }
+      if (clearLastTimer) {
+        lastPlaybackTimer = null
+      }
     } else {
+      canShakeToResumeAfterExpiry = sleepSettings.shakeToResetEnabled
+      if (!sleepSettings.shakeToResetEnabled) {
+        if (shakeDetector.isRunning) {
+          shakeDetector.stop()
+        }
+        lastPlaybackTimer = null
+        return
+      }
+      startShakeDetectorIfNeeded()
       dbark { "--> Launching delayed shake detector stop" }
-      shakeDetectorJob?.cancel()
       shakeDetectorJob = applicationScope.launch {
         delay(30_000L) // 30s
-        shakeDetector.stop()
-        lastPlaybackTimer = null
+        canShakeToResumeAfterExpiry = false
+        if (playbackTimer == null || !isPlayerPlaying()) {
+          shakeDetector.stop()
+        }
+        if (playbackTimer == null) {
+          lastPlaybackTimer = null
+        }
         dbark { "<-- ShakeDetector stopped!" }
       }
     }
@@ -392,17 +471,34 @@ class CoroutineSleepTimerManager(
   private fun startTimer(timer: PlaybackTimer, initialRemainingMillis: Long? = null) {
     if (timer !is PlaybackTimer.Epoch) {
       runningTimer.value = RunningTimer(timer, fatherTime.nowInEpochMillis(), sleepSettings.shakeToResetEnabled)
+      playbackStateJob = applicationScope.launch(dispatcherProvider.main) {
+        try {
+          player.state.collect { state ->
+            when (state) {
+              AudioPlayer.State.Playing -> {
+                canShakeToResumeAfterExpiry = false
+                startShakeDetectorIfNeeded()
+              }
+              AudioPlayer.State.Buffering,
+              AudioPlayer.State.Initializing,
+              -> Unit
+              AudioPlayer.State.Paused,
+              AudioPlayer.State.Finished,
+              AudioPlayer.State.Disabled,
+              -> pauseShakeDetector()
+            }
+          }
+        } catch (e: Exception) {
+          dbark { "Failed observing player state for sleep timer: ${e.message}" }
+        }
+      }
       return
     }
 
     remainingMillis = initialRemainingMillis ?: timer.epochMillis
     countdownResumedAt = null
 
-    val isPlaying = try {
-      player.state.value == AudioPlayer.State.Playing
-    } catch (_: Exception) {
-      false
-    }
+    val isPlaying = isPlayerPlaying()
     if (initialRemainingMillis != null && !isPlaying) {
       val now = fatherTime.nowInEpochMillis()
       publishRunningTimer(timer, reference = now, pausedAt = now)
@@ -431,6 +527,8 @@ class CoroutineSleepTimerManager(
   }
 
   private fun resumeCountdown(timer: PlaybackTimer.Epoch) {
+    canShakeToResumeAfterExpiry = false
+    startShakeDetectorIfNeeded()
     if (countdownResumedAt != null) return
     val now = fatherTime.nowInEpochMillis()
     countdownResumedAt = now
@@ -450,6 +548,9 @@ class CoroutineSleepTimerManager(
   }
 
   private fun pauseCountdown(timer: PlaybackTimer.Epoch, isUserPause: Boolean = true) {
+    if (isUserPause) {
+      pauseShakeDetector()
+    }
     val now = fatherTime.nowInEpochMillis()
     val resumedAt = countdownResumedAt
     if (resumedAt != null) {

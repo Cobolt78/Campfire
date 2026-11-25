@@ -511,6 +511,7 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun release() {
+    sleepTimerManager.release()
     preparedSession = null
     finishedListener = null
     audioEffects.release()
@@ -550,6 +551,7 @@ class ExoPlayerAudioPlayer(
   }
 
   override fun stop() {
+    sleepTimerManager.release()
     preparedSession = null
     chapterTimeline = null
     lastBoundaryCheckTime = null

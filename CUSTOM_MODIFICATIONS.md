@@ -106,6 +106,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 99. [Bookmarks Sheet Endless Loading, Scroll Disappearance & Store5 MutableStore Deadlock Fix (v1.2.53)](#99-bookmarks-sheet-endless-loading-scroll-disappearance--store5-mutablestore-deadlock-fix-v1253)
 100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54)](#100-search-endless-spinner-fix-for-uncached-queries-v1254)
 101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
+102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 
 ---
 
@@ -3120,6 +3121,44 @@ Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app
 * `app/android/src/main/java/app/campfire/android/updates/GitHubAppUpdateSource.kt`
 * `app/android/src/main/java/app/campfire/android/updates/GitHubInstallReceiver.kt`
 * `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 102. Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)
+
+### Problems
+1. Clearing an automatic sleep timer during its active hours did not stick: `onSessionStart()` checked only `playbackTimer == null`, so resuming playback, switching books, or restarting the service immediately re-armed the auto sleep timer.
+2. When **Shake to reset** was enabled, `ShakeDetector` stayed registered across pauses, audio-focus loss to other apps, restored paused sessions, sensitivity changes while paused, and player `stop()`/`release()` — and `resetTimer()` resumed playback on any `Paused` state, allowing accidental shakes in other apps to start audiobook playback.
+
+### Solution & Implementation
+1. **Auto-Sleep Window Dismissal Persistence (`SleepSettings.kt`, `SleepSettingsImpl.kt`, `FakeSleepSettings.kt`, `CoroutineSleepTimerManager.kt`)**:
+   - Added `dismissedAutoSleepWindow: String?` keyed by `"<windowStartDate>|<startTime>|<endTime>"` (handling midnight wrap-around cleanly).
+   - `clearTimer()` records the active window key whenever clearing an `isAutoSleepTimer` timer; `onSessionStart()` skips re-arming for that same window across pause/resume, book switches, and service restarts, and resets automatically on the next night, when leaving the window, or when toggling `autoSleepTimerEnabled` off.
+2. **Scoped `ShakeDetector` Lifecycle & Guarded Resume (`CoroutineSleepTimerManager.kt`, `SleepTimerManager.kt`, `ExoPlayerAudioPlayer.kt`, `DesktopAudioPlayer.kt`, `IosAudioPlayer.kt`)**:
+   - Only starts `ShakeDetector` while `Playing` with an active timer (including `EndOfChapter` playback state tracking) or during the 30-second grace window immediately after `endTimer()`.
+   - Stops `ShakeDetector` immediately on `Paused`/`Finished`/`Disabled`, does not start it on paused session restore or paused settings updates, and only allows `resetTimer()` to resume playback (`playPause()`) during the explicit `canShakeToResumeAfterExpiry` window.
+   - Added `SleepTimerManager.release()` called from `ExoPlayerAudioPlayer.stop()`/`release()`, `DesktopAudioPlayer.stop()`, and `IosAudioPlayer.stop()` to cancel background timer/settings jobs and unregister the sensor cleanly.
+3. **Unit Tests (`ShakeDetector.jvm.kt`, `FakeSleepTimerManager.kt`, `CoroutineSleepTimerManagerTest.kt`)**:
+   - Extended JVM `ShakeDetector` stub to track `isRunning` and provide `simulateShake()`.
+   - Added tests covering overnight auto-sleep dismissal persistence across restarts and next-night reset, toggling reset, pause/release sensor stopping while preserving persisted timers, and post-expiry 30-second grace resumption.
+
+### Modified Files:
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
+* `infra/shake/src/jvmMain/kotlin/app/campfire/shake/ShakeDetector.jvm.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/SleepTimerManager.kt`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt`
+* `infra/audioplayer/impl/src/iosMain/kotlin/app/campfire/audioplayer/impl/IosAudioPlayer.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/FakeSleepTimerManager.kt`
+* `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
+* `infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
