@@ -146,6 +146,10 @@ data class HeadsetControlsSettingsInfo(
   val singleButtonQuadruplePressAction: RemoteControlAction,
   val nextButtonAction: RemoteControlAction,
   val previousButtonAction: RemoteControlAction,
+  val notificationBookmarkButtonEnabled: Boolean = false,
+  val remoteBookmarkChimeEnabled: Boolean = false,
+  val remoteBookmarkVibrateEnabled: Boolean = false,
+  val remoteSkipChimeEnabled: Boolean = false,
 )
 
 @Immutable
@@ -311,6 +315,10 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class SingleButtonQuadruplePress(val action: RemoteControlAction) : HeadsetControlsSettingEvent
     data class NextButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
     data class PreviousButton(val action: RemoteControlAction) : HeadsetControlsSettingEvent
+    data class NotificationBookmarkButton(val enabled: Boolean) : HeadsetControlsSettingEvent
+    data class RemoteBookmarkChime(val enabled: Boolean) : HeadsetControlsSettingEvent
+    data class RemoteBookmarkVibrate(val enabled: Boolean) : HeadsetControlsSettingEvent
+    data class RemoteSkipChime(val enabled: Boolean) : HeadsetControlsSettingEvent
   }
 
   // Sleep Setting Events

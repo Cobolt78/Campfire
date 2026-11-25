@@ -76,6 +76,7 @@ class AudioPlayerService : MediaLibraryService() {
 
   private lateinit var player: ExoPlayerAudioPlayer
   private var session: MediaLibrarySession? = null
+  private var sessionCallback: MediaSessionCallback? = null
 
   private val component by lazy {
     ComponentHolder.component<AudioPlayerComponent>()
@@ -96,18 +97,18 @@ class AudioPlayerService : MediaLibraryService() {
     // (Bluetooth, car stereo) are intercepted per user settings, and coarse single-item (HLS)
     // playback is presented as a virtual chapter playlist so notification/Auto scrubbers and
     // titles stay chapter-granular. In-app UI uses the direct player.
-    val sessionCallback = MediaSessionCallback(
+    val callback = MediaSessionCallback(
       context = this,
       serviceScope = serviceScope,
       player = player,
       component = component,
       userComponent = userComponent,
       onEnsureSessionActive = ::ensureSessionAndForeground,
-    )
+    ).also { sessionCallback = it }
     val mediaSession = MediaLibrarySession.Builder(
       this,
       player.sessionPlayer,
-      sessionCallback,
+      callback,
     )
       .setSessionActivity(
         PendingIntent.getActivity(
@@ -120,7 +121,7 @@ class AudioPlayerService : MediaLibraryService() {
       .build()
     session = mediaSession
 
-    sessionCallback.bindSession(mediaSession)
+    callback.bindSession(mediaSession)
 
     // Bind the session to the player so it can identify the source of remote control commands
     // and apply user settings only for external controllers (Bluetooth, car stereo, etc.)
@@ -243,6 +244,8 @@ class AudioPlayerService : MediaLibraryService() {
 
   override fun onDestroy() {
     bark(LogPriority.INFO) { "AudioPlayerService::onDestroy()" }
+    sessionCallback?.release()
+    sessionCallback = null
     serviceScope.cancel()
     session?.run {
       player.stop()

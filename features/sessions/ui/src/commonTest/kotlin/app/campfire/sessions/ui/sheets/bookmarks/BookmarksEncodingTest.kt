@@ -42,4 +42,14 @@ class BookmarksEncodingTest {
     assertEquals("My bookmark", title)
     assertEquals("Note A\nNote B", notes)
   }
+
+  @Test
+  fun encodeUsesChapterDefaultWithNotesWhenTitleInputIsBlank() {
+    val encoded = encodeBookmarkTitleAndNotes(
+      titleInput = "   ",
+      notesInput = "  Character note  ",
+      defaultTitle = "Chapter 4",
+    )
+    assertEquals("Chapter 4\nCharacter note", encoded)
+  }
 }

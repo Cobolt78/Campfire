@@ -81,13 +81,18 @@ data class Session(
     get() = currentTime >= duration
 
   val chapter: Chapter?
-    get() = episode?.let { ep ->
+    get() = chapterAt(currentTime)
+
+  fun chapterAt(timestamp: Duration): Chapter? {
+    val durationMs = timestamp.inWholeMilliseconds
+    return episode?.let { ep ->
       ep.chapters.find { c ->
         val startMs = c.start.seconds.inWholeMilliseconds
         val endMs = c.end.seconds.inWholeMilliseconds
-        currentTime.inWholeMilliseconds in startMs..<endMs
+        durationMs in startMs..<endMs
       }
-    } ?: libraryItem.getChapterForDuration(currentTime.inWholeMilliseconds)
+    } ?: libraryItem.getChapterForDuration(durationMs)
+  }
 
   val audioTrack: AudioTrack?
     get() = episode?.audioTrack

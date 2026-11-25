@@ -97,6 +97,34 @@ class FakePlaybackSettings : PlaybackSettings {
     }
   override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = _previousButtonAction.asStateFlow()
 
+  private val _notificationBookmarkButtonEnabled = MutableStateFlow(false)
+  override var notificationBookmarkButtonEnabled: Boolean
+    get() = _notificationBookmarkButtonEnabled.value
+    set(value) { _notificationBookmarkButtonEnabled.value = value }
+  override fun observeNotificationBookmarkButtonEnabled(): StateFlow<Boolean> =
+    _notificationBookmarkButtonEnabled.asStateFlow()
+
+  private val _remoteBookmarkChimeEnabled = MutableStateFlow(false)
+  override var remoteBookmarkChimeEnabled: Boolean
+    get() = _remoteBookmarkChimeEnabled.value
+    set(value) { _remoteBookmarkChimeEnabled.value = value }
+  override fun observeRemoteBookmarkChimeEnabled(): StateFlow<Boolean> =
+    _remoteBookmarkChimeEnabled.asStateFlow()
+
+  private val _remoteBookmarkVibrateEnabled = MutableStateFlow(false)
+  override var remoteBookmarkVibrateEnabled: Boolean
+    get() = _remoteBookmarkVibrateEnabled.value
+    set(value) { _remoteBookmarkVibrateEnabled.value = value }
+  override fun observeRemoteBookmarkVibrateEnabled(): StateFlow<Boolean> =
+    _remoteBookmarkVibrateEnabled.asStateFlow()
+
+  private val _remoteSkipChimeEnabled = MutableStateFlow(false)
+  override var remoteSkipChimeEnabled: Boolean
+    get() = _remoteSkipChimeEnabled.value
+    set(value) { _remoteSkipChimeEnabled.value = value }
+  override fun observeRemoteSkipChimeEnabled(): StateFlow<Boolean> =
+    _remoteSkipChimeEnabled.asStateFlow()
+
   private val _remoteNextPrevSkipsChapters = MutableStateFlow(false)
   override var remoteNextPrevSkipsChapters: Boolean
     get() = _nextButtonAction.value == RemoteControlAction.NEXT_CHAPTER

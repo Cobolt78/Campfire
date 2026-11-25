@@ -130,6 +130,38 @@ class PlaybackSettingsImpl(
   override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> =
     previousButtonActionProperty.observe()
 
+  private val notificationBookmarkButtonEnabledProperty = booleanSetting(
+    PREF_NOTIFICATION_BOOKMARK_BUTTON_ENABLED,
+    false,
+  )
+  override var notificationBookmarkButtonEnabled: Boolean by notificationBookmarkButtonEnabledProperty
+  override fun observeNotificationBookmarkButtonEnabled(): StateFlow<Boolean> =
+    notificationBookmarkButtonEnabledProperty.observe()
+
+  private val remoteBookmarkChimeEnabledProperty = booleanSetting(
+    PREF_REMOTE_BOOKMARK_CHIME_ENABLED,
+    false,
+  )
+  override var remoteBookmarkChimeEnabled: Boolean by remoteBookmarkChimeEnabledProperty
+  override fun observeRemoteBookmarkChimeEnabled(): StateFlow<Boolean> =
+    remoteBookmarkChimeEnabledProperty.observe()
+
+  private val remoteBookmarkVibrateEnabledProperty = booleanSetting(
+    PREF_REMOTE_BOOKMARK_VIBRATE_ENABLED,
+    false,
+  )
+  override var remoteBookmarkVibrateEnabled: Boolean by remoteBookmarkVibrateEnabledProperty
+  override fun observeRemoteBookmarkVibrateEnabled(): StateFlow<Boolean> =
+    remoteBookmarkVibrateEnabledProperty.observe()
+
+  private val remoteSkipChimeEnabledProperty = booleanSetting(
+    PREF_REMOTE_SKIP_CHIME_ENABLED,
+    false,
+  )
+  override var remoteSkipChimeEnabled: Boolean by remoteSkipChimeEnabledProperty
+  override fun observeRemoteSkipChimeEnabled(): StateFlow<Boolean> =
+    remoteSkipChimeEnabledProperty.observe()
+
   override var remoteNextPrevSkipsChapters: Boolean
     get() = nextButtonAction == RemoteControlAction.NEXT_CHAPTER
     set(value) {
@@ -283,6 +315,10 @@ internal const val PREF_SINGLE_BUTTON_TRIPLE_PRESS_ACTION = "pref_playback_singl
 internal const val PREF_SINGLE_BUTTON_QUADRUPLE_PRESS_ACTION = "pref_playback_single_button_quadruple_press_action"
 internal const val PREF_NEXT_BUTTON_ACTION = "pref_playback_next_button_action"
 internal const val PREF_PREVIOUS_BUTTON_ACTION = "pref_playback_previous_button_action"
+internal const val PREF_NOTIFICATION_BOOKMARK_BUTTON_ENABLED = "pref_notification_bookmark_button_enabled"
+internal const val PREF_REMOTE_BOOKMARK_CHIME_ENABLED = "pref_remote_bookmark_chime_enabled"
+internal const val PREF_REMOTE_BOOKMARK_VIBRATE_ENABLED = "pref_remote_bookmark_vibrate_enabled"
+internal const val PREF_REMOTE_SKIP_CHIME_ENABLED = "pref_remote_skip_chime_enabled"
 internal const val PREF_PLAYBACK_HISTORY = "pref_playback_history_enabled"
 internal const val PREF_SYNC_INTERVAL_UNMETERED = "pref_sync_interval_unmetered"
 internal const val PREF_SYNC_INTERVAL_METERED = "pref_sync_interval_metered"

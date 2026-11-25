@@ -44,6 +44,7 @@ import app.campfire.settings.api.RemoteControlAction
 import app.campfire.ui.settings.SettingsUiEvent.HeadsetControlsSettingEvent
 import app.campfire.ui.settings.SettingsUiState
 import app.campfire.ui.settings.composables.Header
+import app.campfire.ui.settings.composables.SwitchSetting
 
 @Composable
 internal fun HeadsetControlsPane(
@@ -64,7 +65,7 @@ internal fun HeadsetControlsPane(
     )
 
     Text(
-      text = "Customize actions for earphones with a single inline physical button. Single-press is reserved for Play/Pause.",
+      text = "Customize actions for wired earphones (and rare Bluetooth headsets that send raw single-button clicks). Most Bluetooth earbuds translate double/triple taps into Next/Previous commands below. Single-press is reserved for Play/Pause.",
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.padding(horizontal = 16.dp),
@@ -144,6 +145,63 @@ internal fun HeadsetControlsPane(
       subtitle = "Action when a Previous signal is received (e.g. triple-tapping most Bluetooth earbuds or pressing Previous on car audio)",
       value = settings.previousButtonAction,
       onValueChange = { eventSink(HeadsetControlsSettingEvent.PreviousButton(it)) },
+    )
+
+    Spacer(Modifier.height(16.dp))
+
+    Header(
+      title = { Text("Media Notification & Lock Screen") },
+    )
+
+    SwitchSetting(
+      value = settings.notificationBookmarkButtonEnabled,
+      onValueChange = { eventSink(HeadsetControlsSettingEvent.NotificationBookmarkButton(it)) },
+      headlineContent = { Text("Add Bookmark button in notification") },
+      supportingContent = {
+        Text("Show an Add Bookmark button on the lock screen and media notification (replaces one chapter skip button in the compact notification bar).")
+      },
+    )
+
+    Spacer(Modifier.height(16.dp))
+
+    Header(
+      title = { Text("Remote Action Feedback") },
+    )
+
+    Text(
+      text = "Applies only to headset, Bluetooth, lock screen, and remote control actions — not in-app button taps.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(horizontal = 16.dp),
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    SwitchSetting(
+      value = settings.remoteBookmarkChimeEnabled,
+      onValueChange = { eventSink(HeadsetControlsSettingEvent.RemoteBookmarkChime(it)) },
+      headlineContent = { Text("Bookmark confirmation chime") },
+      supportingContent = {
+        Text("Play a soft tone through your audio output when a bookmark is added remotely")
+      },
+    )
+
+    SwitchSetting(
+      value = settings.remoteBookmarkVibrateEnabled,
+      onValueChange = { eventSink(HeadsetControlsSettingEvent.RemoteBookmarkVibrate(it)) },
+      headlineContent = { Text("Bookmark confirmation vibration") },
+      supportingContent = {
+        Text("Vibrate the phone briefly when a bookmark is added remotely")
+      },
+    )
+
+    SwitchSetting(
+      value = settings.remoteSkipChimeEnabled,
+      onValueChange = { eventSink(HeadsetControlsSettingEvent.RemoteSkipChime(it)) },
+      headlineContent = { Text("Skip forward & backward chimes") },
+      supportingContent = {
+        Text("Play distinct ascending (forward) and descending (backward) tones on remote skips")
+      },
     )
 
     Spacer(Modifier.height(16.dp))

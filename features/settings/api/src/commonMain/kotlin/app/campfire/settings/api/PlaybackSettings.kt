@@ -86,6 +86,30 @@ interface PlaybackSettings {
   fun observePreviousButtonAction(): StateFlow<RemoteControlAction>
 
   /**
+   * When true, shows an Add Bookmark action button in the Android media notification & lock screen.
+   */
+  var notificationBookmarkButtonEnabled: Boolean
+  fun observeNotificationBookmarkButtonEnabled(): StateFlow<Boolean>
+
+  /**
+   * When true, plays a confirmation audio tone when a bookmark is added via headset/remote/lockscreen.
+   */
+  var remoteBookmarkChimeEnabled: Boolean
+  fun observeRemoteBookmarkChimeEnabled(): StateFlow<Boolean>
+
+  /**
+   * When true, briefly vibrates the phone when a bookmark is added via headset/remote/lockscreen.
+   */
+  var remoteBookmarkVibrateEnabled: Boolean
+  fun observeRemoteBookmarkVibrateEnabled(): StateFlow<Boolean>
+
+  /**
+   * When true, plays distinct forward/backward tones when skipping via headset/remote/lockscreen.
+   */
+  var remoteSkipChimeEnabled: Boolean
+  fun observeRemoteSkipChimeEnabled(): StateFlow<Boolean>
+
+  /**
    * When true, remote control next/previous buttons skip to next/previous chapter.
    * When false, they seek forward/backward by the configured time.
    */

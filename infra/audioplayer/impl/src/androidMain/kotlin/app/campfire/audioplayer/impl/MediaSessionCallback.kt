@@ -29,10 +29,12 @@ import app.campfire.audioplayer.impl.browse.SuspendingMediaLibrarySessionCallbac
 import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
+import app.campfire.core.model.defaultBookmarkTitle
 import app.campfire.infra.audioplayer.impl.R
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -57,6 +59,8 @@ internal class MediaSessionCallback(
   private val cycleSpeedCommand = SessionCommand(WidgetSessionCommand.CYCLE_SPEED, Bundle.EMPTY)
   private val sleepTimerCommand = SessionCommand(WidgetSessionCommand.SET_SLEEP_TIMER, Bundle.EMPTY)
   private val clearSleepTimerCommand = SessionCommand(WidgetSessionCommand.CLEAR_SLEEP_TIMER, Bundle.EMPTY)
+  private val addBookmarkCommand = SessionCommand(WidgetSessionCommand.ADD_BOOKMARK, Bundle.EMPTY)
+  private val feedbackPlayer = RemoteFeedbackPlayer(context, serviceScope)
 
   private var headsetHookClickCount = 0
   private var headsetHookJob: Job? = null
@@ -64,17 +68,32 @@ internal class MediaSessionCallback(
   private var isHeadsetHookLongPress = false
 
   fun bindSession(mediaSession: MediaSession) {
+    player.setRemoteFeedbackHandlers(
+      onRemoteSkip = { forward ->
+        if (component.playbackSettings.remoteSkipChimeEnabled) {
+          feedbackPlayer.playTone(
+            if (forward) RemoteFeedbackTone.SKIP_FORWARD else RemoteFeedbackTone.SKIP_BACKWARD,
+          )
+        }
+      },
+      onRemoteAddBookmark = ::createRemoteBookmark,
+    )
     serviceScope.launch {
       combine(
         component.playbackSettings.observeNextButtonAction(),
         component.playbackSettings.observePreviousButtonAction(),
         component.playbackSettings.observeBackwardTimeMs(),
         component.playbackSettings.observeForwardTimeMs(),
-      ) { _, _, _, _ -> }
+        component.playbackSettings.observeNotificationBookmarkButtonEnabled(),
+      ) { _, _, _, _, _ -> }
         .collect {
           mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
         }
     }
+  }
+
+  fun release() {
+    feedbackPlayer.release()
   }
 
   internal fun createMediaButtonPreferences(): List<CommandButton> {
@@ -118,10 +137,31 @@ internal class MediaSessionCallback(
       .setSlots(if (!skipsChapters) CommandButton.SLOT_FORWARD else CommandButton.SLOT_OVERFLOW)
       .build()
 
-    return if (skipsChapters) {
-      listOf(prevChapterButton, nextChapterButton, rewindButton, fastForwardButton)
+    val addBookmarkButton = if (component.playbackSettings.notificationBookmarkButtonEnabled) {
+      CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+        .setCustomIconResId(R.drawable.ic_notification_bookmark_add)
+        .setDisplayName(context.getString(R.string.exo_controls_add_bookmark))
+        .setSessionCommand(addBookmarkCommand)
+        .setSlots(CommandButton.SLOT_OVERFLOW)
+        .build()
     } else {
-      listOf(rewindButton, fastForwardButton, prevChapterButton, nextChapterButton)
+      null
+    }
+
+    return buildList {
+      if (skipsChapters) {
+        add(prevChapterButton)
+        add(nextChapterButton)
+        if (addBookmarkButton != null) add(addBookmarkButton)
+        add(rewindButton)
+        add(fastForwardButton)
+      } else {
+        add(rewindButton)
+        add(fastForwardButton)
+        if (addBookmarkButton != null) add(addBookmarkButton)
+        add(prevChapterButton)
+        add(nextChapterButton)
+      }
     }
   }
 
@@ -135,6 +175,7 @@ internal class MediaSessionCallback(
       .add(cycleSpeedCommand)
       .add(sleepTimerCommand)
       .add(clearSleepTimerCommand)
+      .add(addBookmarkCommand)
       .build()
 
     if (
@@ -176,6 +217,10 @@ internal class MediaSessionCallback(
       }
       WidgetSessionCommand.CLEAR_SLEEP_TIMER -> {
         player.clearTimer()
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+      }
+      WidgetSessionCommand.ADD_BOOKMARK -> {
+        createRemoteBookmark()
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
       }
       else -> return super.onCustomCommand(session, controller, customCommand, args)
@@ -258,7 +303,7 @@ internal class MediaSessionCallback(
         KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
         KeyEvent.KEYCODE_MEDIA_STEP_FORWARD -> {
           if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-            player.seekForward()
+            performRemoteSkipForward()
           }
           return true
         }
@@ -266,7 +311,7 @@ internal class MediaSessionCallback(
         KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
         KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD -> {
           if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
-            player.seekBackward()
+            performRemoteSkipBackward()
           }
           return true
         }
@@ -365,36 +410,72 @@ internal class MediaSessionCallback(
   private fun dispatchRemoteAction(action: RemoteControlAction) {
     bark(LogPriority.INFO) { "MediaSessionCallback.dispatchRemoteAction: action=$action" }
     when (action) {
-      RemoteControlAction.SKIP_FORWARD_TIME -> player.seekForward()
-      RemoteControlAction.SKIP_BACKWARD_TIME -> player.seekBackward()
+      RemoteControlAction.SKIP_FORWARD_TIME -> performRemoteSkipForward()
+      RemoteControlAction.SKIP_BACKWARD_TIME -> performRemoteSkipBackward()
       RemoteControlAction.NEXT_CHAPTER -> player.skipToNext()
       RemoteControlAction.PREVIOUS_CHAPTER -> player.skipToPrevious()
-      RemoteControlAction.ADD_BOOKMARK -> {
-        serviceScope.launch {
-          try {
-            val currentSession = player.preparedSession
-              ?: userComponent.sessionsRepository.getCurrentSession()
-            val itemId = currentSession?.libraryItem?.id
-            if (itemId != null) {
-              val timestamp = player.overallTime.value
-              val minutes = timestamp.inWholeMinutes
-              val seconds = (timestamp.inWholeSeconds % 60)
-              val timeStr = "${minutes}m ${seconds}s"
-              userComponent.bookmarkRepository.createBookmark(
-                libraryItemId = itemId,
-                timestamp = timestamp,
-                title = "Bookmark at $timeStr",
-              )
-              withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Bookmark added ($timeStr)", Toast.LENGTH_SHORT).show()
-              }
-            }
-          } catch (e: Exception) {
-            bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
+      RemoteControlAction.ADD_BOOKMARK -> createRemoteBookmark()
+      RemoteControlAction.NONE -> Unit
+    }
+  }
+
+  private fun performRemoteSkipForward() {
+    player.seekForward()
+    if (component.playbackSettings.remoteSkipChimeEnabled) {
+      feedbackPlayer.playTone(RemoteFeedbackTone.SKIP_FORWARD)
+    }
+  }
+
+  private fun performRemoteSkipBackward() {
+    player.seekBackward()
+    if (component.playbackSettings.remoteSkipChimeEnabled) {
+      feedbackPlayer.playTone(RemoteFeedbackTone.SKIP_BACKWARD)
+    }
+  }
+
+  private fun createRemoteBookmark() {
+    serviceScope.launch {
+      try {
+        val currentSession = player.preparedSession
+          ?: userComponent.sessionsRepository.getCurrentSession()
+        val itemId = currentSession?.libraryItem?.id
+        if (itemId != null) {
+          val timestamp = player.overallTime.value
+          val formattedTime = formatBookmarkTimestamp(timestamp)
+          val title = defaultBookmarkTitle(
+            chapterTitle = currentSession.chapterAt(timestamp)?.title,
+            formattedTimestamp = formattedTime,
+          )
+          userComponent.bookmarkRepository.createBookmark(
+            libraryItemId = itemId,
+            timestamp = timestamp,
+            title = title,
+          )
+          if (component.playbackSettings.remoteBookmarkChimeEnabled) {
+            feedbackPlayer.playTone(RemoteFeedbackTone.BOOKMARK_ADDED)
+          }
+          if (component.playbackSettings.remoteBookmarkVibrateEnabled) {
+            feedbackPlayer.vibrateBookmarkConfirmation()
+          }
+          withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Bookmark added: $title", Toast.LENGTH_SHORT).show()
           }
         }
+      } catch (e: Exception) {
+        bark(LogPriority.ERROR, throwable = e) { "Failed to create bookmark from remote action" }
       }
-      RemoteControlAction.NONE -> Unit
+    }
+  }
+
+  private fun formatBookmarkTimestamp(timestamp: Duration): String {
+    val totalSeconds = timestamp.inWholeSeconds.coerceAtLeast(0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+      "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+    } else {
+      "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
   }
 

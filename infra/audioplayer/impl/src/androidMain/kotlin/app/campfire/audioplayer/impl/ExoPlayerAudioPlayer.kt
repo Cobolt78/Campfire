@@ -249,6 +249,16 @@ class ExoPlayerAudioPlayer(
     sessionPlayer.session = session
   }
 
+  internal fun setRemoteFeedbackHandlers(
+    onRemoteSkip: (forward: Boolean) -> Unit,
+    onRemoteAddBookmark: () -> Unit,
+  ) {
+    remoteControlForwardingPlayer.onRemoteSkip = onRemoteSkip
+    remoteControlForwardingPlayer.onRemoteAddBookmark = onRemoteAddBookmark
+    sessionPlayer.onRemoteSkip = onRemoteSkip
+    sessionPlayer.onRemoteAddBookmark = onRemoteAddBookmark
+  }
+
   private var progressJob: Job? = null
   private var fadeJob: Job? = null
   private var isRemotePlayback = false

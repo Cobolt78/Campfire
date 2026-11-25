@@ -8,8 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Notification & Lock Screen "Add Bookmark" Action**:
+  - Added an optional **Add Bookmark button in notification** toggle (default `false`) in **Settings → Headset & Remote Controls** under **Media Notification & Lock Screen**, exposing a visible **Add Bookmark** overflow action button on Android media notifications and lock screen controls via `WidgetSessionCommand.ADD_BOOKMARK`.
+- **Remote Action Audio Chimes & Haptic Confirmation**:
+  - Added three independent toggles in **Settings → Headset & Remote Controls** under **Remote Action Feedback** (all default `false`): **Audio chime on bookmark added** (distinct rising 2-note chime), **Vibrate on bookmark added** (double-pulse haptic), and **Distinct audio chimes for remote skip +/-** (rising 1-note chirp for forward, falling 1-note chirp for backward).
+  - Strictly scoped to remote/headset/Bluetooth/notification/lockscreen triggers without requesting Android audio focus or playing during in-app UI taps.
+- **In-Editor Playback Controls, 6-Line Expandable Notes & Chapter Default Names**:
+  - Added compact **Rewind / Play-Pause / Forward** buttons, a live playback timestamp readout, and a **Use current playback time** (`Sync`) button directly inside the bookmark Add/Edit dialog (`BookmarkEditorDialog`).
+  - Both remote-created bookmarks and manual new-bookmark placeholders now default to the active chapter name (sanitized single-line via `Session.chapterAt(timestamp)` and `defaultBookmarkTitle`, falling back to `Bookmark @ <timestamp>`).
+  - Bookmark list rows now display up to 6 lines of notes with an inline **Show more / Show less** toggle, and pinned the **Create new bookmark** action as a sticky footer below the scrollable list.
 
 ### Changed
+- **Headset & Remote Controls Clarity & Direct Controller Bookmark Support**:
+  - Clarified **Wired Headset (Single Button)** vs. **Bluetooth & Dedicated Buttons** descriptions to explain headset button hardware signals vs. single-button multi-tap detection.
+  - Wired `RemoteControlAction.ADD_BOOKMARK` inside `RemoteControlForwardingPlayer` and `ChapterWindowForwardingPlayer` so controllers emitting direct `seekToNext()` / `seekToPrevious()` commands also create bookmarks.
 
 ### Deprecated
 

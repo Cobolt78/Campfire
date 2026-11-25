@@ -76,6 +76,8 @@ class ChapterWindowForwardingPlayer(
 
   /** Set after session creation, to identify the controller a command came from. */
   var session: MediaSession? = null
+  var onRemoteSkip: (forward: Boolean) -> Unit = {}
+  var onRemoteAddBookmark: () -> Unit = {}
 
   private val wrapped: Player = player
 
@@ -149,10 +151,16 @@ class ChapterWindowForwardingPlayer(
       -> {
         if (session.isRemoteControllerRequest(appPackageName)) {
           when (settings.nextButtonAction) {
-            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
-            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
-            RemoteControlAction.NONE,
-            RemoteControlAction.ADD_BOOKMARK -> Unit
+            RemoteControlAction.SKIP_FORWARD_TIME -> {
+              host.seekForward()
+              onRemoteSkip(true)
+            }
+            RemoteControlAction.SKIP_BACKWARD_TIME -> {
+              host.seekBackward()
+              onRemoteSkip(false)
+            }
+            RemoteControlAction.ADD_BOOKMARK -> onRemoteAddBookmark()
+            RemoteControlAction.NONE -> Unit
             else -> host.skipToNextChapter()
           }
         } else {
@@ -165,10 +173,16 @@ class ChapterWindowForwardingPlayer(
       -> {
         if (session.isRemoteControllerRequest(appPackageName)) {
           when (settings.previousButtonAction) {
-            RemoteControlAction.SKIP_FORWARD_TIME -> host.seekForward()
-            RemoteControlAction.SKIP_BACKWARD_TIME -> host.seekBackward()
-            RemoteControlAction.NONE,
-            RemoteControlAction.ADD_BOOKMARK -> Unit
+            RemoteControlAction.SKIP_FORWARD_TIME -> {
+              host.seekForward()
+              onRemoteSkip(true)
+            }
+            RemoteControlAction.SKIP_BACKWARD_TIME -> {
+              host.seekBackward()
+              onRemoteSkip(false)
+            }
+            RemoteControlAction.ADD_BOOKMARK -> onRemoteAddBookmark()
+            RemoteControlAction.NONE -> Unit
             else -> host.skipToPreviousChapter()
           }
         } else {
@@ -178,10 +192,16 @@ class ChapterWindowForwardingPlayer(
 
       Player.COMMAND_SEEK_FORWARD -> {
         host.seekForward()
+        if (session?.controllerForCurrentRequest != null) {
+          onRemoteSkip(true)
+        }
       }
 
       Player.COMMAND_SEEK_BACK -> {
         host.seekBackward()
+        if (session?.controllerForCurrentRequest != null) {
+          onRemoteSkip(false)
+        }
       }
 
       else -> return super.handleSeek(mediaItemIndex, positionMs, seekCommand)

@@ -153,6 +153,14 @@ class SettingsAnalyticUiEventHandler(
         send("headset_next_button", Updated, event.action.storageKey)
       is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
         send("headset_previous_button", Updated, event.action.storageKey)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.NotificationBookmarkButton ->
+        send("headset_notification_bookmark_button", Updated, event.enabled)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteBookmarkChime ->
+        send("headset_remote_bookmark_chime", Updated, event.enabled)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteBookmarkVibrate ->
+        send("headset_remote_bookmark_vibrate", Updated, event.enabled)
+      is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteSkipChime ->
+        send("headset_remote_skip_chime", Updated, event.enabled)
     }
 
     is SettingsUiEvent.SleepSettingEvent -> when (event) {

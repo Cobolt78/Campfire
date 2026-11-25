@@ -702,6 +702,18 @@ internal class PreviewPlaybackSettings : PlaybackSettings {
   override fun observeNextButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(nextButtonAction)
   override var previousButtonAction = RemoteControlAction.SKIP_BACKWARD_TIME
   override fun observePreviousButtonAction(): StateFlow<RemoteControlAction> = MutableStateFlow(previousButtonAction)
+  override var notificationBookmarkButtonEnabled = false
+  override fun observeNotificationBookmarkButtonEnabled(): StateFlow<Boolean> =
+    MutableStateFlow(notificationBookmarkButtonEnabled)
+  override var remoteBookmarkChimeEnabled = false
+  override fun observeRemoteBookmarkChimeEnabled(): StateFlow<Boolean> =
+    MutableStateFlow(remoteBookmarkChimeEnabled)
+  override var remoteBookmarkVibrateEnabled = false
+  override fun observeRemoteBookmarkVibrateEnabled(): StateFlow<Boolean> =
+    MutableStateFlow(remoteBookmarkVibrateEnabled)
+  override var remoteSkipChimeEnabled = false
+  override fun observeRemoteSkipChimeEnabled(): StateFlow<Boolean> =
+    MutableStateFlow(remoteSkipChimeEnabled)
   override var remoteNextPrevSkipsChapters = true
   override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = MutableStateFlow(remoteNextPrevSkipsChapters)
   override var syncEnabled = true

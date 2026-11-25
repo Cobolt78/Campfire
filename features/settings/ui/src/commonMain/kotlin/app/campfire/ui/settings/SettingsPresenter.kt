@@ -222,6 +222,18 @@ class SettingsPresenter(
     val previousButtonAction by remember {
       playbackSettings.observePreviousButtonAction()
     }.collectAsState()
+    val notificationBookmarkButtonEnabled by remember {
+      playbackSettings.observeNotificationBookmarkButtonEnabled()
+    }.collectAsState()
+    val remoteBookmarkChimeEnabled by remember {
+      playbackSettings.observeRemoteBookmarkChimeEnabled()
+    }.collectAsState()
+    val remoteBookmarkVibrateEnabled by remember {
+      playbackSettings.observeRemoteBookmarkVibrateEnabled()
+    }.collectAsState()
+    val remoteSkipChimeEnabled by remember {
+      playbackSettings.observeRemoteSkipChimeEnabled()
+    }.collectAsState()
 
     // Downloads Settings
     val showDownloadConfirmation by remember { libraryViewSettings.observeShowConfirmDownload() }
@@ -381,6 +393,10 @@ class SettingsPresenter(
         singleButtonQuadruplePressAction = singleButtonQuadruplePressAction,
         nextButtonAction = nextButtonAction,
         previousButtonAction = previousButtonAction,
+        notificationBookmarkButtonEnabled = notificationBookmarkButtonEnabled,
+        remoteBookmarkChimeEnabled = remoteBookmarkChimeEnabled,
+        remoteBookmarkVibrateEnabled = remoteBookmarkVibrateEnabled,
+        remoteSkipChimeEnabled = remoteSkipChimeEnabled,
       ),
       sleepSettings = SleepSettingsInfo(
         shakeToReset = shakeToResetEnabled,
@@ -531,6 +547,14 @@ class SettingsPresenter(
             playbackSettings.nextButtonAction = event.action
           is SettingsUiEvent.HeadsetControlsSettingEvent.PreviousButton ->
             playbackSettings.previousButtonAction = event.action
+          is SettingsUiEvent.HeadsetControlsSettingEvent.NotificationBookmarkButton ->
+            playbackSettings.notificationBookmarkButtonEnabled = event.enabled
+          is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteBookmarkChime ->
+            playbackSettings.remoteBookmarkChimeEnabled = event.enabled
+          is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteBookmarkVibrate ->
+            playbackSettings.remoteBookmarkVibrateEnabled = event.enabled
+          is SettingsUiEvent.HeadsetControlsSettingEvent.RemoteSkipChime ->
+            playbackSettings.remoteSkipChimeEnabled = event.enabled
         }
 
         is SettingsUiEvent.PlaybackSettingEvent -> when (event) {

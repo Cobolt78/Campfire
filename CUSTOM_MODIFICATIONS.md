@@ -107,6 +107,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 100. [Search Endless Spinner Fix for Uncached Queries (v1.2.54)](#100-search-endless-spinner-fix-for-uncached-queries-v1254)
 101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
+103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56-custom)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256-custom)
 
 ---
 
@@ -3160,5 +3161,62 @@ Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app
 * `infra/audioplayer/impl/src/jvmTest/kotlin/app/campfire/audioplayer/impl/sleep/CoroutineSleepTimerManagerTest.kt`
 * `infra/audioplayer/engine-tests/src/test/kotlin/app/campfire/audioplayer/engine/FakeSleepTimerManager.kt`
 * `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 103. Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56-custom)
+
+### Background & Findings
+1. Live ADB `logcat` diagnostics on Shokz OpenRun Pro 2 Bluetooth headphones confirmed their firmware maps double-tap directly to AVRCP `OperationId=75` (`KEYCODE_MEDIA_NEXT` / 87) and triple-tap to `KEYCODE_MEDIA_PREVIOUS`, while swallowing quadruple-taps at the headset MCU with zero Android `KeyEvent` or AVRCP packets emitted.
+2. Users needed a reliable remote alternative to create bookmarks (`Add Bookmark` directly on the media notification / lock screen), non-disruptive confirmation feedback (distinct skip chimes, bookmark chime, and haptic confirmation) for remote actions, chapter-named default bookmark titles, multi-line readable bookmark notes, and live audio navigation inside the bookmark editor dialog.
+
+### Solution & Implementation
+1. **Settings & Headset Controls Pane (`PlaybackSettings.kt`, `PlaybackSettingsImpl.kt`, `FakePlaybackSettings.kt`, `SettingsUiState.kt`, `SettingsPresenter.kt`, `SettingsAnalyticUiEventHandler.kt`, `HeadsetControlsPane.kt`)**:
+   - Added 4 boolean preferences (all defaulting to `false`):
+     - `notificationBookmarkButtonEnabled`
+     - `remoteBookmarkChimeEnabled`
+     - `remoteBookmarkVibrateEnabled`
+     - `remoteSkipChimeEnabled`
+   - Updated `HeadsetControlsPane` with clearer wired-single-button vs. Bluetooth/dedicated-button helper copy, a **Media Notification & Lock Screen** switch for the notification bookmark button, and a **Remote Action Feedback** card with the 3 independent feedback toggles.
+2. **Focus-Free Chime Synthesizer & Haptics (`RemoteFeedbackToneMath.kt`, `RemoteFeedbackPlayer.kt`, `RemoteFeedbackToneMathTest.kt`)**:
+   - Implemented pure Kotlin PCM sine-wave chime synthesis (`44100 Hz`, 40ms leading Bluetooth wake-silence pre-roll, fade envelopes) with distinct tones for `SKIP_FORWARD`, `SKIP_BACKWARD`, and `BOOKMARK_ADDED`.
+   - Plays via `AudioTrack.MODE_STATIC` with `USAGE_MEDIA` / `CONTENT_TYPE_SONIFICATION` without requesting `AudioFocus` (preventing ducking or pausing of audiobooks) and supports double-pulse `VibrationEffect` haptics via `VibratorManager`/`Vibrator`.
+3. **Notification Bookmark Action, Chapter Default Title & Remote Feedback Wiring (`Session.kt`, `Bookmark.kt`, `BookmarkDefaultTitleTest.kt`, `WidgetSessionCommand.kt`, `ic_notification_bookmark_add.xml`, `MediaSessionCallback.kt`, `RemoteControlForwardingPlayer.kt`, `ChapterWindowForwardingPlayer.kt`, `ExoPlayerAudioPlayer.kt`, `AudioPlayerService.kt`)**:
+   - Added `Session.chapterAt(timestamp: Duration)` and `defaultBookmarkTitle(chapterTitle, formattedTimestamp)` (sanitizes newlines to spaces, falls back to `"Bookmark @ <timestamp>"`).
+   - Added custom `SessionCommand` `WidgetSessionCommand.ADD_BOOKMARK` and optional `CommandButton` placed first in `SLOT_OVERFLOW` when `notificationBookmarkButtonEnabled` is `true`, refreshed reactively in `bindSession`.
+   - Wired remote-only chime & vibrate feedback through `MediaSessionCallback`, `RemoteControlForwardingPlayer`, and `ChapterWindowForwardingPlayer` (and added `ADD_BOOKMARK` handling in both forwarding players for controllers invoking `seekToNext()` / `seekToPrevious()` directly); released `RemoteFeedbackPlayer` in `AudioPlayerService.onDestroy()`.
+4. **Bookmarks Sheet & Editor Dialog UX (`BookmarksBottomSheet.kt`, `sessions_ui_strings.xml`, `BookmarksEncodingTest.kt`)**:
+   - Pinned `CreateNewListItem` as a sticky footer below `LazyColumn` with a `HorizontalDivider`.
+   - Expanded `BookmarkListItemContent` note previews from 2 to 6 lines with an inline `"Show more"` / `"Show less"` toggle (`clickable` + `onTextLayout` overflow detection) that never triggers row seek/close.
+   - Added live playback controls (`RewindIcon`, `PlayArrow`/`Pause`, `ForwardIcon`, live `overallTime` readout), **Use current playback time** (`Sync`) button, `.verticalScroll(...)` + `.imePadding()`, and chapter-name placeholder defaults inside `BookmarkEditorDialog` (keeping `bookmarkTime` anchored independently unless nudged or synced).
+
+### Modified Files:
+* `core/src/commonMain/kotlin/app/campfire/core/model/Bookmark.kt`
+* `core/src/commonMain/kotlin/app/campfire/core/model/Session.kt`
+* `core/src/commonTest/kotlin/app/campfire/core/model/BookmarkDefaultTitleTest.kt`
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/AudioPlayerService.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/WidgetSessionCommand.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/ChapterWindowForwardingPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/forwarding/RemoteControlForwardingPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_bookmark_add.xml`
+* `infra/audioplayer/impl/src/androidMain/res/values/strings.xml`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMath.kt`
+* `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMathTest.kt`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

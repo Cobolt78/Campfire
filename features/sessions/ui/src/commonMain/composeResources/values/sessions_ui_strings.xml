@@ -67,6 +67,11 @@
   <string name="bookmark_edit_dialog_action_save">Save</string>
   <string name="action_edit_bookmark">Edit bookmark</string>
   <string name="bookmark_default_title">Bookmark @ %1$s</string>
+  <string name="bookmark_notes_show_more">Show more</string>
+  <string name="bookmark_notes_show_less">Show less</string>
+  <string name="bookmark_editor_playback_label">Audio playback</string>
+  <string name="bookmark_editor_timestamp_label">Bookmark time</string>
+  <string name="bookmark_editor_sync_time">Use current playback time</string>
 
   <string name="action_set_timer">Set timer</string>
   <string name="action_clear_timer">Clear timer</string>

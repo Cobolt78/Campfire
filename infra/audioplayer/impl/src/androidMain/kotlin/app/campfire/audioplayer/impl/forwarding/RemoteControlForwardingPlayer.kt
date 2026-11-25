@@ -34,6 +34,8 @@ class RemoteControlForwardingPlayer(
    * Used to identify the source of commands via [androidx.media3.session.MediaSession.controllerForCurrentRequest].
    */
   var session: MediaSession? = null
+  var onRemoteSkip: (forward: Boolean) -> Unit = {}
+  var onRemoteAddBookmark: () -> Unit = {}
 
   /**
    * Determines if the current command is from a remote controller.
@@ -56,7 +58,7 @@ class RemoteControlForwardingPlayer(
         RemoteControlAction.NEXT_CHAPTER -> defaultAction()
         RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
         RemoteControlAction.NONE -> Unit
-        RemoteControlAction.ADD_BOOKMARK -> Unit
+        RemoteControlAction.ADD_BOOKMARK -> onRemoteAddBookmark()
       }
     } else {
       defaultAction()
@@ -71,10 +73,24 @@ class RemoteControlForwardingPlayer(
         RemoteControlAction.NEXT_CHAPTER -> defaultAction()
         RemoteControlAction.PREVIOUS_CHAPTER -> defaultAction()
         RemoteControlAction.NONE -> Unit
-        RemoteControlAction.ADD_BOOKMARK -> Unit
+        RemoteControlAction.ADD_BOOKMARK -> onRemoteAddBookmark()
       }
     } else {
       defaultAction()
+    }
+  }
+
+  override fun seekForward() {
+    super.seekForward()
+    if (session?.controllerForCurrentRequest != null) {
+      onRemoteSkip(true)
+    }
+  }
+
+  override fun seekBack() {
+    super.seekBack()
+    if (session?.controllerForCurrentRequest != null) {
+      onRemoteSkip(false)
     }
   }
 

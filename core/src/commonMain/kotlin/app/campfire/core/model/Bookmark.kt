@@ -23,3 +23,19 @@ infix fun Bookmark.isSame(other: Bookmark): Boolean {
 infix fun Bookmark.isContentDifferent(other: Bookmark): Boolean {
   return isSame(other) && title != other.title
 }
+
+/**
+ * Resolves the default bookmark title for [timestampFormatted], preferring the chapter
+ * name when available (sanitized to a single line so it never collides with `Title\nNotes`).
+ */
+fun defaultBookmarkTitle(
+  chapterTitle: String?,
+  formattedTimestamp: String,
+): String {
+  val cleanChapter = chapterTitle?.replace('\n', ' ')?.replace('\r', ' ')?.trim()
+  return if (!cleanChapter.isNullOrBlank()) {
+    cleanChapter
+  } else {
+    "Bookmark @ $formattedTimestamp"
+  }
+}
