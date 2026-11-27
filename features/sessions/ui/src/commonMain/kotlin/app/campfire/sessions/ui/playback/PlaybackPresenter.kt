@@ -260,9 +260,8 @@ class PlaybackPresenter(
 
     val timer by remember {
       snapshotFlow { player }
-        .filterNotNull()
-        .flatMapLatest {
-          it.runningTimer
+        .flatMapLatest { current ->
+          current?.runningTimer ?: flowOf(null)
         }
     }.collectAsState(null)
 
@@ -323,10 +322,11 @@ class PlaybackPresenter(
       bookmarks = bookmarks,
       error = error,
     ) { event ->
+      val livePlayer = audioPlayerHolder.currentPlayer.value ?: player
       when (event) {
         PlayerUiEvent.PlayPauseClick -> {
           val sessionValue = session.value
-          if (state == AudioPlayer.State.Disabled && sessionValue != null) {
+          if ((livePlayer == null || state == AudioPlayer.State.Disabled) && sessionValue != null) {
             scope.launch {
               playbackController.startSession(
                 itemId = sessionValue.libraryItem.id,
@@ -334,21 +334,21 @@ class PlaybackPresenter(
               )
             }
           } else {
-            player?.playPause()
+            livePlayer?.playPause()
           }
         }
 
-        PlayerUiEvent.NextClick -> player?.skipToNext()
-        PlayerUiEvent.PreviousClick -> player?.skipToPrevious()
-        PlayerUiEvent.FastForwardClick -> player?.seekForward()
-        PlayerUiEvent.RewindClick -> player?.seekBackward()
-        PlayerUiEvent.ClearTimer -> player?.clearTimer()
-        is PlayerUiEvent.BookmarkSelected -> player?.seekTo(event.bookmark.time)
-        is PlayerUiEvent.ChapterSelected -> player?.seekTo(event.chapter.id)
-        is PlayerUiEvent.AudioTrackSelected -> player?.seekTo(event.audioTrack.index - 1)
-        is PlayerUiEvent.Seek.Percent -> player?.seekTo(event.percent)
-        is PlayerUiEvent.Seek.Position -> player?.seekTo(event.position)
-        is PlayerUiEvent.TimerSelected -> player?.setTimer(event.timer)
+        PlayerUiEvent.NextClick -> livePlayer?.skipToNext()
+        PlayerUiEvent.PreviousClick -> livePlayer?.skipToPrevious()
+        PlayerUiEvent.FastForwardClick -> livePlayer?.seekForward()
+        PlayerUiEvent.RewindClick -> livePlayer?.seekBackward()
+        PlayerUiEvent.ClearTimer -> livePlayer?.clearTimer()
+        is PlayerUiEvent.BookmarkSelected -> livePlayer?.seekTo(event.bookmark.time)
+        is PlayerUiEvent.ChapterSelected -> livePlayer?.seekTo(event.chapter.id)
+        is PlayerUiEvent.AudioTrackSelected -> livePlayer?.seekTo(event.audioTrack.index - 1)
+        is PlayerUiEvent.Seek.Percent -> livePlayer?.seekTo(event.percent)
+        is PlayerUiEvent.Seek.Position -> livePlayer?.seekTo(event.position)
+        is PlayerUiEvent.TimerSelected -> livePlayer?.setTimer(event.timer)
       }
     }
   }

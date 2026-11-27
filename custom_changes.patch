@@ -11,14 +11,32 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..b9fee213 100644
+index c0278c85..f216d564 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,610 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,628 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.57] - 2026-11-28
++
++### Added
++- **In-Dialog Bookmark Voice Dictation**:
++  - Added a 1-tap **Microphone** dictation button (`RecognizerIntent.ACTION_RECOGNIZE_SPEECH`) to both the **Title** and **Notes** fields inside the bookmark Add/Edit dialog (`BookmarkEditorDialog`), automatically merging and sentence-capitalizing spoken text without requiring extra runtime microphone permissions (gracefully hidden on platforms without a speech recognizer).
++
++### Changed
++- **In-App Updater Self-Update Guidance**:
++  - Added a brief note beneath the update button explaining that Campfire will close briefly while Android installs the update so Android 12+ self-update process restarts don't look like a crash.
++
++### Fixed
++- **Sleep Timer Failing to Clear or Activate After Switching Apps / Books**:
++  - Updated `PlaybackPresenter`, `SmallExpandedPlaybackBar`, `PlaybackBottomBar`, and `SleepTimerBottomSheet` to always resolve the live `AudioPlayer` from `AudioPlayerHolder` across overlay suspensions instead of calling `clearTimer()`/`setTimer()` on a stale or `null` captured player reference, and added persisted `SleepSettings` fallback when the service is still rebinding.
++- **Stuck Downloads Failing to Delete from Settings → Downloads & Book Details**:
++  - Updated `DownloadTracker` and `AndroidOfflineDownloadManager.delete()` to remove all tracked book download IDs matching `libraryItemId` (rather than relying solely on `item.media.tracks` filenames, which could be empty on cached items or out of sync), added Android 12 foreground-to-background service fallback for removals, and immediately dismissed the inline confirmation bar in `DownloadsPane` on tap.
++- **Bookmark Title & Notes Auto-Capitalization**:
++  - Enabled `KeyboardCapitalization.Sentences` on both the bookmark Title and Notes text fields so the first letter automatically capitalizes while typing.
++
 +## [1.2.56] - 2026-11-25
 +
 +### Added
@@ -628,10 +646,10 @@ index c0278c85..b9fee213 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..b488129a
+index 00000000..b45225b6
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3223 @@
+@@ -0,0 +1,3268 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -742,6 +760,7 @@ index 00000000..b488129a
 +101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 +102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 +103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
++104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 +
 +---
 +
@@ -3855,6 +3874,50 @@ index 00000000..b488129a
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 104. Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)
++
++### Summary
++Added 1-tap system voice dictation and sentence auto-capitalization to the bookmark editor dialog, fixed sleep timer clear/set actions silently failing on stale or null player references after switching apps or books, fixed stuck downloaded books failing to delete when cached track metadata was missing or out of sync, and added a brief Android self-update notice in the in-app updater sheet.
++
++### Key Details
++1. **In-Dialog Voice Dictation & Sentence Auto-Capitalization (`VoiceDictation*.kt`, `BookmarksBottomSheet.kt`, `sessions_ui_strings.xml`, `BookmarksEncodingTest.kt`)**:
++   - Added a multiplatform `VoiceDictationLauncher` (`rememberVoiceDictationLauncher`) in `common/compose` backed on Android by `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` via `ActivityResultContracts.StartActivityForResult` (requires no extra `RECORD_AUDIO` permission and hides automatically when unsupported or on JVM/iOS).
++   - Added `appendDictatedText()` with sentence-aware capitalization (start of field, after `.`/`!`/`?`, or after trailing newline) and unit tests in `BookmarksEncodingTest`.
++   - Added `KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)` and trailing `CampfireIcons.Rounded.Mic` dictation buttons to both the **Title** and **Notes** fields inside `BookmarkEditorDialog`.
++2. **Sleep Timer Live-Player Resolution (`PlaybackPresenter.kt`, `SmallExpandedPlaybackBar.kt`, `PlaybackBottomBar.kt`, `SleepTimerBottomSheet.kt`, `PlaybackPresenterTest.kt`)**:
++   - Updated `PlaybackPresenter` to resolve `audioPlayerHolder.currentPlayer.value ?: player` dynamically inside `eventSink` and clear `timer` when `player` is `null` instead of retaining stale timer state via `.filterNotNull()`.
++   - Wrapped `playerState` / `session` / timer callbacks in `rememberUpdatedState` inside `rememberPlaybackOptionActions` and `PlaybackBottomBar` so coroutines suspended on `overlayHost.showSleepTimerBottomSheet(...)` never dispatch results to stale closures.
++   - Added persisted `sleepSettings.activeSleepTimer` clear/save fallback in `SleepTimerBottomSheet` if `audioPlayerHolder.currentPlayer.value` is temporarily `null` while `AudioPlayerService` is rebinding, plus a Molecule/Turbine regression test in `PlaybackPresenterTest`.
++3. **Robust Download Deletion (`DownloadTracker.kt`, `AndroidOfflineDownloadManager.kt`, `DownloadsPane.kt`)**:
++   - Added `DownloadTracker.downloadIdsForBook(itemId)` to synchronously look up all tracked book-level download request IDs by `libraryItemId`.
++   - Updated `AndroidOfflineDownloadManager.delete(item)` to remove the union of `item.media.tracks` filenames and `downloadTracker.downloadIdsForBook(item.id)` using a shared `removeDownloadId()` helper with Android 12 foreground-to-background service fallback.
++   - Reset `confirmingKey = null` immediately when tapping Delete inside `DownloadsPane`'s `ConfirmDeleteListItem`.
++4. **In-App Updater Self-Update Note (`AppUpdateWidgetImpl.kt`)**:
++   - Added a subtle helper caption under the update/install button noting that Campfire will close briefly while Android installs the update.
++
++### Modified Files:
++* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.kt`
++* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.android.kt`
++* `common/compose/src/jvmMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.jvm.kt`
++* `common/compose/src/iosMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.ios.kt`
++* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
++* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt`
++* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt`
++* `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
++* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
 new file mode 100644
 index 00000000..387259bd
@@ -5273,6 +5336,74 @@ index 00000000..eff1807f
 +    { isCurrentlyCellularOrMetered(context) }
 +  }
 +}
+diff --git a/common/compose/src/androidMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.android.kt b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.android.kt
+new file mode 100644
+index 00000000..6f2434d4
+--- /dev/null
++++ b/common/compose/src/androidMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.android.kt
+@@ -0,0 +1,62 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.speech
++
++import android.app.Activity
++import android.content.ActivityNotFoundException
++import android.content.Intent
++import android.speech.RecognizerIntent
++import androidx.activity.compose.rememberLauncherForActivityResult
++import androidx.activity.result.contract.ActivityResultContracts
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberUpdatedState
++import androidx.compose.ui.platform.LocalContext
++
++@Composable
++actual fun rememberVoiceDictationLauncher(
++  onResult: (String) -> Unit,
++): VoiceDictationLauncher {
++  val context = LocalContext.current
++  val currentOnResult by rememberUpdatedState(onResult)
++
++  val isSupported = remember(context) {
++    val probe = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
++    probe.resolveActivity(context.packageManager) != null
++  }
++
++  val activityLauncher = rememberLauncherForActivityResult(
++    contract = ActivityResultContracts.StartActivityForResult(),
++  ) { result ->
++    if (result.resultCode == Activity.RESULT_OK) {
++      val spoken = result.data
++        ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
++        ?.firstOrNull()
++        ?.trim()
++      if (!spoken.isNullOrEmpty()) {
++        currentOnResult(spoken)
++      }
++    }
++  }
++
++  return remember(isSupported, activityLauncher) {
++    object : VoiceDictationLauncher {
++      override val isSupported: Boolean = isSupported
++
++      override fun launch(prompt: String) {
++        if (!isSupported) return
++        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
++          putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
++          putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
++        }
++        try {
++          activityLauncher.launch(intent)
++        } catch (_: ActivityNotFoundException) {
++          // Ignore if no speech recognizer activity can handle the request at launch time
++        }
++      }
++    }
++  }
++}
 diff --git a/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt b/common/compose/src/appleMain/kotlin/app/campfire/common/compose/network/NetworkType.apple.kt
 new file mode 100644
 index 00000000..d5d16d09
@@ -5757,6 +5888,60 @@ index 00000000..7025b394
 + */
 +@Composable
 +expect fun rememberIsCellularOrMeteredChecker(): () -> Boolean
+diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.kt
+new file mode 100644
+index 00000000..d5fb2fbd
+--- /dev/null
++++ b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.kt
+@@ -0,0 +1,48 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.speech
++
++import androidx.compose.runtime.Composable
++
++/**
++ * Platform launcher for speech-to-text dictation (Android system speech recognizer on Android,
++ * unsupported no-op on other targets).
++ */
++interface VoiceDictationLauncher {
++  val isSupported: Boolean
++  fun launch(prompt: String)
++}
++
++@Composable
++expect fun rememberVoiceDictationLauncher(
++  onResult: (String) -> Unit,
++): VoiceDictationLauncher
++
++/**
++ * Merges a newly dictated phrase into [existing] text, capitalizing the first character of the
++ * dictated phrase when starting fresh or after sentence-ending punctuation / a newline.
++ */
++fun appendDictatedText(
++  existing: String,
++  dictated: String,
++): String {
++  val cleaned = dictated.trim()
++  if (cleaned.isEmpty()) return existing
++
++  val trimmedEnd = existing.trimEnd()
++  val shouldCapitalize = trimmedEnd.isEmpty() ||
++    existing.endsWith("\n") ||
++    trimmedEnd.last() in charArrayOf('.', '!', '?')
++  val formatted = if (shouldCapitalize) {
++    cleaned.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
++  } else {
++    cleaned
++  }
++
++  return when {
++    trimmedEnd.isEmpty() -> formatted
++    existing.endsWith("\n") -> "$existing$formatted"
++    else -> "$trimmedEnd $formatted"
++  }
++}
 diff --git a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt b/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
 index 9d968200..2927bdde 100644
 --- a/common/compose/src/commonMain/kotlin/app/campfire/common/compose/widgets/CoverImage.kt
@@ -6191,6 +6376,28 @@ index 00000000..896b1261
 +    },
 +  )
 +}
+diff --git a/common/compose/src/iosMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.ios.kt b/common/compose/src/iosMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.ios.kt
+new file mode 100644
+index 00000000..e0a79217
+--- /dev/null
++++ b/common/compose/src/iosMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.ios.kt
+@@ -0,0 +1,16 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.speech
++
++import androidx.compose.runtime.Composable
++
++private object UnsupportedVoiceDictationLauncher : VoiceDictationLauncher {
++  override val isSupported: Boolean = false
++  override fun launch(prompt: String) = Unit
++}
++
++@Composable
++actual fun rememberVoiceDictationLauncher(
++  onResult: (String) -> Unit,
++): VoiceDictationLauncher = UnsupportedVoiceDictationLauncher
 diff --git a/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt b/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/network/NetworkType.jvm.kt
 new file mode 100644
 index 00000000..d5d16d09
@@ -6209,6 +6416,28 @@ index 00000000..d5d16d09
 +
 +@Composable
 +actual fun rememberIsCellularOrMeteredChecker(): () -> Boolean = { false }
+diff --git a/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.jvm.kt b/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.jvm.kt
+new file mode 100644
+index 00000000..e0a79217
+--- /dev/null
++++ b/common/compose/src/jvmMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.jvm.kt
+@@ -0,0 +1,16 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.common.compose.speech
++
++import androidx.compose.runtime.Composable
++
++private object UnsupportedVoiceDictationLauncher : VoiceDictationLauncher {
++  override val isSupported: Boolean = false
++  override fun launch(prompt: String) = Unit
++}
++
++@Composable
++actual fun rememberVoiceDictationLauncher(
++  onResult: (String) -> Unit,
++): VoiceDictationLauncher = UnsupportedVoiceDictationLauncher
 diff --git a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt b/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
 index c15f21c6..6fcfd1cb 100644
 --- a/common/screens/src/commonMain/kotlin/app.campfire.common.screens/Screens.kt
@@ -18981,7 +19210,7 @@ index e852e895..46afc77a 100644
  
      val itemId = session.libraryItem.id
 diff --git a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-index 20f60c09..f975263e 100644
+index 20f60c09..5a5f502d 100644
 --- a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 +++ b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 @@ -15,7 +15,11 @@
@@ -19004,7 +19233,7 @@ index 20f60c09..f975263e 100644
    <string name="equalizer_unavailable_casting">The equalizer isn't available while casting</string>
    <string name="equalizer_band_gain_cd">%1$s equalizer band gain</string>
    <string name="timer_bottomsheet_title">Sleep Timer</string>
-@@ -48,11 +53,25 @@
+@@ -48,11 +53,29 @@
    <string name="bookmark_delete_title">Are you sure?</string>
    <string name="bookmark_delete_action_cancel">Cancel</string>
    <string name="bookmark_delete_action_delete">Delete</string>
@@ -19027,9 +19256,48 @@ index 20f60c09..f975263e 100644
 +  <string name="bookmark_editor_playback_label">Audio playback</string>
 +  <string name="bookmark_editor_timestamp_label">Bookmark time</string>
 +  <string name="bookmark_editor_sync_time">Use current playback time</string>
++  <string name="action_dictate_bookmark_title">Dictate bookmark title</string>
++  <string name="action_dictate_bookmark_notes">Dictate bookmark notes</string>
++  <string name="bookmark_dictation_prompt_title">Speak bookmark title</string>
++  <string name="bookmark_dictation_prompt_notes">Speak bookmark note</string>
  
    <string name="action_set_timer">Set timer</string>
    <string name="action_clear_timer">Clear timer</string>
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt
+index ae7b04a4..61d07a5f 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt
+@@ -43,6 +43,7 @@ import androidx.compose.runtime.key
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.runtime.rememberUpdatedState
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -316,6 +317,9 @@ internal fun PlaybackBottomBarContent(
+         )
+ 
+         val overlayHost = LocalOverlayHost.current
++        val currentRunningTimer by rememberUpdatedState(runningTimer)
++        val currentOnTimerSelected by rememberUpdatedState(onTimerSelected)
++        val currentOnTimerCleared by rememberUpdatedState(onTimerCleared)
+         ActionRow(
+           modifier = Modifier.weight(1f),
+           enabled = hasSession,
+@@ -347,9 +351,9 @@ internal fun PlaybackBottomBarContent(
+           onTimerClick = {
+             if (session == null) return@ActionRow
+             scope.launch {
+-              when (val result = overlayHost.showSleepTimerBottomSheet(runningTimer)) {
+-                is TimerResult.Selected -> onTimerSelected(result.timer)
+-                TimerResult.Cleared -> onTimerCleared()
++              when (val result = overlayHost.showSleepTimerBottomSheet(currentRunningTimer)) {
++                is TimerResult.Selected -> currentOnTimerSelected(result.timer)
++                TimerResult.Cleared -> currentOnTimerCleared()
+                 else -> Unit
+               }
+             }
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
 index 820bbfd4..3dc1071b 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/composables/PlaybackSpeedAction.kt
@@ -19224,7 +19492,7 @@ index 58b35f55..08d3ac8a 100644
    else -> CampfireIcons.Rounded.Replay
  }
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt
-index 1297195e..b54c6dda 100644
+index 1297195e..ff92f080 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt
 @@ -85,7 +85,7 @@ class PlaybackPresenter(
@@ -19236,6 +19504,65 @@ index 1297195e..b54c6dda 100644
      val themeState = observeThemeState(currentSession)
      val itemValidation = observeItemValidation(currentSession)
      val playbackHistoryEnabled by remember { playbackSettings.observePlaybackHistoryEnabled() }.collectAsState()
+@@ -260,9 +260,8 @@ class PlaybackPresenter(
+ 
+     val timer by remember {
+       snapshotFlow { player }
+-        .filterNotNull()
+-        .flatMapLatest {
+-          it.runningTimer
++        .flatMapLatest { current ->
++          current?.runningTimer ?: flowOf(null)
+         }
+     }.collectAsState(null)
+ 
+@@ -323,10 +322,11 @@ class PlaybackPresenter(
+       bookmarks = bookmarks,
+       error = error,
+     ) { event ->
++      val livePlayer = audioPlayerHolder.currentPlayer.value ?: player
+       when (event) {
+         PlayerUiEvent.PlayPauseClick -> {
+           val sessionValue = session.value
+-          if (state == AudioPlayer.State.Disabled && sessionValue != null) {
++          if ((livePlayer == null || state == AudioPlayer.State.Disabled) && sessionValue != null) {
+             scope.launch {
+               playbackController.startSession(
+                 itemId = sessionValue.libraryItem.id,
+@@ -334,21 +334,21 @@ class PlaybackPresenter(
+               )
+             }
+           } else {
+-            player?.playPause()
++            livePlayer?.playPause()
+           }
+         }
+ 
+-        PlayerUiEvent.NextClick -> player?.skipToNext()
+-        PlayerUiEvent.PreviousClick -> player?.skipToPrevious()
+-        PlayerUiEvent.FastForwardClick -> player?.seekForward()
+-        PlayerUiEvent.RewindClick -> player?.seekBackward()
+-        PlayerUiEvent.ClearTimer -> player?.clearTimer()
+-        is PlayerUiEvent.BookmarkSelected -> player?.seekTo(event.bookmark.time)
+-        is PlayerUiEvent.ChapterSelected -> player?.seekTo(event.chapter.id)
+-        is PlayerUiEvent.AudioTrackSelected -> player?.seekTo(event.audioTrack.index - 1)
+-        is PlayerUiEvent.Seek.Percent -> player?.seekTo(event.percent)
+-        is PlayerUiEvent.Seek.Position -> player?.seekTo(event.position)
+-        is PlayerUiEvent.TimerSelected -> player?.setTimer(event.timer)
++        PlayerUiEvent.NextClick -> livePlayer?.skipToNext()
++        PlayerUiEvent.PreviousClick -> livePlayer?.skipToPrevious()
++        PlayerUiEvent.FastForwardClick -> livePlayer?.seekForward()
++        PlayerUiEvent.RewindClick -> livePlayer?.seekBackward()
++        PlayerUiEvent.ClearTimer -> livePlayer?.clearTimer()
++        is PlayerUiEvent.BookmarkSelected -> livePlayer?.seekTo(event.bookmark.time)
++        is PlayerUiEvent.ChapterSelected -> livePlayer?.seekTo(event.chapter.id)
++        is PlayerUiEvent.AudioTrackSelected -> livePlayer?.seekTo(event.audioTrack.index - 1)
++        is PlayerUiEvent.Seek.Percent -> livePlayer?.seekTo(event.percent)
++        is PlayerUiEvent.Seek.Position -> livePlayer?.seekTo(event.position)
++        is PlayerUiEvent.TimerSelected -> livePlayer?.setTimer(event.timer)
+       }
+     }
+   }
 @@ -404,6 +404,7 @@ class PlaybackPresenter(
    @Composable
    private fun observeSyncState(
@@ -19406,6 +19733,64 @@ index 91cc51fe..98d9ca90 100644
    override var remoteNextPrevSkipsChapters = true
    override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = MutableStateFlow(remoteNextPrevSkipsChapters)
    override var syncEnabled = true
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt
+index dfc6c3d8..ef1e5e56 100644
+--- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt
+@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.runtime.rememberUpdatedState
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -624,12 +625,15 @@ internal fun rememberPlaybackOptionActions(
+   playerState: PlayerUiState,
+ ): PlaybackOptionActions {
+   val scope = rememberCoroutineScope()
++  val currentPlayerState by rememberUpdatedState(playerState)
++  val currentSession by rememberUpdatedState(session)
+   return PlaybackOptionActions(
+     onBookmarksClick = {
++      val itemId = currentSession?.libraryItem?.id ?: return@PlaybackOptionActions
+       scope.launch {
+-        when (val result = overlayHost.showBookmarksBottomSheet(session!!.libraryItem.id)) {
++        when (val result = overlayHost.showBookmarksBottomSheet(itemId)) {
+           is BookmarkResult.Selected -> {
+-            playerState.eventSink(PlayerUiEvent.BookmarkSelected(result.bookmark))
++            currentPlayerState.eventSink(PlayerUiEvent.BookmarkSelected(result.bookmark))
+           }
+ 
+           BookmarkResult.None -> Unit
+@@ -640,8 +644,9 @@ internal fun rememberPlaybackOptionActions(
+       PlaybackSpeedAction(
+         playbackSpeed = playerState.speed,
+         onClick = {
++          val itemId = currentSession?.libraryItem?.id ?: return@PlaybackSpeedAction
+           scope.launch {
+-            overlayHost.showPlaybackSpeedBottomSheet(session!!.libraryItem.id, playerState.speed)
++            overlayHost.showPlaybackSpeedBottomSheet(itemId, currentPlayerState.speed)
+           }
+         },
+       )
+@@ -654,13 +659,13 @@ internal fun rememberPlaybackOptionActions(
+         playbackSpeed = playerState.speed,
+         onClick = {
+           scope.launch {
+-            when (val result = overlayHost.showSleepTimerBottomSheet(playerState.timer)) {
++            when (val result = overlayHost.showSleepTimerBottomSheet(currentPlayerState.timer)) {
+               is TimerResult.Selected -> {
+-                playerState.eventSink(PlayerUiEvent.TimerSelected(result.timer))
++                currentPlayerState.eventSink(PlayerUiEvent.TimerSelected(result.timer))
+               }
+ 
+               TimerResult.Cleared -> {
+-                playerState.eventSink(PlayerUiEvent.ClearTimer)
++                currentPlayerState.eventSink(PlayerUiEvent.ClearTimer)
+               }
+ 
+               else -> Unit
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
 index ea2a2a3e..de11276a 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/composables/BookTimeProgressIndicator.kt
@@ -19481,7 +19866,7 @@ index ea2a2a3e..de11276a 100644
        },
      )
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-index d22e71e4..cdb52a1d 100644
+index d22e71e4..d0962150 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 @@ -3,9 +3,11 @@
@@ -19504,12 +19889,13 @@ index d22e71e4..cdb52a1d 100644
  import androidx.compose.foundation.layout.navigationBarsPadding
  import androidx.compose.foundation.layout.padding
  import androidx.compose.foundation.layout.size
-@@ -22,11 +25,15 @@ import androidx.compose.foundation.layout.wrapContentSize
+@@ -22,11 +25,16 @@ import androidx.compose.foundation.layout.wrapContentSize
  import androidx.compose.foundation.layout.wrapContentWidth
  import androidx.compose.foundation.lazy.LazyColumn
  import androidx.compose.foundation.lazy.items
 +import androidx.compose.foundation.rememberScrollState
  import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.foundation.text.KeyboardOptions
 +import androidx.compose.foundation.verticalScroll
 +import androidx.compose.material3.AlertDialog
  import androidx.compose.material3.BasicAlertDialog
@@ -19520,15 +19906,20 @@ index d22e71e4..cdb52a1d 100644
  import androidx.compose.material3.Icon
  import androidx.compose.material3.IconButton
  import androidx.compose.material3.IconButtonDefaults
-@@ -51,6 +58,7 @@ import androidx.compose.ui.graphics.Color
+@@ -48,9 +56,12 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.geometry.Offset
+ import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.text.TextRange
  import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.input.KeyboardCapitalization
  import androidx.compose.ui.text.input.TextFieldValue
  import androidx.compose.ui.text.style.TextAlign
 +import androidx.compose.ui.text.style.TextOverflow
  import androidx.compose.ui.unit.dp
  import androidx.compose.ui.zIndex
  import app.campfire.analytics.Analytics
-@@ -60,6 +68,7 @@ import app.campfire.analytics.events.Deleted
+@@ -60,6 +71,7 @@ import app.campfire.analytics.events.Deleted
  import app.campfire.analytics.events.PlaybackActionEvent
  import app.campfire.analytics.events.ScreenType
  import app.campfire.analytics.events.ScreenViewEvent
@@ -19536,22 +19927,25 @@ index d22e71e4..cdb52a1d 100644
  import app.campfire.audioplayer.AudioPlayerHolder
  import app.campfire.common.compose.analytics.Impression
  import app.campfire.common.compose.di.rememberComponent
-@@ -70,9 +79,14 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
+@@ -70,9 +82,17 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
  import app.campfire.common.compose.icons.rounded.BookmarkStar
  import app.campfire.common.compose.icons.rounded.Delete
  import app.campfire.common.compose.icons.rounded.DeleteForever
 +import app.campfire.common.compose.icons.rounded.DeleteSweep
 +import app.campfire.common.compose.icons.rounded.Edit
  import app.campfire.common.compose.icons.rounded.Forward5
++import app.campfire.common.compose.icons.rounded.Mic
 +import app.campfire.common.compose.icons.rounded.Pause
 +import app.campfire.common.compose.icons.rounded.PlayArrow
  import app.campfire.common.compose.icons.rounded.Replay
  import app.campfire.common.compose.icons.rounded.Schedule
 +import app.campfire.common.compose.icons.rounded.Sync
++import app.campfire.common.compose.speech.appendDictatedText
++import app.campfire.common.compose.speech.rememberVoiceDictationLauncher
  import app.campfire.common.compose.widgets.FilledTonalIconButton
  import app.campfire.common.compose.widgets.IconButtonTooltip
  import app.campfire.common.compose.widgets.SizedIcon
-@@ -85,21 +99,38 @@ import app.campfire.core.coroutines.onLoading
+@@ -85,21 +105,42 @@ import app.campfire.core.coroutines.onLoading
  import app.campfire.core.di.UserScope
  import app.campfire.core.model.Bookmark
  import app.campfire.core.model.LibraryItemId
@@ -19562,6 +19956,8 @@ index d22e71e4..cdb52a1d 100644
  import campfire.features.sessions.ui.generated.resources.Res
 +import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
  import campfire.features.sessions.ui.generated.resources.action_delete_bookmark
++import campfire.features.sessions.ui.generated.resources.action_dictate_bookmark_notes
++import campfire.features.sessions.ui.generated.resources.action_dictate_bookmark_title
 +import campfire.features.sessions.ui.generated.resources.action_edit_bookmark
 +import campfire.features.sessions.ui.generated.resources.action_play_pause
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_action_create
@@ -19576,6 +19972,8 @@ index d22e71e4..cdb52a1d 100644
 +import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_title
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_title
 +import campfire.features.sessions.ui.generated.resources.bookmark_dialog_label_notes
++import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_notes
++import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_title
 +import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
 +import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
 +import campfire.features.sessions.ui.generated.resources.bookmark_editor_playback_label
@@ -19590,7 +19988,7 @@ index d22e71e4..cdb52a1d 100644
  import campfire.features.sessions.ui.generated.resources.cd_forward_time
  import campfire.features.sessions.ui.generated.resources.cd_rewind_time
  import com.slack.circuit.overlay.OverlayHost
-@@ -107,11 +138,13 @@ import dev.zacsweers.metro.ContributesTo
+@@ -107,11 +148,13 @@ import dev.zacsweers.metro.ContributesTo
  import kotlin.time.Duration
  import kotlin.time.Duration.Companion.seconds
  import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19604,7 +20002,7 @@ index d22e71e4..cdb52a1d 100644
  import org.jetbrains.compose.resources.stringResource
  
  sealed interface BookmarkResult {
-@@ -136,19 +169,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
+@@ -136,19 +179,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
          ScreenViewEvent("Bookmarks", ScreenType.Overlay)
        }
  
@@ -19631,7 +20029,7 @@ index d22e71e4..cdb52a1d 100644
      },
    )
  }
-@@ -163,113 +190,234 @@ private fun BookmarksBottomSheet(
+@@ -163,113 +200,234 @@ private fun BookmarksBottomSheet(
  ) {
    val scope = rememberCoroutineScope()
  
@@ -19939,7 +20337,7 @@ index d22e71e4..cdb52a1d 100644
        },
      )
    }
-@@ -279,6 +427,7 @@ private fun BookmarksBottomSheet(
+@@ -279,6 +437,7 @@ private fun BookmarksBottomSheet(
  private fun BookmarkListItem(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -19947,7 +20345,7 @@ index d22e71e4..cdb52a1d 100644
    onDeleteClick: () -> Unit,
    modifier: Modifier = Modifier,
  ) {
-@@ -289,6 +438,7 @@ private fun BookmarkListItem(
+@@ -289,6 +448,7 @@ private fun BookmarkListItem(
      BookmarkListItemContent(
        bookmark = bookmark,
        onClick = onClick,
@@ -19955,7 +20353,7 @@ index d22e71e4..cdb52a1d 100644
        onDeleteClick = {
          isConfirmDeleteVisible = true
        },
-@@ -340,11 +490,18 @@ private fun BookmarkListItem(
+@@ -340,11 +500,18 @@ private fun BookmarkListItem(
  private fun BookmarkListItemContent(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -19975,7 +20373,7 @@ index d22e71e4..cdb52a1d 100644
      colors = ListItemDefaults.colors(containerColor = Color.Transparent),
      leadingContent = {
        Icon(
-@@ -352,31 +509,88 @@ private fun BookmarkListItemContent(
+@@ -352,31 +519,88 @@ private fun BookmarkListItemContent(
          contentDescription = null,
        )
      },
@@ -20084,7 +20482,7 @@ index d22e71e4..cdb52a1d 100644
          }
        }
      },
-@@ -405,13 +619,30 @@ private fun CreateNewListItem(
+@@ -405,13 +629,42 @@ private fun CreateNewListItem(
  }
  
  @Composable
@@ -20115,10 +20513,22 @@ index d22e71e4..cdb52a1d 100644
 +  }
 +  var titleValue by remember(initialTitle) { mutableStateOf(TextFieldValue(initialTitle)) }
 +  var notesValue by remember(initialNotes) { mutableStateOf(TextFieldValue(initialNotes)) }
++
++  val titleDictation = rememberVoiceDictationLauncher { spoken ->
++    val merged = appendDictatedText(titleValue.text, spoken)
++      .replace('\n', ' ')
++      .replace('\r', ' ')
++      .trim()
++    titleValue = TextFieldValue(merged, TextRange(merged.length))
++  }
++  val notesDictation = rememberVoiceDictationLauncher { spoken ->
++    val merged = appendDictatedText(notesValue.text, spoken)
++    notesValue = TextFieldValue(merged, TextRange(merged.length))
++  }
  
    BasicAlertDialog(
      modifier = modifier,
-@@ -424,7 +655,10 @@ private fun CreateNewDialog(
+@@ -424,7 +677,10 @@ private fun CreateNewDialog(
          shadowElevation = 6.dp,
        ) {
          Column(
@@ -20130,7 +20540,7 @@ index d22e71e4..cdb52a1d 100644
            horizontalAlignment = Alignment.CenterHorizontally,
          ) {
            Icon(
-@@ -436,60 +670,157 @@ private fun CreateNewDialog(
+@@ -436,60 +692,157 @@ private fun CreateNewDialog(
            Spacer(Modifier.height(16.dp))
  
            Text(
@@ -20321,11 +20731,13 @@ index d22e71e4..cdb52a1d 100644
                  )
                }
              }
-@@ -497,13 +828,27 @@ private fun CreateNewDialog(
+@@ -497,13 +850,69 @@ private fun CreateNewDialog(
  
            Spacer(Modifier.height(16.dp))
  
 -          var titleValue by remember { mutableStateOf(TextFieldValue("")) }
++          val dictateTitleLabel = stringResource(Res.string.action_dictate_bookmark_title)
++          val dictateTitlePrompt = stringResource(Res.string.bookmark_dictation_prompt_title)
            OutlinedTextField(
              value = titleValue,
              onValueChange = { newValue ->
@@ -20334,11 +20746,32 @@ index d22e71e4..cdb52a1d 100644
              label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
 +            placeholder = { Text(defaultTitle) },
 +            singleLine = true,
++            keyboardOptions = KeyboardOptions(
++              capitalization = KeyboardCapitalization.Sentences,
++            ),
++            trailingIcon = if (titleDictation.isSupported) {
++              {
++                IconButtonTooltip(text = dictateTitleLabel) {
++                  IconButton(
++                    onClick = { titleDictation.launch(dictateTitlePrompt) },
++                  ) {
++                    Icon(
++                      CampfireIcons.Rounded.Mic,
++                      contentDescription = dictateTitleLabel,
++                    )
++                  }
++                }
++              }
++            } else {
++              null
++            },
 +            modifier = Modifier.fillMaxWidth(),
 +          )
 +
 +          Spacer(Modifier.height(12.dp))
 +
++          val dictateNotesLabel = stringResource(Res.string.action_dictate_bookmark_notes)
++          val dictateNotesPrompt = stringResource(Res.string.bookmark_dictation_prompt_notes)
 +          OutlinedTextField(
 +            value = notesValue,
 +            onValueChange = { newValue ->
@@ -20347,10 +20780,29 @@ index d22e71e4..cdb52a1d 100644
 +            label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
 +            minLines = 2,
 +            maxLines = 4,
++            keyboardOptions = KeyboardOptions(
++              capitalization = KeyboardCapitalization.Sentences,
++            ),
++            trailingIcon = if (notesDictation.isSupported) {
++              {
++                IconButtonTooltip(text = dictateNotesLabel) {
++                  IconButton(
++                    onClick = { notesDictation.launch(dictateNotesPrompt) },
++                  ) {
++                    Icon(
++                      CampfireIcons.Rounded.Mic,
++                      contentDescription = dictateNotesLabel,
++                    )
++                  }
++                }
++              }
++            } else {
++              null
++            },
              modifier = Modifier.fillMaxWidth(),
            )
  
-@@ -519,12 +864,26 @@ private fun CreateNewDialog(
+@@ -519,12 +928,26 @@ private fun CreateNewDialog(
                Text(stringResource(Res.string.bookmark_new_dialog_action_cancel))
              }
              TextButton(
@@ -20380,7 +20832,7 @@ index d22e71e4..cdb52a1d 100644
              }
            }
          }
-@@ -532,3 +891,28 @@ private fun CreateNewDialog(
+@@ -532,3 +955,28 @@ private fun CreateNewDialog(
      },
    )
  }
@@ -20585,7 +21037,7 @@ index 4b7fc2d1..2de5ecc3 100644
          )
        },
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-index 278dcf20..e8858957 100644
+index 278dcf20..a5316139 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 @@ -66,6 +66,8 @@ import androidx.compose.ui.tooling.preview.Preview
@@ -20628,20 +21080,19 @@ index 278dcf20..e8858957 100644
  @Composable
  internal fun TimerBottomSheetV2(
    runningTimer: RunningTimer?,
-@@ -169,6 +175,12 @@ internal fun TimerBottomSheetV2(
+@@ -169,6 +175,11 @@ internal fun TimerBottomSheetV2(
    onTimerCleared: () -> Unit,
    component: SleepTimerBottomSheetComponent = rememberComponent(),
  ) {
 +  val liveTimer by remember(component) {
 +    component.audioPlayerHolder.currentPlayer
-+      .filterNotNull()
-+      .flatMapLatest { it.runningTimer }
++      .flatMapLatest { it?.runningTimer ?: flowOf(null) }
 +  }.collectAsState(runningTimer)
 +
    SessionSheetLayout(
      modifier = modifier,
      title = { Text(stringResource(Res.string.timer_bottomsheet_title)) },
-@@ -178,7 +190,7 @@ internal fun TimerBottomSheetV2(
+@@ -178,7 +189,7 @@ internal fun TimerBottomSheetV2(
      // content the way it is everywhere else — the scroll only engages once there is more content
      // than room, which a large font scale can still manage even in the side sheet's two columns.
      AnimatedContent(
@@ -20650,17 +21101,48 @@ index 278dcf20..e8858957 100644
        modifier = Modifier
          .weight(1f, fill = false)
          .verticalScroll(rememberScrollState()),
-@@ -187,6 +199,9 @@ internal fun TimerBottomSheetV2(
+@@ -186,12 +197,38 @@ internal fun TimerBottomSheetV2(
+       if (timer != null) {
          ActiveTimerSheetContent(
            runningTimer = timer,
-           onTimerCleared = onTimerCleared,
+-          onTimerCleared = onTimerCleared,
++          onTimerCleared = {
++            if (component.audioPlayerHolder.currentPlayer.value == null) {
++              component.sleepSettings.activeSleepTimer = null
++            }
++            onTimerCleared()
++          },
 +          onAdjustTimer = { delta ->
 +            component.audioPlayerHolder.currentPlayer.value?.adjustTimer(delta)
 +          },
          )
        } else {
          InactiveTimerSheetContent(
-@@ -209,6 +224,7 @@ internal fun TimerBottomSheetV2(
+           component = component,
+-          onTimerSelected = onTimerSelected,
++          onTimerSelected = { selected ->
++            if (component.audioPlayerHolder.currentPlayer.value == null) {
++              component.sleepSettings.activeSleepTimer = when (selected) {
++                is PlaybackTimer.EndOfChapter -> SleepSettings.PersistedSleepTimer(
++                  isEndOfChapter = true,
++                  totalDurationMillis = 0L,
++                  remainingMillis = 0L,
++                  isAutoSleepTimer = selected.isAutoSleepTimer,
++                )
++                is PlaybackTimer.Epoch -> SleepSettings.PersistedSleepTimer(
++                  isEndOfChapter = false,
++                  totalDurationMillis = selected.epochMillis,
++                  remainingMillis = selected.epochMillis,
++                  isAutoSleepTimer = selected.isAutoSleepTimer,
++                )
++              }
++            }
++            onTimerSelected(selected)
++          },
+         )
+       }
+     }
+@@ -209,6 +246,7 @@ internal fun TimerBottomSheetV2(
  private fun ActiveTimerSheetContent(
    runningTimer: RunningTimer,
    onTimerCleared: () -> Unit,
@@ -20668,7 +21150,7 @@ index 278dcf20..e8858957 100644
    modifier: Modifier = Modifier,
  ) {
    Column(
-@@ -216,6 +232,7 @@ private fun ActiveTimerSheetContent(
+@@ -216,6 +254,7 @@ private fun ActiveTimerSheetContent(
    ) {
      RunningTimerCard(
        runningTimer = runningTimer,
@@ -20676,7 +21158,7 @@ index 278dcf20..e8858957 100644
      )
  
      ClearTimerButton(
-@@ -638,6 +655,12 @@ fun TimerBottomSheetV2Preview() {
+@@ -638,6 +677,12 @@ fun TimerBottomSheetV2Preview() {
            timer = null
          },
          component = object : SleepTimerBottomSheetComponent {
@@ -20689,7 +21171,7 @@ index 278dcf20..e8858957 100644
            override val sleepSettings: SleepSettings = object : SleepSettings {
              override var lastSetSleepTimer: Duration
                get() = mutableLastSetSleepTimer.value
-@@ -657,6 +680,26 @@ fun TimerBottomSheetV2Preview() {
+@@ -657,6 +702,26 @@ fun TimerBottomSheetV2Preview() {
                return mutableShakeToReset
              }
  
@@ -21093,14 +21575,15 @@ index 792e8267..c0334c76 100644
  private val WaveHeightRange = 0.dp.rangeTo(40.dp)
  private val WaveVelocityRange = 50.dp.rangeTo(120.dp)
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
-index 299f5180..71fb7375 100644
+index 299f5180..ea4f7038 100644
 --- a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
 +++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt
-@@ -4,12 +4,15 @@
+@@ -4,12 +4,16 @@
  package app.campfire.sessions.ui.playback
  
  import app.campfire.audioplayer.AudioDevice
 +import app.campfire.audioplayer.AudioPlayer
++import app.campfire.audioplayer.model.PlaybackTimer
  import app.campfire.audioplayer.test.FakeAudioOutputController
  import app.campfire.audioplayer.test.FakeAudioPlayer
  import app.campfire.audioplayer.test.FakeAudioPlayerHolder
@@ -21112,7 +21595,7 @@ index 299f5180..71fb7375 100644
  import app.campfire.core.model.preview.libraryItem
  import app.campfire.libraries.test.FakeLibraryItemValidator
  import app.campfire.sessions.test.FakeSessionQueue
-@@ -28,6 +31,7 @@ import assertk.assertions.isNull
+@@ -28,6 +32,7 @@ import assertk.assertions.isNull
  import kotlin.test.Test
  import kotlin.time.Duration.Companion.hours
  import kotlin.time.Duration.Companion.minutes
@@ -21120,7 +21603,7 @@ index 299f5180..71fb7375 100644
  import kotlinx.coroutines.test.runTest
  import kotlinx.datetime.LocalDateTime
  
-@@ -225,6 +229,88 @@ class PlaybackPresenterTest {
+@@ -225,6 +230,118 @@ class PlaybackPresenterTest {
      }
    }
  
@@ -21206,17 +21689,48 @@ index 299f5180..71fb7375 100644
 +    }
 +  }
 +
++  @Test
++  fun `timer events captured before player reconnect still target the live player`() = runTest {
++    val item = libraryItem()
++    sessionsRepository.currentSessionFlow.value = session(libraryItem = item, currentTime = 100.seconds)
++
++    moleculeFlow(RecompositionMode.Immediate) {
++      presenter.present(expanded = true)
++    }.test {
++      // Capture eventSink while no player is bound yet (e.g., right after returning from another app)
++      val initialState = awaitItemMatching { it.session != null }
++      val capturedSink = initialState.playerState.eventSink
++
++      // AudioPlayerService finishes rebinding and publishes the live player
++      val livePlayer = FakeAudioPlayer()
++      audioPlayerHolder.setCurrentPlayer(livePlayer)
++
++      val timer = PlaybackTimer.Epoch(15.minutes.inWholeMilliseconds)
++      capturedSink(PlayerUiEvent.TimerSelected(timer))
++      capturedSink(PlayerUiEvent.ClearTimer)
++
++      assertThat(livePlayer.invocations).isEqualTo(
++        listOf(
++          FakeAudioPlayer.Invocation.SetTimer(timer),
++          FakeAudioPlayer.Invocation.ClearTimer,
++        ),
++      )
++      cancelAndIgnoreRemainingEvents()
++    }
++  }
++
    private fun presenterWith(controller: FakeAudioOutputController) = PlaybackPresenter(
      sessionQueue = sessionQueue,
      sessionsRepository = sessionsRepository,
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt
 new file mode 100644
-index 00000000..6eba3037
+index 00000000..5cf69613
 --- /dev/null
 +++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,65 @@
 +package app.campfire.sessions.ui.sheets.bookmarks
 +
++import app.campfire.common.compose.speech.appendDictatedText
 +import kotlin.test.Test
 +import kotlin.test.assertEquals
 +
@@ -21268,6 +21782,15 @@ index 00000000..6eba3037
 +      defaultTitle = "Chapter 4",
 +    )
 +    assertEquals("Chapter 4\nCharacter note", encoded)
++  }
++
++  @Test
++  fun appendDictatedTextCapitalizesFreshInputAndAfterSentenceBreaks() {
++    assertEquals("Remember this twist", appendDictatedText("", "remember this twist"))
++    assertEquals("First thought. Second thought", appendDictatedText("First thought.", "second thought"))
++    assertEquals("Line one\nLine two", appendDictatedText("Line one\n", "line two"))
++    assertEquals("First part and more", appendDictatedText("First part", "and more"))
++    assertEquals("Existing", appendDictatedText("Existing", "   "))
 +  }
 +}
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
@@ -22851,7 +23374,7 @@ index b5b7e1bd..48b7f40c 100644
    }
  }
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
-index bf4d0d7f..31dad0a2 100644
+index bf4d0d7f..9092315f 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt
 @@ -69,11 +69,15 @@ import campfire.features.settings.ui.generated.resources.action_stop_download
@@ -22891,6 +23414,14 @@ index bf4d0d7f..31dad0a2 100644
      if (state.downloadsSettings.isWifiOnlyAvailable) {
        SwitchSetting(
          value = state.downloadsSettings.downloadOnWifiOnly,
+@@ -115,6 +133,7 @@ internal fun DownloadsPane(
+             ConfirmDeleteListItem(
+               download = entry.download,
+               onDeleteClick = {
++                confirmingKey = null
+                 state.eventSink(
+                   SettingsUiEvent.DownloadsSettingEvent.DeleteDownload(entry),
+                 )
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/HeadsetControlsPane.kt
 new file mode 100644
 index 00000000..804d946f
@@ -25428,7 +25959,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..dd3b92eb 100644
+index f41126a7..a7d7fec5 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -25436,13 +25967,13 @@ index f41126a7..dd3b92eb 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.56
++campfire.version=1.2.57
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025699
++campfire.versionCode=1025799
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -27282,7 +27813,7 @@ index da6ec972..e1ba9250 100644
 +  return true
  }
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
-index 36438551..ea1c3021 100644
+index 36438551..f20400b4 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt
 @@ -18,6 +18,9 @@ import app.campfire.core.model.LibraryItem
@@ -27303,7 +27834,7 @@ index 36438551..ea1c3021 100644
    }
  
    override fun downloadAll(items: List<LibraryItem>) {
-@@ -181,6 +185,7 @@ class AndroidOfflineDownloadManager(
+@@ -181,42 +185,40 @@ class AndroidOfflineDownloadManager(
        request,
        true,
      )
@@ -27311,7 +27842,63 @@ index 36438551..ea1c3021 100644
    }
  
    override fun delete(item: LibraryItem) {
-@@ -258,4 +263,18 @@ class AndroidOfflineDownloadManager(
+-    item.media.tracks.forEach { track ->
+-      DownloadService.sendRemoveDownload(
+-        application,
+-        CampfireDownloadService::class.java,
+-        track.metadata.filename,
+-        true,
+-      )
++    val downloadIds = buildSet {
++      item.media.tracks.forEach { add(it.metadata.filename) }
++      addAll(downloadTracker.downloadIdsForBook(item.id))
++    }
++    downloadIds.forEach { downloadId ->
++      removeDownloadId(downloadId)
+     }
+   }
+ 
+   override fun deleteEpisode(item: LibraryItem, episode: PodcastEpisode) {
+-    DownloadService.sendRemoveDownload(
+-      application,
+-      CampfireDownloadService::class.java,
+-      episodeDownloadId(item.id, episode.id),
+-      true,
+-    )
++    removeDownloadId(episodeDownloadId(item.id, episode.id))
+   }
+ 
+   override suspend fun deleteAllForItemId(itemId: LibraryItemId) {
+     downloadTracker.downloadIdsForItem(itemId).forEach { downloadId ->
+-      // Cache cleanup can run while the app is in the background, where Android 12+ refuses a
+-      // foreground service start. Fall back to a plain start and, failing that, skip — the files
+-      // are picked up again the next time this item id is cleaned up.
++      removeDownloadId(downloadId)
++    }
++  }
++
++  private fun removeDownloadId(downloadId: String) {
++    // Android 12+ can refuse a foreground service start from background or transitional app states.
++    // Fall back to a plain start and, failing that, skip rather than crashing.
++    try {
++      DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, true)
++    } catch (e: IllegalStateException) {
++      bark(throwable = e) { "Unable to start download service in the foreground, retrying in background" }
+       try {
+-        DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, true)
++        DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, false)
+       } catch (e: IllegalStateException) {
+-        bark(throwable = e) { "Unable to start download service in the foreground, retrying in background" }
+-        try {
+-          DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, false)
+-        } catch (e: IllegalStateException) {
+-          bark(throwable = e) { "Unable to start download service, skipping removal of $downloadId" }
+-        }
++        bark(throwable = e) { "Unable to start download service, skipping removal of $downloadId" }
+       }
+     }
+   }
+@@ -258,4 +260,18 @@ class AndroidOfflineDownloadManager(
  
    private fun episodeDownloadId(itemId: LibraryItemId, episodeId: PodcastEpisodeId): String =
      "$itemId:$episodeId"
@@ -27330,6 +27917,33 @@ index 36438551..ea1c3021 100644
 +    }
 +  }
  }
+diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt
+index aa72333a..794bbe5a 100644
+--- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt
++++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt
+@@ -77,6 +77,22 @@ class DownloadTracker(
+       }
+     }
+ 
++  /**
++   * Synchronous in-memory lookup of book-level download request IDs tagged with [itemId].
++   * Ensures deletion still works even when a [LibraryItem]'s tracks are unhydrated or filenames
++   * changed on the server after downloading.
++   */
++  fun downloadIdsForBook(itemId: LibraryItemId): Set<String> {
++    return downloads.values.toList()
++      .asSequence()
++      .filter {
++        val key = OfflineDownloadKey.decode(it.request.data)
++        key.libraryItemId == itemId && key.episodeId == null
++      }
++      .map { it.request.id }
++      .toSet()
++  }
++
+   /**
+    * The ids of every download request tagged with [itemId], book tracks and podcast episodes
+    * alike, read from the download index rather than the in-memory map.
 diff --git a/infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_bookmark_add.xml b/infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_bookmark_add.xml
 new file mode 100644
 index 00000000..d32b4e71
@@ -29693,7 +30307,7 @@ index 2c789f5d..95bb0d38 100644
    val versionName: String,
    val versionCode: Long,
 diff --git a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
-index 9e34e26a..aa20c882 100644
+index 9e34e26a..505d422f 100644
 --- a/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 +++ b/infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt
 @@ -71,8 +71,6 @@ class AppUpdateWidgetImpl(
@@ -29766,7 +30380,7 @@ index 9e34e26a..aa20c882 100644
    private suspend fun OverlayHost.showAppUpdateSheet(appUpdate: AppUpdate) {
      show(
        BottomSheetOverlay<AppUpdate, Unit>(
-@@ -218,43 +236,65 @@ class AppUpdateWidgetImpl(
+@@ -218,43 +236,71 @@ class AppUpdateWidgetImpl(
        Spacer(Modifier.height(24.dp))
  
        val progress = updateProgress
@@ -29809,6 +30423,12 @@ index 9e34e26a..aa20c882 100644
 +            }
 +            Text(buttonLabel)
 +          }
++          Spacer(Modifier.height(8.dp))
++          Text(
++            text = "Campfire will close briefly while Android installs the update.",
++            style = MaterialTheme.typography.bodySmall,
++            color = MaterialTheme.colorScheme.onSurfaceVariant,
++          )
 +        }
 +
 +        AppUpdateProgress.Status.Pending,
@@ -29831,7 +30451,7 @@ index 9e34e26a..aa20c882 100644
              fontWeight = FontWeight.Medium,
            )
 -          Spacer(Modifier.height(8.dp))
-         }
+-        }
 -        Button(
 -          onClick = {
 -            scope.launch {
@@ -29853,7 +30473,7 @@ index 9e34e26a..aa20c882 100644
 -            progress = { progress.progress },
 -            modifier = Modifier.fillMaxWidth(),
 -          )
--        }
+         }
 -        Spacer(Modifier.height(8.dp))
 -        Text(
 -          text = progress.statusText,
@@ -29863,7 +30483,7 @@ index 9e34e26a..aa20c882 100644
        }
  
        Spacer(Modifier.height(16.dp))
-@@ -335,9 +375,6 @@ private fun AppUpdateWidgetCard(
+@@ -335,9 +381,6 @@ private fun AppUpdateWidgetCard(
    }
  }
  

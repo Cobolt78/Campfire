@@ -133,6 +133,7 @@ internal fun DownloadsPane(
             ConfirmDeleteListItem(
               download = entry.download,
               onDeleteClick = {
+                confirmingKey = null
                 state.eventSink(
                   SettingsUiEvent.DownloadsSettingEvent.DeleteDownload(entry),
                 )

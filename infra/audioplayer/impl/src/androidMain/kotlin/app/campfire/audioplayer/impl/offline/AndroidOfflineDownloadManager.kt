@@ -189,39 +189,36 @@ class AndroidOfflineDownloadManager(
   }
 
   override fun delete(item: LibraryItem) {
-    item.media.tracks.forEach { track ->
-      DownloadService.sendRemoveDownload(
-        application,
-        CampfireDownloadService::class.java,
-        track.metadata.filename,
-        true,
-      )
+    val downloadIds = buildSet {
+      item.media.tracks.forEach { add(it.metadata.filename) }
+      addAll(downloadTracker.downloadIdsForBook(item.id))
+    }
+    downloadIds.forEach { downloadId ->
+      removeDownloadId(downloadId)
     }
   }
 
   override fun deleteEpisode(item: LibraryItem, episode: PodcastEpisode) {
-    DownloadService.sendRemoveDownload(
-      application,
-      CampfireDownloadService::class.java,
-      episodeDownloadId(item.id, episode.id),
-      true,
-    )
+    removeDownloadId(episodeDownloadId(item.id, episode.id))
   }
 
   override suspend fun deleteAllForItemId(itemId: LibraryItemId) {
     downloadTracker.downloadIdsForItem(itemId).forEach { downloadId ->
-      // Cache cleanup can run while the app is in the background, where Android 12+ refuses a
-      // foreground service start. Fall back to a plain start and, failing that, skip — the files
-      // are picked up again the next time this item id is cleaned up.
+      removeDownloadId(downloadId)
+    }
+  }
+
+  private fun removeDownloadId(downloadId: String) {
+    // Android 12+ can refuse a foreground service start from background or transitional app states.
+    // Fall back to a plain start and, failing that, skip rather than crashing.
+    try {
+      DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, true)
+    } catch (e: IllegalStateException) {
+      bark(throwable = e) { "Unable to start download service in the foreground, retrying in background" }
       try {
-        DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, true)
+        DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, false)
       } catch (e: IllegalStateException) {
-        bark(throwable = e) { "Unable to start download service in the foreground, retrying in background" }
-        try {
-          DownloadService.sendRemoveDownload(application, CampfireDownloadService::class.java, downloadId, false)
-        } catch (e: IllegalStateException) {
-          bark(throwable = e) { "Unable to start download service, skipping removal of $downloadId" }
-        }
+        bark(throwable = e) { "Unable to start download service, skipping removal of $downloadId" }
       }
     }
   }

@@ -78,6 +78,22 @@ class DownloadTracker(
     }
 
   /**
+   * Synchronous in-memory lookup of book-level download request IDs tagged with [itemId].
+   * Ensures deletion still works even when a [LibraryItem]'s tracks are unhydrated or filenames
+   * changed on the server after downloading.
+   */
+  fun downloadIdsForBook(itemId: LibraryItemId): Set<String> {
+    return downloads.values.toList()
+      .asSequence()
+      .filter {
+        val key = OfflineDownloadKey.decode(it.request.data)
+        key.libraryItemId == itemId && key.episodeId == null
+      }
+      .map { it.request.id }
+      .toSet()
+  }
+
+  /**
    * The ids of every download request tagged with [itemId], book tracks and podcast episodes
    * alike, read from the download index rather than the in-memory map.
    *

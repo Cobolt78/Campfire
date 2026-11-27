@@ -1,5 +1,6 @@
 package app.campfire.sessions.ui.sheets.bookmarks
 
+import app.campfire.common.compose.speech.appendDictatedText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -51,5 +52,14 @@ class BookmarksEncodingTest {
       defaultTitle = "Chapter 4",
     )
     assertEquals("Chapter 4\nCharacter note", encoded)
+  }
+
+  @Test
+  fun appendDictatedTextCapitalizesFreshInputAndAfterSentenceBreaks() {
+    assertEquals("Remember this twist", appendDictatedText("", "remember this twist"))
+    assertEquals("First thought. Second thought", appendDictatedText("First thought.", "second thought"))
+    assertEquals("Line one\nLine two", appendDictatedText("Line one\n", "line two"))
+    assertEquals("First part and more", appendDictatedText("First part", "and more"))
+    assertEquals("Existing", appendDictatedText("Existing", "   "))
   }
 }

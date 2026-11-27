@@ -17,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.57] - 2026-11-28
+
+### Added
+- **In-Dialog Bookmark Voice Dictation**:
+  - Added a 1-tap **Microphone** dictation button (`RecognizerIntent.ACTION_RECOGNIZE_SPEECH`) to both the **Title** and **Notes** fields inside the bookmark Add/Edit dialog (`BookmarkEditorDialog`), automatically merging and sentence-capitalizing spoken text without requiring extra runtime microphone permissions (gracefully hidden on platforms without a speech recognizer).
+
+### Changed
+- **In-App Updater Self-Update Guidance**:
+  - Added a brief note beneath the update button explaining that Campfire will close briefly while Android installs the update so Android 12+ self-update process restarts don't look like a crash.
+
+### Fixed
+- **Sleep Timer Failing to Clear or Activate After Switching Apps / Books**:
+  - Updated `PlaybackPresenter`, `SmallExpandedPlaybackBar`, `PlaybackBottomBar`, and `SleepTimerBottomSheet` to always resolve the live `AudioPlayer` from `AudioPlayerHolder` across overlay suspensions instead of calling `clearTimer()`/`setTimer()` on a stale or `null` captured player reference, and added persisted `SleepSettings` fallback when the service is still rebinding.
+- **Stuck Downloads Failing to Delete from Settings → Downloads & Book Details**:
+  - Updated `DownloadTracker` and `AndroidOfflineDownloadManager.delete()` to remove all tracked book download IDs matching `libraryItemId` (rather than relying solely on `item.media.tracks` filenames, which could be empty on cached items or out of sync), added Android 12 foreground-to-background service fallback for removals, and immediately dismissed the inline confirmation bar in `DownloadsPane` on tap.
+- **Bookmark Title & Notes Auto-Capitalization**:
+  - Enabled `KeyboardCapitalization.Sentences` on both the bookmark Title and Notes text fields so the first letter automatically capitalizes while typing.
+
 ## [1.2.56] - 2026-11-25
 
 ### Added

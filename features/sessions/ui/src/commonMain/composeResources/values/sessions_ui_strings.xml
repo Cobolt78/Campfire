@@ -72,6 +72,10 @@
   <string name="bookmark_editor_playback_label">Audio playback</string>
   <string name="bookmark_editor_timestamp_label">Bookmark time</string>
   <string name="bookmark_editor_sync_time">Use current playback time</string>
+  <string name="action_dictate_bookmark_title">Dictate bookmark title</string>
+  <string name="action_dictate_bookmark_notes">Dictate bookmark notes</string>
+  <string name="bookmark_dictation_prompt_title">Speak bookmark title</string>
+  <string name="bookmark_dictation_prompt_notes">Speak bookmark note</string>
 
   <string name="action_set_timer">Set timer</string>
   <string name="action_clear_timer">Clear timer</string>

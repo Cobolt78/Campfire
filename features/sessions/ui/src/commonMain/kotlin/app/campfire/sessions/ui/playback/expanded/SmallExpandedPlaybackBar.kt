@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -624,12 +625,15 @@ internal fun rememberPlaybackOptionActions(
   playerState: PlayerUiState,
 ): PlaybackOptionActions {
   val scope = rememberCoroutineScope()
+  val currentPlayerState by rememberUpdatedState(playerState)
+  val currentSession by rememberUpdatedState(session)
   return PlaybackOptionActions(
     onBookmarksClick = {
+      val itemId = currentSession?.libraryItem?.id ?: return@PlaybackOptionActions
       scope.launch {
-        when (val result = overlayHost.showBookmarksBottomSheet(session!!.libraryItem.id)) {
+        when (val result = overlayHost.showBookmarksBottomSheet(itemId)) {
           is BookmarkResult.Selected -> {
-            playerState.eventSink(PlayerUiEvent.BookmarkSelected(result.bookmark))
+            currentPlayerState.eventSink(PlayerUiEvent.BookmarkSelected(result.bookmark))
           }
 
           BookmarkResult.None -> Unit
@@ -640,8 +644,9 @@ internal fun rememberPlaybackOptionActions(
       PlaybackSpeedAction(
         playbackSpeed = playerState.speed,
         onClick = {
+          val itemId = currentSession?.libraryItem?.id ?: return@PlaybackSpeedAction
           scope.launch {
-            overlayHost.showPlaybackSpeedBottomSheet(session!!.libraryItem.id, playerState.speed)
+            overlayHost.showPlaybackSpeedBottomSheet(itemId, currentPlayerState.speed)
           }
         },
       )
@@ -654,13 +659,13 @@ internal fun rememberPlaybackOptionActions(
         playbackSpeed = playerState.speed,
         onClick = {
           scope.launch {
-            when (val result = overlayHost.showSleepTimerBottomSheet(playerState.timer)) {
+            when (val result = overlayHost.showSleepTimerBottomSheet(currentPlayerState.timer)) {
               is TimerResult.Selected -> {
-                playerState.eventSink(PlayerUiEvent.TimerSelected(result.timer))
+                currentPlayerState.eventSink(PlayerUiEvent.TimerSelected(result.timer))
               }
 
               TimerResult.Cleared -> {
-                playerState.eventSink(PlayerUiEvent.ClearTimer)
+                currentPlayerState.eventSink(PlayerUiEvent.ClearTimer)
               }
 
               else -> Unit

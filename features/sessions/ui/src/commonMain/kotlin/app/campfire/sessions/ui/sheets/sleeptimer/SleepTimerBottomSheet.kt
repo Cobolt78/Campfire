@@ -177,8 +177,7 @@ internal fun TimerBottomSheetV2(
 ) {
   val liveTimer by remember(component) {
     component.audioPlayerHolder.currentPlayer
-      .filterNotNull()
-      .flatMapLatest { it.runningTimer }
+      .flatMapLatest { it?.runningTimer ?: flowOf(null) }
   }.collectAsState(runningTimer)
 
   SessionSheetLayout(
@@ -198,7 +197,12 @@ internal fun TimerBottomSheetV2(
       if (timer != null) {
         ActiveTimerSheetContent(
           runningTimer = timer,
-          onTimerCleared = onTimerCleared,
+          onTimerCleared = {
+            if (component.audioPlayerHolder.currentPlayer.value == null) {
+              component.sleepSettings.activeSleepTimer = null
+            }
+            onTimerCleared()
+          },
           onAdjustTimer = { delta ->
             component.audioPlayerHolder.currentPlayer.value?.adjustTimer(delta)
           },
@@ -206,7 +210,25 @@ internal fun TimerBottomSheetV2(
       } else {
         InactiveTimerSheetContent(
           component = component,
-          onTimerSelected = onTimerSelected,
+          onTimerSelected = { selected ->
+            if (component.audioPlayerHolder.currentPlayer.value == null) {
+              component.sleepSettings.activeSleepTimer = when (selected) {
+                is PlaybackTimer.EndOfChapter -> SleepSettings.PersistedSleepTimer(
+                  isEndOfChapter = true,
+                  totalDurationMillis = 0L,
+                  remainingMillis = 0L,
+                  isAutoSleepTimer = selected.isAutoSleepTimer,
+                )
+                is PlaybackTimer.Epoch -> SleepSettings.PersistedSleepTimer(
+                  isEndOfChapter = false,
+                  totalDurationMillis = selected.epochMillis,
+                  remainingMillis = selected.epochMillis,
+                  isAutoSleepTimer = selected.isAutoSleepTimer,
+                )
+              }
+            }
+            onTimerSelected(selected)
+          },
         )
       }
     }

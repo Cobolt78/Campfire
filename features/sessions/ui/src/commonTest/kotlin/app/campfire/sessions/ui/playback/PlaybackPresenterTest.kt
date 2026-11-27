@@ -5,6 +5,7 @@ package app.campfire.sessions.ui.playback
 
 import app.campfire.audioplayer.AudioDevice
 import app.campfire.audioplayer.AudioPlayer
+import app.campfire.audioplayer.model.PlaybackTimer
 import app.campfire.audioplayer.test.FakeAudioOutputController
 import app.campfire.audioplayer.test.FakeAudioPlayer
 import app.campfire.audioplayer.test.FakeAudioPlayerHolder
@@ -307,6 +308,36 @@ class PlaybackPresenterTest {
     }.test {
       val state = awaitItemMatching { it.syncUiState.availableSync != null }
       assertThat(state.syncUiState.availableSync?.targetTime).isEqualTo(130.seconds)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test
+  fun `timer events captured before player reconnect still target the live player`() = runTest {
+    val item = libraryItem()
+    sessionsRepository.currentSessionFlow.value = session(libraryItem = item, currentTime = 100.seconds)
+
+    moleculeFlow(RecompositionMode.Immediate) {
+      presenter.present(expanded = true)
+    }.test {
+      // Capture eventSink while no player is bound yet (e.g., right after returning from another app)
+      val initialState = awaitItemMatching { it.session != null }
+      val capturedSink = initialState.playerState.eventSink
+
+      // AudioPlayerService finishes rebinding and publishes the live player
+      val livePlayer = FakeAudioPlayer()
+      audioPlayerHolder.setCurrentPlayer(livePlayer)
+
+      val timer = PlaybackTimer.Epoch(15.minutes.inWholeMilliseconds)
+      capturedSink(PlayerUiEvent.TimerSelected(timer))
+      capturedSink(PlayerUiEvent.ClearTimer)
+
+      assertThat(livePlayer.invocations).isEqualTo(
+        listOf(
+          FakeAudioPlayer.Invocation.SetTimer(timer),
+          FakeAudioPlayer.Invocation.ClearTimer,
+        ),
+      )
       cancelAndIgnoreRemainingEvents()
     }
   }

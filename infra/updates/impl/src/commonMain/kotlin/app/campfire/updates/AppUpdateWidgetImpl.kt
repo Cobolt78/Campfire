@@ -273,6 +273,12 @@ class AppUpdateWidgetImpl(
             }
             Text(buttonLabel)
           }
+          Spacer(Modifier.height(8.dp))
+          Text(
+            text = "Campfire will close briefly while Android installs the update.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
         }
 
         AppUpdateProgress.Status.Pending,

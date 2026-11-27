@@ -108,6 +108,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 101. [In-App GitHub Updater `PackageInstaller.Session` & Up-Front Permission Check (v1.2.54)](#101-in-app-github-updater-packageinstallersession--up-front-permission-check-v1254)
 102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
+104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 
 ---
 
@@ -3218,6 +3219,50 @@ Users on Android 12 (reported on Samsung Galaxy Note 10+) experienced the in-app
 * `infra/audioplayer/impl/src/androidMain/res/values/strings.xml`
 * `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMath.kt`
 * `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMathTest.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 104. Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)
+
+### Summary
+Added 1-tap system voice dictation and sentence auto-capitalization to the bookmark editor dialog, fixed sleep timer clear/set actions silently failing on stale or null player references after switching apps or books, fixed stuck downloaded books failing to delete when cached track metadata was missing or out of sync, and added a brief Android self-update notice in the in-app updater sheet.
+
+### Key Details
+1. **In-Dialog Voice Dictation & Sentence Auto-Capitalization (`VoiceDictation*.kt`, `BookmarksBottomSheet.kt`, `sessions_ui_strings.xml`, `BookmarksEncodingTest.kt`)**:
+   - Added a multiplatform `VoiceDictationLauncher` (`rememberVoiceDictationLauncher`) in `common/compose` backed on Android by `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` via `ActivityResultContracts.StartActivityForResult` (requires no extra `RECORD_AUDIO` permission and hides automatically when unsupported or on JVM/iOS).
+   - Added `appendDictatedText()` with sentence-aware capitalization (start of field, after `.`/`!`/`?`, or after trailing newline) and unit tests in `BookmarksEncodingTest`.
+   - Added `KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)` and trailing `CampfireIcons.Rounded.Mic` dictation buttons to both the **Title** and **Notes** fields inside `BookmarkEditorDialog`.
+2. **Sleep Timer Live-Player Resolution (`PlaybackPresenter.kt`, `SmallExpandedPlaybackBar.kt`, `PlaybackBottomBar.kt`, `SleepTimerBottomSheet.kt`, `PlaybackPresenterTest.kt`)**:
+   - Updated `PlaybackPresenter` to resolve `audioPlayerHolder.currentPlayer.value ?: player` dynamically inside `eventSink` and clear `timer` when `player` is `null` instead of retaining stale timer state via `.filterNotNull()`.
+   - Wrapped `playerState` / `session` / timer callbacks in `rememberUpdatedState` inside `rememberPlaybackOptionActions` and `PlaybackBottomBar` so coroutines suspended on `overlayHost.showSleepTimerBottomSheet(...)` never dispatch results to stale closures.
+   - Added persisted `sleepSettings.activeSleepTimer` clear/save fallback in `SleepTimerBottomSheet` if `audioPlayerHolder.currentPlayer.value` is temporarily `null` while `AudioPlayerService` is rebinding, plus a Molecule/Turbine regression test in `PlaybackPresenterTest`.
+3. **Robust Download Deletion (`DownloadTracker.kt`, `AndroidOfflineDownloadManager.kt`, `DownloadsPane.kt`)**:
+   - Added `DownloadTracker.downloadIdsForBook(itemId)` to synchronously look up all tracked book-level download request IDs by `libraryItemId`.
+   - Updated `AndroidOfflineDownloadManager.delete(item)` to remove the union of `item.media.tracks` filenames and `downloadTracker.downloadIdsForBook(item.id)` using a shared `removeDownloadId()` helper with Android 12 foreground-to-background service fallback.
+   - Reset `confirmingKey = null` immediately when tapping Delete inside `DownloadsPane`'s `ConfirmDeleteListItem`.
+4. **In-App Updater Self-Update Note (`AppUpdateWidgetImpl.kt`)**:
+   - Added a subtle helper caption under the update/install button noting that Campfire will close briefly while Android installs the update.
+
+### Modified Files:
+* `common/compose/src/commonMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.kt`
+* `common/compose/src/androidMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.android.kt`
+* `common/compose/src/jvmMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.jvm.kt`
+* `common/compose/src/iosMain/kotlin/app/campfire/common/compose/speech/VoiceDictation.ios.kt`
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/PlaybackBottomBar.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenter.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/playback/PlaybackPresenterTest.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/DownloadsPane.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/AndroidOfflineDownloadManager.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt`
+* `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

@@ -43,6 +43,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -316,6 +317,9 @@ internal fun PlaybackBottomBarContent(
         )
 
         val overlayHost = LocalOverlayHost.current
+        val currentRunningTimer by rememberUpdatedState(runningTimer)
+        val currentOnTimerSelected by rememberUpdatedState(onTimerSelected)
+        val currentOnTimerCleared by rememberUpdatedState(onTimerCleared)
         ActionRow(
           modifier = Modifier.weight(1f),
           enabled = hasSession,
@@ -347,9 +351,9 @@ internal fun PlaybackBottomBarContent(
           onTimerClick = {
             if (session == null) return@ActionRow
             scope.launch {
-              when (val result = overlayHost.showSleepTimerBottomSheet(runningTimer)) {
-                is TimerResult.Selected -> onTimerSelected(result.timer)
-                TimerResult.Cleared -> onTimerCleared()
+              when (val result = overlayHost.showSleepTimerBottomSheet(currentRunningTimer)) {
+                is TimerResult.Selected -> currentOnTimerSelected(result.timer)
+                TimerResult.Cleared -> currentOnTimerCleared()
                 else -> Unit
               }
             }

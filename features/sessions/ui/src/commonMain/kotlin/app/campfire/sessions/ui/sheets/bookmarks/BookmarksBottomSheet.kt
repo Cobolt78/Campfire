@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
@@ -55,7 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,11 +85,14 @@ import app.campfire.common.compose.icons.rounded.DeleteForever
 import app.campfire.common.compose.icons.rounded.DeleteSweep
 import app.campfire.common.compose.icons.rounded.Edit
 import app.campfire.common.compose.icons.rounded.Forward5
+import app.campfire.common.compose.icons.rounded.Mic
 import app.campfire.common.compose.icons.rounded.Pause
 import app.campfire.common.compose.icons.rounded.PlayArrow
 import app.campfire.common.compose.icons.rounded.Replay
 import app.campfire.common.compose.icons.rounded.Schedule
 import app.campfire.common.compose.icons.rounded.Sync
+import app.campfire.common.compose.speech.appendDictatedText
+import app.campfire.common.compose.speech.rememberVoiceDictationLauncher
 import app.campfire.common.compose.widgets.FilledTonalIconButton
 import app.campfire.common.compose.widgets.IconButtonTooltip
 import app.campfire.common.compose.widgets.SizedIcon
@@ -106,6 +112,8 @@ import app.campfire.user.api.BookmarkRepository
 import campfire.features.sessions.ui.generated.resources.Res
 import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
 import campfire.features.sessions.ui.generated.resources.action_delete_bookmark
+import campfire.features.sessions.ui.generated.resources.action_dictate_bookmark_notes
+import campfire.features.sessions.ui.generated.resources.action_dictate_bookmark_title
 import campfire.features.sessions.ui.generated.resources.action_edit_bookmark
 import campfire.features.sessions.ui.generated.resources.action_play_pause
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_action_create
@@ -120,6 +128,8 @@ import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dia
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_all_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_title
 import campfire.features.sessions.ui.generated.resources.bookmark_dialog_label_notes
+import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_notes
+import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_title
 import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
 import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_editor_playback_label
@@ -644,6 +654,18 @@ private fun BookmarkEditorDialog(
   var titleValue by remember(initialTitle) { mutableStateOf(TextFieldValue(initialTitle)) }
   var notesValue by remember(initialNotes) { mutableStateOf(TextFieldValue(initialNotes)) }
 
+  val titleDictation = rememberVoiceDictationLauncher { spoken ->
+    val merged = appendDictatedText(titleValue.text, spoken)
+      .replace('\n', ' ')
+      .replace('\r', ' ')
+      .trim()
+    titleValue = TextFieldValue(merged, TextRange(merged.length))
+  }
+  val notesDictation = rememberVoiceDictationLauncher { spoken ->
+    val merged = appendDictatedText(notesValue.text, spoken)
+    notesValue = TextFieldValue(merged, TextRange(merged.length))
+  }
+
   BasicAlertDialog(
     modifier = modifier,
     onDismissRequest = onDismiss,
@@ -828,6 +850,8 @@ private fun BookmarkEditorDialog(
 
           Spacer(Modifier.height(16.dp))
 
+          val dictateTitleLabel = stringResource(Res.string.action_dictate_bookmark_title)
+          val dictateTitlePrompt = stringResource(Res.string.bookmark_dictation_prompt_title)
           OutlinedTextField(
             value = titleValue,
             onValueChange = { newValue ->
@@ -836,11 +860,32 @@ private fun BookmarkEditorDialog(
             label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
             placeholder = { Text(defaultTitle) },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+              capitalization = KeyboardCapitalization.Sentences,
+            ),
+            trailingIcon = if (titleDictation.isSupported) {
+              {
+                IconButtonTooltip(text = dictateTitleLabel) {
+                  IconButton(
+                    onClick = { titleDictation.launch(dictateTitlePrompt) },
+                  ) {
+                    Icon(
+                      CampfireIcons.Rounded.Mic,
+                      contentDescription = dictateTitleLabel,
+                    )
+                  }
+                }
+              }
+            } else {
+              null
+            },
             modifier = Modifier.fillMaxWidth(),
           )
 
           Spacer(Modifier.height(12.dp))
 
+          val dictateNotesLabel = stringResource(Res.string.action_dictate_bookmark_notes)
+          val dictateNotesPrompt = stringResource(Res.string.bookmark_dictation_prompt_notes)
           OutlinedTextField(
             value = notesValue,
             onValueChange = { newValue ->
@@ -849,6 +894,25 @@ private fun BookmarkEditorDialog(
             label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
             minLines = 2,
             maxLines = 4,
+            keyboardOptions = KeyboardOptions(
+              capitalization = KeyboardCapitalization.Sentences,
+            ),
+            trailingIcon = if (notesDictation.isSupported) {
+              {
+                IconButtonTooltip(text = dictateNotesLabel) {
+                  IconButton(
+                    onClick = { notesDictation.launch(dictateNotesPrompt) },
+                  ) {
+                    Icon(
+                      CampfireIcons.Rounded.Mic,
+                      contentDescription = dictateNotesLabel,
+                    )
+                  }
+                }
+              }
+            } else {
+              null
+            },
             modifier = Modifier.fillMaxWidth(),
           )
 
