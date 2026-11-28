@@ -11,13 +11,17 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..5a4cc159 100644
+index c0278c85..072631dd 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
- ## [Unreleased]
+@@ -17,7 +17,639 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
- ### Added
+ ### Fixed
+ 
+-### Other Notes & Contributions
++## [1.2.58] - 2026-11-28
++
++### Added
 +- **Unified Bookmark Editor Controls & Return-to-Position Safety Net**:
 +  - Merged the bookmark timestamp and audio playback controls inside `BookmarkEditorDialog` into a single card with two selectable layouts (**Settings → Appearance → Player controls → Bookmark editor alternate view**): 3-row with fixed `±30s` skips (default) or compact 2-row, plus 6 fine nudge pills (`-10s`, `-5s`, `-1s` | `+1s`, `+5s`, `+10s`).
 +  - Auto-pauses playback on New Bookmark open, and automatically pauses & locks the timestamp when starting to type or tapping microphone dictation.
@@ -25,14 +29,7 @@ index c0278c85..5a4cc159 100644
 +- **0.01x Speed & Matching Sleep Timer Alternate Steppers**:
 +  - Added dual-stage capsules (`-.05 | -.01` / `+.01 | +.05` for Playback Speed, `-5m | -1m` / `+1m | +5m` for Sleep Timer) as the default view, plus **Playback speed alternate view** and **Sleep timer alternate view** toggles under **Settings → Appearance → Player controls** offering classic round `− / +` buttons paired with a persisted step toggle pill (`0.05x | 0.01x` and `5m | 1m`).
 +  - Stepping by `0.05x` directionally snaps off-grid values (e.g., `1.23x` + `0.05` → `1.25x`, `1.23x` − `0.05` → `1.20x`) while the wavy speed slider stays snapped to `0.05x`.
- 
- ### Changed
- 
-@@ -17,7 +24,628 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
- 
- ### Fixed
- 
--### Other Notes & Contributions
++
 +## [1.2.57] - 2026-11-28
 +
 +### Added
@@ -660,10 +657,10 @@ index c0278c85..5a4cc159 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..1d4ec232
+index 00000000..f6b8f098
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3319 @@
+@@ -0,0 +1,3320 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -775,7 +772,7 @@ index 00000000..1d4ec232
 +102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 +103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 +104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
-+105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-unreleased)
++105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
 +
 +---
 +
@@ -3936,7 +3933,7 @@ index 00000000..1d4ec232
 +
 +---
 +
-+## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)
++## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)
 +
 +### Summary
 +Unified the Bookmark Editor's timestamp and playback controls (eliminating the duplicate readout and separate Sync button), added a per-book high-water-mark `BookmarkReturnPositionStore` so jumping to or previewing older bookmarks never loses the furthest listening spot, upgraded both the Playback Speed (`0.05x` + `0.01x`) and Sleep Timer (`5m` + `1m`) stepper bars with dual-stage capsules as default, and exposed 3 independent **Alternate View** toggles under **Settings → Appearance → Player controls**.
@@ -3981,6 +3978,7 @@ index 00000000..1d4ec232
 +* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 +* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
 +* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
++* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
@@ -27107,7 +27105,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..a7d7fec5 100644
+index f41126a7..60b3685c 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -27115,13 +27113,13 @@ index f41126a7..a7d7fec5 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.57
++campfire.version=1.2.58
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025799
++campfire.versionCode=1025899
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

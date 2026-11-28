@@ -109,7 +109,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
-105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-unreleased)
+105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
 
 ---
 
@@ -3270,7 +3270,7 @@ Added 1-tap system voice dictation and sentence auto-capitalization to the bookm
 
 ---
 
-## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)
+## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)
 
 ### Summary
 Unified the Bookmark Editor's timestamp and playback controls (eliminating the duplicate readout and separate Sync button), added a per-book high-water-mark `BookmarkReturnPositionStore` so jumping to or previewing older bookmarks never loses the furthest listening spot, upgraded both the Playback Speed (`0.05x` + `0.01x`) and Sleep Timer (`5m` + `1m`) stepper bars with dual-stage capsules as default, and exposed 3 independent **Alternate View** toggles under **Settings → Appearance → Player controls**.
@@ -3315,5 +3315,6 @@ Unified the Bookmark Editor's timestamp and playback controls (eliminating the d
 * `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 * `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
 * `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
+* `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`
