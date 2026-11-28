@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.59] - 2026-11-28
+
+### Changed
+- **Auto-Pause on Edit Bookmark**:
+  - Opening **Edit Bookmark** while an audiobook or episode is actively playing now automatically pauses playback just like **New Bookmark**, while keeping your current listening position intact unless you choose to preview the bookmark inside the editor.
+
 ## [1.2.58] - 2026-11-28
 
 ### Added

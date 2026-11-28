@@ -11,14 +11,20 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..072631dd 100644
+index c0278c85..d9746e41 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,639 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,645 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.59] - 2026-11-28
++
++### Changed
++- **Auto-Pause on Edit Bookmark**:
++  - Opening **Edit Bookmark** while an audiobook or episode is actively playing now automatically pauses playback just like **New Bookmark**, while keeping your current listening position intact unless you choose to preview the bookmark inside the editor.
++
 +## [1.2.58] - 2026-11-28
 +
 +### Added
@@ -657,10 +663,10 @@ index c0278c85..072631dd 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..f6b8f098
+index 00000000..56161e6b
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3320 @@
+@@ -0,0 +1,3334 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -773,6 +779,7 @@ index 00000000..f6b8f098
 +103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 +104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 +105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
++106. [Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)](#106-auto-pause-playback-when-opening-edit-bookmark-v1259)
 +
 +---
 +
@@ -3978,6 +3985,19 @@ index 00000000..f6b8f098
 +* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 +* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
 +* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
++* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 106. Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)
++
++### Summary
++Updated `BookmarkEditorDialog` so opening **Edit Bookmark** while audio is playing automatically pauses playback (matching **New Bookmark** behavior), without moving the player away from the listener's current position unless they press Play inside the editor.
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
@@ -20015,7 +20035,7 @@ index 00000000..0bbc154e
 +  }
 +}
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-index d22e71e4..e808d184 100644
+index d22e71e4..058d7a17 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 @@ -3,9 +3,11 @@
@@ -20804,7 +20824,7 @@ index d22e71e4..e808d184 100644
 +  val isTrackingLiveAudio = !isEditing || hasPreviewedInEdit
 +
 +  LaunchedEffect(Unit) {
-+    if (!isEditing && isPlaying) {
++    if (isPlaying) {
 +      onPause()
 +    }
 +  }
@@ -27105,7 +27125,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..60b3685c 100644
+index f41126a7..33005ef0 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -27113,13 +27133,13 @@ index f41126a7..60b3685c 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.58
++campfire.version=1.2.59
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025899
++campfire.versionCode=1025999
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in

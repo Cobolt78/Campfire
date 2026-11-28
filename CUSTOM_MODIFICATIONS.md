@@ -110,6 +110,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
+106. [Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)](#106-auto-pause-playback-when-opening-edit-bookmark-v1259)
 
 ---
 
@@ -3315,6 +3316,19 @@ Unified the Bookmark Editor's timestamp and playback controls (eliminating the d
 * `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
 * `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
 * `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 106. Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)
+
+### Summary
+Updated `BookmarkEditorDialog` so opening **Edit Bookmark** while audio is playing automatically pauses playback (matching **New Bookmark** behavior), without moving the player away from the listener's current position unless they press Play inside the editor.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

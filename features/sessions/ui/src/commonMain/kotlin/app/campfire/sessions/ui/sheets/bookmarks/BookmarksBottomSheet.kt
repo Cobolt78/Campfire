@@ -770,7 +770,7 @@ private fun BookmarkEditorDialog(
   val isTrackingLiveAudio = !isEditing || hasPreviewedInEdit
 
   LaunchedEffect(Unit) {
-    if (!isEditing && isPlaying) {
+    if (isPlaying) {
       onPause()
     }
   }
