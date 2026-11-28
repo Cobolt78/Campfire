@@ -343,8 +343,10 @@ class DesktopAudioPlayer(
     seekAbsolute(target, play = false)
   }
 
-  override fun seekTo(timestamp: Duration) = onEngine {
-    seekAbsolute(timestamp, play = true)
+  override fun seekTo(timestamp: Duration) = seekTo(timestamp, play = true)
+
+  override fun seekTo(timestamp: Duration, play: Boolean) = onEngine {
+    seekAbsolute(timestamp, play = play)
   }
 
   override fun skipToNext() = onEngine {

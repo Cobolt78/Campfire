@@ -11,10 +11,24 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..f216d564 100644
+index c0278c85..5a4cc159 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,628 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+ ## [Unreleased]
+ 
+ ### Added
++- **Unified Bookmark Editor Controls & Return-to-Position Safety Net**:
++  - Merged the bookmark timestamp and audio playback controls inside `BookmarkEditorDialog` into a single card with two selectable layouts (**Settings → Appearance → Player controls → Bookmark editor alternate view**): 3-row with fixed `±30s` skips (default) or compact 2-row, plus 6 fine nudge pills (`-10s`, `-5s`, `-1s` | `+1s`, `+5s`, `+10s`).
++  - Auto-pauses playback on New Bookmark open, and automatically pauses & locks the timestamp when starting to type or tapping microphone dictation.
++  - Added per-book high-water-mark `BookmarkReturnPositionStore` and a dismissible `Continue listening at <time>` banner on the Bookmarks sheet (and inside Edit Bookmark after previewing) so jumping to or previewing older bookmarks never loses your furthest listening position.
++- **0.01x Speed & Matching Sleep Timer Alternate Steppers**:
++  - Added dual-stage capsules (`-.05 | -.01` / `+.01 | +.05` for Playback Speed, `-5m | -1m` / `+1m | +5m` for Sleep Timer) as the default view, plus **Playback speed alternate view** and **Sleep timer alternate view** toggles under **Settings → Appearance → Player controls** offering classic round `− / +` buttons paired with a persisted step toggle pill (`0.05x | 0.01x` and `5m | 1m`).
++  - Stepping by `0.05x` directionally snaps off-grid values (e.g., `1.23x` + `0.05` → `1.25x`, `1.23x` − `0.05` → `1.20x`) while the wavy speed slider stays snapped to `0.05x`.
+ 
+ ### Changed
+ 
+@@ -17,7 +24,628 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
@@ -646,10 +660,10 @@ index c0278c85..f216d564 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..b45225b6
+index 00000000..1d4ec232
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3268 @@
+@@ -0,0 +1,3319 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -761,6 +775,7 @@ index 00000000..b45225b6
 +102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 +103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 +104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
++105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-unreleased)
 +
 +---
 +
@@ -3916,6 +3931,56 @@ index 00000000..b45225b6
 +* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt`
 +* `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
 +* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)
++
++### Summary
++Unified the Bookmark Editor's timestamp and playback controls (eliminating the duplicate readout and separate Sync button), added a per-book high-water-mark `BookmarkReturnPositionStore` so jumping to or previewing older bookmarks never loses the furthest listening spot, upgraded both the Playback Speed (`0.05x` + `0.01x`) and Sleep Timer (`5m` + `1m`) stepper bars with dual-stage capsules as default, and exposed 3 independent **Alternate View** toggles under **Settings → Appearance → Player controls**.
++
++### Key Details
++1. **Non-Auto-Playing `seekTo(timestamp, play)` (`AudioPlayer.kt`, `ExoPlayerAudioPlayer.kt`, `DesktopAudioPlayer.kt`, `FakeAudioPlayer.kt`)**:
++   - Added `AudioPlayer.seekTo(timestamp: Duration, play: Boolean)` so paused bookmark nudging seeks accurately without unexpectedly starting playback, and immediately updates `currentTime` / `overallTime` in `ExoPlayerAudioPlayer` even when paused.
++2. **Appearance Alternate View Toggles & Persisted Step Modes (`PlaybackSettings*`, `SleepSettings*`, `AppearancePane.kt`, `SettingsPresenter.kt`, `SettingsUiState.kt`, `SettingsAnalyticUiEventHandler.kt`)**:
++   - Added `speedStepperAlternateView`, `speedStepperFineStep`, and `bookmarkEditorAlternateView` on `PlaybackSettings`, plus `sleepTimerStepperAlternateView` and `sleepTimerFineStep` on `SleepSettings`.
++   - Exposed the 3 layout toggles in **Settings → Appearance → Player controls** (`ui_settings_strings.xml`).
++3. **Playback Speed & Sleep Timer Alternate Steppers (`PlaybackSpeedBottomSheet.kt`, `RunningTimerCard.kt`, `SleepTimerBottomSheet.kt`, `PlaybackSpeedSheetTest.kt`)**:
++   - **Concept A (Default)**: Connected dual-stage capsules (`−.05 | −.01` & `+.01 | +.05` for Speed; `−5m | −1m` & `+1m | +5m` for Sleep Timer).
++   - **Concept B (Alternate View)**: Classic round `− / +` icon buttons paired with a persisted `Step: 0.05x | 0.01x` or `Step: 5m | 1m` pill toggle.
++   - Kept `WavySlider` snapped to `0.05x` and implemented directional `0.05x` grid-snapping in `stepSpeed()` (`1.23x + 0.05 -> 1.25x`, `1.23x - 0.05 -> 1.20x`) alongside exact `0.01x` `stepSpeedFine()`.
++4. **Bookmark Jump-Back Store & Unified `BookmarkEditorDialog` (`BookmarkReturnPositionStore.kt`, `BookmarksBottomSheet.kt`, `BookmarkReturnPositionStoreTest.kt`, `sessions_ui_strings.xml`)**:
++   - Implemented `@SingleIn(UserScope::class)` `BookmarkReturnPositionStore` tracking per-book high-water-mark return positions for jumps `>= 15s`, surfaced via a dismissible **`Continue listening at <time>`** banner on the Bookmarks sheet and inside Edit Bookmark once Play is pressed.
++   - Merged timestamp and playback controls in `BookmarkEditorDialog` with Layout 1 (fixed `±30s` + 6 fine pills) and Layout 2 (compact 2-row), auto-pausing on New Bookmark open, typing, and mic dictation, with a `pendingSeekTarget` + 1500ms monotonic guard preventing stale seek ticks from overwriting the edited timestamp.
++
++### Modified Files:
++* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStore.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
++* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt`
++* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStoreTest.kt`
++* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt`
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt`
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt`
++* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
++* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt`
++* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
++* `infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt`
++* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
++* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
++* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
 diff --git a/GEMINI.md b/GEMINI.md
@@ -19210,22 +19275,25 @@ index e852e895..46afc77a 100644
  
      val itemId = session.libraryItem.id
 diff --git a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-index 20f60c09..5a5f502d 100644
+index 20f60c09..0c90b4e6 100644
 --- a/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
 +++ b/features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml
-@@ -15,7 +15,11 @@
+@@ -15,7 +15,14 @@
  
    <string name="speed_bottomsheet_title">Playback speed</string>
    <string name="speed_custom_open">Enter custom speed</string>
 +  <string name="speed_decrease">Decrease speed by 0.05x</string>
 +  <string name="speed_increase">Increase speed by 0.05x</string>
++  <string name="speed_decrease_fine">Decrease speed by 0.01x</string>
++  <string name="speed_increase_fine">Increase speed by 0.01x</string>
++  <string name="speed_step_label">Step</string>
    <string name="speed_per_book_toggle">Use a separate playback speed for this book</string>
 +  <string name="session_scope_global">All Books (Global)</string>
 +  <string name="session_scope_per_book">This Book Only</string>
  
    <string name="equalizer_bottomsheet_title">Equalizer</string>
    <string name="action_equalizer">Equalizer</string>
-@@ -31,6 +35,7 @@
+@@ -31,6 +38,7 @@
    <string name="equalizer_preset_custom">Custom</string>
    <string name="equalizer_loudness_label">Loudness</string>
    <string name="equalizer_bass_label">Bass</string>
@@ -19233,7 +19301,7 @@ index 20f60c09..5a5f502d 100644
    <string name="equalizer_unavailable_casting">The equalizer isn't available while casting</string>
    <string name="equalizer_band_gain_cd">%1$s equalizer band gain</string>
    <string name="timer_bottomsheet_title">Sleep Timer</string>
-@@ -48,11 +53,29 @@
+@@ -48,11 +56,29 @@
    <string name="bookmark_delete_title">Are you sure?</string>
    <string name="bookmark_delete_action_cancel">Cancel</string>
    <string name="bookmark_delete_action_delete">Delete</string>
@@ -19253,9 +19321,9 @@ index 20f60c09..5a5f502d 100644
 +  <string name="bookmark_default_title">Bookmark @ %1$s</string>
 +  <string name="bookmark_notes_show_more">Show more</string>
 +  <string name="bookmark_notes_show_less">Show less</string>
-+  <string name="bookmark_editor_playback_label">Audio playback</string>
 +  <string name="bookmark_editor_timestamp_label">Bookmark time</string>
-+  <string name="bookmark_editor_sync_time">Use current playback time</string>
++  <string name="bookmark_continue_listening_at">Continue listening at %1$s</string>
++  <string name="bookmark_return_banner_dismiss">Dismiss return position</string>
 +  <string name="action_dictate_bookmark_title">Dictate bookmark title</string>
 +  <string name="action_dictate_bookmark_notes">Dictate bookmark notes</string>
 +  <string name="bookmark_dictation_prompt_title">Speak bookmark title</string>
@@ -19690,7 +19758,7 @@ index 331fdd56..cc4de3b0 100644
          visible = dragState.actionState != Dispose && availableSync != null,
        ) {
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
-index 91cc51fe..98d9ca90 100644
+index 91cc51fe..9862c28f 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt
 @@ -51,6 +51,7 @@ import app.campfire.sessions.ui.playback.ThemeUiState
@@ -19733,6 +19801,19 @@ index 91cc51fe..98d9ca90 100644
    override var remoteNextPrevSkipsChapters = true
    override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = MutableStateFlow(remoteNextPrevSkipsChapters)
    override var syncEnabled = true
+@@ -716,6 +742,12 @@ internal class PreviewPlaybackSettings : PlaybackSettings {
+   override fun observePlaybackWavyScrubber(): StateFlow<Boolean> = MutableStateFlow(playbackWavyScrubber)
+   override var scrollingTitles = true
+   override fun observeScrollingTitles(): StateFlow<Boolean> = MutableStateFlow(scrollingTitles)
++  override var speedStepperAlternateView = false
++  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> = MutableStateFlow(speedStepperAlternateView)
++  override var speedStepperFineStep = false
++  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> = MutableStateFlow(speedStepperFineStep)
++  override var bookmarkEditorAlternateView = false
++  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> = MutableStateFlow(bookmarkEditorAlternateView)
+ }
+ 
+ // endregion
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt
 index dfc6c3d8..ef1e5e56 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/SmallExpandedPlaybackBar.kt
@@ -19865,8 +19946,78 @@ index ea2a2a3e..de11276a 100644
          )
        },
      )
+diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStore.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStore.kt
+new file mode 100644
+index 00000000..0bbc154e
+--- /dev/null
++++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStore.kt
+@@ -0,0 +1,64 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.sessions.ui.sheets.bookmarks
++
++import app.campfire.core.di.UserScope
++import app.campfire.core.model.LibraryItemId
++import dev.zacsweers.metro.Inject
++import dev.zacsweers.metro.SingleIn
++import kotlin.time.Duration
++import kotlin.time.Duration.Companion.seconds
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.distinctUntilChanged
++import kotlinx.coroutines.flow.map
++import kotlinx.coroutines.flow.update
++
++/**
++ * Holds an ephemeral per-book high-water-mark return position so tapping an older bookmark
++ * (or previewing one in Edit mode) never leaves the user stranded away from their furthest
++ * listening spot.
++ */
++@SingleIn(UserScope::class)
++@Inject
++class BookmarkReturnPositionStore() {
++
++  private val positions = MutableStateFlow<Map<LibraryItemId, Duration>>(emptyMap())
++
++  fun observe(libraryItemId: LibraryItemId): Flow<Duration?> {
++    return positions.map { it[libraryItemId] }.distinctUntilChanged()
++  }
++
++  fun current(libraryItemId: LibraryItemId): Duration? = positions.value[libraryItemId]
++
++  /**
++   * Records [fromTime] as the return position for [libraryItemId] when the jump to [toTime] is at
++   * least [MIN_JUMP_THRESHOLD] and [fromTime] exceeds any previously saved return position, so
++   * hopping between earlier bookmarks preserves the furthest listening point.
++   */
++  fun recordJumpFrom(
++    libraryItemId: LibraryItemId,
++    fromTime: Duration,
++    toTime: Duration,
++  ) {
++    if (fromTime <= Duration.ZERO) return
++    if ((fromTime - toTime).absoluteValue < MIN_JUMP_THRESHOLD) return
++    positions.update { currentMap ->
++      val existing = currentMap[libraryItemId]
++      if (existing != null && existing >= fromTime) {
++        currentMap
++      } else {
++        currentMap + (libraryItemId to fromTime)
++      }
++    }
++  }
++
++  fun clear(libraryItemId: LibraryItemId) {
++    positions.update { it - libraryItemId }
++  }
++
++  companion object {
++    val MIN_JUMP_THRESHOLD: Duration = 15.seconds
++  }
++}
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
-index d22e71e4..d0962150 100644
+index d22e71e4..e808d184 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt
 @@ -3,9 +3,11 @@
@@ -19889,11 +20040,12 @@ index d22e71e4..d0962150 100644
  import androidx.compose.foundation.layout.navigationBarsPadding
  import androidx.compose.foundation.layout.padding
  import androidx.compose.foundation.layout.size
-@@ -22,11 +25,16 @@ import androidx.compose.foundation.layout.wrapContentSize
+@@ -22,11 +25,19 @@ import androidx.compose.foundation.layout.wrapContentSize
  import androidx.compose.foundation.layout.wrapContentWidth
  import androidx.compose.foundation.lazy.LazyColumn
  import androidx.compose.foundation.lazy.items
 +import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.shape.CircleShape
  import androidx.compose.foundation.shape.RoundedCornerShape
 +import androidx.compose.foundation.text.KeyboardOptions
 +import androidx.compose.foundation.verticalScroll
@@ -19902,24 +20054,40 @@ index d22e71e4..d0962150 100644
  import androidx.compose.material3.Button
  import androidx.compose.material3.ButtonDefaults
  import androidx.compose.material3.CircularProgressIndicator
++import androidx.compose.material3.FilledIconButton
++import androidx.compose.material3.FilledTonalButton
 +import androidx.compose.material3.HorizontalDivider
  import androidx.compose.material3.Icon
  import androidx.compose.material3.IconButton
  import androidx.compose.material3.IconButtonDefaults
-@@ -48,9 +56,12 @@ import androidx.compose.ui.Alignment
+@@ -38,6 +49,7 @@ import androidx.compose.material3.Surface
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.TextButton
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+@@ -46,12 +58,18 @@ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
  import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
  import androidx.compose.ui.geometry.Offset
  import androidx.compose.ui.graphics.Color
 +import androidx.compose.ui.text.TextRange
++import androidx.compose.ui.text.font.FontFamily
  import androidx.compose.ui.text.font.FontWeight
 +import androidx.compose.ui.text.input.KeyboardCapitalization
  import androidx.compose.ui.text.input.TextFieldValue
  import androidx.compose.ui.text.style.TextAlign
 +import androidx.compose.ui.text.style.TextOverflow
  import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
  import androidx.compose.ui.zIndex
  import app.campfire.analytics.Analytics
-@@ -60,6 +71,7 @@ import app.campfire.analytics.events.Deleted
+ import app.campfire.analytics.events.Bookmark as BookmarkObj
+@@ -60,6 +78,7 @@ import app.campfire.analytics.events.Deleted
  import app.campfire.analytics.events.PlaybackActionEvent
  import app.campfire.analytics.events.ScreenType
  import app.campfire.analytics.events.ScreenViewEvent
@@ -19927,31 +20095,34 @@ index d22e71e4..d0962150 100644
  import app.campfire.audioplayer.AudioPlayerHolder
  import app.campfire.common.compose.analytics.Impression
  import app.campfire.common.compose.di.rememberComponent
-@@ -70,9 +82,17 @@ import app.campfire.common.compose.icons.rounded.BookmarkAdd
+@@ -68,11 +87,20 @@ import app.campfire.common.compose.icons.CampfireIcons
+ import app.campfire.common.compose.icons.rounded.Bookmark
+ import app.campfire.common.compose.icons.rounded.BookmarkAdd
  import app.campfire.common.compose.icons.rounded.BookmarkStar
++import app.campfire.common.compose.icons.rounded.Close
  import app.campfire.common.compose.icons.rounded.Delete
  import app.campfire.common.compose.icons.rounded.DeleteForever
+-import app.campfire.common.compose.icons.rounded.Forward5
+-import app.campfire.common.compose.icons.rounded.Replay
 +import app.campfire.common.compose.icons.rounded.DeleteSweep
 +import app.campfire.common.compose.icons.rounded.Edit
- import app.campfire.common.compose.icons.rounded.Forward5
++import app.campfire.common.compose.icons.rounded.Forward30
++import app.campfire.common.compose.icons.rounded.History
 +import app.campfire.common.compose.icons.rounded.Mic
 +import app.campfire.common.compose.icons.rounded.Pause
 +import app.campfire.common.compose.icons.rounded.PlayArrow
- import app.campfire.common.compose.icons.rounded.Replay
++import app.campfire.common.compose.icons.rounded.Replay30
  import app.campfire.common.compose.icons.rounded.Schedule
-+import app.campfire.common.compose.icons.rounded.Sync
 +import app.campfire.common.compose.speech.appendDictatedText
 +import app.campfire.common.compose.speech.rememberVoiceDictationLauncher
  import app.campfire.common.compose.widgets.FilledTonalIconButton
  import app.campfire.common.compose.widgets.IconButtonTooltip
  import app.campfire.common.compose.widgets.SizedIcon
-@@ -85,21 +105,42 @@ import app.campfire.core.coroutines.onLoading
- import app.campfire.core.di.UserScope
+@@ -86,32 +114,57 @@ import app.campfire.core.di.UserScope
  import app.campfire.core.model.Bookmark
  import app.campfire.core.model.LibraryItemId
-+import app.campfire.sessions.ui.composables.ForwardIcon
-+import app.campfire.sessions.ui.composables.RewindIcon
  import app.campfire.sessions.ui.sheets.SessionSheetLayout
++import app.campfire.settings.api.PlaybackSettings
  import app.campfire.user.api.BookmarkRepository
  import campfire.features.sessions.ui.generated.resources.Res
 +import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
@@ -19964,6 +20135,7 @@ index d22e71e4..d0962150 100644
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_empty_message
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_error_message
  import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_title
++import campfire.features.sessions.ui.generated.resources.bookmark_continue_listening_at
 +import campfire.features.sessions.ui.generated.resources.bookmark_default_title
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_cancel
  import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_delete
@@ -19976,8 +20148,6 @@ index d22e71e4..d0962150 100644
 +import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_title
 +import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
 +import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
-+import campfire.features.sessions.ui.generated.resources.bookmark_editor_playback_label
-+import campfire.features.sessions.ui.generated.resources.bookmark_editor_sync_time
 +import campfire.features.sessions.ui.generated.resources.bookmark_editor_timestamp_label
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
@@ -19985,12 +20155,16 @@ index d22e71e4..d0962150 100644
  import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_title
 +import campfire.features.sessions.ui.generated.resources.bookmark_notes_show_less
 +import campfire.features.sessions.ui.generated.resources.bookmark_notes_show_more
++import campfire.features.sessions.ui.generated.resources.bookmark_return_banner_dismiss
  import campfire.features.sessions.ui.generated.resources.cd_forward_time
  import campfire.features.sessions.ui.generated.resources.cd_rewind_time
  import com.slack.circuit.overlay.OverlayHost
-@@ -107,11 +148,13 @@ import dev.zacsweers.metro.ContributesTo
+ import dev.zacsweers.metro.ContributesTo
  import kotlin.time.Duration
++import kotlin.time.Duration.Companion.milliseconds
  import kotlin.time.Duration.Companion.seconds
++import kotlin.time.TimeMark
++import kotlin.time.TimeSource
  import kotlinx.coroutines.ExperimentalCoroutinesApi
 +import kotlinx.coroutines.NonCancellable
  import kotlinx.coroutines.flow.catch
@@ -20002,7 +20176,16 @@ index d22e71e4..d0962150 100644
  import org.jetbrains.compose.resources.stringResource
  
  sealed interface BookmarkResult {
-@@ -136,19 +179,13 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
+@@ -123,6 +176,8 @@ sealed interface BookmarkResult {
+ interface BookmarksBottomSheetComponent {
+   val audioPlayerHolder: AudioPlayerHolder
+   val bookmarkRepository: BookmarkRepository
++  val playbackSettings: PlaybackSettings
++  val bookmarkReturnPositionStore: BookmarkReturnPositionStore
+ }
+ 
+ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId): BookmarkResult {
+@@ -136,19 +191,16 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
          ScreenViewEvent("Bookmarks", ScreenType.Overlay)
        }
  
@@ -20024,12 +20207,21 @@ index d22e71e4..d0962150 100644
 +        onBookmarkClick = { bookmark ->
 +          overlayNavigator.finish(BookmarkResult.Selected(bookmark))
 +        },
++        onDismissSheet = {
++          overlayNavigator.finish(BookmarkResult.None)
++        },
 +        modifier = Modifier.navigationBarsPadding(),
 +      )
      },
    )
  }
-@@ -163,113 +200,234 @@ private fun BookmarksBottomSheet(
+@@ -158,118 +210,286 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId):
+ private fun BookmarksBottomSheet(
+   libraryItemId: LibraryItemId,
+   onBookmarkClick: (Bookmark) -> Unit,
++  onDismissSheet: () -> Unit,
+   modifier: Modifier = Modifier,
+   component: BookmarksBottomSheetComponent = rememberComponent(),
  ) {
    val scope = rememberCoroutineScope()
  
@@ -20043,6 +20235,14 @@ index d22e71e4..d0962150 100644
 +  val playerState by remember {
 +    component.audioPlayerHolder.currentPlayer.filterNotNull().flatMapLatest { it.state }
 +  }.collectAsState(AudioPlayer.State.Disabled)
++
++  val returnPosition by remember(libraryItemId) {
++    component.bookmarkReturnPositionStore.observe(libraryItemId)
++  }.collectAsState(null)
++
++  val useCompactLayout by remember {
++    component.playbackSettings.observeBookmarkEditorAlternateView()
++  }.collectAsState()
 +
 +  val loadState by remember(libraryItemId) {
      component.bookmarkRepository.observeBookmarks(libraryItemId)
@@ -20101,6 +20301,27 @@ index d22e71e4..d0962150 100644
 +    Column(
 +      modifier = Modifier.fillMaxWidth(),
 +    ) {
++      val visibleReturnPosition = returnPosition
++      AnimatedVisibility(visible = visibleReturnPosition != null) {
++        visibleReturnPosition?.let { targetTime ->
++          ReturnToPositionBanner(
++            returnTime = targetTime,
++            onContinueClick = {
++              currentPlayer?.seekTo(targetTime, play = true)
++              component.bookmarkReturnPositionStore.clear(libraryItemId)
++              onDismissSheet()
++            },
++            onDismissClick = {
++              component.bookmarkReturnPositionStore.clear(libraryItemId)
++            },
++            modifier = Modifier
++              .fillMaxWidth()
++              .padding(horizontal = 16.dp, vertical = 8.dp),
++          )
++        }
++      }
+ 
+-          if (bookmarks.isEmpty()) {
 +      LazyColumn(
 +        modifier = Modifier.weight(1f, fill = false),
 +      ) {
@@ -20113,6 +20334,11 @@ index d22e71e4..d0962150 100644
 +              BookmarkListItem(
 +                bookmark = bookmark,
 +                onClick = {
++                  component.bookmarkReturnPositionStore.recordJumpFrom(
++                    libraryItemId = libraryItemId,
++                    fromTime = currentTime,
++                    toTime = bookmark.time,
++                  )
 +                  onBookmarkClick(bookmark)
 +                },
 +                onEditClick = {
@@ -20128,8 +20354,7 @@ index d22e71e4..d0962150 100644
 +                modifier = Modifier.animateItem(),
 +              )
 +            }
- 
--          if (bookmarks.isEmpty()) {
++
 +            if (bookmarks.isEmpty()) {
 +              item {
 +                Box(
@@ -20293,15 +20518,28 @@ index d22e71e4..d0962150 100644
 +    BookmarkEditorDialog(
 +      currentTime = editorTargetTime,
 +      liveTime = currentTime,
++      maxDuration = currentPlayer?.preparedSession?.duration?.takeIf { it > Duration.ZERO },
 +      hasPlayer = currentPlayer != null,
 +      isPlaying = playerState == AudioPlayer.State.Playing,
 +      isEditing = existing != null,
++      useCompactLayout = useCompactLayout,
++      returnPosition = returnPosition,
 +      initialTitle = initialTitle,
 +      initialNotes = initialNotes,
 +      chapterTitleResolver = { ts -> currentPlayer?.preparedSession?.chapterAt(ts)?.title },
-+      onPlayPause = { currentPlayer?.playPause() },
-+      onRewind = { currentPlayer?.seekBackward() },
-+      onForward = { currentPlayer?.seekForward() },
++      onPause = { currentPlayer?.pause() },
++      onSeek = { timestamp, play -> currentPlayer?.seekTo(timestamp, play) },
++      onRecordReturnPosition = { fromTime, toTime ->
++        component.bookmarkReturnPositionStore.recordJumpFrom(
++          libraryItemId = libraryItemId,
++          fromTime = fromTime,
++          toTime = toTime,
++        )
++      },
++      onReturnToPositionInDialog = { pos ->
++        currentPlayer?.seekTo(pos, play = false)
++        component.bookmarkReturnPositionStore.clear(libraryItemId)
++      },
 +      onDismiss = {
 +        showCreateDialog = null
 +        editingBookmark = null
@@ -20337,7 +20575,7 @@ index d22e71e4..d0962150 100644
        },
      )
    }
-@@ -279,6 +437,7 @@ private fun BookmarksBottomSheet(
+@@ -279,6 +499,7 @@ private fun BookmarksBottomSheet(
  private fun BookmarkListItem(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -20345,7 +20583,7 @@ index d22e71e4..d0962150 100644
    onDeleteClick: () -> Unit,
    modifier: Modifier = Modifier,
  ) {
-@@ -289,6 +448,7 @@ private fun BookmarkListItem(
+@@ -289,6 +510,7 @@ private fun BookmarkListItem(
      BookmarkListItemContent(
        bookmark = bookmark,
        onClick = onClick,
@@ -20353,7 +20591,7 @@ index d22e71e4..d0962150 100644
        onDeleteClick = {
          isConfirmDeleteVisible = true
        },
-@@ -340,11 +500,18 @@ private fun BookmarkListItem(
+@@ -340,11 +562,18 @@ private fun BookmarkListItem(
  private fun BookmarkListItemContent(
    bookmark: Bookmark,
    onClick: () -> Unit,
@@ -20373,7 +20611,7 @@ index d22e71e4..d0962150 100644
      colors = ListItemDefaults.colors(containerColor = Color.Transparent),
      leadingContent = {
        Icon(
-@@ -352,31 +519,88 @@ private fun BookmarkListItemContent(
+@@ -352,31 +581,88 @@ private fun BookmarkListItemContent(
          contentDescription = null,
        )
      },
@@ -20482,23 +20720,79 @@ index d22e71e4..d0962150 100644
          }
        }
      },
-@@ -405,13 +629,42 @@ private fun CreateNewListItem(
+@@ -405,26 +691,164 @@ private fun CreateNewListItem(
  }
  
  @Composable
 -private fun CreateNewDialog(
++private fun ReturnToPositionBanner(
++  returnTime: Duration,
++  onContinueClick: () -> Unit,
++  onDismissClick: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Surface(
++    modifier = modifier,
++    shape = RoundedCornerShape(14.dp),
++    color = MaterialTheme.colorScheme.secondaryContainer,
++  ) {
++    Row(
++      modifier = Modifier.fillMaxWidth(),
++      verticalAlignment = Alignment.CenterVertically,
++    ) {
++      Row(
++        modifier = Modifier
++          .weight(1f)
++          .clickable(onClick = onContinueClick)
++          .padding(start = 12.dp, top = 10.dp, bottom = 10.dp),
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        Icon(
++          imageVector = CampfireIcons.Rounded.History,
++          contentDescription = null,
++          tint = MaterialTheme.colorScheme.onSecondaryContainer,
++          modifier = Modifier.size(20.dp),
++        )
++        Spacer(Modifier.width(10.dp))
++        Text(
++          text = stringResource(Res.string.bookmark_continue_listening_at, returnTime.readoutFormat()),
++          style = MaterialTheme.typography.labelLarge,
++          fontWeight = FontWeight.SemiBold,
++          color = MaterialTheme.colorScheme.onSecondaryContainer,
++        )
++      }
++      val dismissLabel = stringResource(Res.string.bookmark_return_banner_dismiss)
++      IconButton(
++        onClick = onDismissClick,
++      ) {
++        Icon(
++          imageVector = CampfireIcons.Rounded.Close,
++          contentDescription = dismissLabel,
++          tint = MaterialTheme.colorScheme.onSecondaryContainer,
++          modifier = Modifier.size(18.dp),
++        )
++      }
++    }
++  }
++}
++
++@Composable
 +private fun BookmarkEditorDialog(
    currentTime: Duration,
 +  liveTime: Duration,
++  maxDuration: Duration?,
 +  hasPlayer: Boolean,
 +  isPlaying: Boolean,
 +  isEditing: Boolean,
++  useCompactLayout: Boolean,
++  returnPosition: Duration?,
 +  initialTitle: String,
 +  initialNotes: String,
 +  chapterTitleResolver: (Duration) -> String?,
-+  onPlayPause: () -> Unit,
-+  onRewind: () -> Unit,
-+  onForward: () -> Unit,
++  onPause: () -> Unit,
++  onSeek: (timestamp: Duration, play: Boolean) -> Unit,
++  onRecordReturnPosition: (fromTime: Duration, toTime: Duration) -> Unit,
++  onReturnToPositionInDialog: (Duration) -> Unit,
    onDismiss: () -> Unit,
 -  onCreate: (title: String, timestamp: Duration) -> Unit,
 +  onSave: (encodedTitle: String, timestamp: Duration) -> Unit,
@@ -20506,6 +20800,56 @@ index d22e71e4..d0962150 100644
  ) {
 -  var bookmarkTime by remember { mutableStateOf(currentTime) }
 +  var bookmarkTime by remember(currentTime) { mutableStateOf(currentTime) }
++  var hasPreviewedInEdit by remember(currentTime, isEditing) { mutableStateOf(false) }
++  var pendingSeekTarget by remember { mutableStateOf<Duration?>(null) }
++  var pendingSeekMark by remember { mutableStateOf<TimeMark?>(null) }
++  val isTrackingLiveAudio = !isEditing || hasPreviewedInEdit
++
++  LaunchedEffect(Unit) {
++    if (!isEditing && isPlaying) {
++      onPause()
++    }
++  }
++
++  LaunchedEffect(liveTime, isPlaying, isTrackingLiveAudio) {
++    if (!isPlaying || !isTrackingLiveAudio) return@LaunchedEffect
++    val target = pendingSeekTarget
++    if (target != null) {
++      val settled = (liveTime - target).absoluteValue <= 2.seconds
++      val timedOut = (pendingSeekMark?.elapsedNow() ?: Duration.ZERO) >= 1500.milliseconds
++      if (!settled && !timedOut) return@LaunchedEffect
++      pendingSeekTarget = null
++      pendingSeekMark = null
++    }
++    bookmarkTime = liveTime
++  }
++
++  fun nudgeBy(delta: Duration) {
++    val raw = (bookmarkTime + delta).coerceAtLeast(Duration.ZERO)
++    val clamped = maxDuration?.let { raw.coerceAtMost(it) } ?: raw
++    bookmarkTime = clamped
++    if (hasPlayer && isTrackingLiveAudio) {
++      pendingSeekTarget = clamped
++      pendingSeekMark = TimeSource.Monotonic.markNow()
++      onSeek(clamped, isPlaying)
++    }
++  }
++
++  fun togglePlayPause() {
++    if (!hasPlayer) return
++    if (isPlaying && isTrackingLiveAudio) {
++      onPause()
++    } else {
++      if (isEditing && !hasPreviewedInEdit) {
++        onRecordReturnPosition(liveTime, bookmarkTime)
++        hasPreviewedInEdit = true
++      }
++      pendingSeekTarget = bookmarkTime
++      pendingSeekMark = TimeSource.Monotonic.markNow()
++      onSeek(bookmarkTime, true)
++    }
++  }
++
 +  val chapterTitle = remember(bookmarkTime, chapterTitleResolver) { chapterTitleResolver(bookmarkTime) }
 +  val fallbackTitle = stringResource(Res.string.bookmark_default_title, bookmarkTime.readoutFormat())
 +  val defaultTitle = remember(chapterTitle, fallbackTitle) {
@@ -20528,7 +20872,13 @@ index d22e71e4..d0962150 100644
  
    BasicAlertDialog(
      modifier = modifier,
-@@ -424,7 +677,10 @@ private fun CreateNewDialog(
+     onDismissRequest = onDismiss,
+     content = {
+       Surface(
+-        modifier = Modifier.wrapContentWidth().wrapContentHeight(),
++        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+         shape = MaterialTheme.shapes.extraLarge,
+         color = MaterialTheme.colorScheme.surfaceContainerHigh,
          shadowElevation = 6.dp,
        ) {
          Column(
@@ -20540,7 +20890,7 @@ index d22e71e4..d0962150 100644
            horizontalAlignment = Alignment.CenterHorizontally,
          ) {
            Icon(
-@@ -436,60 +692,157 @@ private fun CreateNewDialog(
+@@ -436,60 +860,172 @@ private fun CreateNewDialog(
            Spacer(Modifier.height(16.dp))
  
            Text(
@@ -20558,15 +20908,7 @@ index d22e71e4..d0962150 100644
  
            Spacer(Modifier.height(16.dp))
  
-+          Text(
-+            text = stringResource(Res.string.bookmark_editor_timestamp_label),
-+            style = MaterialTheme.typography.labelSmall,
-+            color = MaterialTheme.colorScheme.onSurfaceVariant,
-+          )
-+
-+          Spacer(Modifier.height(6.dp))
-+
-           Row(
+-          Row(
 -            modifier = Modifier
 -              .wrapContentSize()
 -              .border(
@@ -20574,84 +20916,135 @@ index d22e71e4..d0962150 100644
 -                color = MaterialTheme.colorScheme.primary,
 -                shape = RoundedCornerShape(50),
 -              ),
-             verticalAlignment = Alignment.CenterVertically,
-+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+-            verticalAlignment = Alignment.CenterVertically,
++          Surface(
++            modifier = Modifier.fillMaxWidth(),
++            shape = RoundedCornerShape(16.dp),
++            color = MaterialTheme.colorScheme.surfaceContainerHighest,
            ) {
 -            val rewindLabel = stringResource(Res.string.cd_rewind_time, "1")
 -            IconButtonTooltip(text = rewindLabel) {
-+            Row(
-+              modifier = Modifier
-+                .wrapContentSize()
-+                .border(
-+                  width = 1.dp,
-+                  color = MaterialTheme.colorScheme.primary,
-+                  shape = RoundedCornerShape(50),
-+                ),
-+              verticalAlignment = Alignment.CenterVertically,
-+            ) {
-+              val rewindLabel = stringResource(Res.string.cd_rewind_time, "1")
-+              IconButtonTooltip(text = rewindLabel) {
-+                IconButton(
-+                  onClick = {
-+                    bookmarkTime = (bookmarkTime - 1.seconds).coerceAtLeast(Duration.ZERO)
-+                  },
-+                  colors = IconButtonDefaults.iconButtonColors(
-+                    contentColor = MaterialTheme.colorScheme.primary,
-+                  ),
-+                ) {
-+                  Icon(
-+                    CampfireIcons.Rounded.Replay,
-+                    contentDescription = rewindLabel,
-+                  )
-+                }
-+              }
-+
-+              Text(
-+                text = bookmarkTime.readoutFormat(),
-+                style = MaterialTheme.typography.bodyLarge,
-+                fontWeight = FontWeight.SemiBold,
-+                modifier = Modifier.padding(horizontal = 8.dp),
-+              )
-+
-+              val forwardLabel = stringResource(Res.string.cd_forward_time, "5")
-+              IconButtonTooltip(text = forwardLabel) {
-+                IconButton(
-+                  onClick = {
-+                    bookmarkTime += 5.seconds
-+                  },
-+                  colors = IconButtonDefaults.iconButtonColors(
-+                    contentColor = MaterialTheme.colorScheme.primary,
-+                  ),
-+                ) {
-+                  Icon(
-+                    CampfireIcons.Rounded.Forward5,
-+                    contentDescription = forwardLabel,
-+                  )
-+                }
-+              }
-+            }
-+
-+            val syncLabel = stringResource(Res.string.bookmark_editor_sync_time)
-+            IconButtonTooltip(text = syncLabel) {
-               IconButton(
+-              IconButton(
 -                onClick = {
 -                  bookmarkTime -= 1.seconds
 -                },
-+                onClick = { bookmarkTime = liveTime },
-+                enabled = hasPlayer,
-                 colors = IconButtonDefaults.iconButtonColors(
-                   contentColor = MaterialTheme.colorScheme.primary,
-                 ),
-               ) {
-                 Icon(
+-                colors = IconButtonDefaults.iconButtonColors(
+-                  contentColor = MaterialTheme.colorScheme.primary,
+-                ),
+-              ) {
+-                Icon(
 -                  CampfireIcons.Rounded.Replay,
 -                  contentDescription = rewindLabel,
-+                  CampfireIcons.Rounded.Sync,
-+                  contentDescription = syncLabel,
++            Column(
++              modifier = Modifier
++                .fillMaxWidth()
++                .padding(horizontal = 12.dp, vertical = 12.dp),
++              horizontalAlignment = Alignment.CenterHorizontally,
++            ) {
++              Text(
++                text = stringResource(Res.string.bookmark_editor_timestamp_label),
++                style = MaterialTheme.typography.labelSmall,
++                color = MaterialTheme.colorScheme.onSurfaceVariant,
++              )
++
++              Spacer(Modifier.height(8.dp))
++
++              val showPauseIcon = isPlaying && isTrackingLiveAudio
++              val playPauseLabel = stringResource(Res.string.action_play_pause)
++              val playPauseButtonSize = if (useCompactLayout) 42.dp else 48.dp
++
++              if (useCompactLayout) {
++                Row(
++                  verticalAlignment = Alignment.CenterVertically,
++                  horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
++                ) {
++                  IconButtonTooltip(text = playPauseLabel) {
++                    FilledIconButton(
++                      onClick = ::togglePlayPause,
++                      enabled = hasPlayer,
++                      shape = CircleShape,
++                      modifier = Modifier.size(playPauseButtonSize),
++                    ) {
++                      Icon(
++                        imageVector = if (showPauseIcon) {
++                          CampfireIcons.Rounded.Pause
++                        } else {
++                          CampfireIcons.Rounded.PlayArrow
++                        },
++                        contentDescription = playPauseLabel,
++                      )
++                    }
++                  }
++
++                  Text(
++                    text = bookmarkTime.readoutFormat(),
++                    style = MaterialTheme.typography.headlineSmall,
++                    fontFamily = FontFamily.Monospace,
++                    fontWeight = FontWeight.Bold,
++                    maxLines = 1,
++                    softWrap = false,
++                  )
++                }
++              } else {
++                Text(
++                  text = bookmarkTime.readoutFormat(),
++                  style = MaterialTheme.typography.headlineSmall,
++                  fontFamily = FontFamily.Monospace,
++                  fontWeight = FontWeight.Bold,
++                  maxLines = 1,
++                  softWrap = false,
                  )
++
++                Spacer(Modifier.height(8.dp))
++
++                Row(
++                  verticalAlignment = Alignment.CenterVertically,
++                  horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
++                ) {
++                  val rewind30Label = stringResource(Res.string.cd_rewind_time, "30")
++                  IconButtonTooltip(text = rewind30Label) {
++                    IconButton(
++                      onClick = { nudgeBy((-30).seconds) },
++                    ) {
++                      Icon(
++                        imageVector = CampfireIcons.Rounded.Replay30,
++                        contentDescription = rewind30Label,
++                      )
++                    }
++                  }
++
++                  IconButtonTooltip(text = playPauseLabel) {
++                    FilledIconButton(
++                      onClick = ::togglePlayPause,
++                      enabled = hasPlayer,
++                      shape = CircleShape,
++                      modifier = Modifier.size(playPauseButtonSize),
++                    ) {
++                      Icon(
++                        imageVector = if (showPauseIcon) {
++                          CampfireIcons.Rounded.Pause
++                        } else {
++                          CampfireIcons.Rounded.PlayArrow
++                        },
++                        contentDescription = playPauseLabel,
++                      )
++                    }
++                  }
++
++                  val forward30Label = stringResource(Res.string.cd_forward_time, "30")
++                  IconButtonTooltip(text = forward30Label) {
++                    IconButton(
++                      onClick = { nudgeBy(30.seconds) },
++                    ) {
++                      Icon(
++                        imageVector = CampfireIcons.Rounded.Forward30,
++                        contentDescription = forward30Label,
++                      )
++                    }
++                  }
++                }
                }
-             }
-+          }
+-            }
  
 -            Text(
 -              text = bookmarkTime.readoutFormat(),
@@ -20659,79 +21052,57 @@ index d22e71e4..d0962150 100644
 -              fontWeight = FontWeight.SemiBold,
 -              modifier = Modifier.padding(horizontal = 8.dp),
 -            )
-+          Spacer(Modifier.height(12.dp))
++              Spacer(Modifier.height(10.dp))
++
++              BookmarkFineNudgeRow(
++                onNudge = ::nudgeBy,
++                modifier = Modifier.fillMaxWidth(),
++              )
++            }
++          }
  
 -            val forwardLabel = stringResource(Res.string.cd_forward_time, "5")
 -            IconButtonTooltip(text = forwardLabel) {
 -              IconButton(
--                onClick = {
++          AnimatedVisibility(
++            visible = isEditing && hasPreviewedInEdit && returnPosition != null,
++          ) {
++            returnPosition?.let { targetTime ->
++              FilledTonalButton(
+                 onClick = {
 -                  bookmarkTime += 5.seconds
--                },
++                  hasPreviewedInEdit = false
++                  pendingSeekTarget = null
++                  pendingSeekMark = null
++                  onReturnToPositionInDialog(targetTime)
+                 },
 -                colors = IconButtonDefaults.iconButtonColors(
 -                  contentColor = MaterialTheme.colorScheme.primary,
 -                ),
-+          Surface(
-+            modifier = Modifier.fillMaxWidth(),
-+            shape = RoundedCornerShape(16.dp),
-+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-+          ) {
-+            Column(
-+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-+              horizontalAlignment = Alignment.CenterHorizontally,
-+            ) {
-+              Text(
-+                text = stringResource(Res.string.bookmark_editor_playback_label),
-+                style = MaterialTheme.typography.labelSmall,
-+                color = MaterialTheme.colorScheme.onSurfaceVariant,
-+              )
-+              Spacer(Modifier.height(4.dp))
-+              Row(
-+                modifier = Modifier.fillMaxWidth(),
-+                verticalAlignment = Alignment.CenterVertically,
-+                horizontalArrangement = Arrangement.spacedBy(4.dp),
++                modifier = Modifier
++                  .fillMaxWidth()
++                  .padding(top = 10.dp),
                ) {
--                Icon(
+                 Icon(
 -                  CampfireIcons.Rounded.Forward5,
 -                  contentDescription = forwardLabel,
-+                IconButton(
-+                  onClick = onRewind,
-+                  enabled = hasPlayer,
-+                ) {
-+                  RewindIcon()
-+                }
-+                val playPauseLabel = stringResource(Res.string.action_play_pause)
-+                IconButtonTooltip(text = playPauseLabel) {
-+                  IconButton(
-+                    onClick = onPlayPause,
-+                    enabled = hasPlayer,
-+                    colors = IconButtonDefaults.filledTonalIconButtonColors(),
-+                  ) {
-+                    Icon(
-+                      imageVector = if (isPlaying) {
-+                        CampfireIcons.Rounded.Pause
-+                      } else {
-+                        CampfireIcons.Rounded.PlayArrow
-+                      },
-+                      contentDescription = playPauseLabel,
-+                    )
-+                  }
-+                }
-+                IconButton(
-+                  onClick = onForward,
-+                  enabled = hasPlayer,
-+                ) {
-+                  ForwardIcon()
-+                }
-+                Spacer(Modifier.weight(1f))
++                  imageVector = CampfireIcons.Rounded.History,
++                  contentDescription = null,
++                  modifier = Modifier.size(18.dp),
++                )
++                Spacer(Modifier.width(8.dp))
 +                Text(
-+                  text = liveTime.readoutFormat(),
-+                  style = MaterialTheme.typography.labelMedium,
-+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-+                  modifier = Modifier.padding(end = 4.dp),
++                  text = stringResource(
++                    Res.string.bookmark_continue_listening_at,
++                    targetTime.readoutFormat(),
++                  ),
++                  maxLines = 1,
++                  softWrap = false,
++                  overflow = TextOverflow.Ellipsis,
                  )
                }
              }
-@@ -497,13 +850,69 @@ private fun CreateNewDialog(
+@@ -497,13 +1033,81 @@ private fun CreateNewDialog(
  
            Spacer(Modifier.height(16.dp))
  
@@ -20741,6 +21112,9 @@ index d22e71e4..d0962150 100644
            OutlinedTextField(
              value = titleValue,
              onValueChange = { newValue ->
++              if (isPlaying && isTrackingLiveAudio && newValue.text != titleValue.text) {
++                onPause()
++              }
                titleValue = newValue
              },
              label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
@@ -20753,7 +21127,10 @@ index d22e71e4..d0962150 100644
 +              {
 +                IconButtonTooltip(text = dictateTitleLabel) {
 +                  IconButton(
-+                    onClick = { titleDictation.launch(dictateTitlePrompt) },
++                    onClick = {
++                      if (isPlaying) onPause()
++                      titleDictation.launch(dictateTitlePrompt)
++                    },
 +                  ) {
 +                    Icon(
 +                      CampfireIcons.Rounded.Mic,
@@ -20775,6 +21152,9 @@ index d22e71e4..d0962150 100644
 +          OutlinedTextField(
 +            value = notesValue,
 +            onValueChange = { newValue ->
++              if (isPlaying && isTrackingLiveAudio && newValue.text != notesValue.text) {
++                onPause()
++              }
 +              notesValue = newValue
 +            },
 +            label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
@@ -20787,7 +21167,10 @@ index d22e71e4..d0962150 100644
 +              {
 +                IconButtonTooltip(text = dictateNotesLabel) {
 +                  IconButton(
-+                    onClick = { notesDictation.launch(dictateNotesPrompt) },
++                    onClick = {
++                      if (isPlaying) onPause()
++                      notesDictation.launch(dictateNotesPrompt)
++                    },
 +                  ) {
 +                    Icon(
 +                      CampfireIcons.Rounded.Mic,
@@ -20802,7 +21185,7 @@ index d22e71e4..d0962150 100644
              modifier = Modifier.fillMaxWidth(),
            )
  
-@@ -519,12 +928,26 @@ private fun CreateNewDialog(
+@@ -519,12 +1123,26 @@ private fun CreateNewDialog(
                Text(stringResource(Res.string.bookmark_new_dialog_action_cancel))
              }
              TextButton(
@@ -20832,10 +21215,83 @@ index d22e71e4..d0962150 100644
              }
            }
          }
-@@ -532,3 +955,28 @@ private fun CreateNewDialog(
+@@ -532,3 +1150,101 @@ private fun CreateNewDialog(
      },
    )
  }
++
++@Composable
++private fun BookmarkFineNudgeRow(
++  onNudge: (Duration) -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Row(
++    modifier = modifier,
++    verticalAlignment = Alignment.CenterVertically,
++    horizontalArrangement = Arrangement.spacedBy(4.dp),
++  ) {
++    FineNudgePills.take(3).forEach { (label, delta) ->
++      FineNudgePill(
++        label = label,
++        onClick = { onNudge(delta) },
++        modifier = Modifier.weight(1f),
++      )
++    }
++
++    Box(
++      modifier = Modifier
++        .width(1.dp)
++        .height(18.dp)
++        .background(MaterialTheme.colorScheme.outlineVariant),
++    )
++
++    FineNudgePills.drop(3).forEach { (label, delta) ->
++      FineNudgePill(
++        label = label,
++        onClick = { onNudge(delta) },
++        modifier = Modifier.weight(1f),
++      )
++    }
++  }
++}
++
++@Composable
++private fun FineNudgePill(
++  label: String,
++  onClick: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Surface(
++    modifier = modifier
++      .height(36.dp)
++      .clip(RoundedCornerShape(8.dp))
++      .clickable(onClick = onClick),
++    shape = RoundedCornerShape(8.dp),
++    color = MaterialTheme.colorScheme.surfaceContainerLow,
++  ) {
++    Box(
++      contentAlignment = Alignment.Center,
++    ) {
++      Text(
++        text = label,
++        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
++        fontWeight = FontWeight.SemiBold,
++        color = MaterialTheme.colorScheme.onSurface,
++        maxLines = 1,
++        softWrap = false,
++      )
++    }
++  }
++}
++
++private val FineNudgePills = listOf(
++  "-10s" to (-10).seconds,
++  "-5s" to (-5).seconds,
++  "-1s" to (-1).seconds,
++  "+1s" to 1.seconds,
++  "+5s" to 5.seconds,
++  "+10s" to 10.seconds,
++)
 +
 +internal fun decodeBookmarkTitleAndNotes(rawTitle: String): Pair<String, String> {
 +  val normalized = rawTitle.replace("\r\n", "\n")
@@ -21037,7 +21493,7 @@ index 4b7fc2d1..2de5ecc3 100644
          )
        },
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
-index 278dcf20..a5316139 100644
+index 278dcf20..e4e11dd9 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt
 @@ -66,6 +66,8 @@ import androidx.compose.ui.tooling.preview.Preview
@@ -21080,7 +21536,7 @@ index 278dcf20..a5316139 100644
  @Composable
  internal fun TimerBottomSheetV2(
    runningTimer: RunningTimer?,
-@@ -169,6 +175,11 @@ internal fun TimerBottomSheetV2(
+@@ -169,6 +175,19 @@ internal fun TimerBottomSheetV2(
    onTimerCleared: () -> Unit,
    component: SleepTimerBottomSheetComponent = rememberComponent(),
  ) {
@@ -21089,10 +21545,18 @@ index 278dcf20..a5316139 100644
 +      .flatMapLatest { it?.runningTimer ?: flowOf(null) }
 +  }.collectAsState(runningTimer)
 +
++  val useAlternateStepperView by remember(component) {
++    component.sleepSettings.observeSleepTimerStepperAlternateView()
++  }.collectAsState()
++
++  val fineStepEnabled by remember(component) {
++    component.sleepSettings.observeSleepTimerFineStep()
++  }.collectAsState()
++
    SessionSheetLayout(
      modifier = modifier,
      title = { Text(stringResource(Res.string.timer_bottomsheet_title)) },
-@@ -178,7 +189,7 @@ internal fun TimerBottomSheetV2(
+@@ -178,7 +197,7 @@ internal fun TimerBottomSheetV2(
      // content the way it is everywhere else — the scroll only engages once there is more content
      // than room, which a large font scale can still manage even in the side sheet's two columns.
      AnimatedContent(
@@ -21101,11 +21565,14 @@ index 278dcf20..a5316139 100644
        modifier = Modifier
          .weight(1f, fill = false)
          .verticalScroll(rememberScrollState()),
-@@ -186,12 +197,38 @@ internal fun TimerBottomSheetV2(
+@@ -186,12 +205,41 @@ internal fun TimerBottomSheetV2(
        if (timer != null) {
          ActiveTimerSheetContent(
            runningTimer = timer,
 -          onTimerCleared = onTimerCleared,
++          useAlternateStepperView = useAlternateStepperView,
++          fineStepEnabled = fineStepEnabled,
++          onFineStepEnabledChange = { component.sleepSettings.sleepTimerFineStep = it },
 +          onTimerCleared = {
 +            if (component.audioPlayerHolder.currentPlayer.value == null) {
 +              component.sleepSettings.activeSleepTimer = null
@@ -21142,23 +21609,30 @@ index 278dcf20..a5316139 100644
          )
        }
      }
-@@ -209,6 +246,7 @@ internal fun TimerBottomSheetV2(
+@@ -208,7 +256,11 @@ internal fun TimerBottomSheetV2(
+ @Composable
  private fun ActiveTimerSheetContent(
    runningTimer: RunningTimer,
++  useAlternateStepperView: Boolean,
++  fineStepEnabled: Boolean,
++  onFineStepEnabledChange: (Boolean) -> Unit,
    onTimerCleared: () -> Unit,
 +  onAdjustTimer: (deltaMillis: Long) -> Unit,
    modifier: Modifier = Modifier,
  ) {
    Column(
-@@ -216,6 +254,7 @@ private fun ActiveTimerSheetContent(
+@@ -216,6 +268,10 @@ private fun ActiveTimerSheetContent(
    ) {
      RunningTimerCard(
        runningTimer = runningTimer,
 +      onAdjustTimer = onAdjustTimer,
++      useAlternateStepperView = useAlternateStepperView,
++      fineStepEnabled = fineStepEnabled,
++      onFineStepEnabledChange = onFineStepEnabledChange,
      )
  
      ClearTimerButton(
-@@ -638,6 +677,12 @@ fun TimerBottomSheetV2Preview() {
+@@ -638,6 +694,12 @@ fun TimerBottomSheetV2Preview() {
            timer = null
          },
          component = object : SleepTimerBottomSheetComponent {
@@ -21171,7 +21645,7 @@ index 278dcf20..a5316139 100644
            override val sleepSettings: SleepSettings = object : SleepSettings {
              override var lastSetSleepTimer: Duration
                get() = mutableLastSetSleepTimer.value
-@@ -657,6 +702,26 @@ fun TimerBottomSheetV2Preview() {
+@@ -657,6 +719,44 @@ fun TimerBottomSheetV2Preview() {
                return mutableShakeToReset
              }
  
@@ -21182,6 +21656,24 @@ index 278dcf20..a5316139 100644
 +
 +            override fun observeResetTimerOnPause(): StateFlow<Boolean> {
 +              return mutableResetTimerOnPause
++            }
++
++            val mutableSleepTimerStepperAlternateView = MutableStateFlow(false)
++            override var sleepTimerStepperAlternateView: Boolean
++              get() = mutableSleepTimerStepperAlternateView.value
++              set(value) { mutableSleepTimerStepperAlternateView.value = value }
++
++            override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> {
++              return mutableSleepTimerStepperAlternateView
++            }
++
++            val mutableSleepTimerFineStep = MutableStateFlow(false)
++            override var sleepTimerFineStep: Boolean
++              get() = mutableSleepTimerFineStep.value
++              set(value) { mutableSleepTimerFineStep.value = value }
++
++            override fun observeSleepTimerFineStep(): StateFlow<Boolean> {
++              return mutableSleepTimerFineStep
 +            }
 +
 +            val mutableActiveSleepTimer = MutableStateFlow<SleepSettings.PersistedSleepTimer?>(null)
@@ -21199,21 +21691,26 @@ index 278dcf20..a5316139 100644
                get() = TODO("Not yet implemented")
                set(value) {}
 diff --git a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
-index 792e8267..c0334c76 100644
+index 792e8267..a18ce90a 100644
 --- a/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
 +++ b/features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt
-@@ -4,24 +4,31 @@
+@@ -3,27 +3,40 @@
+ 
  package app.campfire.sessions.ui.sheets.speed
  
++import androidx.compose.foundation.background
  import androidx.compose.foundation.clickable
 +import androidx.compose.foundation.interaction.MutableInteractionSource
 +import androidx.compose.foundation.interaction.collectIsDraggedAsState
 +import androidx.compose.foundation.interaction.collectIsPressedAsState
 +import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
 +import androidx.compose.foundation.layout.Column
  import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.RowScope
  import androidx.compose.foundation.layout.Spacer
 -import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxHeight
 +import androidx.compose.foundation.layout.fillMaxWidth
  import androidx.compose.foundation.layout.height
  import androidx.compose.foundation.layout.navigationBarsPadding
@@ -21227,6 +21724,7 @@ index 792e8267..c0334c76 100644
  import androidx.compose.material.rememberModalBottomSheetState
 +import androidx.compose.material3.FilledTonalIconButton
  import androidx.compose.material3.Icon
++import androidx.compose.material3.LocalContentColor
  import androidx.compose.material3.MaterialTheme
  import androidx.compose.material3.SegmentedButton
  import androidx.compose.material3.SegmentedButtonDefaults
@@ -21235,17 +21733,33 @@ index 792e8267..c0334c76 100644
 +import androidx.compose.material3.Surface
  import androidx.compose.material3.Text
  import androidx.compose.runtime.Composable
++import androidx.compose.runtime.CompositionLocalProvider
  import androidx.compose.runtime.LaunchedEffect
-@@ -33,6 +40,8 @@ import androidx.compose.runtime.setValue
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+@@ -32,12 +45,21 @@ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.setValue
  import androidx.compose.ui.Alignment
  import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.alpha
  import androidx.compose.ui.draw.clip
 +import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 +import androidx.compose.ui.platform.LocalHapticFeedback
++import androidx.compose.ui.semantics.Role
++import androidx.compose.ui.semantics.contentDescription
++import androidx.compose.ui.semantics.role
++import androidx.compose.ui.semantics.selected
++import androidx.compose.ui.semantics.semantics
  import androidx.compose.ui.text.font.FontWeight
  import androidx.compose.ui.text.style.TextAlign
  import androidx.compose.ui.tooling.preview.Preview
-@@ -47,9 +56,12 @@ import app.campfire.analytics.events.Speed
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.lerp
++import androidx.compose.ui.unit.sp
+ import app.campfire.analytics.Analytics
+ import app.campfire.analytics.events.Changed
+ import app.campfire.analytics.events.PlaybackActionEvent
+@@ -47,9 +69,12 @@ import app.campfire.analytics.events.Speed
  import app.campfire.audioplayer.AudioPlayerHolder
  import app.campfire.common.compose.analytics.Impression
  import app.campfire.common.compose.icons.CampfireIcons
@@ -21258,7 +21772,7 @@ index 792e8267..c0334c76 100644
  import app.campfire.common.compose.widgets.PlaybackSpeedDialog
  import app.campfire.common.compose.widgets.PlaybackSpeedRange
  import app.campfire.common.compose.widgets.sheets.AdaptiveSheetOverlay
-@@ -61,13 +73,19 @@ import app.campfire.core.model.LibraryItemId
+@@ -61,13 +86,20 @@ import app.campfire.core.model.LibraryItemId
  import app.campfire.sessions.ui.sheets.SessionSheetLayout
  import app.campfire.settings.api.PlaybackSettings
  import campfire.features.sessions.ui.generated.resources.Res
@@ -21268,18 +21782,48 @@ index 792e8267..c0334c76 100644
  import campfire.features.sessions.ui.generated.resources.speed_custom_open
 -import campfire.features.sessions.ui.generated.resources.speed_per_book_toggle
 +import campfire.features.sessions.ui.generated.resources.speed_decrease
++import campfire.features.sessions.ui.generated.resources.speed_decrease_fine
 +import campfire.features.sessions.ui.generated.resources.speed_increase
++import campfire.features.sessions.ui.generated.resources.speed_increase_fine
++import campfire.features.sessions.ui.generated.resources.speed_step_label
  import com.slack.circuit.overlay.OverlayHost
  import dev.zacsweers.metro.ContributesTo
  import ir.mahozad.multiplatform.wavyslider.WaveDirection
  import ir.mahozad.multiplatform.wavyslider.material3.WavySlider
-+import kotlin.math.ceil
-+import kotlin.math.floor
 +import kotlin.math.roundToInt
  import kotlinx.coroutines.ExperimentalCoroutinesApi
  import kotlinx.coroutines.flow.emptyFlow
  import kotlinx.coroutines.flow.flatMapLatest
-@@ -173,27 +191,66 @@ internal fun PlaybackSpeedSheet(
+@@ -137,10 +169,21 @@ private fun PlaybackSpeedBottomSheet(
+     component.playbackSettings.observeItemPlaybackSpeeds()
+   }.collectAsState()
+ 
++  val useAlternateStepperView by remember {
++    component.playbackSettings.observeSpeedStepperAlternateView()
++  }.collectAsState()
++
++  val fineStepEnabled by remember {
++    component.playbackSettings.observeSpeedStepperFineStep()
++  }.collectAsState()
++
+   PlaybackSpeedSheet(
+     currentSpeed = currentSpeed,
+     speedOptions = speedOptions,
+     perBookSpeedEnabled = input.itemId in itemPlaybackSpeeds,
++    useAlternateStepperView = useAlternateStepperView,
++    fineStepEnabled = fineStepEnabled,
++    onFineStepEnabledChange = { component.playbackSettings.speedStepperFineStep = it },
+     onSpeedChange = { speed ->
+       Analytics.send(PlaybackActionEvent(Speed, Changed, extras = mapOf("speed" to speed)))
+       component.audioPlayerHolder.currentPlayer.value
+@@ -169,31 +212,73 @@ internal fun PlaybackSpeedSheet(
+   onSpeedChange: (Float) -> Unit,
+   onPerBookSpeedChange: (Boolean) -> Unit,
+   modifier: Modifier = Modifier,
++  useAlternateStepperView: Boolean = false,
++  fineStepEnabled: Boolean = false,
++  onFineStepEnabledChange: (Boolean) -> Unit = {},
+ ) {
    SessionSheetLayout(
      modifier = modifier,
      title = { Text(stringResource(Res.string.speed_bottomsheet_title)) },
@@ -21360,7 +21904,7 @@ index 792e8267..c0334c76 100644
      SingleChoiceSegmentedButtonRow(
        modifier = Modifier
          .align(Alignment.CenterHorizontally)
-@@ -205,83 +262,144 @@ internal fun PlaybackSpeedSheet(
+@@ -205,83 +290,219 @@ internal fun PlaybackSpeedSheet(
            shape = SegmentedButtonDefaults.itemShape(index, speedOptions.size, RoundedCornerShape(16.dp)),
            selected = isCurrentSpeed,
            label = { Text("${defaultSpeed.readableHundredths}x") },
@@ -21372,40 +21916,95 @@ index 792e8267..c0334c76 100644
  
      Spacer(Modifier.height(16.dp))
  
+-    Row(
+-      modifier = Modifier
+-        .height(56.dp)
+-        .fillMaxSize()
+-        .padding(horizontal = 20.dp),
+-      verticalAlignment = Alignment.CenterVertically,
+-    ) {
+-      var sliderValue by remember { mutableStateOf(currentSpeed) }
 +    var showCustomSpeedDialog by remember { mutableStateOf(false) }
 +    val customSpeedLabel = stringResource(Res.string.speed_custom_open)
 +    val decreaseSpeedLabel = stringResource(Res.string.speed_decrease)
 +    val increaseSpeedLabel = stringResource(Res.string.speed_increase)
-+
-     Row(
-       modifier = Modifier
--        .height(56.dp)
--        .fillMaxSize()
--        .padding(horizontal = 20.dp),
-+        .fillMaxWidth()
-+        .padding(horizontal = 24.dp),
-+      horizontalArrangement = Arrangement.Center,
-       verticalAlignment = Alignment.CenterVertically,
-     ) {
--      var sliderValue by remember { mutableStateOf(currentSpeed) }
--
++    val decreaseFineLabel = stringResource(Res.string.speed_decrease_fine)
++    val increaseFineLabel = stringResource(Res.string.speed_increase_fine)
+ 
 -      LaunchedEffect(currentSpeed) {
 -        if (sliderValue != currentSpeed) {
 -          sliderValue = currentSpeed
-+      IconButtonTooltip(text = decreaseSpeedLabel) {
-+        FilledTonalIconButton(
-+          enabled = sliderValue > PlaybackSpeedRange.start,
-+          onClick = {
-+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-+            commitSpeed(stepSpeed(sliderValue, -1))
-+          },
-+        ) {
-+          Icon(
-+            imageVector = CampfireIcons.Rounded.Remove,
-+            contentDescription = decreaseSpeedLabel,
-+          )
-         }
+-        }
++    val canDecrease = sliderValue > PlaybackSpeedRange.start
++    val canIncrease = sliderValue < PlaybackSpeedRange.endInclusive
++
++    val performDecreaseCoarse = {
++      haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++      commitSpeed(stepSpeed(sliderValue, -1))
++    }
++    val performIncreaseCoarse = {
++      haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++      commitSpeed(stepSpeed(sliderValue, +1))
++    }
++    val performDecreaseFine = {
++      haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++      commitSpeed(stepSpeedFine(sliderValue, -1))
++    }
++    val performIncreaseFine = {
++      haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
++      commitSpeed(stepSpeedFine(sliderValue, +1))
++    }
++
++    val centerSpeedBadge: @Composable () -> Unit = {
++      Surface(
++        shape = RoundedCornerShape(12.dp),
++        color = MaterialTheme.colorScheme.surfaceContainerHigh,
++        modifier = Modifier
++          .clip(RoundedCornerShape(12.dp))
++          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true },
++      ) {
++        Text(
++          text = "${sliderValue.readableHundredths}x",
++          textAlign = TextAlign.Center,
++          style = MaterialTheme.typography.titleLarge,
++          fontWeight = FontWeight.ExtraBold,
++          maxLines = 1,
++          softWrap = false,
++          modifier = Modifier
++            .widthIn(min = 76.dp)
++            .padding(horizontal = 12.dp, vertical = 8.dp),
++        )
        }
++    }
++
++    if (useAlternateStepperView) {
++      val activeDecreaseLabel = if (fineStepEnabled) decreaseFineLabel else decreaseSpeedLabel
++      val activeIncreaseLabel = if (fineStepEnabled) increaseFineLabel else increaseSpeedLabel
++
++      Column(
++        modifier = Modifier.fillMaxWidth(),
++        horizontalAlignment = Alignment.CenterHorizontally,
++      ) {
++        Row(
++          modifier = Modifier
++            .fillMaxWidth()
++            .padding(horizontal = 24.dp),
++          horizontalArrangement = Arrangement.Center,
++          verticalAlignment = Alignment.CenterVertically,
++        ) {
++          IconButtonTooltip(text = activeDecreaseLabel) {
++            FilledTonalIconButton(
++              enabled = canDecrease,
++              onClick = {
++                if (fineStepEnabled) performDecreaseFine() else performDecreaseCoarse()
++              },
++            ) {
++              Icon(
++                imageVector = CampfireIcons.Rounded.Remove,
++                contentDescription = activeDecreaseLabel,
++              )
++            }
++          }
  
 -      val sliderProgressNormalized = sliderValue / (PlaybackSpeedRange.start + PlaybackSpeedRange.length)
 -      val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
@@ -21419,46 +22018,70 @@ index 792e8267..c0334c76 100644
 -        if (speed != sliderValue) {
 -          sliderValue = speed
 -          onSpeedChange(speed)
-+      Spacer(Modifier.width(16.dp))
++          Spacer(Modifier.width(16.dp))
++          centerSpeedBadge()
++          Spacer(Modifier.width(16.dp))
 +
-+      Surface(
-+        shape = RoundedCornerShape(12.dp),
-+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-+        modifier = Modifier
-+          .clip(RoundedCornerShape(12.dp))
-+          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true },
-+      ) {
-+        Text(
-+          text = "${sliderValue.readableHundredths}x",
-+          textAlign = TextAlign.Center,
-+          style = MaterialTheme.typography.titleLarge,
-+          fontWeight = FontWeight.ExtraBold,
-+          modifier = Modifier
-+            .widthIn(min = 84.dp)
-+            .padding(horizontal = 16.dp, vertical = 8.dp),
++          IconButtonTooltip(text = activeIncreaseLabel) {
++            FilledTonalIconButton(
++              enabled = canIncrease,
++              onClick = {
++                if (fineStepEnabled) performIncreaseFine() else performIncreaseCoarse()
++              },
++            ) {
++              Icon(
++                imageVector = CampfireIcons.Rounded.Add,
++                contentDescription = activeIncreaseLabel,
++              )
++            }
++          }
+         }
++
++        Spacer(Modifier.height(10.dp))
++
++        SpeedStepTogglePill(
++          fineStepEnabled = fineStepEnabled,
++          onFineStepEnabledChange = onFineStepEnabledChange,
 +        )
 +      }
++    } else {
++      Row(
++        modifier = Modifier
++          .fillMaxWidth()
++          .padding(horizontal = 16.dp),
++        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        DualStageSpeedCapsule(
++          leftLabel = "−.05",
++          leftDescription = decreaseSpeedLabel,
++          leftEnabled = canDecrease,
++          onLeftClick = performDecreaseCoarse,
++          rightLabel = "−.01",
++          rightDescription = decreaseFineLabel,
++          rightEnabled = canDecrease,
++          onRightClick = performDecreaseFine,
++          modifier = Modifier.weight(1f),
++        )
 +
-+      Spacer(Modifier.width(16.dp))
++        centerSpeedBadge()
 +
-+      IconButtonTooltip(text = increaseSpeedLabel) {
-+        FilledTonalIconButton(
-+          enabled = sliderValue < PlaybackSpeedRange.endInclusive,
-+          onClick = {
-+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-+            commitSpeed(stepSpeed(sliderValue, +1))
-+          },
-+        ) {
-+          Icon(
-+            imageVector = CampfireIcons.Rounded.Add,
-+            contentDescription = increaseSpeedLabel,
-+          )
-         }
++        DualStageSpeedCapsule(
++          leftLabel = "+.01",
++          leftDescription = increaseFineLabel,
++          leftEnabled = canIncrease,
++          onLeftClick = performIncreaseFine,
++          rightLabel = "+.05",
++          rightDescription = increaseSpeedLabel,
++          rightEnabled = canIncrease,
++          onRightClick = performIncreaseCoarse,
++          modifier = Modifier.weight(1f),
++        )
        }
 +    }
- 
-+    Spacer(Modifier.height(12.dp))
 +
++    Spacer(Modifier.height(12.dp))
+ 
 +    val sliderProgressNormalized = ((sliderValue - PlaybackSpeedRange.start) / PlaybackSpeedRange.length)
 +      .coerceIn(0f, 1f)
 +    val waveLength = lerp(WavelengthRange.endInclusive, WavelengthRange.start, sliderProgressNormalized)
@@ -21494,8 +22117,9 @@ index 792e8267..c0334c76 100644
          waveThickness = waveThickness,
          incremental = true,
 -        modifier = Modifier.weight(1f),
--      )
--
++        modifier = Modifier.fillMaxWidth(),
+       )
+ 
 -      var showCustomSpeedDialog by remember { mutableStateOf(false) }
 -      val customSpeedLabel = stringResource(Res.string.speed_custom_open)
 -
@@ -21510,9 +22134,8 @@ index 792e8267..c0334c76 100644
 -          .clickable(onClickLabel = customSpeedLabel) { showCustomSpeedDialog = true }
 -          .padding(horizontal = 8.dp, vertical = 12.dp)
 -          .width(44.dp),
-+        modifier = Modifier.fillMaxWidth(),
-       )
- 
+-      )
+-
 -      if (showCustomSpeedDialog) {
 -        PlaybackSpeedDialog(
 -          initialSpeed = sliderValue,
@@ -21552,22 +22175,184 @@ index 792e8267..c0334c76 100644
      Spacer(Modifier.height(24.dp))
    }
  }
-@@ -309,6 +427,21 @@ private fun PlaybackSpeedSheetPreview() {
+@@ -309,6 +530,183 @@ private fun PlaybackSpeedSheetPreview() {
    }
  }
  
++@Composable
++private fun DualStageSpeedCapsule(
++  leftLabel: String,
++  leftDescription: String,
++  leftEnabled: Boolean,
++  onLeftClick: () -> Unit,
++  rightLabel: String,
++  rightDescription: String,
++  rightEnabled: Boolean,
++  onRightClick: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Surface(
++    shape = RoundedCornerShape(50),
++    color = MaterialTheme.colorScheme.secondaryContainer,
++    modifier = modifier.height(40.dp),
++  ) {
++    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSecondaryContainer) {
++      Row(
++        modifier = Modifier.fillMaxWidth(),
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        CapsuleHalfButton(
++          label = leftLabel,
++          description = leftDescription,
++          enabled = leftEnabled,
++          onClick = onLeftClick,
++        )
++        Box(
++          modifier = Modifier
++            .width(1.dp)
++            .height(20.dp)
++            .background(MaterialTheme.colorScheme.outlineVariant),
++        )
++        CapsuleHalfButton(
++          label = rightLabel,
++          description = rightDescription,
++          enabled = rightEnabled,
++          onClick = onRightClick,
++        )
++      }
++    }
++  }
++}
++
++@Composable
++private fun RowScope.CapsuleHalfButton(
++  label: String,
++  description: String,
++  enabled: Boolean,
++  onClick: () -> Unit,
++) {
++  Box(
++    modifier = Modifier
++      .weight(1f)
++      .fillMaxHeight()
++      .alpha(if (enabled) 1f else 0.38f)
++      .clickable(enabled = enabled, onClick = onClick)
++      .semantics {
++        role = Role.Button
++        contentDescription = description
++      },
++    contentAlignment = Alignment.Center,
++  ) {
++    Text(
++      text = label,
++      style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
++      fontWeight = FontWeight.Bold,
++      maxLines = 1,
++      softWrap = false,
++    )
++  }
++}
++
++@Composable
++private fun SpeedStepTogglePill(
++  fineStepEnabled: Boolean,
++  onFineStepEnabledChange: (Boolean) -> Unit,
++) {
++  Row(
++    verticalAlignment = Alignment.CenterVertically,
++    horizontalArrangement = Arrangement.spacedBy(8.dp),
++  ) {
++    Text(
++      text = "${stringResource(Res.string.speed_step_label)}:",
++      style = MaterialTheme.typography.labelMedium,
++      color = MaterialTheme.colorScheme.onSurfaceVariant,
++    )
++    Surface(
++      shape = RoundedCornerShape(50),
++      color = MaterialTheme.colorScheme.surfaceContainerHigh,
++    ) {
++      Row(
++        modifier = Modifier.padding(3.dp),
++        horizontalArrangement = Arrangement.spacedBy(2.dp),
++      ) {
++        StepOptionChip(
++          label = "0.05x",
++          isSelected = !fineStepEnabled,
++          onClick = { onFineStepEnabledChange(false) },
++        )
++        StepOptionChip(
++          label = "0.01x",
++          isSelected = fineStepEnabled,
++          onClick = { onFineStepEnabledChange(true) },
++        )
++      }
++    }
++  }
++}
++
++@Composable
++private fun StepOptionChip(
++  label: String,
++  isSelected: Boolean,
++  onClick: () -> Unit,
++) {
++  val containerColor = if (isSelected) {
++    MaterialTheme.colorScheme.secondaryContainer
++  } else {
++    MaterialTheme.colorScheme.surfaceContainerHigh
++  }
++  val contentColor = if (isSelected) {
++    MaterialTheme.colorScheme.onSecondaryContainer
++  } else {
++    MaterialTheme.colorScheme.onSurfaceVariant
++  }
++  Box(
++    modifier = Modifier
++      .clip(RoundedCornerShape(50))
++      .background(containerColor)
++      .clickable(onClick = onClick)
++      .semantics {
++        role = Role.RadioButton
++        selected = isSelected
++      }
++      .padding(horizontal = 12.dp, vertical = 5.dp),
++    contentAlignment = Alignment.Center,
++  ) {
++    Text(
++      text = label,
++      color = contentColor,
++      style = MaterialTheme.typography.labelMedium,
++      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
++      maxLines = 1,
++      softWrap = false,
++    )
++  }
++}
++
 +internal fun Float.snapToSpeedStep(): Float {
 +  val steppedHundredths = (this * 20f).roundToInt() * 5
 +  return (steppedHundredths / 100f).coerceIn(PlaybackSpeedRange)
 +}
 +
 +internal fun stepSpeed(current: Float, stepsDelta: Int): Float {
-+  val currentSteps = if (stepsDelta > 0) {
-+    floor(current * 20f + 0.001f).toInt()
-+  } else {
-+    ceil(current * 20f - 0.001f).toInt()
++  val currentHundredths = (current * 100f).roundToInt()
++  val rem = ((currentHundredths % 5) + 5) % 5
++  val targetHundredths = when {
++    stepsDelta > 0 -> {
++      val nextGrid = if (rem == 0) currentHundredths + 5 else currentHundredths + (5 - rem)
++      nextGrid + (stepsDelta - 1) * 5
++    }
++    stepsDelta < 0 -> {
++      val prevGrid = if (rem == 0) currentHundredths - 5 else currentHundredths - rem
++      prevGrid + (stepsDelta + 1) * 5
++    }
++    else -> currentHundredths
 +  }
-+  val targetHundredths = (currentSteps + stepsDelta) * 5
++  return (targetHundredths / 100f).coerceIn(PlaybackSpeedRange)
++}
++
++internal fun stepSpeedFine(current: Float, hundredthsDelta: Int): Float {
++  val targetHundredths = (current * 100f).roundToInt() + hundredthsDelta
 +  return (targetHundredths / 100f).coerceIn(PlaybackSpeedRange)
 +}
 +
@@ -21722,6 +22507,71 @@ index 299f5180..ea4f7038 100644
    private fun presenterWith(controller: FakeAudioOutputController) = PlaybackPresenter(
      sessionQueue = sessionQueue,
      sessionsRepository = sessionsRepository,
+diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStoreTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStoreTest.kt
+new file mode 100644
+index 00000000..4543f29e
+--- /dev/null
++++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStoreTest.kt
+@@ -0,0 +1,59 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.sessions.ui.sheets.bookmarks
++
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import assertk.assertions.isNull
++import kotlin.test.Test
++import kotlin.time.Duration.Companion.hours
++import kotlin.time.Duration.Companion.minutes
++import kotlin.time.Duration.Companion.seconds
++
++class BookmarkReturnPositionStoreTest {
++
++  @Test
++  fun `records furthest jump and preserves high-water mark across bookmark hops`() {
++    val store = BookmarkReturnPositionStore()
++    val bookId = "book-1"
++
++    store.recordJumpFrom(bookId, fromTime = 3.hours + 45.minutes, toTime = 12.minutes + 30.seconds)
++    assertThat(store.current(bookId)).isEqualTo(3.hours + 45.minutes)
++
++    // Hopping between earlier bookmarks must NOT overwrite the furthest position
++    store.recordJumpFrom(bookId, fromTime = 15.minutes, toTime = 45.minutes)
++    assertThat(store.current(bookId)).isEqualTo(3.hours + 45.minutes)
++
++    // Listening further later and jumping again updates to the new high-water mark
++    store.recordJumpFrom(bookId, fromTime = 4.hours + 10.minutes, toTime = 20.minutes)
++    assertThat(store.current(bookId)).isEqualTo(4.hours + 10.minutes)
++  }
++
++  @Test
++  fun `ignores trivial jumps under 15s and zero start time`() {
++    val store = BookmarkReturnPositionStore()
++    val bookId = "book-2"
++
++    store.recordJumpFrom(bookId, fromTime = 0.seconds, toTime = 30.minutes)
++    assertThat(store.current(bookId)).isNull()
++
++    store.recordJumpFrom(bookId, fromTime = 1.hours, toTime = 59.minutes + 50.seconds)
++    assertThat(store.current(bookId)).isNull()
++  }
++
++  @Test
++  fun `isolates return positions per book and clears individually`() {
++    val store = BookmarkReturnPositionStore()
++
++    store.recordJumpFrom("book-a", fromTime = 2.hours, toTime = 5.minutes)
++    store.recordJumpFrom("book-b", fromTime = 30.minutes, toTime = 1.minutes)
++
++    assertThat(store.current("book-a")).isEqualTo(2.hours)
++    assertThat(store.current("book-b")).isEqualTo(30.minutes)
++
++    store.clear("book-a")
++    assertThat(store.current("book-a")).isNull()
++    assertThat(store.current("book-b")).isEqualTo(30.minutes)
++  }
++}
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksEncodingTest.kt
 new file mode 100644
 index 00000000..5cf69613
@@ -21795,10 +22645,10 @@ index 00000000..5cf69613
 +}
 diff --git a/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
 new file mode 100644
-index 00000000..d29c3128
+index 00000000..27c1fa60
 --- /dev/null
 +++ b/features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,220 @@
 +// Copyright 2026, Drew Heavner and the Campfire project contributors
 +// SPDX-License-Identifier: GPL-3.0-only
 +
@@ -21841,21 +22691,32 @@ index 00000000..d29c3128
 +  }
 +
 +  @Test
-+  fun `stepSpeed advances by exact 0_05 increments and aligns off-grid values`() {
++  fun `stepSpeed snaps off-grid values to nearest 0_05 in requested direction`() {
 +    assertThat(stepSpeed(1.00f, +1)).isEqualTo(1.05f)
 +    assertThat(stepSpeed(1.05f, +1)).isEqualTo(1.10f)
 +    assertThat(stepSpeed(1.25f, -1)).isEqualTo(1.20f)
 +    assertThat(stepSpeed(1.20f, -1)).isEqualTo(1.15f)
-+    // Off-grid custom values snap to the next step in the requested direction
++    // Off-grid values snap cleanly to the next/previous 0.05 grid mark
 +    assertThat(stepSpeed(1.23f, +1)).isEqualTo(1.25f)
 +    assertThat(stepSpeed(1.23f, -1)).isEqualTo(1.20f)
++    assertThat(stepSpeed(1.21f, +1)).isEqualTo(1.25f)
++    assertThat(stepSpeed(1.21f, -1)).isEqualTo(1.20f)
 +    // Clamped at min/max
 +    assertThat(stepSpeed(0.50f, -1)).isEqualTo(0.50f)
 +    assertThat(stepSpeed(3.00f, +1)).isEqualTo(3.00f)
 +  }
 +
 +  @Test
-+  fun `stepper buttons adjust speed by 0_05x and respect min max bounds`() = runComposeUiTest {
++  fun `stepSpeedFine advances by exact 0_01 increments and clamps within bounds`() {
++    assertThat(stepSpeedFine(1.25f, +1)).isEqualTo(1.26f)
++    assertThat(stepSpeedFine(1.25f, -1)).isEqualTo(1.24f)
++    assertThat(stepSpeedFine(1.29f, +1)).isEqualTo(1.30f)
++    assertThat(stepSpeedFine(0.50f, -1)).isEqualTo(0.50f)
++    assertThat(stepSpeedFine(3.00f, +1)).isEqualTo(3.00f)
++  }
++
++  @Test
++  fun `concept A dual-stage capsules step by 0_05x and 0_01x and snap off-grid values`() = runComposeUiTest {
 +    mainClock.autoAdvance = false
 +    val speedChanges = mutableListOf<Float>()
 +    var currentSpeed by mutableStateOf(1.25f)
@@ -21866,6 +22727,59 @@ index 00000000..d29c3128
 +          currentSpeed = currentSpeed,
 +          speedOptions = listOf(1f, 1.25f, 1.5f),
 +          perBookSpeedEnabled = false,
++          useAlternateStepperView = false,
++          onSpeedChange = {
++            currentSpeed = it
++            speedChanges += it
++          },
++          onPerBookSpeedChange = {},
++        )
++      }
++    }
++    mainClock.advanceTimeByFrame()
++
++    onNodeWithContentDescription("Increase speed by 0.01x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.26f)
++
++    // Stepping +0.05 from 1.26 snaps to next 0.05 mark (1.30)
++    onNodeWithContentDescription("Increase speed by 0.05x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.30f)
++
++    onNodeWithContentDescription("Decrease speed by 0.01x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.29f)
++
++    onNodeWithContentDescription("Decrease speed by 0.05x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.25f)
++
++    assertThat(speedChanges).containsExactly(1.26f, 1.30f, 1.29f, 1.25f)
++
++    currentSpeed = 1.23f
++    repeat(2) { mainClock.advanceTimeByFrame() }
++    onNodeWithContentDescription("Increase speed by 0.05x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.25f)
++  }
++
++  @Test
++  fun `concept B alternate view toggles between 0_05x and 0_01x and respects min max bounds`() = runComposeUiTest {
++    mainClock.autoAdvance = false
++    val speedChanges = mutableListOf<Float>()
++    var currentSpeed by mutableStateOf(1.25f)
++    var fineStep by mutableStateOf(false)
++
++    setContent {
++      CampfireTheme {
++        PlaybackSpeedSheet(
++          currentSpeed = currentSpeed,
++          speedOptions = listOf(1f, 1.25f, 1.5f),
++          perBookSpeedEnabled = false,
++          useAlternateStepperView = true,
++          fineStepEnabled = fineStep,
++          onFineStepEnabledChange = { fineStep = it },
 +          onSpeedChange = {
 +            currentSpeed = it
 +            speedChanges += it
@@ -21880,11 +22794,23 @@ index 00000000..d29c3128
 +    mainClock.advanceTimeByFrame()
 +    assertThat(currentSpeed).isEqualTo(1.30f)
 +
++    // Switch step pill to 0.01x
++    onNodeWithText("0.01x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(fineStep).isEqualTo(true)
++
++    onNodeWithContentDescription("Decrease speed by 0.01x").performClick()
++    mainClock.advanceTimeByFrame()
++    assertThat(currentSpeed).isEqualTo(1.29f)
++
++    // Switch back to 0.05x and verify directional snap
++    onNodeWithText("0.05x").performClick()
++    mainClock.advanceTimeByFrame()
 +    onNodeWithContentDescription("Decrease speed by 0.05x").performClick()
 +    mainClock.advanceTimeByFrame()
 +    assertThat(currentSpeed).isEqualTo(1.25f)
 +
-+    assertThat(speedChanges).containsExactly(1.30f, 1.25f)
++    assertThat(speedChanges).containsExactly(1.30f, 1.29f, 1.25f)
 +
 +    currentSpeed = PlaybackSpeedRange.start
 +    repeat(2) { mainClock.advanceTimeByFrame() }
@@ -22038,7 +22964,7 @@ index 7b142288..ad68782c 100644
 +  fun observeHomeShelfOrder(): StateFlow<List<String>>
  }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
-index e2314f46..de0e54a7 100644
+index e2314f46..0ae7eb83 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
 +++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt
 @@ -55,6 +55,60 @@ interface PlaybackSettings {
@@ -22102,6 +23028,32 @@ index e2314f46..de0e54a7 100644
    /**
     * When true, remote control next/previous buttons skip to next/previous chapter.
     * When false, they seek forward/backward by the configured time.
+@@ -150,6 +204,25 @@ interface PlaybackSettings {
+    */
+   var scrollingTitles: Boolean
+   fun observeScrollingTitles(): StateFlow<Boolean>
++
++  /**
++   * When true, the playback speed sheet shows classic round -/+ buttons with a persisted step toggle
++   * instead of the connected dual-stage capsules.
++   */
++  var speedStepperAlternateView: Boolean
++  fun observeSpeedStepperAlternateView(): StateFlow<Boolean>
++
++  /**
++   * In the playback speed alternate stepper view, when true -/+ adjusts by 0.01x; when false by 0.05x.
++   */
++  var speedStepperFineStep: Boolean
++  fun observeSpeedStepperFineStep(): StateFlow<Boolean>
++
++  /**
++   * When true, the bookmark editor uses the compact 2-row controls layout without ±30s skip buttons.
++   */
++  var bookmarkEditorAlternateView: Boolean
++  fun observeBookmarkEditorAlternateView(): StateFlow<Boolean>
+ }
+ 
+ /** The configurable bounds for the metered/unmetered listening-sync intervals. */
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/RemoteControlAction.kt
 new file mode 100644
 index 00000000..9f4c66bb
@@ -22141,15 +23093,21 @@ index 00000000..9f4c66bb
 +  }
 +}
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
-index ea37e0e1..22c0fcce 100644
+index ea37e0e1..4f416108 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
 +++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt
-@@ -46,6 +46,26 @@ interface SleepSettings {
+@@ -46,6 +46,32 @@ interface SleepSettings {
    var fadeOutDuration: Duration
    fun observeFadeOutDuration(): StateFlow<Duration>
  
 +  var resetTimerOnPause: Boolean
 +  fun observeResetTimerOnPause(): StateFlow<Boolean>
++
++  var sleepTimerStepperAlternateView: Boolean
++  fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean>
++
++  var sleepTimerFineStep: Boolean
++  fun observeSleepTimerFineStep(): StateFlow<Boolean>
 +
 +  var activeSleepTimer: PersistedSleepTimer?
 +  fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?>
@@ -22334,7 +23292,7 @@ index 9644f55e..ad0c1b17 100644
 +  KEY_DOWNLOADS_SORT_ASCENDING,
  )
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
-index 5a8d65ae..2ff5c6ce 100644
+index 5a8d65ae..7731f337 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
 +++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt
 @@ -9,6 +9,7 @@ import app.campfire.core.model.LibraryItemId
@@ -22452,7 +23410,38 @@ index 5a8d65ae..2ff5c6ce 100644
  
    private val syncEnabledProperty = booleanSetting(PREF_SYNC, DEFAULT_AUTO_SYNC)
    override var syncEnabled: Boolean by syncEnabledProperty
-@@ -220,6 +310,15 @@ internal const val ITEM_SPEED_VALUE_SEPARATOR = "|"
+@@ -186,6 +276,30 @@ class PlaybackSettingsImpl(
+   override fun observeScrollingTitles(): StateFlow<Boolean> =
+     scrollingTitlesProperty.observe()
+ 
++  private val speedStepperAlternateViewProperty = booleanSetting(
++    PREF_SPEED_STEPPER_ALTERNATE_VIEW,
++    false,
++  )
++  override var speedStepperAlternateView: Boolean by speedStepperAlternateViewProperty
++  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> =
++    speedStepperAlternateViewProperty.observe()
++
++  private val speedStepperFineStepProperty = booleanSetting(
++    PREF_SPEED_STEPPER_FINE_STEP,
++    false,
++  )
++  override var speedStepperFineStep: Boolean by speedStepperFineStepProperty
++  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> =
++    speedStepperFineStepProperty.observe()
++
++  private val bookmarkEditorAlternateViewProperty = booleanSetting(
++    PREF_BOOKMARK_EDITOR_ALTERNATE_VIEW,
++    false,
++  )
++  override var bookmarkEditorAlternateView: Boolean by bookmarkEditorAlternateViewProperty
++  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> =
++    bookmarkEditorAlternateViewProperty.observe()
++
+   private fun String.asFloatList(): List<Float> = split(PLAYBACK_RATES_SEPARATOR).mapNotNull { it.toFloatOrNull() }
+ 
+   private fun String.asItemSpeedMap(): Map<LibraryItemId, Float> {
+@@ -220,6 +334,15 @@ internal const val ITEM_SPEED_VALUE_SEPARATOR = "|"
  internal const val PREF_SYNC = "pref_synchronization"
  internal const val PREF_AUTO_SYNC = "pref_auto_sync"
  internal const val PREF_REMOTE_NEXT_PREV_SKIPS_CHAPTERS = "pref_playback_remote_next_prev_skips_chapters"
@@ -22468,8 +23457,18 @@ index 5a8d65ae..2ff5c6ce 100644
  internal const val PREF_PLAYBACK_HISTORY = "pref_playback_history_enabled"
  internal const val PREF_SYNC_INTERVAL_UNMETERED = "pref_sync_interval_unmetered"
  internal const val PREF_SYNC_INTERVAL_METERED = "pref_sync_interval_metered"
+@@ -234,6 +357,9 @@ internal const val PREF_AUTO_REWIND_ON_RESUME = "pref_playback_auto_rewind_on_re
+ internal const val PREF_BOOK_TIME_UI = "pref_book_time_playback_ui"
+ internal const val PREF_WAVY_SLIDER = "pref_wavy_playback_slider"
+ internal const val PREF_SCROLLING_TITLES = "pref_scrolling_titles"
++internal const val PREF_SPEED_STEPPER_ALTERNATE_VIEW = "pref_speed_stepper_alternate_view"
++internal const val PREF_SPEED_STEPPER_FINE_STEP = "pref_speed_stepper_fine_step"
++internal const val PREF_BOOKMARK_EDITOR_ALTERNATE_VIEW = "pref_bookmark_editor_alternate_view"
+ 
+ internal const val PLAYBACK_RATES_SEPARATOR = "::"
+ 
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
-index 2c64f754..babeea24 100644
+index 2c64f754..e624292c 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
 +++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt
 @@ -7,6 +7,7 @@ import app.campfire.core.di.AppScope
@@ -22507,7 +23506,7 @@ index 2c64f754..babeea24 100644
    override fun observeAutoSleepTimerEnabled(): StateFlow<Boolean> = autoSleepTimerEnabledProperty.observe()
  
    // 10:00 PM
-@@ -102,6 +113,27 @@ class SleepSettingsImpl(
+@@ -102,6 +113,43 @@ class SleepSettingsImpl(
    private val fadeOutDurationProperty = durationSetting(KEY_FADE_OUT_DURATION, SleepSettings.DefaultFadeOutDuration)
    override var fadeOutDuration: Duration by fadeOutDurationProperty
    override fun observeFadeOutDuration(): StateFlow<Duration> = fadeOutDurationProperty.observe()
@@ -22515,6 +23514,22 @@ index 2c64f754..babeea24 100644
 +  private val resetTimerOnPauseProperty = booleanSetting(KEY_RESET_TIMER_ON_PAUSE, false)
 +  override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
 +  override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
++
++  private val sleepTimerStepperAlternateViewProperty = booleanSetting(
++    KEY_SLEEP_TIMER_STEPPER_ALTERNATE_VIEW,
++    false,
++  )
++  override var sleepTimerStepperAlternateView: Boolean by sleepTimerStepperAlternateViewProperty
++  override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> =
++    sleepTimerStepperAlternateViewProperty.observe()
++
++  private val sleepTimerFineStepProperty = booleanSetting(
++    KEY_SLEEP_TIMER_FINE_STEP,
++    false,
++  )
++  override var sleepTimerFineStep: Boolean by sleepTimerFineStepProperty
++  override fun observeSleepTimerFineStep(): StateFlow<Boolean> =
++    sleepTimerFineStepProperty.observe()
 +
 +  private val activeSleepTimerProperty = stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)
 +  private var activeSleepTimerRaw: String? by activeSleepTimerProperty
@@ -22535,13 +23550,15 @@ index 2c64f754..babeea24 100644
  }
  
  private const val KEY_LAST_SET_SLEEP_TIMER = "pref_last_set_sleep_timer"
-@@ -114,6 +146,25 @@ private const val KEY_AUTO_SLEEP_TIMER = "pref_auto_sleep_timer"
+@@ -114,6 +162,27 @@ private const val KEY_AUTO_SLEEP_TIMER = "pref_auto_sleep_timer"
  private const val KEY_AUTO_REWIND_ENABLED = "pref_auto_rewind_enabled"
  private const val KEY_AUTO_REWIND_AMOUNT = "pref_auto_rewind_amount"
  private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 +private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
 +private const val KEY_ACTIVE_SLEEP_TIMER = "pref_active_sleep_timer"
 +private const val KEY_DISMISSED_AUTO_SLEEP_WINDOW = "pref_dismissed_auto_sleep_window"
++private const val KEY_SLEEP_TIMER_STEPPER_ALTERNATE_VIEW = "pref_sleep_timer_stepper_alternate_view"
++private const val KEY_SLEEP_TIMER_FINE_STEP = "pref_sleep_timer_fine_step"
 +
 +private const val ACTIVE_TIMER_SEPARATOR = "|"
 +
@@ -22595,7 +23612,7 @@ index 5d562767..fcb8d9c2 100644
    fun `corrupt profile strings fall back to the default`() {
      val backing = MapSettings()
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
-index 4b097111..70e2beb7 100644
+index 4b097111..74e172c4 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
 +++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt
 @@ -6,6 +6,7 @@ package app.campfire.settings.test
@@ -22690,8 +23707,37 @@ index 4b097111..70e2beb7 100644
    override fun observeRemoteNextPrevSkipsChapters(): StateFlow<Boolean> = _remoteNextPrevSkipsChapters.asStateFlow()
  
    private val _syncEnabled = MutableStateFlow(true)
+@@ -143,4 +214,28 @@ class FakePlaybackSettings : PlaybackSettings {
+ 
+   override fun observeScrollingTitles(): StateFlow<Boolean> =
+     _scrollingTitles.asStateFlow()
++
++  private val _speedStepperAlternateView = MutableStateFlow(false)
++  override var speedStepperAlternateView: Boolean
++    get() = _speedStepperAlternateView.value
++    set(value) { _speedStepperAlternateView.value = value }
++
++  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> =
++    _speedStepperAlternateView.asStateFlow()
++
++  private val _speedStepperFineStep = MutableStateFlow(false)
++  override var speedStepperFineStep: Boolean
++    get() = _speedStepperFineStep.value
++    set(value) { _speedStepperFineStep.value = value }
++
++  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> =
++    _speedStepperFineStep.asStateFlow()
++
++  private val _bookmarkEditorAlternateView = MutableStateFlow(false)
++  override var bookmarkEditorAlternateView: Boolean
++    get() = _bookmarkEditorAlternateView.value
++    set(value) { _bookmarkEditorAlternateView.value = value }
++
++  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> =
++    _bookmarkEditorAlternateView.asStateFlow()
+ }
 diff --git a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
-index bf6d70dc..a1e5b0d9 100644
+index bf6d70dc..538a0d86 100644
 --- a/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
 +++ b/features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt
 @@ -5,6 +5,7 @@ package app.campfire.settings.test
@@ -22716,7 +23762,7 @@ index bf6d70dc..a1e5b0d9 100644
    override fun observeAutoSleepTimerEnabled(): StateFlow<Boolean> = _autoSleepTimerEnabled.asStateFlow()
  
    private val _autoSleepStart = MutableStateFlow(LocalTime(22, 0))
-@@ -77,4 +83,18 @@ class FakeSleepSettings : SleepSettings {
+@@ -77,4 +83,32 @@ class FakeSleepSettings : SleepSettings {
      get() = _fadeOutDuration.value
      set(value) { _fadeOutDuration.value = value }
    override fun observeFadeOutDuration(): StateFlow<Duration> = _fadeOutDuration.asStateFlow()
@@ -22726,6 +23772,20 @@ index bf6d70dc..a1e5b0d9 100644
 +    get() = _resetTimerOnPause.value
 +    set(value) { _resetTimerOnPause.value = value }
 +  override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
++
++  private val _sleepTimerStepperAlternateView = MutableStateFlow(false)
++  override var sleepTimerStepperAlternateView: Boolean
++    get() = _sleepTimerStepperAlternateView.value
++    set(value) { _sleepTimerStepperAlternateView.value = value }
++  override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> =
++    _sleepTimerStepperAlternateView.asStateFlow()
++
++  private val _sleepTimerFineStep = MutableStateFlow(false)
++  override var sleepTimerFineStep: Boolean
++    get() = _sleepTimerFineStep.value
++    set(value) { _sleepTimerFineStep.value = value }
++  override fun observeSleepTimerFineStep(): StateFlow<Boolean> =
++    _sleepTimerFineStep.asStateFlow()
 +
 +  private val _activeSleepTimer = MutableStateFlow<PersistedSleepTimer?>(null)
 +  override var activeSleepTimer: PersistedSleepTimer?
@@ -22852,10 +23912,21 @@ index 012f349d..f3f67e42 100644
 +  }
  }
 diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
-index 6eba5bd2..c6588e28 100644
+index 6eba5bd2..c72ae08c 100644
 --- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 +++ b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
-@@ -78,6 +78,10 @@
+@@ -74,10 +74,21 @@
+   <string name="header_item_cards">Item cards</string>
+   <string name="setting_item_card_marquee_title">Marquee scrolling</string>
+   <string name="setting_item_card_marquee_subtitle">Allow long title / author text on item cards to scroll while on screen</string>
++  <string name="header_player_controls_appearance">Player controls</string>
++  <string name="setting_speed_stepper_alternate_title">Playback speed alternate view</string>
++  <string name="setting_speed_stepper_alternate_subtitle">Use classic − / + buttons with a 0.05x / 0.01x step toggle instead of dual-stage capsules</string>
++  <string name="setting_sleep_timer_stepper_alternate_title">Sleep timer alternate view</string>
++  <string name="setting_sleep_timer_stepper_alternate_subtitle">Use classic − / + buttons with a 5m / 1m step toggle instead of dual-stage capsules</string>
++  <string name="setting_bookmark_editor_alternate_title">Bookmark editor alternate view</string>
++  <string name="setting_bookmark_editor_alternate_subtitle">Use the compact 2-row bookmark controls without ±30s skip buttons</string>
+ 
    <!-- Downloads setting strings-->
    <string name="setting_show_download_confirmation_title">Show download confirmation dialog</string>
    <string name="setting_show_download_confirmation_description">Show a dialog to confirm each item download for offline listening</string>
@@ -22866,7 +23937,7 @@ index 6eba5bd2..c6588e28 100644
    <string name="setting_download_on_wifi_only_title">Download on Wi-Fi only</string>
    <string name="setting_download_on_wifi_only_description">Downloads wait for Wi-Fi and pause if you switch to mobile data.</string>
    <string name="download_header_downloads">Downloads</string>
-@@ -95,8 +99,8 @@
+@@ -95,8 +106,8 @@
    <string name="setting_playback_mp3seeking_subtitle">Improve the accuracy of seeking in variable bitrate MP3s</string>
    <string name="setting_playback_track_reset_title">Track reset threshold</string>
    <string name="setting_playback_track_reset_subtitle">How far into a track that skip previous will just restart it</string>
@@ -22877,7 +23948,7 @@ index 6eba5bd2..c6588e28 100644
    <string name="header_playback_speed_options">Playback speed</string>
    <string name="setting_playback_speed_options_description">Customize the quick speed options offered in the playback speed selector.</string>
    <string name="setting_playback_speed_option_edit">Enter custom speed</string>
-@@ -147,6 +151,8 @@
+@@ -147,6 +158,8 @@
    <string name="header_shake_to_reset">Reset</string>
    <string name="setting_playback_sleep_shake_to_reset_title">Shake-to-reset</string>
    <string name="setting_playback_sleep_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
@@ -22887,7 +23958,7 @@ index 6eba5bd2..c6588e28 100644
    <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
    <string name="shake_sensitivity_very_low">Very low</string>
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-index 5c4d5e98..1063b184 100644
+index 5c4d5e98..524a17e8 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 @@ -35,6 +35,7 @@ import app.campfire.core.model.Server
@@ -22939,17 +24010,26 @@ index 5c4d5e98..1063b184 100644
  ) : NonPausablePresenter<SettingsUiState> {
  
    @Composable
-@@ -170,6 +177,9 @@ class SettingsPresenter(
+@@ -170,6 +177,18 @@ class SettingsPresenter(
      val itemCardMarqueeEnabled by remember {
        libraryViewSettings.observeLibraryItemMarqueeEnabled()
      }.collectAsState()
 +    val continueSeriesAlternateView by remember {
 +      libraryViewSettings.observeContinueSeriesAlternateView()
 +    }.collectAsState()
++    val speedStepperAlternateView by remember {
++      playbackSettings.observeSpeedStepperAlternateView()
++    }.collectAsState()
++    val sleepTimerStepperAlternateView by remember {
++      sleepSettings.observeSleepTimerStepperAlternateView()
++    }.collectAsState()
++    val bookmarkEditorAlternateView by remember {
++      playbackSettings.observeBookmarkEditorAlternateView()
++    }.collectAsState()
  
      // Playback Settings
      val playbackRates by remember { playbackSettings.observePlaybackRates() }.collectAsState()
-@@ -196,9 +206,42 @@ class SettingsPresenter(
+@@ -196,9 +215,42 @@ class SettingsPresenter(
      val playbackWavyScrubber by remember { playbackSettings.observePlaybackWavyScrubber() }.collectAsState()
      val scrollingTitles by remember { playbackSettings.observeScrollingTitles() }.collectAsState()
  
@@ -22992,7 +24072,7 @@ index 5c4d5e98..1063b184 100644
  
      val downloads by remember {
        offlineDownloadManager.observeAll()
-@@ -243,6 +286,7 @@ class SettingsPresenter(
+@@ -243,6 +295,7 @@ class SettingsPresenter(
      val autoSleepRewindEnabled by remember { sleepSettings.observeAutoRewindEnabled() }.collectAsState()
      val autoSleepRewindAmount by remember { sleepSettings.observeAutoRewindAmount() }.collectAsState()
      val fadeOutDuration by remember { sleepSettings.observeFadeOutDuration() }.collectAsState()
@@ -23000,7 +24080,7 @@ index 5c4d5e98..1063b184 100644
  
      // Account Settings
      val keepSignedInAfterReinstall by remember { privacySettings.observeKeepSignedInAfterReinstall() }
-@@ -268,6 +312,8 @@ class SettingsPresenter(
+@@ -268,6 +321,8 @@ class SettingsPresenter(
      val localNetworkMissing by remember { localNetworkPermission.observePermissionMissing() }
        .collectAsState(false)
      var localNetworkDenied by remember { mutableStateOf(false) }
@@ -23009,11 +24089,14 @@ index 5c4d5e98..1063b184 100644
      val appUpdateSignInDismissed by remember { appStateSettings.observeAppUpdateSignInDismissed() }
        .collectAsState()
      var appUpdateInvalidator by remember { mutableIntStateOf(0) }
-@@ -307,9 +353,12 @@ class SettingsPresenter(
+@@ -307,9 +362,15 @@ class SettingsPresenter(
          dynamicItemDetailTheming = dynamicItemDetailTheming,
          dynamicPlaybackTheming = dynamicPlaybackTheming,
          itemCardMarqueeEnabled = itemCardMarqueeEnabled,
 +        continueSeriesAlternateView = continueSeriesAlternateView,
++        speedStepperAlternateView = speedStepperAlternateView,
++        sleepTimerStepperAlternateView = sleepTimerStepperAlternateView,
++        bookmarkEditorAlternateView = bookmarkEditorAlternateView,
        ),
        downloadsSettings = DownloadsSettingsInfo(
          showDownloadConfirmation = showDownloadConfirmation,
@@ -23022,7 +24105,7 @@ index 5c4d5e98..1063b184 100644
          isWifiOnlyAvailable = currentPlatform == Platform.ANDROID,
          downloadOnWifiOnly = downloadOnWifiOnly,
          downloads = downloadEntries,
-@@ -335,11 +384,25 @@ class SettingsPresenter(
+@@ -335,11 +396,25 @@ class SettingsPresenter(
          bookTimeInPlaybackUi = bookTimeInPlaybackUi,
          playbackWavyScrubber = playbackWavyScrubber,
          scrollingTitles = scrollingTitles,
@@ -23048,11 +24131,17 @@ index 5c4d5e98..1063b184 100644
          autoSleepSetting = if (autoSleepTimerEnabled) {
            SleepSettingsInfo.AutoSleepSetting(
              start = autoSleepTimerStart,
-@@ -447,11 +510,14 @@ class SettingsPresenter(
+@@ -447,11 +522,20 @@ class SettingsPresenter(
            is DynamicItemDetailTheming -> themeSettings.dynamicallyThemeItemDetail = event.enabled
            is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
            is ItemCardMarqueeEnabled -> libraryViewSettings.libraryItemMarqueeEnabled = event.enabled
 +          is ContinueSeriesAlternateView -> libraryViewSettings.continueSeriesAlternateView = event.enabled
++          is SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView ->
++            playbackSettings.speedStepperAlternateView = event.enabled
++          is SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView ->
++            sleepSettings.sleepTimerStepperAlternateView = event.enabled
++          is SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView ->
++            playbackSettings.bookmarkEditorAlternateView = event.enabled
            SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> navigator.goTo(ThemePickerScreen)
          }
  
@@ -23063,7 +24152,7 @@ index 5c4d5e98..1063b184 100644
            is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
              mobileDataSettings.downloadOnWifiOnly = event.enabled
            }
-@@ -470,6 +536,27 @@ class SettingsPresenter(
+@@ -470,6 +554,27 @@ class SettingsPresenter(
            }
          }
  
@@ -23091,7 +24180,7 @@ index 5c4d5e98..1063b184 100644
          is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
            is PlaybackRateChanged -> {
              val rates = playbackSettings.playbackRates.toMutableList()
-@@ -511,6 +598,8 @@ class SettingsPresenter(
+@@ -511,6 +616,8 @@ class SettingsPresenter(
            is BookTimeInPlaybackUi -> playbackSettings.bookTimeInPlaybackUi = event.enabled
            is PlaybackWavyScrubber -> playbackSettings.playbackWavyScrubber = event.enabled
            is ScrollingTitles -> playbackSettings.scrollingTitles = event.enabled
@@ -23100,7 +24189,7 @@ index 5c4d5e98..1063b184 100644
          }
  
          is SettingsUiEvent.SleepSettingEvent -> when (event) {
-@@ -527,6 +616,7 @@ class SettingsPresenter(
+@@ -527,6 +634,7 @@ class SettingsPresenter(
            is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
            is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
            is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
@@ -23173,7 +24262,7 @@ index cb636714..99ec6444 100644
        state = state,
        onBackClick = onBackClick,
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-index b1842dbf..25d99a1d 100644
+index b1842dbf..33515b79 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 @@ -22,6 +22,7 @@ import app.campfire.settings.api.ResumeRewindTier
@@ -23192,11 +24281,14 @@ index b1842dbf..25d99a1d 100644
    val sleepSettings: SleepSettingsInfo,
    val androidAutoSettings: AndroidAutoSettingsInfo,
    val aboutSettings: AboutSettingsInfo,
-@@ -79,11 +81,14 @@ data class AppearanceSettingsInfo(
+@@ -79,11 +81,17 @@ data class AppearanceSettingsInfo(
    val dynamicItemDetailTheming: Boolean,
    val dynamicPlaybackTheming: Boolean,
    val itemCardMarqueeEnabled: Boolean,
 +  val continueSeriesAlternateView: Boolean,
++  val speedStepperAlternateView: Boolean = false,
++  val sleepTimerStepperAlternateView: Boolean = false,
++  val bookmarkEditorAlternateView: Boolean = false,
  )
  
  @Immutable
@@ -23207,7 +24299,7 @@ index b1842dbf..25d99a1d 100644
    /** Only where downloads can wait for Wi-Fi (Android); desktop never reports mobile data. */
    val isWifiOnlyAvailable: Boolean,
    val downloadOnWifiOnly: Boolean,
-@@ -130,6 +135,21 @@ data class PlaybackSettingsInfo(
+@@ -130,6 +138,21 @@ data class PlaybackSettingsInfo(
    val bookTimeInPlaybackUi: Boolean,
    val playbackWavyScrubber: Boolean,
    val scrollingTitles: Boolean,
@@ -23229,7 +24321,7 @@ index b1842dbf..25d99a1d 100644
  )
  
  @Immutable
-@@ -137,6 +157,7 @@ data class SleepSettingsInfo(
+@@ -137,6 +160,7 @@ data class SleepSettingsInfo(
    val shakeToReset: Boolean,
    val shakeSensitivity: ShakeSensitivity,
    val fadeOutDuration: Duration,
@@ -23237,7 +24329,7 @@ index b1842dbf..25d99a1d 100644
    val autoSleepSetting: AutoSleepSetting? = null,
  ) {
  
-@@ -195,6 +216,7 @@ enum class SettingsPane {
+@@ -195,6 +219,7 @@ enum class SettingsPane {
    Appearance,
    Downloads,
    Playback,
@@ -23245,7 +24337,7 @@ index b1842dbf..25d99a1d 100644
    Sleep,
    AndroidAuto,
    About,
-@@ -207,6 +229,7 @@ enum class SettingsPane {
+@@ -207,6 +232,7 @@ enum class SettingsPane {
      Appearance -> SettingsScreen.Page.Appearance
      Downloads -> SettingsScreen.Page.Downloads
      Playback -> SettingsScreen.Page.Playback
@@ -23253,11 +24345,14 @@ index b1842dbf..25d99a1d 100644
      Sleep -> SettingsScreen.Page.Sleep
      AndroidAuto -> SettingsScreen.Page.AndroidAuto
      About -> SettingsScreen.Page.About
-@@ -243,12 +266,15 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -243,12 +269,18 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class DynamicItemDetailTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class DynamicPlaybackTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class ItemCardMarqueeEnabled(val enabled: Boolean) : AppearanceSettingEvent
 +    data class ContinueSeriesAlternateView(val enabled: Boolean) : AppearanceSettingEvent
++    data class SpeedStepperAlternateView(val enabled: Boolean) : AppearanceSettingEvent
++    data class SleepTimerStepperAlternateView(val enabled: Boolean) : AppearanceSettingEvent
++    data class BookmarkEditorAlternateView(val enabled: Boolean) : AppearanceSettingEvent
      data object OpenThemeBuilder : AppearanceSettingEvent
    }
  
@@ -23269,7 +24364,7 @@ index b1842dbf..25d99a1d 100644
      data class DownloadOnWifiOnly(val enabled: Boolean) : DownloadsSettingEvent
      data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
      data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
-@@ -278,6 +304,21 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -278,6 +310,21 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
      data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
      data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
@@ -23291,7 +24386,7 @@ index b1842dbf..25d99a1d 100644
    }
  
    // Sleep Setting Events
-@@ -291,6 +332,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -291,6 +338,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
      data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
      data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
@@ -23300,14 +24395,21 @@ index b1842dbf..25d99a1d 100644
  
    sealed interface AboutSettingEvent : SettingsUiEvent {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
-index d871b2e3..c052908e 100644
+index d871b2e3..ef70d189 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
-@@ -88,11 +88,14 @@ class SettingsAnalyticUiEventHandler(
+@@ -88,11 +88,21 @@ class SettingsAnalyticUiEventHandler(
        is DynamicItemDetailTheming -> send("dynamic_item_detail_theme", Updated, event.enabled.toString())
        is DynamicPlaybackTheming -> send("dynamic_playback_theme", Updated, event.enabled.toString())
        is ItemCardMarqueeEnabled -> send("item_card_marquee", Updated, event.enabled.toString())
-+      is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView -> send("continue_series_alternate_view", Updated, event.enabled.toString())
++      is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView ->
++        send("continue_series_alternate_view", Updated, event.enabled.toString())
++      is SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView ->
++        send("speed_stepper_alternate_view", Updated, event.enabled.toString())
++      is SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView ->
++        send("sleep_timer_stepper_alternate_view", Updated, event.enabled.toString())
++      is SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView ->
++        send("bookmark_editor_alternate_view", Updated, event.enabled.toString())
        SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> send("edit_theme", Click)
      }
  
@@ -23318,7 +24420,7 @@ index d871b2e3..c052908e 100644
        is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
          send("download_on_wifi_only", Updated, event.enabled.toString())
        }
-@@ -135,6 +138,29 @@ class SettingsAnalyticUiEventHandler(
+@@ -135,6 +145,29 @@ class SettingsAnalyticUiEventHandler(
          send("wavy_playback_slider", Updated, event.enabled)
        is SettingsUiEvent.PlaybackSettingEvent.ScrollingTitles ->
          send("scrolling_titles", Updated, event.enabled)
@@ -23348,7 +24450,7 @@ index d871b2e3..c052908e 100644
      }
  
      is SettingsUiEvent.SleepSettingEvent -> when (event) {
-@@ -151,6 +177,7 @@ class SettingsAnalyticUiEventHandler(
+@@ -151,6 +184,7 @@ class SettingsAnalyticUiEventHandler(
        is AutoSleepRewindEnabled -> send("auto_sleep_rewind", Updated, event.enabled)
        is AutoSleepRewindAmount -> send("auto_sleep_rewind_amount", Updated, event.amount.inWholeMilliseconds)
        is FadeOutDuration -> send("sleep_fade_out_duration", Updated, event.duration.inWholeMilliseconds)
@@ -23357,10 +24459,31 @@ index d871b2e3..c052908e 100644
  
      is SettingsUiEvent.AboutSettingEvent -> when (event) {
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
-index b5b7e1bd..48b7f40c 100644
+index b5b7e1bd..ebdfc453 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
-@@ -90,5 +90,12 @@ internal fun AppearancePane(
+@@ -19,13 +19,20 @@ import campfire.features.settings.ui.generated.resources.Res
+ import campfire.features.settings.ui.generated.resources.header_appearance_dynamic
+ import campfire.features.settings.ui.generated.resources.header_appearance_overall
+ import campfire.features.settings.ui.generated.resources.header_item_cards
++import campfire.features.settings.ui.generated.resources.header_player_controls_appearance
+ import campfire.features.settings.ui.generated.resources.setting_appearance_title
++import campfire.features.settings.ui.generated.resources.setting_bookmark_editor_alternate_subtitle
++import campfire.features.settings.ui.generated.resources.setting_bookmark_editor_alternate_title
+ import campfire.features.settings.ui.generated.resources.setting_dynamic_item_detail_description
+ import campfire.features.settings.ui.generated.resources.setting_dynamic_item_detail_title
+ import campfire.features.settings.ui.generated.resources.setting_dynamic_playback_description
+ import campfire.features.settings.ui.generated.resources.setting_dynamic_playback_title
+ import campfire.features.settings.ui.generated.resources.setting_item_card_marquee_subtitle
+ import campfire.features.settings.ui.generated.resources.setting_item_card_marquee_title
++import campfire.features.settings.ui.generated.resources.setting_sleep_timer_stepper_alternate_subtitle
++import campfire.features.settings.ui.generated.resources.setting_sleep_timer_stepper_alternate_title
++import campfire.features.settings.ui.generated.resources.setting_speed_stepper_alternate_subtitle
++import campfire.features.settings.ui.generated.resources.setting_speed_stepper_alternate_title
+ import org.jetbrains.compose.resources.stringResource
+ 
+ @Composable
+@@ -90,5 +97,37 @@ internal fun AppearancePane(
        headlineContent = { Text(stringResource(Res.string.setting_item_card_marquee_title)) },
        supportingContent = { Text(stringResource(Res.string.setting_item_card_marquee_subtitle)) },
      )
@@ -23370,6 +24493,31 @@ index b5b7e1bd..48b7f40c 100644
 +      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView(it)) },
 +      headlineContent = { Text("Continue Series & Downloads Alternate View") },
 +      supportingContent = { Text("Use an alternate grid view for the Continue Series and Downloads screens") },
++    )
++
++    Header(
++      title = { Text(stringResource(Res.string.header_player_controls_appearance)) },
++    )
++
++    SwitchSetting(
++      value = state.appearanceSettings.speedStepperAlternateView,
++      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_speed_stepper_alternate_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_speed_stepper_alternate_subtitle)) },
++    )
++
++    SwitchSetting(
++      value = state.appearanceSettings.sleepTimerStepperAlternateView,
++      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_sleep_timer_stepper_alternate_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_sleep_timer_stepper_alternate_subtitle)) },
++    )
++
++    SwitchSetting(
++      value = state.appearanceSettings.bookmarkEditorAlternateView,
++      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView(it)) },
++      headlineContent = { Text(stringResource(Res.string.setting_bookmark_editor_alternate_title)) },
++      supportingContent = { Text(stringResource(Res.string.setting_bookmark_editor_alternate_subtitle)) },
 +    )
    }
  }
@@ -25998,10 +27146,20 @@ index 270a7c16..325e3566 100644
 -private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
 +private val SEMVER_REGEX = """^v?(\d+)\.(\d+)\.(\d+)(?:-(rc|test)(\d+))?$""".toRegex(RegexOption.IGNORE_CASE)
 diff --git a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
-index ebbfd5fb..a491e749 100644
+index ebbfd5fb..1b007632 100644
 --- a/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
 +++ b/infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt
-@@ -102,6 +102,7 @@ interface AudioPlayer {
+@@ -92,6 +92,9 @@ interface AudioPlayer {
+   fun seekTo(itemIndex: Int)
+   fun seekTo(progress: Float)
+   fun seekTo(timestamp: Duration)
++  fun seekTo(timestamp: Duration, play: Boolean) {
++    seekTo(timestamp)
++  }
+ 
+   fun skipToNext()
+   fun skipToPrevious()
+@@ -102,6 +105,7 @@ interface AudioPlayer {
    fun setPlaybackSpeed(speed: Float)
    fun setEqualizer(profile: EqualizerProfile)
    fun setTimer(timer: PlaybackTimer)
@@ -26235,7 +27393,7 @@ index 7647cac8..68aa096c 100644
      session?.run {
        player.stop()
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
-index 3d75ff1a..48c3716c 100644
+index 3d75ff1a..00bb9358 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt
 @@ -10,6 +10,7 @@ import androidx.media3.common.C
@@ -26409,7 +27567,37 @@ index 3d75ff1a..48c3716c 100644
      preparedSession = null
      chapterTimeline = null
      lastBoundaryCheckTime = null
-@@ -650,7 +679,9 @@ class ExoPlayerAudioPlayer(
+@@ -573,21 +602,25 @@ class ExoPlayerAudioPlayer(
+     seekTo(timestamp, play = true)
+   }
+ 
+-  private fun seekTo(timestamp: Duration, play: Boolean) {
++  override fun seekTo(timestamp: Duration, play: Boolean) {
+     if (queueShape != QueueShape.CHAPTERS) {
+       coarseSeekTo(timestamp, play)
+       return
+     }
+-    val timestampInMillis = timestamp.inWholeMilliseconds
++    val timestampInMillis = timestamp.inWholeMilliseconds.coerceAtLeast(0L)
+     var mediaItemOffsetMs = 0L
++    val lastIndex = player.mediaItemCount - 1
+ 
+     for (index in 0 until player.mediaItemCount) {
+       val mediaItem = player.getMediaItemAt(index)
+       val mediaItemDuration = mediaItem.mediaMetadata.durationMs ?: error("Media Metadata Corrupted")
+       val mediaItemEnd = mediaItemOffsetMs + mediaItemDuration
+-      if (timestampInMillis in mediaItemOffsetMs until mediaItemEnd) {
+-        val progressInMediaItem = timestampInMillis - mediaItemOffsetMs
++      if (timestampInMillis in mediaItemOffsetMs until mediaItemEnd || index == lastIndex) {
++        val progressInMediaItem = (timestampInMillis - mediaItemOffsetMs).coerceIn(0L, mediaItemDuration)
+         player.seekTo(index, progressInMediaItem)
++        currentTime.value = progressInMediaItem.milliseconds
++        overallTime.value = (mediaItemOffsetMs + progressInMediaItem).milliseconds
++        lastBoundaryCheckTime = overallTime.value
+         if (play) {
+           player.play()
+         }
+@@ -650,7 +683,9 @@ class ExoPlayerAudioPlayer(
    override fun setPlaybackSpeed(speed: Float) {
      playbackSpeed.value = speed
      settings.setPlaybackSpeedFor(preparedSession?.libraryItem?.id, speed)
@@ -26420,7 +27608,7 @@ index 3d75ff1a..48c3716c 100644
    }
  
    override fun setEqualizer(profile: EqualizerProfile) {
-@@ -669,6 +700,8 @@ class ExoPlayerAudioPlayer(
+@@ -669,6 +704,8 @@ class ExoPlayerAudioPlayer(
      } else {
        equalizer.value = EqualizerState.Available(profile)
        audioEffects.apply(profile)
@@ -26429,7 +27617,7 @@ index 3d75ff1a..48c3716c 100644
      }
    }
  
-@@ -676,6 +709,10 @@ class ExoPlayerAudioPlayer(
+@@ -676,6 +713,10 @@ class ExoPlayerAudioPlayer(
      sleepTimerManager.setTimer(timer)
    }
  
@@ -26440,7 +27628,7 @@ index 3d75ff1a..48c3716c 100644
    override fun clearTimer() {
      sleepTimerManager.clearTimer()
    }
-@@ -878,8 +915,11 @@ class ExoPlayerAudioPlayer(
+@@ -878,8 +919,11 @@ class ExoPlayerAudioPlayer(
      // If the media item transitions (i.e. chapter) and the timer is end of chapter, then
      // stop the playback. Coarse queues (remote per-track, single item) transition on tracks
      // or never, so there the boundary detection in updateProgress owns this signal instead.
@@ -26454,7 +27642,7 @@ index 3d75ff1a..48c3716c 100644
      }
    }
  
-@@ -921,6 +961,7 @@ class ExoPlayerAudioPlayer(
+@@ -921,6 +965,7 @@ class ExoPlayerAudioPlayer(
      currentTime.value = player.currentPosition.milliseconds
      currentDuration.value = player.duration.milliseconds
      overallTime.value = player.overallPosition.milliseconds
@@ -26462,7 +27650,7 @@ index 3d75ff1a..48c3716c 100644
    }
  
    /**
-@@ -973,6 +1014,64 @@ class ExoPlayerAudioPlayer(
+@@ -973,6 +1018,64 @@ class ExoPlayerAudioPlayer(
      if (play) {
        player.play()
      }
@@ -29143,7 +30331,7 @@ index 00000000..383312a7
 +  override fun refresh() {}
 +}
 diff --git a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
-index a0fe99c5..07c06bf1 100644
+index a0fe99c5..a5324a6b 100644
 --- a/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
 +++ b/infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt
 @@ -307,6 +307,7 @@ class DesktopAudioPlayer(
@@ -29154,7 +30342,20 @@ index a0fe99c5..07c06bf1 100644
      stopped = true
      preparedSession = null
      finishedListener = null
-@@ -390,6 +391,10 @@ class DesktopAudioPlayer(
+@@ -342,8 +343,10 @@ class DesktopAudioPlayer(
+     seekAbsolute(target, play = false)
+   }
+ 
+-  override fun seekTo(timestamp: Duration) = onEngine {
+-    seekAbsolute(timestamp, play = true)
++  override fun seekTo(timestamp: Duration) = seekTo(timestamp, play = true)
++
++  override fun seekTo(timestamp: Duration, play: Boolean) = onEngine {
++    seekAbsolute(timestamp, play = play)
+   }
+ 
+   override fun skipToNext() = onEngine {
+@@ -390,6 +393,10 @@ class DesktopAudioPlayer(
      sleepTimerManager.setTimer(timer)
    }
  
@@ -29595,10 +30796,10 @@ index e5d082c9..a1fd5916 100644
 +  }
  }
 diff --git a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
-index 1b4d4dda..f361ba31 100644
+index 1b4d4dda..04e79108 100644
 --- a/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
 +++ b/infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml
-@@ -9,7 +9,7 @@
+@@ -9,10 +9,15 @@
    <string name="label_connecting">Connecting…</string>
    <string name="media_route_dialog_title">Devices</string>
    <string name="action_cast">Cast</string>
@@ -29607,65 +30808,179 @@ index 1b4d4dda..f361ba31 100644
    <string name="action_allow_local_network">Allow local network access</string>
    <string name="label_local_network_rationale">Needed to find cast devices on your network</string>
  
+   <string name="option_shake_to_reset_title">Shake-to-reset</string>
+   <string name="option_shake_to_reset_subtitle">Enable shaking to reset the current or previous timer</string>
++  <string name="timer_adjust_decrease_5m">Decrease timer by 5 minutes</string>
++  <string name="timer_adjust_decrease_1m">Decrease timer by 1 minute</string>
++  <string name="timer_adjust_increase_1m">Increase timer by 1 minute</string>
++  <string name="timer_adjust_increase_5m">Increase timer by 5 minutes</string>
++  <string name="timer_step_label">Step</string>
+ </resources>
 diff --git a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
-index fe25bc10..f91fd302 100644
+index fe25bc10..e97f7982 100644
 --- a/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
 +++ b/infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt
-@@ -5,6 +5,7 @@ package app.campfire.audioplayer.ui.composables
+@@ -3,31 +3,55 @@
  
+ package app.campfire.audioplayer.ui.composables
+ 
++import androidx.compose.foundation.background
++import androidx.compose.foundation.clickable
  import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
  import androidx.compose.foundation.layout.Column
-+import androidx.compose.foundation.layout.PaddingValues
  import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.RowScope
  import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxHeight
  import androidx.compose.foundation.layout.fillMaxWidth
-@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.height
  import androidx.compose.foundation.layout.padding
  import androidx.compose.foundation.layout.width
  import androidx.compose.foundation.shape.RoundedCornerShape
-+import androidx.compose.material3.FilledTonalButton
++import androidx.compose.material3.FilledTonalIconButton
  import androidx.compose.material3.Icon
++import androidx.compose.material3.IconButtonDefaults
++import androidx.compose.material3.LocalContentColor
  import androidx.compose.material3.MaterialTheme
  import androidx.compose.material3.Surface
-@@ -35,6 +37,7 @@ fun RunningTimerCard(
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.TextButton
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.CompositionLocalProvider
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
++import androidx.compose.ui.semantics.Role
++import androidx.compose.ui.semantics.contentDescription
++import androidx.compose.ui.semantics.role
++import androidx.compose.ui.semantics.selected
++import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
+ import app.campfire.audioplayer.model.PlaybackTimer
+ import app.campfire.audioplayer.model.RunningTimer
++import app.campfire.common.compose.icons.CampfireIcons
+ import app.campfire.common.compose.icons.animated.AnimatedTimerPainter
++import app.campfire.common.compose.icons.rounded.Add
++import app.campfire.common.compose.icons.rounded.Remove
+ import campfire.infra.audioplayer.public_ui.generated.resources.Res
+ import campfire.infra.audioplayer.public_ui.generated.resources.action_clear_timer
+ import campfire.infra.audioplayer.public_ui.generated.resources.label_current_timer
++import campfire.infra.audioplayer.public_ui.generated.resources.timer_adjust_decrease_1m
++import campfire.infra.audioplayer.public_ui.generated.resources.timer_adjust_decrease_5m
++import campfire.infra.audioplayer.public_ui.generated.resources.timer_adjust_increase_1m
++import campfire.infra.audioplayer.public_ui.generated.resources.timer_adjust_increase_5m
++import campfire.infra.audioplayer.public_ui.generated.resources.timer_step_label
+ import org.jetbrains.compose.resources.stringResource
+ 
+ @Composable
+@@ -35,6 +59,10 @@ fun RunningTimerCard(
    runningTimer: RunningTimer,
    modifier: Modifier = Modifier,
    onTimerCleared: (() -> Unit)? = null,
 +  onAdjustTimer: ((deltaMillis: Long) -> Unit)? = null,
++  useAlternateStepperView: Boolean = false,
++  fineStepEnabled: Boolean = false,
++  onFineStepEnabledChange: ((Boolean) -> Unit)? = null,
  ) {
    Surface(
      modifier = modifier
-@@ -74,6 +77,37 @@ fun RunningTimerCard(
+@@ -74,6 +102,100 @@ fun RunningTimerCard(
          modifier = Modifier.align(Alignment.CenterHorizontally),
        )
  
 +      if (runningTimer.timer is PlaybackTimer.Epoch && onAdjustTimer != null) {
 +        Spacer(Modifier.height(16.dp))
-+        Row(
-+          modifier = Modifier
-+            .fillMaxWidth()
-+            .padding(horizontal = 16.dp),
-+          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-+          verticalAlignment = Alignment.CenterVertically,
-+        ) {
-+          val adjustments = listOf(
-+            "-5m" to -5 * 60_000L,
-+            "-1m" to -1 * 60_000L,
-+            "+1m" to 1 * 60_000L,
-+            "+5m" to 5 * 60_000L,
-+          )
-+          adjustments.forEach { (label, deltaMillis) ->
-+            FilledTonalButton(
-+              onClick = { onAdjustTimer(deltaMillis) },
-+              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-+              modifier = Modifier.weight(1f),
++        val dec5Label = stringResource(Res.string.timer_adjust_decrease_5m)
++        val dec1Label = stringResource(Res.string.timer_adjust_decrease_1m)
++        val inc1Label = stringResource(Res.string.timer_adjust_increase_1m)
++        val inc5Label = stringResource(Res.string.timer_adjust_increase_5m)
++
++        if (useAlternateStepperView) {
++          val deltaMinutes = if (fineStepEnabled) 1L else 5L
++          val activeDecLabel = if (fineStepEnabled) dec1Label else dec5Label
++          val activeIncLabel = if (fineStepEnabled) inc1Label else inc5Label
++
++          Column(
++            modifier = Modifier
++              .fillMaxWidth()
++              .padding(horizontal = 16.dp),
++            horizontalAlignment = Alignment.CenterHorizontally,
++          ) {
++            Row(
++              horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
++              verticalAlignment = Alignment.CenterVertically,
 +            ) {
++              FilledTonalIconButton(
++                onClick = { onAdjustTimer(-deltaMinutes * 60_000L) },
++                colors = IconButtonDefaults.filledTonalIconButtonColors(
++                  containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
++                  contentColor = MaterialTheme.colorScheme.onSurface,
++                ),
++              ) {
++                Icon(
++                  imageVector = CampfireIcons.Rounded.Remove,
++                  contentDescription = activeDecLabel,
++                )
++              }
++
 +              Text(
-+                text = label,
-+                maxLines = 1,
-+                softWrap = false,
++                text = "±${deltaMinutes}m",
++                style = MaterialTheme.typography.labelLarge,
++                fontWeight = FontWeight.SemiBold,
++                color = MaterialTheme.colorScheme.onSecondaryContainer,
++              )
++
++              FilledTonalIconButton(
++                onClick = { onAdjustTimer(deltaMinutes * 60_000L) },
++                colors = IconButtonDefaults.filledTonalIconButtonColors(
++                  containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
++                  contentColor = MaterialTheme.colorScheme.onSurface,
++                ),
++              ) {
++                Icon(
++                  imageVector = CampfireIcons.Rounded.Add,
++                  contentDescription = activeIncLabel,
++                )
++              }
++            }
++
++            if (onFineStepEnabledChange != null) {
++              Spacer(Modifier.height(10.dp))
++              TimerStepTogglePill(
++                fineStepEnabled = fineStepEnabled,
++                onFineStepEnabledChange = onFineStepEnabledChange,
 +              )
 +            }
++          }
++        } else {
++          Row(
++            modifier = Modifier
++              .fillMaxWidth()
++              .padding(horizontal = 16.dp),
++            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
++            verticalAlignment = Alignment.CenterVertically,
++          ) {
++            DualStageTimerCapsule(
++              leftLabel = "−5m",
++              leftDescription = dec5Label,
++              onLeftClick = { onAdjustTimer(-5 * 60_000L) },
++              rightLabel = "−1m",
++              rightDescription = dec1Label,
++              onRightClick = { onAdjustTimer(-1 * 60_000L) },
++              modifier = Modifier.weight(1f),
++            )
++            DualStageTimerCapsule(
++              leftLabel = "+1m",
++              leftDescription = inc1Label,
++              onLeftClick = { onAdjustTimer(1 * 60_000L) },
++              rightLabel = "+5m",
++              rightDescription = inc5Label,
++              onRightClick = { onAdjustTimer(5 * 60_000L) },
++              modifier = Modifier.weight(1f),
++            )
 +          }
 +        }
 +      }
@@ -29673,20 +30988,177 @@ index fe25bc10..f91fd302 100644
        if (onTimerCleared != null) {
          Row(
            modifier = Modifier
-@@ -90,7 +124,7 @@ fun RunningTimerCard(
+@@ -90,8 +212,152 @@ fun RunningTimerCard(
            }
          }
        } else {
 -        Spacer(Modifier.height(56.dp))
 +        Spacer(Modifier.height(24.dp))
++      }
++    }
++  }
++}
++
++@Composable
++private fun DualStageTimerCapsule(
++  leftLabel: String,
++  leftDescription: String,
++  onLeftClick: () -> Unit,
++  rightLabel: String,
++  rightDescription: String,
++  onRightClick: () -> Unit,
++  modifier: Modifier = Modifier,
++) {
++  Surface(
++    shape = RoundedCornerShape(50),
++    color = MaterialTheme.colorScheme.surfaceContainerHigh,
++    modifier = modifier.height(40.dp),
++  ) {
++    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
++      Row(
++        modifier = Modifier.fillMaxWidth(),
++        verticalAlignment = Alignment.CenterVertically,
++      ) {
++        TimerCapsuleHalfButton(
++          label = leftLabel,
++          description = leftDescription,
++          onClick = onLeftClick,
++        )
++        Box(
++          modifier = Modifier
++            .width(1.dp)
++            .height(20.dp)
++            .background(MaterialTheme.colorScheme.outlineVariant),
++        )
++        TimerCapsuleHalfButton(
++          label = rightLabel,
++          description = rightDescription,
++          onClick = onRightClick,
++        )
++      }
++    }
++  }
++}
++
++@Composable
++private fun RowScope.TimerCapsuleHalfButton(
++  label: String,
++  description: String,
++  onClick: () -> Unit,
++) {
++  Box(
++    modifier = Modifier
++      .weight(1f)
++      .fillMaxHeight()
++      .clickable(onClick = onClick)
++      .semantics {
++        role = Role.Button
++        contentDescription = description
++      },
++    contentAlignment = Alignment.Center,
++  ) {
++    Text(
++      text = label,
++      style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
++      fontWeight = FontWeight.Bold,
++      maxLines = 1,
++      softWrap = false,
++    )
++  }
++}
++
++@Composable
++private fun TimerStepTogglePill(
++  fineStepEnabled: Boolean,
++  onFineStepEnabledChange: (Boolean) -> Unit,
++) {
++  Row(
++    verticalAlignment = Alignment.CenterVertically,
++    horizontalArrangement = Arrangement.spacedBy(8.dp),
++  ) {
++    Text(
++      text = "${stringResource(Res.string.timer_step_label)}:",
++      style = MaterialTheme.typography.labelMedium,
++      color = MaterialTheme.colorScheme.onSecondaryContainer,
++    )
++    Surface(
++      shape = RoundedCornerShape(50),
++      color = MaterialTheme.colorScheme.surfaceContainerHigh,
++    ) {
++      Row(
++        modifier = Modifier.padding(3.dp),
++        horizontalArrangement = Arrangement.spacedBy(2.dp),
++      ) {
++        TimerStepChip(
++          label = "5m",
++          isSelected = !fineStepEnabled,
++          onClick = { onFineStepEnabledChange(false) },
++        )
++        TimerStepChip(
++          label = "1m",
++          isSelected = fineStepEnabled,
++          onClick = { onFineStepEnabledChange(true) },
++        )
        }
      }
    }
+ }
++
++@Composable
++private fun TimerStepChip(
++  label: String,
++  isSelected: Boolean,
++  onClick: () -> Unit,
++) {
++  val containerColor = if (isSelected) {
++    MaterialTheme.colorScheme.primary
++  } else {
++    MaterialTheme.colorScheme.surfaceContainerHigh
++  }
++  val contentColor = if (isSelected) {
++    MaterialTheme.colorScheme.onPrimary
++  } else {
++    MaterialTheme.colorScheme.onSurfaceVariant
++  }
++  Box(
++    modifier = Modifier
++      .clip(RoundedCornerShape(50))
++      .background(containerColor)
++      .clickable(onClick = onClick)
++      .semantics {
++        role = Role.RadioButton
++        selected = isSelected
++      }
++      .padding(horizontal = 12.dp, vertical = 5.dp),
++    contentAlignment = Alignment.Center,
++  ) {
++    Text(
++      text = label,
++      color = contentColor,
++      style = MaterialTheme.typography.labelMedium,
++      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
++      maxLines = 1,
++      softWrap = false,
++    )
++  }
++}
 diff --git a/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt b/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
-index 04a29119..dc9ed1d7 100644
+index 04a29119..3eb1191c 100644
 --- a/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
 +++ b/infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt
-@@ -104,6 +104,10 @@ class FakeAudioPlayer : AudioPlayer {
+@@ -75,6 +75,11 @@ class FakeAudioPlayer : AudioPlayer {
+     invocations += Invocation.SeekTo(timestamp)
+   }
+ 
++  override fun seekTo(timestamp: Duration, play: Boolean) {
++    invocations += Invocation.SeekToWithPlay(timestamp, play)
++    overallTime.value = timestamp
++  }
++
+   override fun skipToNext() {
+     invocations += Invocation.SkipToNext
+   }
+@@ -104,6 +109,10 @@ class FakeAudioPlayer : AudioPlayer {
      invocations += Invocation.SetTimer(timer)
    }
  
@@ -29697,7 +31169,11 @@ index 04a29119..dc9ed1d7 100644
    override fun clearTimer() {
      invocations += Invocation.ClearTimer
    }
-@@ -128,6 +132,7 @@ class FakeAudioPlayer : AudioPlayer {
+@@ -125,9 +134,11 @@ class FakeAudioPlayer : AudioPlayer {
+     data object SeekForward : Invocation
+     data object SeekBackward : Invocation
+     data class SeekTo(val value: Any) : Invocation
++    data class SeekToWithPlay(val timestamp: Duration, val play: Boolean) : Invocation
      data class SetPlaybackSpeed(val speed: Float) : Invocation
      data class SetEqualizer(val profile: EqualizerProfile) : Invocation
      data class SetTimer(val timer: PlaybackTimer) : Invocation

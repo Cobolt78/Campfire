@@ -742,6 +742,12 @@ internal class PreviewPlaybackSettings : PlaybackSettings {
   override fun observePlaybackWavyScrubber(): StateFlow<Boolean> = MutableStateFlow(playbackWavyScrubber)
   override var scrollingTitles = true
   override fun observeScrollingTitles(): StateFlow<Boolean> = MutableStateFlow(scrollingTitles)
+  override var speedStepperAlternateView = false
+  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> = MutableStateFlow(speedStepperAlternateView)
+  override var speedStepperFineStep = false
+  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> = MutableStateFlow(speedStepperFineStep)
+  override var bookmarkEditorAlternateView = false
+  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> = MutableStateFlow(bookmarkEditorAlternateView)
 }
 
 // endregion

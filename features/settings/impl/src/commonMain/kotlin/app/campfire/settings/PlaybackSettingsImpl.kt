@@ -276,6 +276,30 @@ class PlaybackSettingsImpl(
   override fun observeScrollingTitles(): StateFlow<Boolean> =
     scrollingTitlesProperty.observe()
 
+  private val speedStepperAlternateViewProperty = booleanSetting(
+    PREF_SPEED_STEPPER_ALTERNATE_VIEW,
+    false,
+  )
+  override var speedStepperAlternateView: Boolean by speedStepperAlternateViewProperty
+  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> =
+    speedStepperAlternateViewProperty.observe()
+
+  private val speedStepperFineStepProperty = booleanSetting(
+    PREF_SPEED_STEPPER_FINE_STEP,
+    false,
+  )
+  override var speedStepperFineStep: Boolean by speedStepperFineStepProperty
+  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> =
+    speedStepperFineStepProperty.observe()
+
+  private val bookmarkEditorAlternateViewProperty = booleanSetting(
+    PREF_BOOKMARK_EDITOR_ALTERNATE_VIEW,
+    false,
+  )
+  override var bookmarkEditorAlternateView: Boolean by bookmarkEditorAlternateViewProperty
+  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> =
+    bookmarkEditorAlternateViewProperty.observe()
+
   private fun String.asFloatList(): List<Float> = split(PLAYBACK_RATES_SEPARATOR).mapNotNull { it.toFloatOrNull() }
 
   private fun String.asItemSpeedMap(): Map<LibraryItemId, Float> {
@@ -333,6 +357,9 @@ internal const val PREF_AUTO_REWIND_ON_RESUME = "pref_playback_auto_rewind_on_re
 internal const val PREF_BOOK_TIME_UI = "pref_book_time_playback_ui"
 internal const val PREF_WAVY_SLIDER = "pref_wavy_playback_slider"
 internal const val PREF_SCROLLING_TITLES = "pref_scrolling_titles"
+internal const val PREF_SPEED_STEPPER_ALTERNATE_VIEW = "pref_speed_stepper_alternate_view"
+internal const val PREF_SPEED_STEPPER_FINE_STEP = "pref_speed_stepper_fine_step"
+internal const val PREF_BOOKMARK_EDITOR_ALTERNATE_VIEW = "pref_bookmark_editor_alternate_view"
 
 internal const val PLAYBACK_RATES_SEPARATOR = "::"
 

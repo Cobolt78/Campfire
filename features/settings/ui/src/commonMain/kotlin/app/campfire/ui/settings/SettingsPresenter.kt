@@ -180,6 +180,15 @@ class SettingsPresenter(
     val continueSeriesAlternateView by remember {
       libraryViewSettings.observeContinueSeriesAlternateView()
     }.collectAsState()
+    val speedStepperAlternateView by remember {
+      playbackSettings.observeSpeedStepperAlternateView()
+    }.collectAsState()
+    val sleepTimerStepperAlternateView by remember {
+      sleepSettings.observeSleepTimerStepperAlternateView()
+    }.collectAsState()
+    val bookmarkEditorAlternateView by remember {
+      playbackSettings.observeBookmarkEditorAlternateView()
+    }.collectAsState()
 
     // Playback Settings
     val playbackRates by remember { playbackSettings.observePlaybackRates() }.collectAsState()
@@ -354,6 +363,9 @@ class SettingsPresenter(
         dynamicPlaybackTheming = dynamicPlaybackTheming,
         itemCardMarqueeEnabled = itemCardMarqueeEnabled,
         continueSeriesAlternateView = continueSeriesAlternateView,
+        speedStepperAlternateView = speedStepperAlternateView,
+        sleepTimerStepperAlternateView = sleepTimerStepperAlternateView,
+        bookmarkEditorAlternateView = bookmarkEditorAlternateView,
       ),
       downloadsSettings = DownloadsSettingsInfo(
         showDownloadConfirmation = showDownloadConfirmation,
@@ -511,6 +523,12 @@ class SettingsPresenter(
           is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
           is ItemCardMarqueeEnabled -> libraryViewSettings.libraryItemMarqueeEnabled = event.enabled
           is ContinueSeriesAlternateView -> libraryViewSettings.continueSeriesAlternateView = event.enabled
+          is SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView ->
+            playbackSettings.speedStepperAlternateView = event.enabled
+          is SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView ->
+            sleepSettings.sleepTimerStepperAlternateView = event.enabled
+          is SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView ->
+            playbackSettings.bookmarkEditorAlternateView = event.enabled
           SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> navigator.goTo(ThemePickerScreen)
         }
 

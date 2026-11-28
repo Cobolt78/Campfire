@@ -75,6 +75,11 @@ class FakeAudioPlayer : AudioPlayer {
     invocations += Invocation.SeekTo(timestamp)
   }
 
+  override fun seekTo(timestamp: Duration, play: Boolean) {
+    invocations += Invocation.SeekToWithPlay(timestamp, play)
+    overallTime.value = timestamp
+  }
+
   override fun skipToNext() {
     invocations += Invocation.SkipToNext
   }
@@ -129,6 +134,7 @@ class FakeAudioPlayer : AudioPlayer {
     data object SeekForward : Invocation
     data object SeekBackward : Invocation
     data class SeekTo(val value: Any) : Invocation
+    data class SeekToWithPlay(val timestamp: Duration, val play: Boolean) : Invocation
     data class SetPlaybackSpeed(val speed: Float) : Invocation
     data class SetEqualizer(val profile: EqualizerProfile) : Invocation
     data class SetTimer(val timer: PlaybackTimer) : Invocation

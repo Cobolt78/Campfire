@@ -82,6 +82,9 @@ data class AppearanceSettingsInfo(
   val dynamicPlaybackTheming: Boolean,
   val itemCardMarqueeEnabled: Boolean,
   val continueSeriesAlternateView: Boolean,
+  val speedStepperAlternateView: Boolean = false,
+  val sleepTimerStepperAlternateView: Boolean = false,
+  val bookmarkEditorAlternateView: Boolean = false,
 )
 
 @Immutable
@@ -267,6 +270,9 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
     data class DynamicPlaybackTheming(val enabled: Boolean) : AppearanceSettingEvent
     data class ItemCardMarqueeEnabled(val enabled: Boolean) : AppearanceSettingEvent
     data class ContinueSeriesAlternateView(val enabled: Boolean) : AppearanceSettingEvent
+    data class SpeedStepperAlternateView(val enabled: Boolean) : AppearanceSettingEvent
+    data class SleepTimerStepperAlternateView(val enabled: Boolean) : AppearanceSettingEvent
+    data class BookmarkEditorAlternateView(val enabled: Boolean) : AppearanceSettingEvent
     data object OpenThemeBuilder : AppearanceSettingEvent
   }
 

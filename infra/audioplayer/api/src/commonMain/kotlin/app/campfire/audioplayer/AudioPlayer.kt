@@ -92,6 +92,9 @@ interface AudioPlayer {
   fun seekTo(itemIndex: Int)
   fun seekTo(progress: Float)
   fun seekTo(timestamp: Duration)
+  fun seekTo(timestamp: Duration, play: Boolean) {
+    seekTo(timestamp)
+  }
 
   fun skipToNext()
   fun skipToPrevious()

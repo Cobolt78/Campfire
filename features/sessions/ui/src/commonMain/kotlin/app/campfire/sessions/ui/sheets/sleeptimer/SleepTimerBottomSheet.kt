@@ -180,6 +180,14 @@ internal fun TimerBottomSheetV2(
       .flatMapLatest { it?.runningTimer ?: flowOf(null) }
   }.collectAsState(runningTimer)
 
+  val useAlternateStepperView by remember(component) {
+    component.sleepSettings.observeSleepTimerStepperAlternateView()
+  }.collectAsState()
+
+  val fineStepEnabled by remember(component) {
+    component.sleepSettings.observeSleepTimerFineStep()
+  }.collectAsState()
+
   SessionSheetLayout(
     modifier = modifier,
     title = { Text(stringResource(Res.string.timer_bottomsheet_title)) },
@@ -197,6 +205,9 @@ internal fun TimerBottomSheetV2(
       if (timer != null) {
         ActiveTimerSheetContent(
           runningTimer = timer,
+          useAlternateStepperView = useAlternateStepperView,
+          fineStepEnabled = fineStepEnabled,
+          onFineStepEnabledChange = { component.sleepSettings.sleepTimerFineStep = it },
           onTimerCleared = {
             if (component.audioPlayerHolder.currentPlayer.value == null) {
               component.sleepSettings.activeSleepTimer = null
@@ -245,6 +256,9 @@ internal fun TimerBottomSheetV2(
 @Composable
 private fun ActiveTimerSheetContent(
   runningTimer: RunningTimer,
+  useAlternateStepperView: Boolean,
+  fineStepEnabled: Boolean,
+  onFineStepEnabledChange: (Boolean) -> Unit,
   onTimerCleared: () -> Unit,
   onAdjustTimer: (deltaMillis: Long) -> Unit,
   modifier: Modifier = Modifier,
@@ -255,6 +269,9 @@ private fun ActiveTimerSheetContent(
     RunningTimerCard(
       runningTimer = runningTimer,
       onAdjustTimer = onAdjustTimer,
+      useAlternateStepperView = useAlternateStepperView,
+      fineStepEnabled = fineStepEnabled,
+      onFineStepEnabledChange = onFineStepEnabledChange,
     )
 
     ClearTimerButton(
@@ -709,6 +726,24 @@ fun TimerBottomSheetV2Preview() {
 
             override fun observeResetTimerOnPause(): StateFlow<Boolean> {
               return mutableResetTimerOnPause
+            }
+
+            val mutableSleepTimerStepperAlternateView = MutableStateFlow(false)
+            override var sleepTimerStepperAlternateView: Boolean
+              get() = mutableSleepTimerStepperAlternateView.value
+              set(value) { mutableSleepTimerStepperAlternateView.value = value }
+
+            override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> {
+              return mutableSleepTimerStepperAlternateView
+            }
+
+            val mutableSleepTimerFineStep = MutableStateFlow(false)
+            override var sleepTimerFineStep: Boolean
+              get() = mutableSleepTimerFineStep.value
+              set(value) { mutableSleepTimerFineStep.value = value }
+
+            override fun observeSleepTimerFineStep(): StateFlow<Boolean> {
+              return mutableSleepTimerFineStep
             }
 
             val mutableActiveSleepTimer = MutableStateFlow<SleepSettings.PersistedSleepTimer?>(null)

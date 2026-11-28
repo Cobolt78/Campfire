@@ -19,13 +19,20 @@ import campfire.features.settings.ui.generated.resources.Res
 import campfire.features.settings.ui.generated.resources.header_appearance_dynamic
 import campfire.features.settings.ui.generated.resources.header_appearance_overall
 import campfire.features.settings.ui.generated.resources.header_item_cards
+import campfire.features.settings.ui.generated.resources.header_player_controls_appearance
 import campfire.features.settings.ui.generated.resources.setting_appearance_title
+import campfire.features.settings.ui.generated.resources.setting_bookmark_editor_alternate_subtitle
+import campfire.features.settings.ui.generated.resources.setting_bookmark_editor_alternate_title
 import campfire.features.settings.ui.generated.resources.setting_dynamic_item_detail_description
 import campfire.features.settings.ui.generated.resources.setting_dynamic_item_detail_title
 import campfire.features.settings.ui.generated.resources.setting_dynamic_playback_description
 import campfire.features.settings.ui.generated.resources.setting_dynamic_playback_title
 import campfire.features.settings.ui.generated.resources.setting_item_card_marquee_subtitle
 import campfire.features.settings.ui.generated.resources.setting_item_card_marquee_title
+import campfire.features.settings.ui.generated.resources.setting_sleep_timer_stepper_alternate_subtitle
+import campfire.features.settings.ui.generated.resources.setting_sleep_timer_stepper_alternate_title
+import campfire.features.settings.ui.generated.resources.setting_speed_stepper_alternate_subtitle
+import campfire.features.settings.ui.generated.resources.setting_speed_stepper_alternate_title
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -96,6 +103,31 @@ internal fun AppearancePane(
       onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView(it)) },
       headlineContent = { Text("Continue Series & Downloads Alternate View") },
       supportingContent = { Text("Use an alternate grid view for the Continue Series and Downloads screens") },
+    )
+
+    Header(
+      title = { Text(stringResource(Res.string.header_player_controls_appearance)) },
+    )
+
+    SwitchSetting(
+      value = state.appearanceSettings.speedStepperAlternateView,
+      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_speed_stepper_alternate_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_speed_stepper_alternate_subtitle)) },
+    )
+
+    SwitchSetting(
+      value = state.appearanceSettings.sleepTimerStepperAlternateView,
+      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_sleep_timer_stepper_alternate_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_sleep_timer_stepper_alternate_subtitle)) },
+    )
+
+    SwitchSetting(
+      value = state.appearanceSettings.bookmarkEditorAlternateView,
+      onValueChange = { state.eventSink(SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView(it)) },
+      headlineContent = { Text(stringResource(Res.string.setting_bookmark_editor_alternate_title)) },
+      supportingContent = { Text(stringResource(Res.string.setting_bookmark_editor_alternate_subtitle)) },
     )
   }
 }

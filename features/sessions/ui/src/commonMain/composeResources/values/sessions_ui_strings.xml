@@ -17,6 +17,9 @@
   <string name="speed_custom_open">Enter custom speed</string>
   <string name="speed_decrease">Decrease speed by 0.05x</string>
   <string name="speed_increase">Increase speed by 0.05x</string>
+  <string name="speed_decrease_fine">Decrease speed by 0.01x</string>
+  <string name="speed_increase_fine">Increase speed by 0.01x</string>
+  <string name="speed_step_label">Step</string>
   <string name="speed_per_book_toggle">Use a separate playback speed for this book</string>
   <string name="session_scope_global">All Books (Global)</string>
   <string name="session_scope_per_book">This Book Only</string>
@@ -69,9 +72,9 @@
   <string name="bookmark_default_title">Bookmark @ %1$s</string>
   <string name="bookmark_notes_show_more">Show more</string>
   <string name="bookmark_notes_show_less">Show less</string>
-  <string name="bookmark_editor_playback_label">Audio playback</string>
   <string name="bookmark_editor_timestamp_label">Bookmark time</string>
-  <string name="bookmark_editor_sync_time">Use current playback time</string>
+  <string name="bookmark_continue_listening_at">Continue listening at %1$s</string>
+  <string name="bookmark_return_banner_dismiss">Dismiss return position</string>
   <string name="action_dictate_bookmark_title">Dictate bookmark title</string>
   <string name="action_dictate_bookmark_notes">Dictate bookmark notes</string>
   <string name="bookmark_dictation_prompt_title">Speak bookmark title</string>

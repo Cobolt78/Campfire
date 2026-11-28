@@ -204,6 +204,25 @@ interface PlaybackSettings {
    */
   var scrollingTitles: Boolean
   fun observeScrollingTitles(): StateFlow<Boolean>
+
+  /**
+   * When true, the playback speed sheet shows classic round -/+ buttons with a persisted step toggle
+   * instead of the connected dual-stage capsules.
+   */
+  var speedStepperAlternateView: Boolean
+  fun observeSpeedStepperAlternateView(): StateFlow<Boolean>
+
+  /**
+   * In the playback speed alternate stepper view, when true -/+ adjusts by 0.01x; when false by 0.05x.
+   */
+  var speedStepperFineStep: Boolean
+  fun observeSpeedStepperFineStep(): StateFlow<Boolean>
+
+  /**
+   * When true, the bookmark editor uses the compact 2-row controls layout without ±30s skip buttons.
+   */
+  var bookmarkEditorAlternateView: Boolean
+  fun observeBookmarkEditorAlternateView(): StateFlow<Boolean>
 }
 
 /** The configurable bounds for the metered/unmetered listening-sync intervals. */

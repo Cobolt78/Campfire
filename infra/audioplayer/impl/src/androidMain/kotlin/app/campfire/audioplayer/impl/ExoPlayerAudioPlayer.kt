@@ -602,21 +602,25 @@ class ExoPlayerAudioPlayer(
     seekTo(timestamp, play = true)
   }
 
-  private fun seekTo(timestamp: Duration, play: Boolean) {
+  override fun seekTo(timestamp: Duration, play: Boolean) {
     if (queueShape != QueueShape.CHAPTERS) {
       coarseSeekTo(timestamp, play)
       return
     }
-    val timestampInMillis = timestamp.inWholeMilliseconds
+    val timestampInMillis = timestamp.inWholeMilliseconds.coerceAtLeast(0L)
     var mediaItemOffsetMs = 0L
+    val lastIndex = player.mediaItemCount - 1
 
     for (index in 0 until player.mediaItemCount) {
       val mediaItem = player.getMediaItemAt(index)
       val mediaItemDuration = mediaItem.mediaMetadata.durationMs ?: error("Media Metadata Corrupted")
       val mediaItemEnd = mediaItemOffsetMs + mediaItemDuration
-      if (timestampInMillis in mediaItemOffsetMs until mediaItemEnd) {
-        val progressInMediaItem = timestampInMillis - mediaItemOffsetMs
+      if (timestampInMillis in mediaItemOffsetMs until mediaItemEnd || index == lastIndex) {
+        val progressInMediaItem = (timestampInMillis - mediaItemOffsetMs).coerceIn(0L, mediaItemDuration)
         player.seekTo(index, progressInMediaItem)
+        currentTime.value = progressInMediaItem.milliseconds
+        overallTime.value = (mediaItemOffsetMs + progressInMediaItem).milliseconds
+        lastBoundaryCheckTime = overallTime.value
         if (play) {
           player.play()
         }

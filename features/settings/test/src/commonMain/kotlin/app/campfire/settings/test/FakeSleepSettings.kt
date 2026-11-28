@@ -90,6 +90,20 @@ class FakeSleepSettings : SleepSettings {
     set(value) { _resetTimerOnPause.value = value }
   override fun observeResetTimerOnPause(): StateFlow<Boolean> = _resetTimerOnPause.asStateFlow()
 
+  private val _sleepTimerStepperAlternateView = MutableStateFlow(false)
+  override var sleepTimerStepperAlternateView: Boolean
+    get() = _sleepTimerStepperAlternateView.value
+    set(value) { _sleepTimerStepperAlternateView.value = value }
+  override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> =
+    _sleepTimerStepperAlternateView.asStateFlow()
+
+  private val _sleepTimerFineStep = MutableStateFlow(false)
+  override var sleepTimerFineStep: Boolean
+    get() = _sleepTimerFineStep.value
+    set(value) { _sleepTimerFineStep.value = value }
+  override fun observeSleepTimerFineStep(): StateFlow<Boolean> =
+    _sleepTimerFineStep.asStateFlow()
+
   private val _activeSleepTimer = MutableStateFlow<PersistedSleepTimer?>(null)
   override var activeSleepTimer: PersistedSleepTimer?
     get() = _activeSleepTimer.value

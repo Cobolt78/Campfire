@@ -118,6 +118,22 @@ class SleepSettingsImpl(
   override var resetTimerOnPause: Boolean by resetTimerOnPauseProperty
   override fun observeResetTimerOnPause(): StateFlow<Boolean> = resetTimerOnPauseProperty.observe()
 
+  private val sleepTimerStepperAlternateViewProperty = booleanSetting(
+    KEY_SLEEP_TIMER_STEPPER_ALTERNATE_VIEW,
+    false,
+  )
+  override var sleepTimerStepperAlternateView: Boolean by sleepTimerStepperAlternateViewProperty
+  override fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean> =
+    sleepTimerStepperAlternateViewProperty.observe()
+
+  private val sleepTimerFineStepProperty = booleanSetting(
+    KEY_SLEEP_TIMER_FINE_STEP,
+    false,
+  )
+  override var sleepTimerFineStep: Boolean by sleepTimerFineStepProperty
+  override fun observeSleepTimerFineStep(): StateFlow<Boolean> =
+    sleepTimerFineStepProperty.observe()
+
   private val activeSleepTimerProperty = stringOrNullSetting(KEY_ACTIVE_SLEEP_TIMER)
   private var activeSleepTimerRaw: String? by activeSleepTimerProperty
   override var activeSleepTimer: PersistedSleepTimer?
@@ -149,6 +165,8 @@ private const val KEY_FADE_OUT_DURATION = "pref_sleep_fade_out_duration"
 private const val KEY_RESET_TIMER_ON_PAUSE = "pref_sleep_reset_timer_on_pause"
 private const val KEY_ACTIVE_SLEEP_TIMER = "pref_active_sleep_timer"
 private const val KEY_DISMISSED_AUTO_SLEEP_WINDOW = "pref_dismissed_auto_sleep_window"
+private const val KEY_SLEEP_TIMER_STEPPER_ALTERNATE_VIEW = "pref_sleep_timer_stepper_alternate_view"
+private const val KEY_SLEEP_TIMER_FINE_STEP = "pref_sleep_timer_fine_step"
 
 private const val ACTIVE_TIMER_SEPARATOR = "|"
 

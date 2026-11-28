@@ -49,6 +49,12 @@ interface SleepSettings {
   var resetTimerOnPause: Boolean
   fun observeResetTimerOnPause(): StateFlow<Boolean>
 
+  var sleepTimerStepperAlternateView: Boolean
+  fun observeSleepTimerStepperAlternateView(): StateFlow<Boolean>
+
+  var sleepTimerFineStep: Boolean
+  fun observeSleepTimerFineStep(): StateFlow<Boolean>
+
   var activeSleepTimer: PersistedSleepTimer?
   fun observeActiveSleepTimer(): StateFlow<PersistedSleepTimer?>
 

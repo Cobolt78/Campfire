@@ -109,6 +109,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 102. [Auto Sleep Timer Dismissal Persistence & Scoped Shake Detector Lifecycle (v1.2.55)](#102-auto-sleep-timer-dismissal-persistence--scoped-shake-detector-lifecycle-v1255)
 103. [Notification Bookmark Action, Remote Chimes/Haptics & Bookmarks Workflow Enhancements (v1.2.56)](#103-notification-bookmark-action-remote-chimeshaptics--bookmarks-workflow-enhancements-v1256)
 104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
+105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-unreleased)
 
 ---
 
@@ -3264,5 +3265,55 @@ Added 1-tap system voice dictation and sentence auto-capitalization to the bookm
 * `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/offline/DownloadTracker.kt`
 * `infra/updates/impl/src/commonMain/kotlin/app/campfire/updates/AppUpdateWidgetImpl.kt`
 * `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 105. Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (Unreleased)
+
+### Summary
+Unified the Bookmark Editor's timestamp and playback controls (eliminating the duplicate readout and separate Sync button), added a per-book high-water-mark `BookmarkReturnPositionStore` so jumping to or previewing older bookmarks never loses the furthest listening spot, upgraded both the Playback Speed (`0.05x` + `0.01x`) and Sleep Timer (`5m` + `1m`) stepper bars with dual-stage capsules as default, and exposed 3 independent **Alternate View** toggles under **Settings → Appearance → Player controls**.
+
+### Key Details
+1. **Non-Auto-Playing `seekTo(timestamp, play)` (`AudioPlayer.kt`, `ExoPlayerAudioPlayer.kt`, `DesktopAudioPlayer.kt`, `FakeAudioPlayer.kt`)**:
+   - Added `AudioPlayer.seekTo(timestamp: Duration, play: Boolean)` so paused bookmark nudging seeks accurately without unexpectedly starting playback, and immediately updates `currentTime` / `overallTime` in `ExoPlayerAudioPlayer` even when paused.
+2. **Appearance Alternate View Toggles & Persisted Step Modes (`PlaybackSettings*`, `SleepSettings*`, `AppearancePane.kt`, `SettingsPresenter.kt`, `SettingsUiState.kt`, `SettingsAnalyticUiEventHandler.kt`)**:
+   - Added `speedStepperAlternateView`, `speedStepperFineStep`, and `bookmarkEditorAlternateView` on `PlaybackSettings`, plus `sleepTimerStepperAlternateView` and `sleepTimerFineStep` on `SleepSettings`.
+   - Exposed the 3 layout toggles in **Settings → Appearance → Player controls** (`ui_settings_strings.xml`).
+3. **Playback Speed & Sleep Timer Alternate Steppers (`PlaybackSpeedBottomSheet.kt`, `RunningTimerCard.kt`, `SleepTimerBottomSheet.kt`, `PlaybackSpeedSheetTest.kt`)**:
+   - **Concept A (Default)**: Connected dual-stage capsules (`−.05 | −.01` & `+.01 | +.05` for Speed; `−5m | −1m` & `+1m | +5m` for Sleep Timer).
+   - **Concept B (Alternate View)**: Classic round `− / +` icon buttons paired with a persisted `Step: 0.05x | 0.01x` or `Step: 5m | 1m` pill toggle.
+   - Kept `WavySlider` snapped to `0.05x` and implemented directional `0.05x` grid-snapping in `stepSpeed()` (`1.23x + 0.05 -> 1.25x`, `1.23x - 0.05 -> 1.20x`) alongside exact `0.01x` `stepSpeedFine()`.
+4. **Bookmark Jump-Back Store & Unified `BookmarkEditorDialog` (`BookmarkReturnPositionStore.kt`, `BookmarksBottomSheet.kt`, `BookmarkReturnPositionStoreTest.kt`, `sessions_ui_strings.xml`)**:
+   - Implemented `@SingleIn(UserScope::class)` `BookmarkReturnPositionStore` tracking per-book high-water-mark return positions for jumps `>= 15s`, surfaced via a dismissible **`Continue listening at <time>`** banner on the Bookmarks sheet and inside Edit Bookmark once Play is pressed.
+   - Merged timestamp and playback controls in `BookmarkEditorDialog` with Layout 1 (fixed `±30s` + 6 fine pills) and Layout 2 (compact 2-row), auto-pausing on New Bookmark open, typing, and mic dictation, with a `pendingSeekTarget` + 1500ms monotonic guard preventing stale seek ticks from overwriting the edited timestamp.
+
+### Modified Files:
+* `features/sessions/ui/src/commonMain/composeResources/values/sessions_ui_strings.xml`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/playback/expanded/ExpandedPlaybackBarPreviews.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStore.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/sleeptimer/SleepTimerBottomSheet.kt`
+* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedBottomSheet.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarkReturnPositionStoreTest.kt`
+* `features/sessions/ui/src/commonTest/kotlin/app/campfire/sessions/ui/sheets/speed/PlaybackSpeedSheetTest.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/PlaybackSettings.kt`
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/SleepSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/PlaybackSettingsImpl.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/SleepSettingsImpl.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakePlaybackSettings.kt`
+* `features/settings/test/src/commonMain/kotlin/app/campfire/settings/test/FakeSleepSettings.kt`
+* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt`
+* `infra/audioplayer/api/src/commonMain/kotlin/app/campfire/audioplayer/AudioPlayer.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/ExoPlayerAudioPlayer.kt`
+* `infra/audioplayer/impl/src/jvmMain/kotlin/app/campfire/audioplayer/impl/DesktopAudioPlayer.kt`
+* `infra/audioplayer/public-ui/src/commonMain/composeResources/values/audioplayer_ui_strings.xml`
+* `infra/audioplayer/public-ui/src/commonMain/kotlin/app/campfire/audioplayer/ui/composables/RunningTimerCard.kt`
+* `infra/audioplayer/test/src/commonMain/kotlin/app/campfire/audioplayer/test/FakeAudioPlayer.kt`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

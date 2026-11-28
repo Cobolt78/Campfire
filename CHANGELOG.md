@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Unified Bookmark Editor Controls & Return-to-Position Safety Net**:
+  - Merged the bookmark timestamp and audio playback controls inside `BookmarkEditorDialog` into a single card with two selectable layouts (**Settings → Appearance → Player controls → Bookmark editor alternate view**): 3-row with fixed `±30s` skips (default) or compact 2-row, plus 6 fine nudge pills (`-10s`, `-5s`, `-1s` | `+1s`, `+5s`, `+10s`).
+  - Auto-pauses playback on New Bookmark open, and automatically pauses & locks the timestamp when starting to type or tapping microphone dictation.
+  - Added per-book high-water-mark `BookmarkReturnPositionStore` and a dismissible `Continue listening at <time>` banner on the Bookmarks sheet (and inside Edit Bookmark after previewing) so jumping to or previewing older bookmarks never loses your furthest listening position.
+- **0.01x Speed & Matching Sleep Timer Alternate Steppers**:
+  - Added dual-stage capsules (`-.05 | -.01` / `+.01 | +.05` for Playback Speed, `-5m | -1m` / `+1m | +5m` for Sleep Timer) as the default view, plus **Playback speed alternate view** and **Sleep timer alternate view** toggles under **Settings → Appearance → Player controls** offering classic round `− / +` buttons paired with a persisted step toggle pill (`0.05x | 0.01x` and `5m | 1m`).
+  - Stepping by `0.05x` directionally snaps off-grid values (e.g., `1.23x` + `0.05` → `1.25x`, `1.23x` − `0.05` → `1.20x`) while the wavy speed slider stays snapped to `0.05x`.
 
 ### Changed
 

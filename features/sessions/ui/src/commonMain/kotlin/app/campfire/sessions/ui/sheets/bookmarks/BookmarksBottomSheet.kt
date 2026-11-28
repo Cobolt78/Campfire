@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +35,8 @@ import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,15 +58,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.campfire.analytics.Analytics
 import app.campfire.analytics.events.Bookmark as BookmarkObj
@@ -80,17 +87,18 @@ import app.campfire.common.compose.icons.CampfireIcons
 import app.campfire.common.compose.icons.rounded.Bookmark
 import app.campfire.common.compose.icons.rounded.BookmarkAdd
 import app.campfire.common.compose.icons.rounded.BookmarkStar
+import app.campfire.common.compose.icons.rounded.Close
 import app.campfire.common.compose.icons.rounded.Delete
 import app.campfire.common.compose.icons.rounded.DeleteForever
 import app.campfire.common.compose.icons.rounded.DeleteSweep
 import app.campfire.common.compose.icons.rounded.Edit
-import app.campfire.common.compose.icons.rounded.Forward5
+import app.campfire.common.compose.icons.rounded.Forward30
+import app.campfire.common.compose.icons.rounded.History
 import app.campfire.common.compose.icons.rounded.Mic
 import app.campfire.common.compose.icons.rounded.Pause
 import app.campfire.common.compose.icons.rounded.PlayArrow
-import app.campfire.common.compose.icons.rounded.Replay
+import app.campfire.common.compose.icons.rounded.Replay30
 import app.campfire.common.compose.icons.rounded.Schedule
-import app.campfire.common.compose.icons.rounded.Sync
 import app.campfire.common.compose.speech.appendDictatedText
 import app.campfire.common.compose.speech.rememberVoiceDictationLauncher
 import app.campfire.common.compose.widgets.FilledTonalIconButton
@@ -105,9 +113,8 @@ import app.campfire.core.coroutines.onLoading
 import app.campfire.core.di.UserScope
 import app.campfire.core.model.Bookmark
 import app.campfire.core.model.LibraryItemId
-import app.campfire.sessions.ui.composables.ForwardIcon
-import app.campfire.sessions.ui.composables.RewindIcon
 import app.campfire.sessions.ui.sheets.SessionSheetLayout
+import app.campfire.settings.api.PlaybackSettings
 import app.campfire.user.api.BookmarkRepository
 import campfire.features.sessions.ui.generated.resources.Res
 import campfire.features.sessions.ui.generated.resources.action_delete_all_bookmarks
@@ -120,6 +127,7 @@ import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_ac
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_empty_message
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_error_message
 import campfire.features.sessions.ui.generated.resources.bookmark_bottomsheet_title
+import campfire.features.sessions.ui.generated.resources.bookmark_continue_listening_at
 import campfire.features.sessions.ui.generated.resources.bookmark_default_title
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_delete_action_delete
@@ -132,8 +140,6 @@ import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prom
 import campfire.features.sessions.ui.generated.resources.bookmark_dictation_prompt_title
 import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_action_save
 import campfire.features.sessions.ui.generated.resources.bookmark_edit_dialog_title
-import campfire.features.sessions.ui.generated.resources.bookmark_editor_playback_label
-import campfire.features.sessions.ui.generated.resources.bookmark_editor_sync_time
 import campfire.features.sessions.ui.generated.resources.bookmark_editor_timestamp_label
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_cancel
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_action_create
@@ -141,12 +147,16 @@ import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_lab
 import campfire.features.sessions.ui.generated.resources.bookmark_new_dialog_title
 import campfire.features.sessions.ui.generated.resources.bookmark_notes_show_less
 import campfire.features.sessions.ui.generated.resources.bookmark_notes_show_more
+import campfire.features.sessions.ui.generated.resources.bookmark_return_banner_dismiss
 import campfire.features.sessions.ui.generated.resources.cd_forward_time
 import campfire.features.sessions.ui.generated.resources.cd_rewind_time
 import com.slack.circuit.overlay.OverlayHost
 import dev.zacsweers.metro.ContributesTo
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.catch
@@ -166,6 +176,8 @@ sealed interface BookmarkResult {
 interface BookmarksBottomSheetComponent {
   val audioPlayerHolder: AudioPlayerHolder
   val bookmarkRepository: BookmarkRepository
+  val playbackSettings: PlaybackSettings
+  val bookmarkReturnPositionStore: BookmarkReturnPositionStore
 }
 
 suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId): BookmarkResult {
@@ -184,6 +196,9 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId): 
         onBookmarkClick = { bookmark ->
           overlayNavigator.finish(BookmarkResult.Selected(bookmark))
         },
+        onDismissSheet = {
+          overlayNavigator.finish(BookmarkResult.None)
+        },
         modifier = Modifier.navigationBarsPadding(),
       )
     },
@@ -195,6 +210,7 @@ suspend fun OverlayHost.showBookmarksBottomSheet(libraryItemId: LibraryItemId): 
 private fun BookmarksBottomSheet(
   libraryItemId: LibraryItemId,
   onBookmarkClick: (Bookmark) -> Unit,
+  onDismissSheet: () -> Unit,
   modifier: Modifier = Modifier,
   component: BookmarksBottomSheetComponent = rememberComponent(),
 ) {
@@ -209,6 +225,14 @@ private fun BookmarksBottomSheet(
   val playerState by remember {
     component.audioPlayerHolder.currentPlayer.filterNotNull().flatMapLatest { it.state }
   }.collectAsState(AudioPlayer.State.Disabled)
+
+  val returnPosition by remember(libraryItemId) {
+    component.bookmarkReturnPositionStore.observe(libraryItemId)
+  }.collectAsState(null)
+
+  val useCompactLayout by remember {
+    component.playbackSettings.observeBookmarkEditorAlternateView()
+  }.collectAsState()
 
   val loadState by remember(libraryItemId) {
     component.bookmarkRepository.observeBookmarks(libraryItemId)
@@ -248,6 +272,26 @@ private fun BookmarksBottomSheet(
     Column(
       modifier = Modifier.fillMaxWidth(),
     ) {
+      val visibleReturnPosition = returnPosition
+      AnimatedVisibility(visible = visibleReturnPosition != null) {
+        visibleReturnPosition?.let { targetTime ->
+          ReturnToPositionBanner(
+            returnTime = targetTime,
+            onContinueClick = {
+              currentPlayer?.seekTo(targetTime, play = true)
+              component.bookmarkReturnPositionStore.clear(libraryItemId)
+              onDismissSheet()
+            },
+            onDismissClick = {
+              component.bookmarkReturnPositionStore.clear(libraryItemId)
+            },
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp, vertical = 8.dp),
+          )
+        }
+      }
+
       LazyColumn(
         modifier = Modifier.weight(1f, fill = false),
       ) {
@@ -260,6 +304,11 @@ private fun BookmarksBottomSheet(
               BookmarkListItem(
                 bookmark = bookmark,
                 onClick = {
+                  component.bookmarkReturnPositionStore.recordJumpFrom(
+                    libraryItemId = libraryItemId,
+                    fromTime = currentTime,
+                    toTime = bookmark.time,
+                  )
                   onBookmarkClick(bookmark)
                 },
                 onEditClick = {
@@ -394,15 +443,28 @@ private fun BookmarksBottomSheet(
     BookmarkEditorDialog(
       currentTime = editorTargetTime,
       liveTime = currentTime,
+      maxDuration = currentPlayer?.preparedSession?.duration?.takeIf { it > Duration.ZERO },
       hasPlayer = currentPlayer != null,
       isPlaying = playerState == AudioPlayer.State.Playing,
       isEditing = existing != null,
+      useCompactLayout = useCompactLayout,
+      returnPosition = returnPosition,
       initialTitle = initialTitle,
       initialNotes = initialNotes,
       chapterTitleResolver = { ts -> currentPlayer?.preparedSession?.chapterAt(ts)?.title },
-      onPlayPause = { currentPlayer?.playPause() },
-      onRewind = { currentPlayer?.seekBackward() },
-      onForward = { currentPlayer?.seekForward() },
+      onPause = { currentPlayer?.pause() },
+      onSeek = { timestamp, play -> currentPlayer?.seekTo(timestamp, play) },
+      onRecordReturnPosition = { fromTime, toTime ->
+        component.bookmarkReturnPositionStore.recordJumpFrom(
+          libraryItemId = libraryItemId,
+          fromTime = fromTime,
+          toTime = toTime,
+        )
+      },
+      onReturnToPositionInDialog = { pos ->
+        currentPlayer?.seekTo(pos, play = false)
+        component.bookmarkReturnPositionStore.clear(libraryItemId)
+      },
       onDismiss = {
         showCreateDialog = null
         editingBookmark = null
@@ -629,23 +691,129 @@ private fun CreateNewListItem(
 }
 
 @Composable
+private fun ReturnToPositionBanner(
+  returnTime: Duration,
+  onContinueClick: () -> Unit,
+  onDismissClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Surface(
+    modifier = modifier,
+    shape = RoundedCornerShape(14.dp),
+    color = MaterialTheme.colorScheme.secondaryContainer,
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Row(
+        modifier = Modifier
+          .weight(1f)
+          .clickable(onClick = onContinueClick)
+          .padding(start = 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Icon(
+          imageVector = CampfireIcons.Rounded.History,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSecondaryContainer,
+          modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+          text = stringResource(Res.string.bookmark_continue_listening_at, returnTime.readoutFormat()),
+          style = MaterialTheme.typography.labelLarge,
+          fontWeight = FontWeight.SemiBold,
+          color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+      }
+      val dismissLabel = stringResource(Res.string.bookmark_return_banner_dismiss)
+      IconButton(
+        onClick = onDismissClick,
+      ) {
+        Icon(
+          imageVector = CampfireIcons.Rounded.Close,
+          contentDescription = dismissLabel,
+          tint = MaterialTheme.colorScheme.onSecondaryContainer,
+          modifier = Modifier.size(18.dp),
+        )
+      }
+    }
+  }
+}
+
+@Composable
 private fun BookmarkEditorDialog(
   currentTime: Duration,
   liveTime: Duration,
+  maxDuration: Duration?,
   hasPlayer: Boolean,
   isPlaying: Boolean,
   isEditing: Boolean,
+  useCompactLayout: Boolean,
+  returnPosition: Duration?,
   initialTitle: String,
   initialNotes: String,
   chapterTitleResolver: (Duration) -> String?,
-  onPlayPause: () -> Unit,
-  onRewind: () -> Unit,
-  onForward: () -> Unit,
+  onPause: () -> Unit,
+  onSeek: (timestamp: Duration, play: Boolean) -> Unit,
+  onRecordReturnPosition: (fromTime: Duration, toTime: Duration) -> Unit,
+  onReturnToPositionInDialog: (Duration) -> Unit,
   onDismiss: () -> Unit,
   onSave: (encodedTitle: String, timestamp: Duration) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   var bookmarkTime by remember(currentTime) { mutableStateOf(currentTime) }
+  var hasPreviewedInEdit by remember(currentTime, isEditing) { mutableStateOf(false) }
+  var pendingSeekTarget by remember { mutableStateOf<Duration?>(null) }
+  var pendingSeekMark by remember { mutableStateOf<TimeMark?>(null) }
+  val isTrackingLiveAudio = !isEditing || hasPreviewedInEdit
+
+  LaunchedEffect(Unit) {
+    if (!isEditing && isPlaying) {
+      onPause()
+    }
+  }
+
+  LaunchedEffect(liveTime, isPlaying, isTrackingLiveAudio) {
+    if (!isPlaying || !isTrackingLiveAudio) return@LaunchedEffect
+    val target = pendingSeekTarget
+    if (target != null) {
+      val settled = (liveTime - target).absoluteValue <= 2.seconds
+      val timedOut = (pendingSeekMark?.elapsedNow() ?: Duration.ZERO) >= 1500.milliseconds
+      if (!settled && !timedOut) return@LaunchedEffect
+      pendingSeekTarget = null
+      pendingSeekMark = null
+    }
+    bookmarkTime = liveTime
+  }
+
+  fun nudgeBy(delta: Duration) {
+    val raw = (bookmarkTime + delta).coerceAtLeast(Duration.ZERO)
+    val clamped = maxDuration?.let { raw.coerceAtMost(it) } ?: raw
+    bookmarkTime = clamped
+    if (hasPlayer && isTrackingLiveAudio) {
+      pendingSeekTarget = clamped
+      pendingSeekMark = TimeSource.Monotonic.markNow()
+      onSeek(clamped, isPlaying)
+    }
+  }
+
+  fun togglePlayPause() {
+    if (!hasPlayer) return
+    if (isPlaying && isTrackingLiveAudio) {
+      onPause()
+    } else {
+      if (isEditing && !hasPreviewedInEdit) {
+        onRecordReturnPosition(liveTime, bookmarkTime)
+        hasPreviewedInEdit = true
+      }
+      pendingSeekTarget = bookmarkTime
+      pendingSeekMark = TimeSource.Monotonic.markNow()
+      onSeek(bookmarkTime, true)
+    }
+  }
+
   val chapterTitle = remember(bookmarkTime, chapterTitleResolver) { chapterTitleResolver(bookmarkTime) }
   val fallbackTitle = stringResource(Res.string.bookmark_default_title, bookmarkTime.readoutFormat())
   val defaultTitle = remember(chapterTitle, fallbackTitle) {
@@ -671,7 +839,7 @@ private fun BookmarkEditorDialog(
     onDismissRequest = onDismiss,
     content = {
       Surface(
-        modifier = Modifier.wrapContentWidth().wrapContentHeight(),
+        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 6.dp,
@@ -705,144 +873,159 @@ private fun BookmarkEditorDialog(
 
           Spacer(Modifier.height(16.dp))
 
-          Text(
-            text = stringResource(Res.string.bookmark_editor_timestamp_label),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-
-          Spacer(Modifier.height(6.dp))
-
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-          ) {
-            Row(
-              modifier = Modifier
-                .wrapContentSize()
-                .border(
-                  width = 1.dp,
-                  color = MaterialTheme.colorScheme.primary,
-                  shape = RoundedCornerShape(50),
-                ),
-              verticalAlignment = Alignment.CenterVertically,
-            ) {
-              val rewindLabel = stringResource(Res.string.cd_rewind_time, "1")
-              IconButtonTooltip(text = rewindLabel) {
-                IconButton(
-                  onClick = {
-                    bookmarkTime = (bookmarkTime - 1.seconds).coerceAtLeast(Duration.ZERO)
-                  },
-                  colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary,
-                  ),
-                ) {
-                  Icon(
-                    CampfireIcons.Rounded.Replay,
-                    contentDescription = rewindLabel,
-                  )
-                }
-              }
-
-              Text(
-                text = bookmarkTime.readoutFormat(),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 8.dp),
-              )
-
-              val forwardLabel = stringResource(Res.string.cd_forward_time, "5")
-              IconButtonTooltip(text = forwardLabel) {
-                IconButton(
-                  onClick = {
-                    bookmarkTime += 5.seconds
-                  },
-                  colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary,
-                  ),
-                ) {
-                  Icon(
-                    CampfireIcons.Rounded.Forward5,
-                    contentDescription = forwardLabel,
-                  )
-                }
-              }
-            }
-
-            val syncLabel = stringResource(Res.string.bookmark_editor_sync_time)
-            IconButtonTooltip(text = syncLabel) {
-              IconButton(
-                onClick = { bookmarkTime = liveTime },
-                enabled = hasPlayer,
-                colors = IconButtonDefaults.iconButtonColors(
-                  contentColor = MaterialTheme.colorScheme.primary,
-                ),
-              ) {
-                Icon(
-                  CampfireIcons.Rounded.Sync,
-                  contentDescription = syncLabel,
-                )
-              }
-            }
-          }
-
-          Spacer(Modifier.height(12.dp))
-
           Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
           ) {
             Column(
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
             ) {
               Text(
-                text = stringResource(Res.string.bookmark_editor_playback_label),
+                text = stringResource(Res.string.bookmark_editor_timestamp_label),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
               )
-              Spacer(Modifier.height(4.dp))
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-              ) {
-                IconButton(
-                  onClick = onRewind,
-                  enabled = hasPlayer,
+
+              Spacer(Modifier.height(8.dp))
+
+              val showPauseIcon = isPlaying && isTrackingLiveAudio
+              val playPauseLabel = stringResource(Res.string.action_play_pause)
+              val playPauseButtonSize = if (useCompactLayout) 42.dp else 48.dp
+
+              if (useCompactLayout) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                 ) {
-                  RewindIcon()
+                  IconButtonTooltip(text = playPauseLabel) {
+                    FilledIconButton(
+                      onClick = ::togglePlayPause,
+                      enabled = hasPlayer,
+                      shape = CircleShape,
+                      modifier = Modifier.size(playPauseButtonSize),
+                    ) {
+                      Icon(
+                        imageVector = if (showPauseIcon) {
+                          CampfireIcons.Rounded.Pause
+                        } else {
+                          CampfireIcons.Rounded.PlayArrow
+                        },
+                        contentDescription = playPauseLabel,
+                      )
+                    }
+                  }
+
+                  Text(
+                    text = bookmarkTime.readoutFormat(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                  )
                 }
-                val playPauseLabel = stringResource(Res.string.action_play_pause)
-                IconButtonTooltip(text = playPauseLabel) {
-                  IconButton(
-                    onClick = onPlayPause,
-                    enabled = hasPlayer,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(),
-                  ) {
-                    Icon(
-                      imageVector = if (isPlaying) {
-                        CampfireIcons.Rounded.Pause
-                      } else {
-                        CampfireIcons.Rounded.PlayArrow
-                      },
-                      contentDescription = playPauseLabel,
-                    )
+              } else {
+                Text(
+                  text = bookmarkTime.readoutFormat(),
+                  style = MaterialTheme.typography.headlineSmall,
+                  fontFamily = FontFamily.Monospace,
+                  fontWeight = FontWeight.Bold,
+                  maxLines = 1,
+                  softWrap = false,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                ) {
+                  val rewind30Label = stringResource(Res.string.cd_rewind_time, "30")
+                  IconButtonTooltip(text = rewind30Label) {
+                    IconButton(
+                      onClick = { nudgeBy((-30).seconds) },
+                    ) {
+                      Icon(
+                        imageVector = CampfireIcons.Rounded.Replay30,
+                        contentDescription = rewind30Label,
+                      )
+                    }
+                  }
+
+                  IconButtonTooltip(text = playPauseLabel) {
+                    FilledIconButton(
+                      onClick = ::togglePlayPause,
+                      enabled = hasPlayer,
+                      shape = CircleShape,
+                      modifier = Modifier.size(playPauseButtonSize),
+                    ) {
+                      Icon(
+                        imageVector = if (showPauseIcon) {
+                          CampfireIcons.Rounded.Pause
+                        } else {
+                          CampfireIcons.Rounded.PlayArrow
+                        },
+                        contentDescription = playPauseLabel,
+                      )
+                    }
+                  }
+
+                  val forward30Label = stringResource(Res.string.cd_forward_time, "30")
+                  IconButtonTooltip(text = forward30Label) {
+                    IconButton(
+                      onClick = { nudgeBy(30.seconds) },
+                    ) {
+                      Icon(
+                        imageVector = CampfireIcons.Rounded.Forward30,
+                        contentDescription = forward30Label,
+                      )
+                    }
                   }
                 }
-                IconButton(
-                  onClick = onForward,
-                  enabled = hasPlayer,
-                ) {
-                  ForwardIcon()
-                }
-                Spacer(Modifier.weight(1f))
+              }
+
+              Spacer(Modifier.height(10.dp))
+
+              BookmarkFineNudgeRow(
+                onNudge = ::nudgeBy,
+                modifier = Modifier.fillMaxWidth(),
+              )
+            }
+          }
+
+          AnimatedVisibility(
+            visible = isEditing && hasPreviewedInEdit && returnPosition != null,
+          ) {
+            returnPosition?.let { targetTime ->
+              FilledTonalButton(
+                onClick = {
+                  hasPreviewedInEdit = false
+                  pendingSeekTarget = null
+                  pendingSeekMark = null
+                  onReturnToPositionInDialog(targetTime)
+                },
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(top = 10.dp),
+              ) {
+                Icon(
+                  imageVector = CampfireIcons.Rounded.History,
+                  contentDescription = null,
+                  modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                  text = liveTime.readoutFormat(),
-                  style = MaterialTheme.typography.labelMedium,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier.padding(end = 4.dp),
+                  text = stringResource(
+                    Res.string.bookmark_continue_listening_at,
+                    targetTime.readoutFormat(),
+                  ),
+                  maxLines = 1,
+                  softWrap = false,
+                  overflow = TextOverflow.Ellipsis,
                 )
               }
             }
@@ -855,6 +1038,9 @@ private fun BookmarkEditorDialog(
           OutlinedTextField(
             value = titleValue,
             onValueChange = { newValue ->
+              if (isPlaying && isTrackingLiveAudio && newValue.text != titleValue.text) {
+                onPause()
+              }
               titleValue = newValue
             },
             label = { Text(stringResource(Res.string.bookmark_new_dialog_label_title)) },
@@ -867,7 +1053,10 @@ private fun BookmarkEditorDialog(
               {
                 IconButtonTooltip(text = dictateTitleLabel) {
                   IconButton(
-                    onClick = { titleDictation.launch(dictateTitlePrompt) },
+                    onClick = {
+                      if (isPlaying) onPause()
+                      titleDictation.launch(dictateTitlePrompt)
+                    },
                   ) {
                     Icon(
                       CampfireIcons.Rounded.Mic,
@@ -889,6 +1078,9 @@ private fun BookmarkEditorDialog(
           OutlinedTextField(
             value = notesValue,
             onValueChange = { newValue ->
+              if (isPlaying && isTrackingLiveAudio && newValue.text != notesValue.text) {
+                onPause()
+              }
               notesValue = newValue
             },
             label = { Text(stringResource(Res.string.bookmark_dialog_label_notes)) },
@@ -901,7 +1093,10 @@ private fun BookmarkEditorDialog(
               {
                 IconButtonTooltip(text = dictateNotesLabel) {
                   IconButton(
-                    onClick = { notesDictation.launch(dictateNotesPrompt) },
+                    onClick = {
+                      if (isPlaying) onPause()
+                      notesDictation.launch(dictateNotesPrompt)
+                    },
                   ) {
                     Icon(
                       CampfireIcons.Rounded.Mic,
@@ -955,6 +1150,79 @@ private fun BookmarkEditorDialog(
     },
   )
 }
+
+@Composable
+private fun BookmarkFineNudgeRow(
+  onNudge: (Duration) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier = modifier,
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    FineNudgePills.take(3).forEach { (label, delta) ->
+      FineNudgePill(
+        label = label,
+        onClick = { onNudge(delta) },
+        modifier = Modifier.weight(1f),
+      )
+    }
+
+    Box(
+      modifier = Modifier
+        .width(1.dp)
+        .height(18.dp)
+        .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+
+    FineNudgePills.drop(3).forEach { (label, delta) ->
+      FineNudgePill(
+        label = label,
+        onClick = { onNudge(delta) },
+        modifier = Modifier.weight(1f),
+      )
+    }
+  }
+}
+
+@Composable
+private fun FineNudgePill(
+  label: String,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Surface(
+    modifier = modifier
+      .height(36.dp)
+      .clip(RoundedCornerShape(8.dp))
+      .clickable(onClick = onClick),
+    shape = RoundedCornerShape(8.dp),
+    color = MaterialTheme.colorScheme.surfaceContainerLow,
+  ) {
+    Box(
+      contentAlignment = Alignment.Center,
+    ) {
+      Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        softWrap = false,
+      )
+    }
+  }
+}
+
+private val FineNudgePills = listOf(
+  "-10s" to (-10).seconds,
+  "-5s" to (-5).seconds,
+  "-1s" to (-1).seconds,
+  "+1s" to 1.seconds,
+  "+5s" to 5.seconds,
+  "+10s" to 10.seconds,
+)
 
 internal fun decodeBookmarkTitleAndNotes(rawTitle: String): Pair<String, String> {
   val normalized = rawTitle.replace("\r\n", "\n")

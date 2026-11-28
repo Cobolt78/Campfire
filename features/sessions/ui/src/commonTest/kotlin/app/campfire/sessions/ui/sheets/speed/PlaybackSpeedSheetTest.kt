@@ -40,21 +40,32 @@ class PlaybackSpeedSheetTest {
   }
 
   @Test
-  fun `stepSpeed advances by exact 0_05 increments and aligns off-grid values`() {
+  fun `stepSpeed snaps off-grid values to nearest 0_05 in requested direction`() {
     assertThat(stepSpeed(1.00f, +1)).isEqualTo(1.05f)
     assertThat(stepSpeed(1.05f, +1)).isEqualTo(1.10f)
     assertThat(stepSpeed(1.25f, -1)).isEqualTo(1.20f)
     assertThat(stepSpeed(1.20f, -1)).isEqualTo(1.15f)
-    // Off-grid custom values snap to the next step in the requested direction
+    // Off-grid values snap cleanly to the next/previous 0.05 grid mark
     assertThat(stepSpeed(1.23f, +1)).isEqualTo(1.25f)
     assertThat(stepSpeed(1.23f, -1)).isEqualTo(1.20f)
+    assertThat(stepSpeed(1.21f, +1)).isEqualTo(1.25f)
+    assertThat(stepSpeed(1.21f, -1)).isEqualTo(1.20f)
     // Clamped at min/max
     assertThat(stepSpeed(0.50f, -1)).isEqualTo(0.50f)
     assertThat(stepSpeed(3.00f, +1)).isEqualTo(3.00f)
   }
 
   @Test
-  fun `stepper buttons adjust speed by 0_05x and respect min max bounds`() = runComposeUiTest {
+  fun `stepSpeedFine advances by exact 0_01 increments and clamps within bounds`() {
+    assertThat(stepSpeedFine(1.25f, +1)).isEqualTo(1.26f)
+    assertThat(stepSpeedFine(1.25f, -1)).isEqualTo(1.24f)
+    assertThat(stepSpeedFine(1.29f, +1)).isEqualTo(1.30f)
+    assertThat(stepSpeedFine(0.50f, -1)).isEqualTo(0.50f)
+    assertThat(stepSpeedFine(3.00f, +1)).isEqualTo(3.00f)
+  }
+
+  @Test
+  fun `concept A dual-stage capsules step by 0_05x and 0_01x and snap off-grid values`() = runComposeUiTest {
     mainClock.autoAdvance = false
     val speedChanges = mutableListOf<Float>()
     var currentSpeed by mutableStateOf(1.25f)
@@ -65,6 +76,59 @@ class PlaybackSpeedSheetTest {
           currentSpeed = currentSpeed,
           speedOptions = listOf(1f, 1.25f, 1.5f),
           perBookSpeedEnabled = false,
+          useAlternateStepperView = false,
+          onSpeedChange = {
+            currentSpeed = it
+            speedChanges += it
+          },
+          onPerBookSpeedChange = {},
+        )
+      }
+    }
+    mainClock.advanceTimeByFrame()
+
+    onNodeWithContentDescription("Increase speed by 0.01x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.26f)
+
+    // Stepping +0.05 from 1.26 snaps to next 0.05 mark (1.30)
+    onNodeWithContentDescription("Increase speed by 0.05x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.30f)
+
+    onNodeWithContentDescription("Decrease speed by 0.01x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.29f)
+
+    onNodeWithContentDescription("Decrease speed by 0.05x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.25f)
+
+    assertThat(speedChanges).containsExactly(1.26f, 1.30f, 1.29f, 1.25f)
+
+    currentSpeed = 1.23f
+    repeat(2) { mainClock.advanceTimeByFrame() }
+    onNodeWithContentDescription("Increase speed by 0.05x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.25f)
+  }
+
+  @Test
+  fun `concept B alternate view toggles between 0_05x and 0_01x and respects min max bounds`() = runComposeUiTest {
+    mainClock.autoAdvance = false
+    val speedChanges = mutableListOf<Float>()
+    var currentSpeed by mutableStateOf(1.25f)
+    var fineStep by mutableStateOf(false)
+
+    setContent {
+      CampfireTheme {
+        PlaybackSpeedSheet(
+          currentSpeed = currentSpeed,
+          speedOptions = listOf(1f, 1.25f, 1.5f),
+          perBookSpeedEnabled = false,
+          useAlternateStepperView = true,
+          fineStepEnabled = fineStep,
+          onFineStepEnabledChange = { fineStep = it },
           onSpeedChange = {
             currentSpeed = it
             speedChanges += it
@@ -79,11 +143,23 @@ class PlaybackSpeedSheetTest {
     mainClock.advanceTimeByFrame()
     assertThat(currentSpeed).isEqualTo(1.30f)
 
+    // Switch step pill to 0.01x
+    onNodeWithText("0.01x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(fineStep).isEqualTo(true)
+
+    onNodeWithContentDescription("Decrease speed by 0.01x").performClick()
+    mainClock.advanceTimeByFrame()
+    assertThat(currentSpeed).isEqualTo(1.29f)
+
+    // Switch back to 0.05x and verify directional snap
+    onNodeWithText("0.05x").performClick()
+    mainClock.advanceTimeByFrame()
     onNodeWithContentDescription("Decrease speed by 0.05x").performClick()
     mainClock.advanceTimeByFrame()
     assertThat(currentSpeed).isEqualTo(1.25f)
 
-    assertThat(speedChanges).containsExactly(1.30f, 1.25f)
+    assertThat(speedChanges).containsExactly(1.30f, 1.29f, 1.25f)
 
     currentSpeed = PlaybackSpeedRange.start
     repeat(2) { mainClock.advanceTimeByFrame() }

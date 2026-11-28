@@ -74,6 +74,13 @@
   <string name="header_item_cards">Item cards</string>
   <string name="setting_item_card_marquee_title">Marquee scrolling</string>
   <string name="setting_item_card_marquee_subtitle">Allow long title / author text on item cards to scroll while on screen</string>
+  <string name="header_player_controls_appearance">Player controls</string>
+  <string name="setting_speed_stepper_alternate_title">Playback speed alternate view</string>
+  <string name="setting_speed_stepper_alternate_subtitle">Use classic − / + buttons with a 0.05x / 0.01x step toggle instead of dual-stage capsules</string>
+  <string name="setting_sleep_timer_stepper_alternate_title">Sleep timer alternate view</string>
+  <string name="setting_sleep_timer_stepper_alternate_subtitle">Use classic − / + buttons with a 5m / 1m step toggle instead of dual-stage capsules</string>
+  <string name="setting_bookmark_editor_alternate_title">Bookmark editor alternate view</string>
+  <string name="setting_bookmark_editor_alternate_subtitle">Use the compact 2-row bookmark controls without ±30s skip buttons</string>
 
   <!-- Downloads setting strings-->
   <string name="setting_show_download_confirmation_title">Show download confirmation dialog</string>

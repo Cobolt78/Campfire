@@ -88,7 +88,14 @@ class SettingsAnalyticUiEventHandler(
       is DynamicItemDetailTheming -> send("dynamic_item_detail_theme", Updated, event.enabled.toString())
       is DynamicPlaybackTheming -> send("dynamic_playback_theme", Updated, event.enabled.toString())
       is ItemCardMarqueeEnabled -> send("item_card_marquee", Updated, event.enabled.toString())
-      is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView -> send("continue_series_alternate_view", Updated, event.enabled.toString())
+      is SettingsUiEvent.AppearanceSettingEvent.ContinueSeriesAlternateView ->
+        send("continue_series_alternate_view", Updated, event.enabled.toString())
+      is SettingsUiEvent.AppearanceSettingEvent.SpeedStepperAlternateView ->
+        send("speed_stepper_alternate_view", Updated, event.enabled.toString())
+      is SettingsUiEvent.AppearanceSettingEvent.SleepTimerStepperAlternateView ->
+        send("sleep_timer_stepper_alternate_view", Updated, event.enabled.toString())
+      is SettingsUiEvent.AppearanceSettingEvent.BookmarkEditorAlternateView ->
+        send("bookmark_editor_alternate_view", Updated, event.enabled.toString())
       SettingsUiEvent.AppearanceSettingEvent.OpenThemeBuilder -> send("edit_theme", Click)
     }
 

@@ -214,4 +214,28 @@ class FakePlaybackSettings : PlaybackSettings {
 
   override fun observeScrollingTitles(): StateFlow<Boolean> =
     _scrollingTitles.asStateFlow()
+
+  private val _speedStepperAlternateView = MutableStateFlow(false)
+  override var speedStepperAlternateView: Boolean
+    get() = _speedStepperAlternateView.value
+    set(value) { _speedStepperAlternateView.value = value }
+
+  override fun observeSpeedStepperAlternateView(): StateFlow<Boolean> =
+    _speedStepperAlternateView.asStateFlow()
+
+  private val _speedStepperFineStep = MutableStateFlow(false)
+  override var speedStepperFineStep: Boolean
+    get() = _speedStepperFineStep.value
+    set(value) { _speedStepperFineStep.value = value }
+
+  override fun observeSpeedStepperFineStep(): StateFlow<Boolean> =
+    _speedStepperFineStep.asStateFlow()
+
+  private val _bookmarkEditorAlternateView = MutableStateFlow(false)
+  override var bookmarkEditorAlternateView: Boolean
+    get() = _bookmarkEditorAlternateView.value
+    set(value) { _bookmarkEditorAlternateView.value = value }
+
+  override fun observeBookmarkEditorAlternateView(): StateFlow<Boolean> =
+    _bookmarkEditorAlternateView.asStateFlow()
 }
