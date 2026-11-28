@@ -11,14 +11,21 @@ index fb1f5ca2..4029ecd1 100644
  *.dSYM
  
 diff --git a/CHANGELOG.md b/CHANGELOG.md
-index c0278c85..d9746e41 100644
+index c0278c85..0e8d8b09 100644
 --- a/CHANGELOG.md
 +++ b/CHANGELOG.md
-@@ -17,7 +17,645 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
+@@ -17,7 +17,652 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
  ### Fixed
  
 -### Other Notes & Contributions
++## [1.2.60] - 2026-11-28
++
++### Added
++- **Android Auto Playback Speed Button**:
++  - Added an opt-in **Playback speed button** toggle under **Settings → Android Auto → Player controls**.
++  - When enabled, exposes a live-labeled **Speed (`<rate>x`)** Media3 `CommandButton` (`WidgetSessionCommand.CYCLE_SPEED`) in Android Auto controls so listeners can cycle through their preset playback speeds directly from the car display (and cleanly step up from fine-tuned custom speeds to the next higher preset).
++
 +## [1.2.59] - 2026-11-28
 +
 +### Changed
@@ -663,10 +670,10 @@ index c0278c85..d9746e41 100644
  
 diff --git a/CUSTOM_MODIFICATIONS.md b/CUSTOM_MODIFICATIONS.md
 new file mode 100644
-index 00000000..56161e6b
+index 00000000..d71a496e
 --- /dev/null
 +++ b/CUSTOM_MODIFICATIONS.md
-@@ -0,0 +1,3334 @@
+@@ -0,0 +1,3368 @@
 +# Campfire Custom Modifications Guide
 +
 +This document captures all custom features, bug fixes, and UI improvements added to Campfire v1.05. Use this guide and the accompanying `custom_changes.patch` to easily reapply and migrate these enhancements whenever updating to future versions of Campfire (e.g., v1.06+).
@@ -780,6 +787,7 @@ index 00000000..56161e6b
 +104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 +105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
 +106. [Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)](#106-auto-pause-playback-when-opening-edit-bookmark-v1259)
++107. [Android Auto Playback Speed Cycle Button Option (v1.2.60)](#107-android-auto-playback-speed-cycle-button-option-v1260)
 +
 +---
 +
@@ -3998,6 +4006,39 @@ index 00000000..56161e6b
 +
 +### Modified Files:
 +* `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
++* `gradle.properties`
++* `CHANGELOG.md`
++* `CUSTOM_MODIFICATIONS.md`
++
++---
++
++## 107. Android Auto Playback Speed Cycle Button Option (v1.2.60)
++
++### Summary
++Added an opt-in **Playback speed button** switch under **Settings → Android Auto → Player controls** that exposes a live-labeled `Speed (<rate>x)` button in Android Auto's media player controls to cycle through configured preset speeds.
++
++### Key Details
++1. **Settings Storage & UI (`AndroidAutoSettings.kt`, `AndroidAutoSettingsImpl.kt`, `AndroidAutoPane.kt`, `SettingsPresenter.kt`, `SettingsUiState.kt`, `SettingsAnalyticUiEventHandler.kt`, `ui_settings_strings.xml`)**:
++   - Added `speedButtonEnabled` (`pref_android_auto_speed_button_enabled`, default `false`) + `observeSpeedButtonEnabled()`.
++   - Added a **Player controls** section at the top of `AndroidAutoPane` with the **Playback speed button** toggle.
++2. **Media3 Session Action & Live Speed Updates (`MediaSessionCallback.kt`, `PlaybackSpeedCycling.kt`, `ic_notification_playback_speed.xml`, `strings.xml`)**:
++   - Exposed `WidgetSessionCommand.CYCLE_SPEED` in `createMediaButtonPreferences()` when enabled, displaying `"Speed (%1$sx)"` formatted with `readableHundredths` and `ic_notification_playback_speed`.
++   - Observed `androidAutoSettings.observeSpeedButtonEnabled()`, `player.playbackSpeed`, and `playbackSettings.observePlaybackRates()` inside `MediaSessionCallback.bindSession()` so the displayed speed label updates immediately after phone or car speed changes.
++   - Extracted `cycleNextPlaybackSpeed()` so fine-tuned custom speeds advance cleanly to the next higher preset before wrapping.
++
++### Modified Files:
++* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt`
++* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt`
++* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
++* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt`
++* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
++* `infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_playback_speed.xml`
++* `infra/audioplayer/impl/src/androidMain/res/values/strings.xml`
++* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCycling.kt`
++* `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCyclingTest.kt`
 +* `gradle.properties`
 +* `CHANGELOG.md`
 +* `CUSTOM_MODIFICATIONS.md`
@@ -22920,6 +22961,21 @@ index 58c39a3d..085f61d9 100644
      override val sessionsRepository: SessionsRepository = FakeSessionsRepository()
      override val sleepSettings: SleepSettings = FakeSleepSettings()
    }
+diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt
+index 8de96802..a8428f31 100644
+--- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt
++++ b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt
+@@ -62,4 +62,10 @@ interface AndroidAutoSettings {
+    * Replace the current ordering. Any missing entries will be appended in enum order.
+    */
+   fun setCategoryOrder(order: List<AndroidAutoCategory>)
++
++  /**
++   * When true, exposes a playback speed cycle button in Android Auto's player controls.
++   */
++  var speedButtonEnabled: Boolean
++  fun observeSpeedButtonEnabled(): StateFlow<Boolean>
+ }
 diff --git a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt b/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt
 index fc43e3f8..0581c6c9 100644
 --- a/features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AppStateSettings.kt
@@ -23147,6 +23203,29 @@ index ea37e0e1..4f416108 100644
    sealed class AutoSleepTimer {
      data class Epoch(val millis: Long) : AutoSleepTimer()
      data object EndOfChapter : AutoSleepTimer()
+diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt
+index 63a89dd3..cc72b996 100644
+--- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt
++++ b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt
+@@ -89,6 +89,10 @@ class AndroidAutoSettingsImpl(
+     storedOrder = normalizeOrder(order)
+   }
+ 
++  private val speedButtonEnabledProperty = booleanSetting(PREF_AA_SPEED_BUTTON_ENABLED, false)
++  override var speedButtonEnabled: Boolean by speedButtonEnabledProperty
++  override fun observeSpeedButtonEnabled(): StateFlow<Boolean> = speedButtonEnabledProperty.observe()
++
+   private fun buildConfigs(
+     order: List<AndroidAutoCategory>,
+     hidden: Set<AndroidAutoCategory>,
+@@ -123,6 +127,7 @@ class AndroidAutoSettingsImpl(
+ internal const val PREF_AA_ORDER = "pref_android_auto_category_order"
+ internal const val PREF_AA_HIDDEN = "pref_android_auto_hidden_categories"
+ internal const val PREF_AA_GRID_OVERRIDES = "pref_android_auto_grid_overrides"
++internal const val PREF_AA_SPEED_BUTTON_ENABLED = "pref_android_auto_speed_button_enabled"
+ 
+ private const val LIST_SEPARATOR = ":"
+ private const val ENTRY_SEPARATOR = "="
 diff --git a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AppStateSettingsImpl.kt b/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AppStateSettingsImpl.kt
 index a864e8f8..82430efb 100644
 --- a/features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AppStateSettingsImpl.kt
@@ -23930,7 +24009,7 @@ index 012f349d..f3f67e42 100644
 +  }
  }
 diff --git a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
-index 6eba5bd2..c72ae08c 100644
+index 6eba5bd2..d7162da9 100644
 --- a/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 +++ b/features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml
 @@ -74,10 +74,21 @@
@@ -23975,8 +24054,18 @@ index 6eba5bd2..c72ae08c 100644
    <string name="setting_playback_shake_sensitivity_title">Shake sensitivity</string>
    <string name="setting_playback_shake_sensitivity_subtitle">How sensitive the shake detection is</string>
    <string name="shake_sensitivity_very_low">Very low</string>
+@@ -202,6 +215,9 @@
+   <string name="android_auto_unavailable_step_4">Enable 'Unknown sources'</string>
+   <string name="android_auto_unavailable_step_5">Re-connect Android Auto!</string>
+   <string name="android_auto_open_settings">Open Android Auto settings</string>
++  <string name="android_auto_header_player_controls">Player controls</string>
++  <string name="android_auto_speed_button_title">Playback speed button</string>
++  <string name="android_auto_speed_button_subtitle">Show a button on the Android Auto player to cycle through your preset playback speeds</string>
+   <string name="android_auto_header_categories">Categories</string>
+   <string name="android_auto_categories_description">Drag to reorder. Toggle each category's visibility and choose whether its contents appear as a grid or list.</string>
+   <string name="android_auto_category_home">Home</string>
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
-index 5c4d5e98..524a17e8 100644
+index 5c4d5e98..ed78e7e9 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt
 @@ -35,6 +35,7 @@ import app.campfire.core.model.Server
@@ -24107,7 +24196,17 @@ index 5c4d5e98..524a17e8 100644
      val appUpdateSignInDismissed by remember { appStateSettings.observeAppUpdateSignInDismissed() }
        .collectAsState()
      var appUpdateInvalidator by remember { mutableIntStateOf(0) }
-@@ -307,9 +362,15 @@ class SettingsPresenter(
+@@ -277,6 +332,9 @@ class SettingsPresenter(
+     val androidAutoCategories by remember {
+       androidAutoSettings.observeCategoryConfigs()
+     }.collectAsState()
++    val androidAutoSpeedButtonEnabled by remember {
++      androidAutoSettings.observeSpeedButtonEnabled()
++    }.collectAsState()
+     val isAndroidAutoAvailable = remember { androidAuto.isAvailable() }
+ 
+     // Developer Settings
+@@ -307,9 +365,15 @@ class SettingsPresenter(
          dynamicItemDetailTheming = dynamicItemDetailTheming,
          dynamicPlaybackTheming = dynamicPlaybackTheming,
          itemCardMarqueeEnabled = itemCardMarqueeEnabled,
@@ -24123,7 +24222,7 @@ index 5c4d5e98..524a17e8 100644
          isWifiOnlyAvailable = currentPlatform == Platform.ANDROID,
          downloadOnWifiOnly = downloadOnWifiOnly,
          downloads = downloadEntries,
-@@ -335,11 +396,25 @@ class SettingsPresenter(
+@@ -335,11 +399,25 @@ class SettingsPresenter(
          bookTimeInPlaybackUi = bookTimeInPlaybackUi,
          playbackWavyScrubber = playbackWavyScrubber,
          scrollingTitles = scrollingTitles,
@@ -24149,7 +24248,15 @@ index 5c4d5e98..524a17e8 100644
          autoSleepSetting = if (autoSleepTimerEnabled) {
            SleepSettingsInfo.AutoSleepSetting(
              start = autoSleepTimerStart,
-@@ -447,11 +522,20 @@ class SettingsPresenter(
+@@ -371,6 +449,7 @@ class SettingsPresenter(
+       androidAutoSettings = AndroidAutoSettingsInfo(
+         isAndroidAutoAvailable = isAndroidAutoAvailable,
+         categories = androidAutoCategories,
++        speedButtonEnabled = androidAutoSpeedButtonEnabled,
+       ),
+       developerSettings = DeveloperSettingsInfo(
+         developerModeEnabled = developerModeEnabled || applicationInfo.debugBuild,
+@@ -447,11 +526,20 @@ class SettingsPresenter(
            is DynamicItemDetailTheming -> themeSettings.dynamicallyThemeItemDetail = event.enabled
            is DynamicPlaybackTheming -> themeSettings.dynamicallyThemePlayback = event.enabled
            is ItemCardMarqueeEnabled -> libraryViewSettings.libraryItemMarqueeEnabled = event.enabled
@@ -24170,7 +24277,7 @@ index 5c4d5e98..524a17e8 100644
            is SettingsUiEvent.DownloadsSettingEvent.DownloadOnWifiOnly -> {
              mobileDataSettings.downloadOnWifiOnly = event.enabled
            }
-@@ -470,6 +554,27 @@ class SettingsPresenter(
+@@ -470,6 +558,27 @@ class SettingsPresenter(
            }
          }
  
@@ -24198,7 +24305,7 @@ index 5c4d5e98..524a17e8 100644
          is SettingsUiEvent.PlaybackSettingEvent -> when (event) {
            is PlaybackRateChanged -> {
              val rates = playbackSettings.playbackRates.toMutableList()
-@@ -511,6 +616,8 @@ class SettingsPresenter(
+@@ -511,6 +620,8 @@ class SettingsPresenter(
            is BookTimeInPlaybackUi -> playbackSettings.bookTimeInPlaybackUi = event.enabled
            is PlaybackWavyScrubber -> playbackSettings.playbackWavyScrubber = event.enabled
            is ScrollingTitles -> playbackSettings.scrollingTitles = event.enabled
@@ -24207,7 +24314,7 @@ index 5c4d5e98..524a17e8 100644
          }
  
          is SettingsUiEvent.SleepSettingEvent -> when (event) {
-@@ -527,6 +634,7 @@ class SettingsPresenter(
+@@ -527,6 +638,7 @@ class SettingsPresenter(
            is AutoSleepRewindEnabled -> sleepSettings.autoRewindEnabled = event.enabled
            is AutoSleepRewindAmount -> sleepSettings.autoRewindAmount = event.amount
            is FadeOutDuration -> sleepSettings.fadeOutDuration = event.duration
@@ -24215,6 +24322,15 @@ index 5c4d5e98..524a17e8 100644
          }
  
          is SettingsUiEvent.AboutSettingEvent -> when (event) {
+@@ -589,6 +701,8 @@ class SettingsPresenter(
+             androidAutoSettings.setCategoryGridLayout(event.category, event.isGrid)
+           is SettingsUiEvent.AndroidAutoSettingEvent.ReorderCategories ->
+             androidAutoSettings.setCategoryOrder(event.order)
++          is SettingsUiEvent.AndroidAutoSettingEvent.SetSpeedButtonEnabled ->
++            androidAutoSettings.speedButtonEnabled = event.enabled
+         }
+       }
+     }
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
 index cb636714..99ec6444 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUi.kt
@@ -24280,7 +24396,7 @@ index cb636714..99ec6444 100644
        state = state,
        onBackClick = onBackClick,
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
-index b1842dbf..33515b79 100644
+index b1842dbf..00614e9a 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt
 @@ -22,6 +22,7 @@ import app.campfire.settings.api.ResumeRewindTier
@@ -24347,7 +24463,15 @@ index b1842dbf..33515b79 100644
    val autoSleepSetting: AutoSleepSetting? = null,
  ) {
  
-@@ -195,6 +219,7 @@ enum class SettingsPane {
+@@ -161,6 +185,7 @@ data class AboutSettingsInfo(
+ data class AndroidAutoSettingsInfo(
+   val isAndroidAutoAvailable: Boolean,
+   val categories: List<AndroidAutoCategoryConfig>,
++  val speedButtonEnabled: Boolean = false,
+ )
+ 
+ @Immutable
+@@ -195,6 +220,7 @@ enum class SettingsPane {
    Appearance,
    Downloads,
    Playback,
@@ -24355,7 +24479,7 @@ index b1842dbf..33515b79 100644
    Sleep,
    AndroidAuto,
    About,
-@@ -207,6 +232,7 @@ enum class SettingsPane {
+@@ -207,6 +233,7 @@ enum class SettingsPane {
      Appearance -> SettingsScreen.Page.Appearance
      Downloads -> SettingsScreen.Page.Downloads
      Playback -> SettingsScreen.Page.Playback
@@ -24363,7 +24487,7 @@ index b1842dbf..33515b79 100644
      Sleep -> SettingsScreen.Page.Sleep
      AndroidAuto -> SettingsScreen.Page.AndroidAuto
      About -> SettingsScreen.Page.About
-@@ -243,12 +269,18 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -243,12 +270,18 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class DynamicItemDetailTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class DynamicPlaybackTheming(val enabled: Boolean) : AppearanceSettingEvent
      data class ItemCardMarqueeEnabled(val enabled: Boolean) : AppearanceSettingEvent
@@ -24382,7 +24506,7 @@ index b1842dbf..33515b79 100644
      data class DownloadOnWifiOnly(val enabled: Boolean) : DownloadsSettingEvent
      data class DownloadClicked(val entry: DownloadEntry) : DownloadsSettingEvent
      data class DeleteDownload(val entry: DownloadEntry) : DownloadsSettingEvent
-@@ -278,6 +310,21 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -278,6 +311,21 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class BookTimeInPlaybackUi(val enabled: Boolean) : PlaybackSettingEvent
      data class PlaybackWavyScrubber(val enabled: Boolean) : PlaybackSettingEvent
      data class ScrollingTitles(val enabled: Boolean) : PlaybackSettingEvent
@@ -24404,7 +24528,7 @@ index b1842dbf..33515b79 100644
    }
  
    // Sleep Setting Events
-@@ -291,6 +338,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+@@ -291,6 +339,7 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
      data class AutoSleepRewindEnabled(val enabled: Boolean) : SleepSettingEvent
      data class AutoSleepRewindAmount(val amount: Duration) : SleepSettingEvent
      data class FadeOutDuration(val duration: Duration) : SleepSettingEvent
@@ -24412,8 +24536,15 @@ index b1842dbf..33515b79 100644
    }
  
    sealed interface AboutSettingEvent : SettingsUiEvent {
+@@ -331,5 +380,6 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
+       val isGrid: Boolean,
+     ) : AndroidAutoSettingEvent
+     data class ReorderCategories(val order: List<AndroidAutoCategory>) : AndroidAutoSettingEvent
++    data class SetSpeedButtonEnabled(val enabled: Boolean) : AndroidAutoSettingEvent
+   }
+ }
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
-index d871b2e3..ef70d189 100644
+index d871b2e3..79d4b3ac 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 +++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt
 @@ -88,11 +88,21 @@ class SettingsAnalyticUiEventHandler(
@@ -24476,6 +24607,61 @@ index d871b2e3..ef70d189 100644
      }
  
      is SettingsUiEvent.AboutSettingEvent -> when (event) {
+@@ -186,6 +220,11 @@ class SettingsAnalyticUiEventHandler(
+         Updated,
+         event.order.joinToString(",") { it.storageKey },
+       )
++      is SettingsUiEvent.AndroidAutoSettingEvent.SetSpeedButtonEnabled -> send(
++        "android_auto_speed_button",
++        Updated,
++        event.enabled.toString(),
++      )
+     }
+   }
+ }
+diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt
+index 6b82d944..281eeefe 100644
+--- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt
++++ b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt
+@@ -50,6 +50,7 @@ import app.campfire.ui.settings.SettingsUiEvent.AndroidAutoSettingEvent
+ import app.campfire.ui.settings.SettingsUiState
+ import app.campfire.ui.settings.composables.ActionSetting
+ import app.campfire.ui.settings.composables.Header
++import app.campfire.ui.settings.composables.SwitchSetting
+ import campfire.features.settings.ui.generated.resources.Res
+ import campfire.features.settings.ui.generated.resources.android_auto_categories_description
+ import campfire.features.settings.ui.generated.resources.android_auto_category_authors
+@@ -61,9 +62,12 @@ import campfire.features.settings.ui.generated.resources.android_auto_category_s
+ import campfire.features.settings.ui.generated.resources.android_auto_category_shows
+ import campfire.features.settings.ui.generated.resources.android_auto_drag_handle_description
+ import campfire.features.settings.ui.generated.resources.android_auto_header_categories
++import campfire.features.settings.ui.generated.resources.android_auto_header_player_controls
+ import campfire.features.settings.ui.generated.resources.android_auto_layout_grid
+ import campfire.features.settings.ui.generated.resources.android_auto_layout_list
+ import campfire.features.settings.ui.generated.resources.android_auto_open_settings
++import campfire.features.settings.ui.generated.resources.android_auto_speed_button_subtitle
++import campfire.features.settings.ui.generated.resources.android_auto_speed_button_title
+ import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_1
+ import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_2
+ import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_3
+@@ -97,6 +101,17 @@ internal fun AndroidAutoPane(
+       onClick = { state.eventSink(AndroidAutoSettingEvent.OpenAndroidAutoSettings) },
+     )
+ 
++    Header(
++      title = { Text(stringResource(Res.string.android_auto_header_player_controls)) },
++    )
++
++    SwitchSetting(
++      value = state.androidAutoSettings.speedButtonEnabled,
++      onValueChange = { state.eventSink(AndroidAutoSettingEvent.SetSpeedButtonEnabled(it)) },
++      headlineContent = { Text(stringResource(Res.string.android_auto_speed_button_title)) },
++      supportingContent = { Text(stringResource(Res.string.android_auto_speed_button_subtitle)) },
++    )
++
+     Header(
+       title = { Text(stringResource(Res.string.android_auto_header_categories)) },
+     )
 diff --git a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt b/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
 index b5b7e1bd..ebdfc453 100644
 --- a/features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AppearancePane.kt
@@ -27125,7 +27311,7 @@ index 96562a8d..db22824e 100644
 +  }
  }
 diff --git a/gradle.properties b/gradle.properties
-index f41126a7..33005ef0 100644
+index f41126a7..935d8a93 100644
 --- a/gradle.properties
 +++ b/gradle.properties
 @@ -20,12 +20,12 @@ org.jetbrains.compose.experimental.uikit.enabled=true
@@ -27133,13 +27319,13 @@ index f41126a7..33005ef0 100644
  # The version currently being prepared for release. Read by scripts/release and bumped
  # automatically by the Release workflow once a release ships.
 -campfire.version=1.2.1
-+campfire.version=1.2.59
++campfire.version=1.2.60
  # The versionCode for campfire.version, kept in lockstep with it (MMmmppRR). scripts/release
  # and CI both assert `campfire.versionCode == deriveVersionCode(campfire.version)`. The build
  # reads this directly so a `git checkout <tag> && ./gradlew assembleFossRelease` reproduces the
  # exact shipped code with no build args; F-Droid's UpdateCheckData reads it from the tag too.
 -campfire.versionCode=1020199
-+campfire.versionCode=1025999
++campfire.versionCode=1026099
  
  # Local-only convenience repos. Keep disabled by default so builds are reproducible from
  # public release repositories alone (a hard requirement for F-Droid); enable in
@@ -27776,7 +27962,7 @@ index 21246ae6..27d1c68e 100644
              .setDurationMs(metadata.durationMs)
              .build(),
 diff --git a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
-index a22d7695..5b280cc7 100644
+index a22d7695..3dcebed8 100644
 --- a/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 +++ b/infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt
 @@ -8,6 +8,10 @@ import android.content.Context
@@ -27790,8 +27976,11 @@ index a22d7695..5b280cc7 100644
  import androidx.media3.common.MediaItem
  import androidx.media3.common.Player
  import androidx.media3.session.CommandButton
-@@ -25,14 +29,22 @@ import app.campfire.audioplayer.impl.browse.SuspendingMediaLibrarySessionCallbac
+@@ -23,16 +27,25 @@ import androidx.media3.session.SessionResult
+ import app.campfire.audioplayer.impl.browse.BrowseMediaId
+ import app.campfire.audioplayer.impl.browse.SuspendingMediaLibrarySessionCallback
  import app.campfire.audioplayer.model.PlaybackTimer
++import app.campfire.core.extensions.readableHundredths
  import app.campfire.core.logging.LogPriority
  import app.campfire.core.logging.bark
 +import app.campfire.core.model.defaultBookmarkTitle
@@ -27813,7 +28002,7 @@ index a22d7695..5b280cc7 100644
  
  @SuppressLint("UnsafeOptInUsageError")
  internal class MediaSessionCallback(
-@@ -41,11 +53,117 @@ internal class MediaSessionCallback(
+@@ -41,11 +54,138 @@ internal class MediaSessionCallback(
    private val player: ExoPlayerAudioPlayer,
    private val component: AudioPlayerComponent,
    private val userComponent: AudioPlayerUserComponent,
@@ -27844,12 +28033,19 @@ index a22d7695..5b280cc7 100644
 +    )
 +    serviceScope.launch {
 +      combine(
-+        component.playbackSettings.observeNextButtonAction(),
-+        component.playbackSettings.observePreviousButtonAction(),
-+        component.playbackSettings.observeBackwardTimeMs(),
-+        component.playbackSettings.observeForwardTimeMs(),
-+        component.playbackSettings.observeNotificationBookmarkButtonEnabled(),
-+      ) { _, _, _, _, _ -> }
++        combine(
++          component.playbackSettings.observeNextButtonAction(),
++          component.playbackSettings.observePreviousButtonAction(),
++          component.playbackSettings.observeBackwardTimeMs(),
++          component.playbackSettings.observeForwardTimeMs(),
++          component.playbackSettings.observeNotificationBookmarkButtonEnabled(),
++        ) { _, _, _, _, _ -> },
++        combine(
++          component.androidAutoSettings.observeSpeedButtonEnabled(),
++          player.playbackSpeed,
++          component.playbackSettings.observePlaybackRates(),
++        ) { _, _, _ -> },
++      ) { _, _ -> }
 +        .collect {
 +          mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
 +        }
@@ -27912,17 +28108,31 @@ index a22d7695..5b280cc7 100644
 +      null
 +    }
 +
++    val speedButton = if (component.androidAutoSettings.speedButtonEnabled) {
++      val speedLabel = player.playbackSpeed.value.readableHundredths
++      CommandButton.Builder(CommandButton.ICON_UNDEFINED)
++        .setCustomIconResId(R.drawable.ic_notification_playback_speed)
++        .setDisplayName(context.getString(R.string.exo_controls_cycle_speed, speedLabel))
++        .setSessionCommand(cycleSpeedCommand)
++        .setSlots(CommandButton.SLOT_OVERFLOW)
++        .build()
++    } else {
++      null
++    }
++
 +    return buildList {
 +      if (skipsChapters) {
 +        add(prevChapterButton)
 +        add(nextChapterButton)
 +        if (addBookmarkButton != null) add(addBookmarkButton)
++        if (speedButton != null) add(speedButton)
 +        add(rewindButton)
 +        add(fastForwardButton)
 +      } else {
 +        add(rewindButton)
 +        add(fastForwardButton)
 +        if (addBookmarkButton != null) add(addBookmarkButton)
++        if (speedButton != null) add(speedButton)
 +        add(prevChapterButton)
 +        add(nextChapterButton)
 +      }
@@ -27931,7 +28141,7 @@ index a22d7695..5b280cc7 100644
  
    override fun onConnect(
      session: MediaSession,
-@@ -57,29 +175,16 @@ internal class MediaSessionCallback(
+@@ -57,29 +197,16 @@ internal class MediaSessionCallback(
        .add(cycleSpeedCommand)
        .add(sleepTimerCommand)
        .add(clearSleepTimerCommand)
@@ -27964,7 +28174,25 @@ index a22d7695..5b280cc7 100644
          .build()
      } else {
        return AcceptedResultBuilder(session)
-@@ -114,6 +219,10 @@ internal class MediaSessionCallback(
+@@ -98,11 +225,12 @@ internal class MediaSessionCallback(
+ 
+     when (customCommand.customAction) {
+       WidgetSessionCommand.CYCLE_SPEED -> {
+-        val rates = component.playbackSettings.playbackRates
+-        val currentSpeed = player.playbackSpeed.value
+-        val currentIndex = rates.indexOfFirst { it == currentSpeed }
+-        val nextIndex = if (currentIndex < 0) 0 else (currentIndex + 1) % rates.size
+-        player.setPlaybackSpeed(rates[nextIndex])
++        cycleNextPlaybackSpeed(
++          rates = component.playbackSettings.playbackRates,
++          currentSpeed = player.playbackSpeed.value,
++        )?.let { nextSpeed ->
++          player.setPlaybackSpeed(nextSpeed)
++        }
+         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+       }
+       WidgetSessionCommand.SET_SLEEP_TIMER -> {
+@@ -114,6 +242,10 @@ internal class MediaSessionCallback(
          player.clearTimer()
          return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
        }
@@ -27975,7 +28203,7 @@ index a22d7695..5b280cc7 100644
        else -> return super.onCustomCommand(session, controller, customCommand, args)
      }
    }
-@@ -132,6 +241,9 @@ internal class MediaSessionCallback(
+@@ -132,6 +264,9 @@ internal class MediaSessionCallback(
      // an exception escaping here would leave the freshly started foreground service without a
      // notification and Android would kill the process.
      try {
@@ -27985,7 +28213,7 @@ index a22d7695..5b280cc7 100644
        userComponent.sessionsRepository.getCurrentSession()?.let { session ->
          userComponent.playbackSessionManager.startSession(
            libraryItemId = session.libraryItem.id,
-@@ -139,6 +251,9 @@ internal class MediaSessionCallback(
+@@ -139,6 +274,9 @@ internal class MediaSessionCallback(
            episodeId = session.episodeId,
          )
        }
@@ -27995,7 +28223,7 @@ index a22d7695..5b280cc7 100644
      } catch (e: CancellationException) {
        throw e
      } catch (e: Exception) {
-@@ -157,7 +272,12 @@ internal class MediaSessionCallback(
+@@ -157,7 +295,12 @@ internal class MediaSessionCallback(
    ): Boolean {
      val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
  
@@ -28008,7 +28236,7 @@ index a22d7695..5b280cc7 100644
        AudioPlayerDebugHooks.Holder.hooks.onMediaButtonEvent(controllerInfo.packageName, keyEvent.keyCode)
      }
  
-@@ -172,20 +292,113 @@ internal class MediaSessionCallback(
+@@ -172,20 +315,113 @@ internal class MediaSessionCallback(
        component.devSettings.recordMediaButtonPackage(controllerInfo.packageName)
      }
  
@@ -28133,7 +28361,7 @@ index a22d7695..5b280cc7 100644
              return true
            }
          }
-@@ -194,6 +407,104 @@ internal class MediaSessionCallback(
+@@ -194,6 +430,104 @@ internal class MediaSessionCallback(
      return super.onMediaButtonEvent(session, controllerInfo, intent)
    }
  
@@ -28238,7 +28466,7 @@ index a22d7695..5b280cc7 100644
    override fun onGetLibraryRoot(
      session: MediaLibrarySession,
      browser: MediaSession.ControllerInfo,
-@@ -276,17 +587,71 @@ internal class MediaSessionCallback(
+@@ -276,17 +610,71 @@ internal class MediaSessionCallback(
      startIndex: Int,
      startPositionMs: Long,
    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
@@ -28271,7 +28499,8 @@ index a22d7695..5b280cc7 100644
 +          null
 +        }
 +        val query = searchQuery ?: searchPrefix
-+
+ 
+-        // Return an error from this response as we've take responsibility for starting playback and
 +        if (query != null) {
 +          bark(LogPriority.INFO) { "MediaSessionCallback: Voice search query received: '$query'" }
 +          val results = userComponent.mediaTree.search(query)
@@ -28313,13 +28542,12 @@ index a22d7695..5b280cc7 100644
 +            episodeId = browseId.episodeId,
 +          )
 +        }
- 
--        // Return an error from this response as we've take responsibility for starting playback and
++
 +        // Return an error from this response as we've taken responsibility for starting playback and
          // resolving / setting the media item(s).
          error("Deliberately not return here")
        }
-@@ -317,49 +682,7 @@ internal class MediaSessionCallback(
+@@ -317,49 +705,7 @@ internal class MediaSessionCallback(
      }
    }
  
@@ -29165,18 +29393,65 @@ index 00000000..d32b4e71
 +      android:fillColor="#FFFFFFFF"
 +      android:pathData="M480,720l-168,72q-40,17 -76,-6.5T200,719v-519q0,-33 23.5,-56.5T280,120h200q17,0 28.5,11.5T520,160q0,17 -11.5,28.5T480,200H280v518l200,-86 200,86V480q0,-17 11.5,-28.5T720,440q17,0 28.5,11.5T760,480v239q0,43 -36,66.5t-76,6.5L480,720ZM480,200H280h240h-40ZM680,280h-40q-17,0 -28.5,-11.5T600,240q0,-17 11.5,-28.5T640,200h40v-40q0,-17 11.5,-28.5T720,120q17,0 28.5,11.5T760,160v40h40q17,0 28.5,11.5T840,240q0,17 -11.5,28.5T800,280h-40v40q0,17 -11.5,28.5T720,360q-17,0 -28.5,-11.5T680,320v-40Z" />
 +</vector>
+diff --git a/infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_playback_speed.xml b/infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_playback_speed.xml
+new file mode 100644
+index 00000000..830dd1a4
+--- /dev/null
++++ b/infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_playback_speed.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="960"
++    android:viewportHeight="960">
++  <path
++      android:fillColor="#FFFFFFFF"
++      android:pathData="M480,643.5Q518,643 536,616L705,363Q714,349 702.5,337.5Q691,326 677,335L424,504Q397,522 395.5,559Q394,596 418,620Q442,644 480,643.5ZM480,160Q516,160 551,166Q586,172 619,185Q635,191 653,207.5Q671,224 663,239L663,239Q655,254 627,259Q599,264 582,258Q557,249 531.5,244.5Q506,240 480,240Q347,240 253.5,333.5Q160,427 160,560Q160,602 171.5,643Q183,684 204,720L756,720Q779,682 789.5,641Q800,600 800,556Q800,530 795.5,505Q791,480 782,456Q776,439 780,423Q784,407 798,396L798,396Q811,386 826.5,390Q842,394 848,408Q863,443 871,479.5Q879,516 880,554Q881,611 867,663Q853,715 826,762Q815,780 796,790Q777,800 756,800L204,800Q183,800 164,790Q145,780 134,762Q108,717 94,666.5Q80,616 80,560Q80,477 111.5,404.5Q143,332 197.5,277.5Q252,223 325,191.5Q398,160 480,160Z" />
++</vector>
 diff --git a/infra/audioplayer/impl/src/androidMain/res/values/strings.xml b/infra/audioplayer/impl/src/androidMain/res/values/strings.xml
-index 5927b763..5aeb3f25 100644
+index 5927b763..941e0389 100644
 --- a/infra/audioplayer/impl/src/androidMain/res/values/strings.xml
 +++ b/infra/audioplayer/impl/src/androidMain/res/values/strings.xml
-@@ -28,6 +28,7 @@
+@@ -28,6 +28,8 @@
    <string name="exo_controls_skip_forward">Skip forward</string>
    <string name="exo_controls_skip_next">Skip next</string>
    <string name="exo_controls_skip_previous">Skip previous</string>
 +  <string name="exo_controls_add_bookmark">Add bookmark</string>
++  <string name="exo_controls_cycle_speed">Speed (%1$sx)</string>
    <string name="folder_home_title">Home</string>
    <string name="folder_shows_title">Shows</string>
    <string name="folder_series_title">Series</string>
+diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCycling.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCycling.kt
+new file mode 100644
+index 00000000..c302339d
+--- /dev/null
++++ b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCycling.kt
+@@ -0,0 +1,25 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.impl
++
++import kotlin.math.abs
++
++/**
++ * Returns the next preset speed after [currentSpeed] from [rates]. If [currentSpeed] matches a
++ * preset (within 0.005x), advances cyclically; otherwise jumps to the next higher preset or wraps
++ * around to the lowest preset.
++ */
++internal fun cycleNextPlaybackSpeed(
++  rates: List<Float>,
++  currentSpeed: Float,
++): Float? {
++  val sorted = rates.distinct().sorted()
++  if (sorted.isEmpty()) return null
++  val exactIndex = sorted.indexOfFirst { abs(it - currentSpeed) < 0.005f }
++  return if (exactIndex >= 0) {
++    sorted[(exactIndex + 1) % sorted.size]
++  } else {
++    sorted.firstOrNull { it > currentSpeed } ?: sorted.first()
++  }
++}
 diff --git a/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMath.kt b/infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMath.kt
 new file mode 100644
 index 00000000..c2dbc1a9
@@ -30125,6 +30400,45 @@ index 501a2507..77bbf221 100644
  
    interface Factory {
      fun create(
+diff --git a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCyclingTest.kt b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCyclingTest.kt
+new file mode 100644
+index 00000000..8681f7db
+--- /dev/null
++++ b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCyclingTest.kt
+@@ -0,0 +1,33 @@
++// Copyright 2026, Drew Heavner and the Campfire project contributors
++// SPDX-License-Identifier: GPL-3.0-only
++
++package app.campfire.audioplayer.impl
++
++import assertk.assertThat
++import assertk.assertions.isEqualTo
++import assertk.assertions.isNull
++import kotlin.test.Test
++
++class PlaybackSpeedCyclingTest {
++
++  private val defaultRates = listOf(1.0f, 1.1f, 1.25f, 1.5f, 2.0f)
++
++  @Test
++  fun `cycles through sorted presets and wraps to start`() {
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 1.0f)).isEqualTo(1.1f)
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 1.25f)).isEqualTo(1.5f)
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 2.0f)).isEqualTo(1.0f)
++  }
++
++  @Test
++  fun `advances from off-preset fine speed to next higher preset`() {
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 1.23f)).isEqualTo(1.25f)
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 0.85f)).isEqualTo(1.0f)
++    assertThat(cycleNextPlaybackSpeed(defaultRates, 2.5f)).isEqualTo(1.0f)
++  }
++
++  @Test
++  fun `returns null when presets list is empty`() {
++    assertThat(cycleNextPlaybackSpeed(emptyList(), 1.25f)).isNull()
++  }
++}
 diff --git a/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMathTest.kt b/infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/RemoteFeedbackToneMathTest.kt
 new file mode 100644
 index 00000000..77c5da2c

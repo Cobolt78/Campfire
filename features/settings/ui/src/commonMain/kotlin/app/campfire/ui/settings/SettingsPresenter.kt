@@ -332,6 +332,9 @@ class SettingsPresenter(
     val androidAutoCategories by remember {
       androidAutoSettings.observeCategoryConfigs()
     }.collectAsState()
+    val androidAutoSpeedButtonEnabled by remember {
+      androidAutoSettings.observeSpeedButtonEnabled()
+    }.collectAsState()
     val isAndroidAutoAvailable = remember { androidAuto.isAvailable() }
 
     // Developer Settings
@@ -446,6 +449,7 @@ class SettingsPresenter(
       androidAutoSettings = AndroidAutoSettingsInfo(
         isAndroidAutoAvailable = isAndroidAutoAvailable,
         categories = androidAutoCategories,
+        speedButtonEnabled = androidAutoSpeedButtonEnabled,
       ),
       developerSettings = DeveloperSettingsInfo(
         developerModeEnabled = developerModeEnabled || applicationInfo.debugBuild,
@@ -697,6 +701,8 @@ class SettingsPresenter(
             androidAutoSettings.setCategoryGridLayout(event.category, event.isGrid)
           is SettingsUiEvent.AndroidAutoSettingEvent.ReorderCategories ->
             androidAutoSettings.setCategoryOrder(event.order)
+          is SettingsUiEvent.AndroidAutoSettingEvent.SetSpeedButtonEnabled ->
+            androidAutoSettings.speedButtonEnabled = event.enabled
         }
       }
     }

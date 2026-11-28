@@ -220,6 +220,11 @@ class SettingsAnalyticUiEventHandler(
         Updated,
         event.order.joinToString(",") { it.storageKey },
       )
+      is SettingsUiEvent.AndroidAutoSettingEvent.SetSpeedButtonEnabled -> send(
+        "android_auto_speed_button",
+        Updated,
+        event.enabled.toString(),
+      )
     }
   }
 }

@@ -27,6 +27,7 @@ import androidx.media3.session.SessionResult
 import app.campfire.audioplayer.impl.browse.BrowseMediaId
 import app.campfire.audioplayer.impl.browse.SuspendingMediaLibrarySessionCallback
 import app.campfire.audioplayer.model.PlaybackTimer
+import app.campfire.core.extensions.readableHundredths
 import app.campfire.core.logging.LogPriority
 import app.campfire.core.logging.bark
 import app.campfire.core.model.defaultBookmarkTitle
@@ -80,12 +81,19 @@ internal class MediaSessionCallback(
     )
     serviceScope.launch {
       combine(
-        component.playbackSettings.observeNextButtonAction(),
-        component.playbackSettings.observePreviousButtonAction(),
-        component.playbackSettings.observeBackwardTimeMs(),
-        component.playbackSettings.observeForwardTimeMs(),
-        component.playbackSettings.observeNotificationBookmarkButtonEnabled(),
-      ) { _, _, _, _, _ -> }
+        combine(
+          component.playbackSettings.observeNextButtonAction(),
+          component.playbackSettings.observePreviousButtonAction(),
+          component.playbackSettings.observeBackwardTimeMs(),
+          component.playbackSettings.observeForwardTimeMs(),
+          component.playbackSettings.observeNotificationBookmarkButtonEnabled(),
+        ) { _, _, _, _, _ -> },
+        combine(
+          component.androidAutoSettings.observeSpeedButtonEnabled(),
+          player.playbackSpeed,
+          component.playbackSettings.observePlaybackRates(),
+        ) { _, _, _ -> },
+      ) { _, _ -> }
         .collect {
           mediaSession.setMediaButtonPreferences(createMediaButtonPreferences())
         }
@@ -148,17 +156,31 @@ internal class MediaSessionCallback(
       null
     }
 
+    val speedButton = if (component.androidAutoSettings.speedButtonEnabled) {
+      val speedLabel = player.playbackSpeed.value.readableHundredths
+      CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+        .setCustomIconResId(R.drawable.ic_notification_playback_speed)
+        .setDisplayName(context.getString(R.string.exo_controls_cycle_speed, speedLabel))
+        .setSessionCommand(cycleSpeedCommand)
+        .setSlots(CommandButton.SLOT_OVERFLOW)
+        .build()
+    } else {
+      null
+    }
+
     return buildList {
       if (skipsChapters) {
         add(prevChapterButton)
         add(nextChapterButton)
         if (addBookmarkButton != null) add(addBookmarkButton)
+        if (speedButton != null) add(speedButton)
         add(rewindButton)
         add(fastForwardButton)
       } else {
         add(rewindButton)
         add(fastForwardButton)
         if (addBookmarkButton != null) add(addBookmarkButton)
+        if (speedButton != null) add(speedButton)
         add(prevChapterButton)
         add(nextChapterButton)
       }
@@ -203,11 +225,12 @@ internal class MediaSessionCallback(
 
     when (customCommand.customAction) {
       WidgetSessionCommand.CYCLE_SPEED -> {
-        val rates = component.playbackSettings.playbackRates
-        val currentSpeed = player.playbackSpeed.value
-        val currentIndex = rates.indexOfFirst { it == currentSpeed }
-        val nextIndex = if (currentIndex < 0) 0 else (currentIndex + 1) % rates.size
-        player.setPlaybackSpeed(rates[nextIndex])
+        cycleNextPlaybackSpeed(
+          rates = component.playbackSettings.playbackRates,
+          currentSpeed = player.playbackSpeed.value,
+        )?.let { nextSpeed ->
+          player.setPlaybackSpeed(nextSpeed)
+        }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
       }
       WidgetSessionCommand.SET_SLEEP_TIMER -> {

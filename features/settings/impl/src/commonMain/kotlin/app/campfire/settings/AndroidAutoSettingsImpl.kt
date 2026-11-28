@@ -89,6 +89,10 @@ class AndroidAutoSettingsImpl(
     storedOrder = normalizeOrder(order)
   }
 
+  private val speedButtonEnabledProperty = booleanSetting(PREF_AA_SPEED_BUTTON_ENABLED, false)
+  override var speedButtonEnabled: Boolean by speedButtonEnabledProperty
+  override fun observeSpeedButtonEnabled(): StateFlow<Boolean> = speedButtonEnabledProperty.observe()
+
   private fun buildConfigs(
     order: List<AndroidAutoCategory>,
     hidden: Set<AndroidAutoCategory>,
@@ -123,6 +127,7 @@ class AndroidAutoSettingsImpl(
 internal const val PREF_AA_ORDER = "pref_android_auto_category_order"
 internal const val PREF_AA_HIDDEN = "pref_android_auto_hidden_categories"
 internal const val PREF_AA_GRID_OVERRIDES = "pref_android_auto_grid_overrides"
+internal const val PREF_AA_SPEED_BUTTON_ENABLED = "pref_android_auto_speed_button_enabled"
 
 private const val LIST_SEPARATOR = ":"
 private const val ENTRY_SEPARATOR = "="

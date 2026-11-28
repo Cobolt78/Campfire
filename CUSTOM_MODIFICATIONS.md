@@ -111,6 +111,7 @@ This document captures all custom features, bug fixes, and UI improvements added
 104. [Bookmark Voice Dictation & Auto-Capitalization, Sleep Timer Stale-Player Fix, Robust Download Deletion & Updater Clarity (v1.2.57)](#104-bookmark-voice-dictation--auto-capitalization-sleep-timer-stale-player-fix-robust-download-deletion--updater-clarity-v1257)
 105. [Unified Bookmark Editor Controls, Jump-Back Safety Net & Dual-Mode Speed/Sleep Timer Steppers (v1.2.58)](#105-unified-bookmark-editor-controls-jump-back-safety-net--dual-mode-speedsleep-timer-steppers-v1258)
 106. [Auto-Pause Playback When Opening Edit Bookmark (v1.2.59)](#106-auto-pause-playback-when-opening-edit-bookmark-v1259)
+107. [Android Auto Playback Speed Cycle Button Option (v1.2.60)](#107-android-auto-playback-speed-cycle-button-option-v1260)
 
 ---
 
@@ -3329,6 +3330,39 @@ Updated `BookmarkEditorDialog` so opening **Edit Bookmark** while audio is playi
 
 ### Modified Files:
 * `features/sessions/ui/src/commonMain/kotlin/app/campfire/sessions/ui/sheets/bookmarks/BookmarksBottomSheet.kt`
+* `gradle.properties`
+* `CHANGELOG.md`
+* `CUSTOM_MODIFICATIONS.md`
+
+---
+
+## 107. Android Auto Playback Speed Cycle Button Option (v1.2.60)
+
+### Summary
+Added an opt-in **Playback speed button** switch under **Settings → Android Auto → Player controls** that exposes a live-labeled `Speed (<rate>x)` button in Android Auto's media player controls to cycle through configured preset speeds.
+
+### Key Details
+1. **Settings Storage & UI (`AndroidAutoSettings.kt`, `AndroidAutoSettingsImpl.kt`, `AndroidAutoPane.kt`, `SettingsPresenter.kt`, `SettingsUiState.kt`, `SettingsAnalyticUiEventHandler.kt`, `ui_settings_strings.xml`)**:
+   - Added `speedButtonEnabled` (`pref_android_auto_speed_button_enabled`, default `false`) + `observeSpeedButtonEnabled()`.
+   - Added a **Player controls** section at the top of `AndroidAutoPane` with the **Playback speed button** toggle.
+2. **Media3 Session Action & Live Speed Updates (`MediaSessionCallback.kt`, `PlaybackSpeedCycling.kt`, `ic_notification_playback_speed.xml`, `strings.xml`)**:
+   - Exposed `WidgetSessionCommand.CYCLE_SPEED` in `createMediaButtonPreferences()` when enabled, displaying `"Speed (%1$sx)"` formatted with `readableHundredths` and `ic_notification_playback_speed`.
+   - Observed `androidAutoSettings.observeSpeedButtonEnabled()`, `player.playbackSpeed`, and `playbackSettings.observePlaybackRates()` inside `MediaSessionCallback.bindSession()` so the displayed speed label updates immediately after phone or car speed changes.
+   - Extracted `cycleNextPlaybackSpeed()` so fine-tuned custom speeds advance cleanly to the next higher preset before wrapping.
+
+### Modified Files:
+* `features/settings/api/src/commonMain/kotlin/app/campfire/settings/api/AndroidAutoSettings.kt`
+* `features/settings/impl/src/commonMain/kotlin/app/campfire/settings/AndroidAutoSettingsImpl.kt`
+* `features/settings/ui/src/commonMain/composeResources/values/ui_settings_strings.xml`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsPresenter.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/SettingsUiState.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/analytics/SettingsAnalyticUiEventHandler.kt`
+* `features/settings/ui/src/commonMain/kotlin/app/campfire/ui/settings/panes/AndroidAutoPane.kt`
+* `infra/audioplayer/impl/src/androidMain/kotlin/app/campfire/audioplayer/impl/MediaSessionCallback.kt`
+* `infra/audioplayer/impl/src/androidMain/res/drawable/ic_notification_playback_speed.xml`
+* `infra/audioplayer/impl/src/androidMain/res/values/strings.xml`
+* `infra/audioplayer/impl/src/commonMain/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCycling.kt`
+* `infra/audioplayer/impl/src/commonTest/kotlin/app/campfire/audioplayer/impl/PlaybackSpeedCyclingTest.kt`
 * `gradle.properties`
 * `CHANGELOG.md`
 * `CUSTOM_MODIFICATIONS.md`

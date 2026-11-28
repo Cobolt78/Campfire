@@ -185,6 +185,7 @@ data class AboutSettingsInfo(
 data class AndroidAutoSettingsInfo(
   val isAndroidAutoAvailable: Boolean,
   val categories: List<AndroidAutoCategoryConfig>,
+  val speedButtonEnabled: Boolean = false,
 )
 
 @Immutable
@@ -379,5 +380,6 @@ sealed interface SettingsUiEvent : CircuitUiEvent {
       val isGrid: Boolean,
     ) : AndroidAutoSettingEvent
     data class ReorderCategories(val order: List<AndroidAutoCategory>) : AndroidAutoSettingEvent
+    data class SetSpeedButtonEnabled(val enabled: Boolean) : AndroidAutoSettingEvent
   }
 }

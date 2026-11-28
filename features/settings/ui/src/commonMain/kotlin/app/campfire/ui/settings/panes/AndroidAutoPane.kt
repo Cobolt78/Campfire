@@ -50,6 +50,7 @@ import app.campfire.ui.settings.SettingsUiEvent.AndroidAutoSettingEvent
 import app.campfire.ui.settings.SettingsUiState
 import app.campfire.ui.settings.composables.ActionSetting
 import app.campfire.ui.settings.composables.Header
+import app.campfire.ui.settings.composables.SwitchSetting
 import campfire.features.settings.ui.generated.resources.Res
 import campfire.features.settings.ui.generated.resources.android_auto_categories_description
 import campfire.features.settings.ui.generated.resources.android_auto_category_authors
@@ -61,9 +62,12 @@ import campfire.features.settings.ui.generated.resources.android_auto_category_s
 import campfire.features.settings.ui.generated.resources.android_auto_category_shows
 import campfire.features.settings.ui.generated.resources.android_auto_drag_handle_description
 import campfire.features.settings.ui.generated.resources.android_auto_header_categories
+import campfire.features.settings.ui.generated.resources.android_auto_header_player_controls
 import campfire.features.settings.ui.generated.resources.android_auto_layout_grid
 import campfire.features.settings.ui.generated.resources.android_auto_layout_list
 import campfire.features.settings.ui.generated.resources.android_auto_open_settings
+import campfire.features.settings.ui.generated.resources.android_auto_speed_button_subtitle
+import campfire.features.settings.ui.generated.resources.android_auto_speed_button_title
 import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_1
 import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_2
 import campfire.features.settings.ui.generated.resources.android_auto_unavailable_step_3
@@ -95,6 +99,17 @@ internal fun AndroidAutoPane(
       headlineContent = { Text(stringResource(Res.string.android_auto_open_settings)) },
       leadingContent = { Icon(CampfireIcons.Rounded.OpenInNew, contentDescription = null) },
       onClick = { state.eventSink(AndroidAutoSettingEvent.OpenAndroidAutoSettings) },
+    )
+
+    Header(
+      title = { Text(stringResource(Res.string.android_auto_header_player_controls)) },
+    )
+
+    SwitchSetting(
+      value = state.androidAutoSettings.speedButtonEnabled,
+      onValueChange = { state.eventSink(AndroidAutoSettingEvent.SetSpeedButtonEnabled(it)) },
+      headlineContent = { Text(stringResource(Res.string.android_auto_speed_button_title)) },
+      supportingContent = { Text(stringResource(Res.string.android_auto_speed_button_subtitle)) },
     )
 
     Header(

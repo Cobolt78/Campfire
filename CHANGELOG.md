@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.2.60] - 2026-11-28
+
+### Added
+- **Android Auto Playback Speed Button**:
+  - Added an opt-in **Playback speed button** toggle under **Settings → Android Auto → Player controls**.
+  - When enabled, exposes a live-labeled **Speed (`<rate>x`)** Media3 `CommandButton` (`WidgetSessionCommand.CYCLE_SPEED`) in Android Auto controls so listeners can cycle through their preset playback speeds directly from the car display (and cleanly step up from fine-tuned custom speeds to the next higher preset).
+
 ## [1.2.59] - 2026-11-28
 
 ### Changed

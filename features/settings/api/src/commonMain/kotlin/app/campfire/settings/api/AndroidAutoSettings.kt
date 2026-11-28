@@ -62,4 +62,10 @@ interface AndroidAutoSettings {
    * Replace the current ordering. Any missing entries will be appended in enum order.
    */
   fun setCategoryOrder(order: List<AndroidAutoCategory>)
+
+  /**
+   * When true, exposes a playback speed cycle button in Android Auto's player controls.
+   */
+  var speedButtonEnabled: Boolean
+  fun observeSpeedButtonEnabled(): StateFlow<Boolean>
 }

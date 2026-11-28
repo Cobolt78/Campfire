@@ -215,6 +215,9 @@
   <string name="android_auto_unavailable_step_4">Enable 'Unknown sources'</string>
   <string name="android_auto_unavailable_step_5">Re-connect Android Auto!</string>
   <string name="android_auto_open_settings">Open Android Auto settings</string>
+  <string name="android_auto_header_player_controls">Player controls</string>
+  <string name="android_auto_speed_button_title">Playback speed button</string>
+  <string name="android_auto_speed_button_subtitle">Show a button on the Android Auto player to cycle through your preset playback speeds</string>
   <string name="android_auto_header_categories">Categories</string>
   <string name="android_auto_categories_description">Drag to reorder. Toggle each category's visibility and choose whether its contents appear as a grid or list.</string>
   <string name="android_auto_category_home">Home</string>
